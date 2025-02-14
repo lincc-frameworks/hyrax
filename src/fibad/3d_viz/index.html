@@ -1,315 +1,523 @@
 <!DOCTYPE html>
 <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Interactive 3D UMAP Visualization</title>
-        
-	    <!-- Include Three.js and OrbitControls for 3D visualization -->	
-		<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-        <script src="https://cdn.jsdelivr.net/npm/three@latest/examples/js/controls/OrbitControls.js"></script>
-        
-		<style>
-            
-			body { margin: 0; overflow: hidden; background-color: black; }
-            canvas { display: block; }
-    
-			/* Stying of Box Containing Object IDs*/
-			#info { 
-			position: absolute; 
-			top: 10px; 
-			left: 10px; 
-			color: yellow; 
-			font-size: 14px; 
-			font-family: Arial, sans-serif;
-			background: rgba(0, 0, 0, 0.7);
-    		padding: 5px;
-    		max-width: 75vw;  /* 75% of viewport width */
-    		max-height: 200px; /* Limits height */
-    		overflow-y: auto;  /* Enables scrolling */
-    		border-radius: 5px;
-    		word-wrap: break-word; /* Ensures long words wrap */
-    		white-space: normal; /* Allows text to break into new lines */
-			}
-            
-			#selectionBox {
-            position: absolute;
-            border: 2px dashed yellow;
-            background-color: rgba(255, 255, 0, 0.2);
-            display: none;
-            }
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Interactive 3D UMAP Visualization</title>
+       
+      <!-- Include Three.js and OrbitControls for 3D visualization -->	
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/three@latest/examples/js/controls/OrbitControls.js"></script>
 
+       
+      <!-- CSS -->
+      <style>
+         body { margin: 0; overflow: hidden; background-color: black; }
+         canvas { display: block; }
+          
+         /* Style of Data Loading Message */ 
+         #rotation-message {
+         position: absolute;
+         top: 10px;  /* Moves message to the top */
+         left: 50%;
+         transform: translateX(-50%); /* Centers it horizontally */
+         color: white;
+         font-size: 16px;
+         background: rgba(0, 0, 0, 0.7);
+         padding: 8px 15px;
+         border-radius: 5px;
+         text-align: center;
+         display: none; /* Hidden by default */
+         font-family: Arial, sans-serif;
+         max-width: 80%; /* Prevents overflow */
+         white-space: nowrap; /* Ensures it stays on one line */
+         }
+          
+         /* Stying of Box Containing Object IDs*/
+         #info { 
+         position: absolute; 
+         top: 10px; 
+         left: 10px; 
+         color: yellow; 
+         font-size: 14px; 
+         font-family: Arial, sans-serif;
+         background: rgba(0, 0, 0, 0.7);
+         padding: 5px;
+         max-width: 75vw;  /* 75% of viewport width */
+         max-height: 200px; /* Limits height */
+         overflow-y: auto;  /* Enables scrolling */
+         border-radius: 5px;
+         word-wrap: break-word; /* Ensures long words wrap */
+         white-space: normal; /* Allows text to break into new lines */
+         }
+          
+         #selectionBox {
+         position: absolute;
+         border: 2px dashed yellow;
+         background-color: rgba(255, 255, 0, 0.2);
+         display: none;
+         }
 
-			/* Stying of Box Showing Control Instructions*/
-            #controls-box {
-            position: absolute;
-            top: 10px;
-            right: 10px;
-            background: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 10px;
-            border-radius: 5px;
-            font-size: 14px;
-            font-family: Arial, sans-serif;
-            max-width: 250px;
-            text-align: left;
-            }
-
-            #controls-box h3 {
-            margin: 0;
-            font-size: 16px;
-            color: yellow;
-            }
-
-            #controls-box ul {
-            padding: 0;
-            list-style-type: none;
-            }
-
-            #controls-box li {
-            margin-bottom: 5px;
-            }
-
-        </style>
-    </head>
-
-    <body>
-
-		<!-- Control instructions box -->
-        <div id="controls-box">
-            <h3>Controls</h3>
-            <ul>
-                <li><b>Move Camera:</b> Left-click + drag</li>
-                <li><b>Zoom:</b> Scroll</li>
-                <li><b>Select Points:</b> Hold <b>S</b> + Left-click + Drag</li>
-                <li><b>Selection Behavior:</b> Selected points turn <span style="color: white;">white</span>, previous selections is cleared
-                    </span>
-                </li>
-            </ul>
-        </div>
-
-
-		<!-- Information text -->
-        <div id="info">Drag to select multiple points</div>
-        
-		<!-- Selection box -->
-		<div id="selectionBox"></div>
-        <script>
-            let scene, camera, renderer, pointCloud, controls;
-            let points = [];
-            const raycaster = new THREE.Raycaster();
-            const mouse = new THREE.Vector2();
-            let isSelecting = false;
-            let startX, startY, endX, endY;
-            let selectedPoints = [];
-            const selectionBox = document.getElementById("selectionBox");
-            let isSKeyPressed = false;
-            let originalColors = []; // Variable to store virdis colors	   
-		
-            function init() {
-
-				// Set up new 3js Scene
-                scene = new THREE.Scene();
-               
-				// Set up Camera
-                camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-                camera.position.set(0, 0, 10);
-                
-				// Set up renderer
-                renderer = new THREE.WebGLRenderer();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-                document.body.appendChild(renderer.domElement);
-                
-				// Add orbit controls for camera movement
-                controls = new THREE.OrbitControls(camera, renderer.domElement);
-                controls.enableDamping = true;
-                controls.dampingFactor = 0.03;
-                controls.minDistance = 1;
-                controls.maxDistance = 20;
-                
-				// Load UMAP data from JSON file 
-                fetch("umap_data.json")
-                    .then(response => response.json())
-                    .then(data => {
-                        points = data.points;
-                        createPointCloud();
-                    })
-                    .catch(error => console.error("Error loading JSON:", error));
-                
-				// Start rendering loop
-                animate();
-            }
-
-			function viridisColormap(value, min, max) {
-    			// Normalize the value between 0 and 1
-    			const t = (value - min) / (max - min);
-    			const r = Math.min(Math.max(68 + 182 * t, 0), 255) / 255;
-    			const g = Math.min(Math.max(1 + 130 * t, 0), 255) / 255;
-    			const b = Math.min(Math.max(84 - 60 * t, 0), 255) / 255;
-    			return [r, g, b];
-			}
+          
+         /* Stying of Box Showing Control Instructions*/
+         #controls-box {
+         position: absolute;
+         top: 10px;
+         right: 10px;
+         background: rgba(0, 0, 0, 0.8);
+         color: white;
+         padding: 10px;
+         border-radius: 5px;
+         font-size: 14px;
+         font-family: Arial, sans-serif;
+         max-width: 250px;
+         text-align: left;
+         }
+         #controls-box h3 {
+         margin: 0;
+         font-size: 16px;
+         color: yellow;
+         }
+         #controls-box ul {
+         padding: 0;
+         list-style-type: none;
+         }
+         #controls-box li {
+         margin-bottom: 5px;
+         }
+      </style>
+   </head>
+   <body>
+       
+      <div id="rotation-message"> Loading Data ..... </div>
+      
+       
+       <!-- Control instructions box -->
+      <div id="controls-box">
+         <h3>Controls & Data</h3>
+         <ul>
+            <li><b>Move Camera:</b> Left-click + drag</li>
+            <li><b>Zoom:</b> Scroll</li>
+            <li><b>Select Points:</b> Hold <b>S</b> + Left-click + Drag</li>
+            <li><b>Selection Behavior:</b> Selected points turn <span style="color: white;">white</span>, previous selections is cleared
+            </li>
+         </ul>
+         <!-- Insert the JSON Selector Here -->
+         <div id="json-selector-container" style="margin-top: 10px; text-align: left;">
+            <label for="jsonFileSelect" style="color: white; font-size: 14px;">Select Data File:</label>
+            <select id="jsonFileSelect" style="width: 100%; padding: 5px; margin-top: 5px;">
+               <option value="">Select a JSON File</option>
+            </select>
+         </div>
+         <div id="color-selector-container" style="margin-top: 10px; text-align: left;">
+            <label for="colorColumnSelect" style="color: white; font-size: 14px;">Color Points By:</label>
+            <select id="colorColumnSelect" style="width: 100%; padding: 5px; margin-top: 5px;">
+               <option value="">Select Column</option>
+            </select>
+         </div>
+      </div>
+     
+       <!-- Information text -->
+      <div id="info">Drag to select multiple points</div>
+      <!-- Selection box -->
+      <div id="selectionBox"></div>
+      <script>
+         let scene, camera, renderer, pointCloud, controls;
+         let points = [];
+         const raycaster = new THREE.Raycaster();
+         const mouse = new THREE.Vector2();
+         let isSelecting = false;
+         let startX, startY, endX, endY;
+         let selectedPoints = [];
+         const selectionBox = document.getElementById("selectionBox");
+         let isSKeyPressed = false;
+         let originalColors = [];
+         let currentColors = []; // Store latest applied colors from dropdown
+         
+          
+         function init() {
+         
+         // Set up new 3js Scene
+             scene = new THREE.Scene();
             
-            function createPointCloud() {
-                const geometry = new THREE.BufferGeometry();
-                const positions = [];
-                const colors = [];
-            
-                let minX = Infinity, minY = Infinity, minZ = Infinity;
-                let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
-            
-				// Calculate data bounds for normalization
-                points.forEach(p => {
-                    minX = Math.min(minX, p.x);
-                    minY = Math.min(minY, p.y);
-                    minZ = Math.min(minZ, p.z);
-                    maxX = Math.max(maxX, p.x);
-                    maxY = Math.max(maxY, p.y);
-                    maxZ = Math.max(maxZ, p.z);
-                });
-            
-                const scaleFactor = 5 / Math.max(maxX - minX, maxY - minY, maxZ - minZ);
-            
-				// Normalize and store point positions and colors
-                points.forEach(point => {
-                    let x = (point.x - (minX + maxX) / 2) * scaleFactor;
-                    let y = (point.y - (minY + maxY) / 2) * scaleFactor;
-                    let z = (point.z - (minZ + maxZ) / 2) * scaleFactor;
-            
-                    positions.push(x, y, z);
-                    // colors.push(1, 1, 0); // Yellow color
-
-					const [r, g, b] = viridisColormap(point.x, minX, maxX);
-        			colors.push(r, g, b);
-
-					originalColors.push([r, g, b]); // Store original colors
-
-                });
-            
-                geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
-                geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
-            
-				// Create point cloud material and add to scene
-                const material = new THREE.PointsMaterial({ size: 0.05, vertexColors: true });
-                pointCloud = new THREE.Points(geometry, material);
-                scene.add(pointCloud);
-            }
-            
-            function animate() {
-                requestAnimationFrame(animate);
-                controls.update();
-                renderer.render(scene, camera);
-            }
-
-
-			
-            // Mouse interaction functions
-            function onMouseDown(event) {
-            if (event.button !== 0 || !isSKeyPressed) return; // Only activate if "S" is held during left-click
-            
-            isSelecting = true;
-            controls.enabled = false; //disable camera movement 
-            startX = event.clientX;
-            startY = event.clientY;
-            selectionBox.style.left = `${startX}px`;
-            selectionBox.style.top = `${startY}px`;
-            selectionBox.style.width = "0px";
-            selectionBox.style.height = "0px";
-            selectionBox.style.display = "block";
-            
-            event.preventDefault(); // Prevent interfering interactions
-            }
-            
-            
-            function onMouseMove(event) {
-            if (!isSelecting || !isSKeyPressed) return;  // Stop selection if "S" is not held
-            
-            endX = event.clientX;
-            endY = event.clientY;
-            
-            selectionBox.style.left = `${Math.min(startX, endX)}px`;
-            selectionBox.style.top = `${Math.min(startY, endY)}px`;
-            selectionBox.style.width = `${Math.abs(endX - startX)}px`;
-            selectionBox.style.height = `${Math.abs(endY - startY)}px`;
-            }
-            
-            
-            
-            function onMouseUp() {
-            if (!isSKeyPressed) {
-                isSelecting = false;
-                selectionBox.style.display = "none";
-                controls.enabled = true;
-                return;
-            }
-            
-            isSelecting = false;
-            selectionBox.style.display = "none";
-            controls.enabled = true;
-            
-            const minX = (Math.min(startX, endX) / window.innerWidth) * 2 - 1;
-            const maxX = (Math.max(startX, endX) / window.innerWidth) * 2 - 1;
-            const minY = -(Math.max(startY, endY) / window.innerHeight) * 2 + 1;
-            const maxY = -(Math.min(startY, endY) / window.innerHeight) * 2 + 1;
-            
-            selectedPoints = [];
-            
-            const geometry = pointCloud.geometry;
-            const positions = geometry.attributes.position.array;
-            const colors = geometry.attributes.color.array;
-            
-            // Reset all points to orginal colors before selecting new ones
-            for (let i = 0; i < colors.length / 3; i++) {
-            	colors[i * 3] = originalColors[i][0]; // Red channel
-        		colors[i * 3 + 1] = originalColors[i][1]; // Green channel
-        		colors[i * 3 + 2] = originalColors[i][2]; // Blue channel
-			}
-            
-            // Now apply selection (turn selected points red)
-            for (let i = 0; i < positions.length / 3; i++) {
-                const vector = new THREE.Vector3(
-                    positions[i * 3],
-                    positions[i * 3 + 1],
-                    positions[i * 3 + 2]
-                ).project(camera);
-            
-                if (vector.x >= minX && vector.x <= maxX && vector.y >= minY && vector.y <= maxY) {
-                    selectedPoints.push(points[i].id);
-                    colors[i * 3] = 1; // Red channel
-                    colors[i * 3 + 1] = 1; // Green channel
-                    colors[i * 3 + 2] = 1; // Blue channel (Red color)
-                }
-            }
-            
-            // Update color buffer to reflect changes
-            geometry.attributes.color.needsUpdate = true;
-            
-            document.getElementById("info").innerHTML = `Selected Object IDs: <b>${selectedPoints.join(", ")}</b>`;
-            }
-            
-            
-            window.addEventListener("mousedown", onMouseDown, false);
-            window.addEventListener("mousemove", onMouseMove, false);
-            window.addEventListener("mouseup", onMouseUp, false);
-            
-
-			// Handle keyboard events for selection mode
-            window.addEventListener("keydown", (event) => {
-            if (event.key.toLowerCase() === "s") {
-                isSKeyPressed = true;
-            }
-            });
-            
-            window.addEventListener("keyup", (event) => {
-            if (event.key.toLowerCase() === "s") {
-                isSKeyPressed = false;
-                isSelecting = false;
-                selectionBox.style.display = "none";
-                controls.enabled = true; //Re-enable camera movement
-            }
-            });
-            
-            
-            init();
-        </script>
-    </body>
+         // Set up Camera
+             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+             camera.position.set(0, 0, 10);
+             
+         // Set up renderer
+             renderer = new THREE.WebGLRenderer();
+             renderer.setSize(window.innerWidth, window.innerHeight);
+             document.body.appendChild(renderer.domElement);
+             
+         // Add orbit controls for camera movement
+             controls = new THREE.OrbitControls(camera, renderer.domElement);
+             controls.enableDamping = true;
+             controls.dampingFactor = 0.03;
+             controls.minDistance = 1;
+             controls.maxDistance = 20;
+             
+         // Fetch the list of JSON files and load the first available one
+             fetchJSONList();
+             
+         // Start rendering loop
+             animate();
+         
+         // Trigger initial camera rotation animation
+            rotateCameraAnimation(7); 
+         }
+         
+         function fetchJSONList() {
+         fetch("/list_jsons")  // Calls the Python server to list JSON files
+         .then(response => response.json())
+         .then(files => {
+         console.log("JSON files found:", files); // Debugging log
+         const select = document.getElementById("jsonFileSelect");
+         select.innerHTML = '<option value="">Select a JSON File</option>'; // Reset dropdown
+         
+         if (files.length === 0) {
+             console.warn("No JSON files found!");
+             return;
+         }
+         
+         // Populate dropdown
+         files.forEach((file, index) => {
+             const option = document.createElement("option");
+             option.value = file;
+             option.textContent = file;
+             select.appendChild(option);
+         });
+         
+         // Automatically select & load the first JSON file
+         select.selectedIndex = 1; // Select first file
+         loadJSONData(files[0]);  // Load the first JSON file
+         
+         // Event listener for manual selection changes
+         select.addEventListener("change", function () {
+             if (this.value) {
+                 loadJSONData(this.value);
+             }
+         });
+         })
+         .catch(error => console.error("Error fetching JSON file list:", error));
+         }
+         
+         function Colormap(value, min, max) {
+         const t = (value - min) / (max - min); // Normalize between 0 and 1
+         
+         // Increased brightness for the entire Viridis spectrum
+         const r = Math.max(0.4, Math.min(88 + 180 * t, 255)) / 255;  // Lifting the darkest shades
+         const g = Math.max(0.5, Math.min(50 + 160 * t, 255)) / 255;
+         const b = Math.max(0.6, Math.min(120 - 40 * t, 255)) / 255;  // Avoids deep blues blending into black
+         
+         return [r, g, b];
+         }
+         
+         function createPointCloud() {
+             const geometry = new THREE.BufferGeometry();
+             const positions = [];
+             const colors = [];
+         
+             let minX = Infinity, minY = Infinity, minZ = Infinity;
+             let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+         
+         // Calculate data bounds for normalization
+             points.forEach(p => {
+                 minX = Math.min(minX, p.x);
+                 minY = Math.min(minY, p.y);
+                 minZ = Math.min(minZ, p.z);
+                 maxX = Math.max(maxX, p.x);
+                 maxY = Math.max(maxY, p.y);
+                 maxZ = Math.max(maxZ, p.z);
+             });
+         
+             const scaleFactor = 5 / Math.max(maxX - minX, maxY - minY, maxZ - minZ);
+         
+         // Normalize and store point positions and colors
+             points.forEach(point => {
+                 let x = (point.x - (minX + maxX) / 2) * scaleFactor;
+                 let y = (point.y - (minY + maxY) / 2) * scaleFactor;
+                 let z = (point.z - (minZ + maxZ) / 2) * scaleFactor;
+         
+                 positions.push(x, y, z);
+                 // colors.push(1, 1, 0); // Yellow color
+         
+         const [r, g, b] = Colormap(point.x, minX, maxX);
+         colors.push(r, g, b);
+         
+         originalColors.push([r, g, b]); // Store original colors
+         
+             });
+         
+             geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+             geometry.setAttribute("color", new THREE.Float32BufferAttribute(colors, 3));
+         
+         // Create point cloud material and add to scene
+             const material = new THREE.PointsMaterial({ size: 0.05, vertexColors: true });
+             pointCloud = new THREE.Points(geometry, material);
+             scene.add(pointCloud);
+         }
+         
+         
+         
+         function loadJSONData(filename) {
+         fetch(filename)
+         .then(response => response.json())
+         .then(data => {
+         updateVisualization(data);
+         console.log(`Loaded: ${filename}`);
+         
+         // Update dropdown selection to reflect the current file
+         document.getElementById("jsonFileSelect").value = filename;
+         
+         // Populate the color selection dropdown
+         populateColorDropdown(data);
+         })
+         .catch(error => console.error("Error loading JSON:", error));
+         }
+         
+         
+         function populateColorDropdown(data) {
+         const select = document.getElementById("colorColumnSelect");
+         select.innerHTML = '<option value="">Select Column</option>'; // Reset dropdown
+         
+         if (!data.points || data.points.length === 0) {
+         console.warn("No points found in data.");
+         return;
+         }
+         
+         // Extract keys from the first point
+         const columns = Object.keys(data.points[0]);
+         
+         // Populate the dropdown with column names
+         columns.forEach(col => {
+         const option = document.createElement("option");
+         option.value = col;
+         option.textContent = col;
+         select.appendChild(option);
+         });
+         
+         // Default to the first column (if available)
+         if (columns.length > 0) {
+         select.value = columns[0];
+         updatePointColors(columns[0]); // Apply initial coloring
+         }
+         
+         // Add event listener to change coloring dynamically
+         select.addEventListener("change", function () {
+         if (this.value) {
+         updatePointColors(this.value);
+         }
+         });
+         }
+         
+         
+         function updatePointColors(column) {
+         if (!points || points.length === 0) {
+         console.warn("No points available for coloring.");
+         return;
+         }
+         
+         let minVal = Infinity, maxVal = -Infinity;
+         points.forEach(p => {
+         if (p[column] !== undefined) {
+            minVal = Math.min(minVal, p[column]);
+            maxVal = Math.max(maxVal, p[column]);
+         }
+         });
+         
+         console.log(`Coloring points by ${column}: Min = ${minVal}, Max = ${maxVal}`);
+         
+         const geometry = pointCloud.geometry;
+         const colors = geometry.attributes.color.array;
+         currentColors = [];  // Reset stored colors
+         
+         points.forEach((point, i) => {
+         if (point[column] !== undefined) {
+            const value = point[column];
+            const [r, g, b] = Colormap(value, minVal, maxVal);
+            colors[i * 3] = r;
+            colors[i * 3 + 1] = g;
+            colors[i * 3 + 2] = b;
+            currentColors.push([r, g, b]); // Store the current colors
+         }
+         });
+         
+         geometry.attributes.color.needsUpdate = true;
+         }
+         
+         
+         
+         
+         function updateVisualization(newData) {
+         if (pointCloud) {
+         scene.remove(pointCloud); // Remove previous points
+         }
+         points = newData.points;
+         originalColors = []; // Reset stored colors
+         createPointCloud();
+         
+         // Start camera rotation again for 10 seconds
+         rotateCameraAnimation(7);
+         }
+         
+         function rotateCameraAnimation(duration) {
+         let startTime = performance.now();
+         let radius = 10; // Adjust orbit radius if needed
+         
+         const messageBox = document.getElementById("rotation-message");
+         messageBox.style.display = "block"; // Show message while rotating
+         
+         controls.enabled = false; // Disable user controls during animation
+         
+         function easeOutQuad(t) {
+         return t * (2 - t); // Ease-out function (quadratic)
+         }
+         
+         function rotateLoop(time) {
+         let elapsed = (time - startTime) / 1000; // Convert to seconds
+         let progress = elapsed / duration;
+         
+         if (progress >= 1) {
+            controls.enabled = true; // Re-enable controls after animation
+            messageBox.style.display = "none"; // Hide message after rotation
+            return;
+         }
+         
+         let easedProgress = easeOutQuad(progress); // Apply easing function
+         
+         let angle = easedProgress * Math.PI * 2; // Full rotation in `duration` seconds
+         camera.position.x = radius * Math.cos(angle);
+         camera.position.z = radius * Math.sin(angle);
+         camera.lookAt(scene.position); // Keep camera focused on center
+         
+         requestAnimationFrame(rotateLoop);
+         }
+         
+         requestAnimationFrame(rotateLoop);
+         }
+         
+         
+         
+         
+         function animate() {
+             requestAnimationFrame(animate);
+             controls.update();
+             renderer.render(scene, camera);
+         }
+         
+         
+         
+         // Mouse interaction functions
+         function onMouseDown(event) {
+         if (event.button !== 0 || !isSKeyPressed) return; // Only activate if "S" is held during left-click
+         
+         isSelecting = true;
+         controls.enabled = false; //disable camera movement 
+         startX = event.clientX;
+         startY = event.clientY;
+         selectionBox.style.left = `${startX}px`;
+         selectionBox.style.top = `${startY}px`;
+         selectionBox.style.width = "0px";
+         selectionBox.style.height = "0px";
+         selectionBox.style.display = "block";
+         
+         event.preventDefault(); // Prevent interfering interactions
+         }
+         
+         
+         function onMouseMove(event) {
+         if (!isSelecting || !isSKeyPressed) return;  // Stop selection if "S" is not held
+         
+         endX = event.clientX;
+         endY = event.clientY;
+         
+         selectionBox.style.left = `${Math.min(startX, endX)}px`;
+         selectionBox.style.top = `${Math.min(startY, endY)}px`;
+         selectionBox.style.width = `${Math.abs(endX - startX)}px`;
+         selectionBox.style.height = `${Math.abs(endY - startY)}px`;
+         }
+         
+         
+         
+         function onMouseUp() {
+         if (!isSKeyPressed) {
+             isSelecting = false;
+             selectionBox.style.display = "none";
+             controls.enabled = true;
+             return;
+         }
+         
+         isSelecting = false;
+         selectionBox.style.display = "none";
+         controls.enabled = true;
+         
+         const minX = (Math.min(startX, endX) / window.innerWidth) * 2 - 1;
+         const maxX = (Math.max(startX, endX) / window.innerWidth) * 2 - 1;
+         const minY = -(Math.max(startY, endY) / window.innerHeight) * 2 + 1;
+         const maxY = -(Math.min(startY, endY) / window.innerHeight) * 2 + 1;
+         
+         selectedPoints = [];
+         
+         const geometry = pointCloud.geometry;
+         const positions = geometry.attributes.position.array;
+         const colors = geometry.attributes.color.array;
+         
+         // Reset all points to the currently applied colors before selecting new ones
+         for (let i = 0; i < colors.length / 3; i++) {
+         colors[i * 3] = currentColors[i][0]; // Red channel
+         colors[i * 3 + 1] = currentColors[i][1]; // Green channel
+         colors[i * 3 + 2] = currentColors[i][2]; // Blue channel
+         }
+         
+         // Now apply selection (turn selected points red)
+         for (let i = 0; i < positions.length / 3; i++) {
+             const vector = new THREE.Vector3(
+                 positions[i * 3],
+                 positions[i * 3 + 1],
+                 positions[i * 3 + 2]
+             ).project(camera);
+         
+             if (vector.x >= minX && vector.x <= maxX && vector.y >= minY && vector.y <= maxY) {
+                 selectedPoints.push(points[i].id);
+                 colors[i * 3] = 1; // Red channel
+                 colors[i * 3 + 1] = 1; // Green channel
+                 colors[i * 3 + 2] = 1; // Blue channel (Red color)
+             }
+         }
+         
+         // Update color buffer to reflect changes
+         geometry.attributes.color.needsUpdate = true;
+         
+         document.getElementById("info").innerHTML = `Selected Object IDs: <b>${selectedPoints.join(", ")}</b>`;
+         }
+         
+         
+         window.addEventListener("mousedown", onMouseDown, false);
+         window.addEventListener("mousemove", onMouseMove, false);
+         window.addEventListener("mouseup", onMouseUp, false);
+         document.addEventListener("DOMContentLoaded", function () {
+         fetchJSONList(); // Populate dropdown when the page loads
+         });
+         
+         
+         // Handle keyboard events for selection mode
+         window.addEventListener("keydown", (event) => {
+         if (event.key.toLowerCase() === "s") {
+             isSKeyPressed = true;
+         }
+         });
+         
+         window.addEventListener("keyup", (event) => {
+         if (event.key.toLowerCase() === "s") {
+             isSKeyPressed = false;
+             isSelecting = false;
+             selectionBox.style.display = "none";
+             controls.enabled = true; //Re-enable camera movement
+         }
+         });
+         
+         
+         init();
+      </script>
+   </body>
 </html>
