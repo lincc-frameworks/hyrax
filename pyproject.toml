@@ -17,7 +17,12 @@ dynamic = ["version"]
 requires-python = ">=3.9"
 dependencies = [
     "astropy", # Used to load fits files of sources to query HSC cutout server
-    "pytorch-ignite", # Used for distributed training, logging, etc.
+    # Pin to the current version of pytorch ignite so workarounds to 
+    # https://github.com/pytorch/ignite/issues/3372 function correctly
+    # while allowing us to release packages that don't depend on dev versions
+    # of pytorch-ignite.
+    "pytorch-ignite <= 0.5.2", # Used for distributed training, logging, etc.
+    "more-itertools", # Used to work around the issue in pytorch-ignite above
     "toml", # Used to load configuration files as dictionaries
     "tomlkit", # Used to load configuration files as dictionaries and retain comments
     "torch", # Used for CNN model and in train.py

@@ -12,7 +12,7 @@ with warnings.catch_warnings():
     import mlflow
 
 import torch
-from ignite.engine import Engine, Events
+from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from tensorboardX import SummaryWriter
@@ -103,6 +103,9 @@ def dist_data_loader(
     For multiple splits, we return a dictionary where the keys are the names of the splits
     and the value is either a Dataloader as described above or the value None if the split
     was not configured.
+
+    If an iterable dataset is passed, we cannot create multiple splits with a pyTorch sampler object
+    so we return the same thing for all splits, which is a dataloader representing the entire iterable
     """
     # Handle case where no split is needed.
     if isinstance(split, bool):
@@ -118,18 +121,25 @@ def dist_data_loader(
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    # Create the indexes for all splits based on config.
-    indexes = create_splits(data_set, config)
+    if data_set.is_iterable():
+        dataloaders = {
+            s: idist.auto_dataloader(data_set, pin_memory=True, **config["data_loader"]) for s in split
+        }
+    else:
+        # Create the indexes for all splits based on config.
+        indexes = create_splits(data_set, config)
 
-    # Create samplers and dataloaders for each split we are interested in
-    samplers = {
-        s: SubsetRandomSampler(indexes[s], generator=torch_rng) if indexes.get(s) else None for s in split
-    }
+        # Create samplers and dataloaders for each split we are interested in
+        samplers = {
+            s: SubsetRandomSampler(indexes[s], generator=torch_rng) if indexes.get(s) else None for s in split
+        }
 
-    dataloaders = {
-        split: idist.auto_dataloader(data_set, sampler=sampler, **config["data_loader"]) if sampler else None
-        for split, sampler in samplers.items()
-    }
+        dataloaders = {
+            split: idist.auto_dataloader(data_set, sampler=sampler, **config["data_loader"])
+            if sampler
+            else None
+            for split, sampler in samplers.items()
+        }
 
     # Return only one if we were only passed one split in, return the dictionary otherwise.
     return dataloaders[split[0]] if len(split) == 1 else dataloaders
@@ -363,6 +373,7 @@ def create_validator(
     model = idist.auto_model(model)
 
     validator = create_engine("train_step", device, model)
+    fixup_engine(validator)
 
     @validator.on(Events.STARTED)
     def set_model_to_eval_mode():
@@ -372,12 +383,12 @@ def create_validator(
     def set_model_to_train_mode():
         model.train()
 
-    @validator.on(Events.EPOCH_COMPLETED)
+    @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss():
         logger.debug(f"Validation run time: {validator.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Validation metrics: {validator.state.output}")
 
-    @trainer.on(Events.EPOCH_COMPLETED)
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
         validator.run(validation_data_loader)
 
@@ -386,7 +397,7 @@ def create_validator(
         tensorboardx_logger.add_scalar("training/validation/loss", validator.state.output["loss"], step)
         mlflow.log_metrics({"validation/loss": validator.state.output["loss"]}, step=step)
 
-    validator.add_event_handler(Events.EPOCH_COMPLETED, log_validation_loss, trainer)
+    validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
     return validator
 
@@ -419,6 +430,7 @@ def create_trainer(
     model.train()
     model = idist.auto_model(model)
     trainer = create_engine("train_step", device, model)
+    fixup_engine(trainer)
 
     optimizer = extract_model_method(model, "optimizer")
 
@@ -435,18 +447,19 @@ def create_trainer(
         to_save,
         DiskSaver(results_directory, require_empty=False),
         n_saved=1,
-        global_step_transform=global_step_from_engine(trainer),
+        global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
         filename_pattern="{name}_epoch_{global_step}.{ext}",
     )
 
     def neg_loss_score(engine):
+        print(engine.state)
         return -engine.state.output["loss"]
 
     best_checkpoint = Checkpoint(
         to_save,
         DiskSaver(results_directory, require_empty=False),
         n_saved=1,
-        global_step_transform=global_step_from_engine(trainer),
+        global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
         score_name="loss",
         score_function=neg_loss_score,
         greater_or_equal=True,
@@ -473,13 +486,13 @@ def create_trainer(
         tensorboardx_logger.add_scalar("training/training/loss", trainer.state.output["loss"], step)
         mlflow.log_metrics({"training/loss": trainer.state.output["loss"]}, step=step)
 
-    @trainer.on(Events.EPOCH_COMPLETED)
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss(trainer):
         logger.debug(f"Epoch {trainer.state.epoch} run time: {trainer.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Epoch {trainer.state.epoch} metrics: {trainer.state.output}")
 
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, latest_checkpoint)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, best_checkpoint)
+    trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
+    trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
 
     @trainer.on(Events.COMPLETED)
     def log_total_time(trainer):
@@ -498,3 +511,38 @@ def create_trainer(
     pbar.attach(trainer)
 
     return trainer
+
+
+class HyraxEvents(EventEnum):
+    """
+    Workaround event for a pytorch ignite bug. See fixup_engine for details
+    """
+
+    HYRAX_EPOCH_COMPLETED = "HyraxEpochCompleted"
+
+
+def fixup_engine(engine: Engine) -> Engine:
+    """
+    Workaround for this pytorch ignite bug (https://github.com/pytorch/ignite/issues/3372) where
+    engine.state.output is not available at EPOCH_COMPLETED or later times (COMPLETED, etc)
+
+    We create a new event HYRAX_EPOCH_COMPLETED which triggers at ITERATION_COMPLETED, but only on the final
+    iteration. This is just before the erronious state reset.
+
+    This hack relies on pytorch ignite internal state, but can be removed as soon as our fix is mainlined
+    (https://github.com/pytorch/ignite/pull/3373) in version 0.6.0 estimated August 2025
+    """
+    from more_itertools import peekable
+
+    engine.register_events(*HyraxEvents)
+
+    @engine.on(Events.ITERATION_COMPLETED)
+    def maintain_event_handler(engine):
+        # Ensure we have a peekable iterator in the engine.
+        if not hasattr(engine._dataloader_iter, "peek"):
+            # Replace with a pass-through peekable iterator
+            engine._dataloader_iter = peekable(engine._dataloader_iter)
+
+        # On the last iteration the peekable iterator evaluates as true
+        if not engine._dataloader_iter:
+            engine.fire_event(HyraxEvents.HYRAX_EPOCH_COMPLETED)

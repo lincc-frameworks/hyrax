@@ -6,6 +6,7 @@ from .inference_dataset import InferenceDataSet
 __all__ = [
     "DATA_SET_REGISTRY",
     "HyraxCifarDataSet",
+    "HyraxCifarIterableDataSet",
     "HSCDataSet",
     "InferenceDataSet",
     "Dataset",

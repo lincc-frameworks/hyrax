@@ -433,7 +433,7 @@ class HSCDataSet(HyraxDataset, Dataset):
                 # Drop objects that can't meet the cutout size provided
                 for shape in self.dims[object_id]:
                     if shape[0] < cutout_shape[0] or shape[1] < cutout_shape[1]:
-                        msg = f"A file for object {object_id} has shape ({shape[1]}px, {shape[1]}px)"
+                        msg = f"A file for object {object_id} has shape ({shape[0]}px, {shape[1]}px)"
                         msg += " this is too small for the given cutout size of "
                         msg += f"({cutout_shape[0]}px, {cutout_shape[1]}px)"
                         self._mark_for_prune(object_id, msg)

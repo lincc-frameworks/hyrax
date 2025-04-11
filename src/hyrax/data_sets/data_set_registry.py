@@ -5,6 +5,7 @@ from typing import Optional
 
 import numpy.typing as npt
 from astropy.table import Table
+from torch.utils.data import Dataset, IterableDataset
 
 from hyrax.config_utils import ConfigDict
 from hyrax.plugin_utils import get_or_load_class, update_registry
@@ -86,15 +87,46 @@ class HyraxDataset:
         self._metadata_table = metadata_table
         self.tensorboardx_logger = None
 
+    def is_iterable(self):
+        """
+        Returns true if underlying dataset is iterable style, supporting __iter__ vs map style
+        where  __getitem__/__len__ are the preferred access methods.
+
+        Returns
+        -------
+        bool
+            True if underlying dataset is iterable
+        """
+        if isinstance(self, (Dataset, IterableDataset)):
+            return isinstance(self, IterableDataset)
+        else:
+            return hasattr(self, "__iter__")
+
+    def is_map(self):
+        """
+        Returns true if underlying dataset is map style, supporting __getitem__/__len__ vs iterable
+        where __iter__ is the preferred access method.
+
+        Returns
+        -------
+        bool
+            True if underlying dataset is map-style
+        """
+        if isinstance(self, (Dataset, IterableDataset)):
+            # All torch IterableDatasets are also Datasets
+            return not isinstance(self, IterableDataset)
+        else:
+            return hasattr(self, "__getitem__")
+
     @property
     def config(self):
         return self._config
 
     def __init_subclass__(cls):
-        from torch.utils.data import IterableDataset
+        from abc import ABC
 
-        if IterableDataset in cls.__bases__ or hasattr(cls, "__iter__"):
-            logger.error("Hyrax does not fully support iterable data sets yet. Proceed at your own risk.")
+        if ABC in cls.__bases__:
+            return
 
         # Paranoia. Deriving from a torch dataset class should ensure this, but if an external dataset author
         # Forgets to to do that, we tell them.
@@ -126,10 +158,10 @@ class HyraxDataset:
             A generator yielding all the string IDs of the dataset.
 
         """
-        if hasattr(self, "__len__"):
+        if self.is_map():
             for x in range(len(self)):
                 yield str(x)
-        elif hasattr(self, "__iter__"):
+        elif self.is_iterable():
             for index, _ in enumerate(iter(self)):
                 yield (str(index))
         else:
@@ -145,10 +177,10 @@ class HyraxDataset:
         tuple
             Shape tuple of the tensor that will be returned from the dataset.
         """
-        if hasattr(self, "__getitem__"):
+        if self.is_map():
             data_sample = self[0]
             return data_sample[0].shape if isinstance(data_sample, tuple) else data_sample.shape
-        elif hasattr(self, "__iter__"):
+        elif self.is_iterable():
             data_sample = next(iter(self))
             return data_sample[0].shape if isinstance(data_sample, tuple) else data_sample.shape
         else:
