@@ -2,7 +2,6 @@ import logging
 import pickle
 import warnings
 from argparse import ArgumentParser, Namespace
-from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Optional, Union
 
@@ -68,7 +67,7 @@ class Umap(Verb):
 
     def _run(self, input_dir: Optional[Union[Path, str]] = None):
         """See run()"""
-        from multiprocessing import Pool
+        import multiprocessing as mp
 
         import umap
         from tqdm.auto import tqdm
@@ -89,13 +88,14 @@ class Umap(Verb):
 
         # Sample the data to fit
         config_sample_size = self.config["umap"]["fit_sample_size"]
-        sample_size = np.min([config_sample_size if config_sample_size else np.inf, total_length])
+        sample_size = int(np.min([config_sample_size if config_sample_size else np.inf, total_length]))
         rng = np.random.default_rng()
         index_choices = rng.choice(np.arange(total_length), size=sample_size, replace=False)
 
         # If the input to umap is not of the shape [samples,input_dims] we reshape the input accordingly
         data_sample = inference_results[index_choices].numpy().reshape((sample_size, -1))
 
+        logger.info("Fitting the UMAP")
         # Fit a single reducer on the sampled data
         self.reducer.fit(data_sample)
 
@@ -111,7 +111,11 @@ class Umap(Verb):
         all_ids = np.array(list(inference_results.ids()))
 
         # Process pool to do all the transforms
-        with Pool(processes=cpu_count()) as pool:
+        # Use 'spawn' context to safely create subprocesses after
+        # OpenMP threads are initialized by data loader
+        # TODO: See discussion here https://github.com/lincc-frameworks/hyrax/pull/297
+        # Consider getting rid of spawn if it becomes a major bottleneck
+        with mp.get_context("spawn").Pool(processes=mp.cpu_count()) as pool:
             # Generator expression that gives a batch tuple composed of:
             # batch ids, inference results
             args = (
