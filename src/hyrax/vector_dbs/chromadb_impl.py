@@ -84,8 +84,12 @@ class ChromaDB(VectorDB):
         if self.chromadb_client is None:
             self.connect()
 
-        # Create a chromadb shard (a.k.a. "collection")
-        self.collection = self.chromadb_client.create_collection(
+        # If this database already has collections, we'll attempt to identify
+        # the latests shard that was created.
+        self.shard_index = len(self.chromadb_client.list_collections()) - 1
+
+        # Create (or get) a chromadb shard (a.k.a. "collection")
+        self.collection = self.chromadb_client.get_or_create_collection(
             name=f"shard_{self.shard_index}",
             metadata={
                 # These are chromadb defaults, may want to make them configurable
@@ -94,6 +98,9 @@ class ChromaDB(VectorDB):
                 "hsnw:search_ef": 100,
             },
         )
+
+        # If the shard was pre-existing, we'll get the current number of records
+        self.shard_size = self.collection.count()
 
         return self.collection
 

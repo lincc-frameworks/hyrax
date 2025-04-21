@@ -220,7 +220,8 @@ name = "chromadb"
 # a new vector database in a timestamped directory. Otherwise set to a path.
 vector_db_dir = false
 
-# The path to inference results. Use "false" to find the most inference results.
+# The path to inference results. Setting to "false" will use the most recent
+# inference results.
 infer_results_dir = false
 
 [results]
