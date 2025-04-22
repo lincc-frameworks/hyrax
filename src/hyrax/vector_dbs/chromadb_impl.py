@@ -273,7 +273,7 @@ class ChromaDB(VectorDB):
 
         # Sort the distances ascending
         for i in range(len(intermediate_results)):
-            sorted_indicies = np.argsort(intermediate_results[i]["distances"], stable=True)
+            sorted_indicies = np.argsort(intermediate_results[i]["distances"])
             result_dict[i] = [intermediate_results[i]["ids"][j] for j in sorted_indicies][:k]
 
         return result_dict
