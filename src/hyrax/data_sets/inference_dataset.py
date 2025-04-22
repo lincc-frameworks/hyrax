@@ -67,7 +67,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
         self._original_dataset_config["data_set"]["preload_cache"] = False
         self.original_dataset = setup_dataset(self._original_dataset_config)  # type: ignore[arg-type]
 
-    def shape(self):
+    def _shape(self):
         """The shape of the dataset (Discovered from files)
 
         Note: our __getitem__() needs self.shape() to work. We cannot use HraxDataset.shape()
@@ -106,7 +106,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         # Allocate a numpy array to hold all the tensors we will get in order
         # Needs to be the appropriate shape
-        shape_tuple = tuple([len(idx)] + list(self.shape()))
+        shape_tuple = tuple([len(idx)] + list(self._shape()))
         all_tensors = np.zeros(shape=shape_tuple)
 
         # We need to look up all the batches for the ids we get

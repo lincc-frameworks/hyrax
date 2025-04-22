@@ -92,7 +92,7 @@ def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    model = model_cls(config=config, shape=dataset.shape())  # type: ignore[attr-defined]
+    model = model_cls(config=config, dataset=dataset)  # type: ignore[attr-defined]
 
     return model
 
@@ -291,18 +291,20 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module) -
     """
 
     # This wraps a model-specific function (func) to move data to the appropriate device.
-    def _inner_loop(func, device, engine, batch):
-        #! This feels brittle, it would be worth revisiting this.
-        #  We assume that the batch data will generally have two forms.
-        # 1) A torch.Tensor that represents N samples.
-        # 2) A tuple (or list) of torch.Tensors, where the first tensor is the
-        # data, and the second is labels.
+    def _inner_loop(func, to_tensor, device, engine, batch):
+        # If we have a dict of lists, we need to decode the dict
+        # This will give us either a tensor of the whole batch or a tuple
+        if isinstance(batch, dict):
+            batch = to_tensor(batch)
+
+        # Send the batch to the device
         batch = batch.to(device) if isinstance(batch, torch.Tensor) else tuple(i.to(device) for i in batch)
         return func(batch)
 
     def _create_process_func(funcname, device, model):
         inner_step = extract_model_method(model, funcname)
-        inner_loop = functools.partial(_inner_loop, inner_step, device)
+        to_tensor = extract_model_method(model, "to_tensor")
+        inner_loop = functools.partial(_inner_loop, inner_step, to_tensor, device)
         return inner_loop
 
     return Engine(_create_process_func(funcname, device, model))
@@ -329,7 +331,9 @@ def extract_model_method(model, method_name):
     return getattr(model.module if wrapped else model, method_name)
 
 
-def create_evaluator(model: torch.nn.Module, save_function: Callable[[torch.Tensor], Any]) -> Engine:
+def create_evaluator(
+    model: torch.nn.Module, save_function: Callable[[torch.Tensor, torch.Tensor], Any]
+) -> Engine:
     """Creates an evaluator engine
     Primary purpose of this function is to attach the appropriate handlers to an evaluator engine
 
@@ -359,7 +363,7 @@ def create_evaluator(model: torch.nn.Module, save_function: Callable[[torch.Tens
 
     @evaluator.on(Events.ITERATION_COMPLETED)
     def log_iteration_complete(evaluator):
-        save_function(evaluator.state.output)
+        save_function(evaluator.state.batch, evaluator.state.output)
 
     @evaluator.on(Events.COMPLETED)
     def log_total_time(evaluator):
@@ -490,7 +494,6 @@ def create_trainer(
     )
 
     def neg_loss_score(engine):
-        print(engine.state)
         return -engine.state.output["loss"]
 
     best_checkpoint = Checkpoint(
