@@ -25,7 +25,7 @@ def test_create():
 
         assert collections is not None
         assert len(collections) == 1
-        assert collections[0] == "shard_0"
+        assert collections[0].name == "shard_0"
 
 
 def test_insert():
