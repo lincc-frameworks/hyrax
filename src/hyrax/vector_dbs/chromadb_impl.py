@@ -89,7 +89,7 @@ class ChromaDB(VectorDB):
 
         # If this database already has collections, we'll attempt to identify
         # the latests shard that was created.
-        self.shard_index = len(self.chromadb_client.list_collections()) - 1
+        self.shard_index = len(self.chromadb_client.list_collections())
 
         # Create (or get) a chromadb shard (a.k.a. "collection")
         self.collection = self.chromadb_client.get_or_create_collection(
@@ -121,9 +121,8 @@ class ChromaDB(VectorDB):
         # increment counter, if exceeds shard limit, create a new collection
         self.shard_size += len(ids)
         if self.shard_size > self.shard_size_limit:
-            self.shard_index += 1
-            self.shard_size = 0
             self.collection = self.create()
+            self.shard_size = len(ids)
 
         self.collection.add(ids=ids, embeddings=vectors)
 
@@ -175,7 +174,7 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(_query_for_id, self.context["results_dir"], shard.name, id): shard
+                    executor.submit(_query_for_id, self.context["results_dir"], shard, id): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):
@@ -187,7 +186,7 @@ class ChromaDB(VectorDB):
             # Query each shard, return vector for the given id.
             for shard in shards:
                 # Get the vector for the id
-                collection = self.chromadb_client.get_collection(name=shard.name)
+                collection = self.chromadb_client.get_collection(name=shard)
                 results = collection.get(id, include=["embeddings"])
                 vectors.extend(results["embeddings"])
 
@@ -253,7 +252,7 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(_query_for_nn, self.context["results_dir"], shard.name, vectors, k): shard
+                    executor.submit(_query_for_nn, self.context["results_dir"], shard, vectors, k): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):
@@ -266,7 +265,7 @@ class ChromaDB(VectorDB):
         else:
             # Query each shard, return the k nearest neighbors from each shard.
             for shard in shards:
-                collection = self.chromadb_client.get_collection(name=shard.name)
+                collection = self.chromadb_client.get_collection(name=shard)
                 results = collection.query(query_embeddings=vectors, n_results=k)
                 for i in range(len(results["ids"])):
                     intermediate_results[i]["ids"].extend(results["ids"][i])
@@ -307,7 +306,7 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(_query_for_id, self.context["results_dir"], shard.name, ids): shard
+                    executor.submit(_query_for_id, self.context["results_dir"], shard, ids): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):
@@ -317,7 +316,7 @@ class ChromaDB(VectorDB):
 
         else:
             for shard in shards:
-                collection = self.chromadb_client.get_collection(shard.name)
+                collection = self.chromadb_client.get_collection(shard)
                 results = collection.get(ids, include=["embeddings"])
 
                 for indx, result_id in enumerate(results["ids"]):
