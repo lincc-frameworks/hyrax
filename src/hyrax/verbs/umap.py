@@ -1,4 +1,6 @@
+import gc
 import logging
+import os
 import pickle
 import warnings
 from argparse import ArgumentParser, Namespace
@@ -6,6 +8,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
+import psutil
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -95,13 +98,22 @@ class Umap(Verb):
         # If the input to umap is not of the shape [samples,input_dims] we reshape the input accordingly
         data_sample = inference_results[index_choices].numpy().reshape((sample_size, -1))
 
+        self._log_memory_usage("Before fitting umap")
         logger.info("Fitting the UMAP")
         # Fit a single reducer on the sampled data
         self.reducer.fit(data_sample)
+        self._log_memory_usage("After fitting umap")
 
         # Save the reducer to our results directory
-        with open(results_dir / "umap.pickle", "wb") as f:
-            pickle.dump(self.reducer, f)
+        if self.config["umap"]["save_fit_umap"]:
+            logger.info("Saving fitted UMAP Reducer")
+            with open(results_dir / "umap.pickle", "wb") as f:
+                pickle.dump(self.reducer, f)
+
+        # Reclaim Memory
+        del data_sample
+        gc.collect()
+        self._log_memory_usage("After Garbage Collection")
 
         # Run all data through the reducer in batches, writing it out as we go.
         batch_size = self.config["data_loader"]["batch_size"]
@@ -110,36 +122,49 @@ class Umap(Verb):
         all_indexes = np.arange(0, total_length)
         all_ids = np.array(list(inference_results.ids()))
 
-        # Process pool to do all the transforms
-        # Use 'spawn' context to safely create subprocesses after
-        # OpenMP threads are initialized by data loader
-        # TODO: See discussion here https://github.com/lincc-frameworks/hyrax/pull/297
-        # Consider getting rid of spawn if it becomes a major bottleneck
-        with mp.get_context("spawn").Pool(processes=mp.cpu_count()) as pool:
-            # Generator expression that gives a batch tuple composed of:
-            # batch ids, inference results
-            args = (
-                (
-                    all_ids[batch_indexes],
-                    # We flatten all dimensions of the input array except the dimension
-                    # corresponding to batch elements. This ensures that all inputs to
-                    # the UMAP algorithm are flattend per input item in the batch
-                    inference_results[batch_indexes].reshape(len(batch_indexes), -1),
-                )
-                for batch_indexes in np.array_split(all_indexes, num_batches)
+        # Generator expression that gives a batch tuple composed of:
+        # batch ids, inference results
+        args = (
+            (
+                all_ids[batch_indexes],
+                # We flatten all dimensions of the input array except the dimension
+                # corresponding to batch elements. This ensures that all inputs to
+                # the UMAP algorithm are flattend per input item in the batch
+                inference_results[batch_indexes].reshape(len(batch_indexes), -1),
             )
+            for batch_indexes in np.array_split(all_indexes, num_batches)
+        )
 
-            # iterate over the mapped results to write out the umapped points
-            # imap returns results as they complete so writing should complete in parallel for large datasets
-            for batch_ids, transformed_batch in tqdm(
-                pool.imap(self._transform_batch, args),
+        if self.config["umap"]["parallel"]:
+            # Process pool loop
+            # Use 'spawn' context to safely create subprocesses after
+            # OpenMP threads are being opened by other processes in hyrax
+            # Not using spawn causes the issue linked below
+            # https://github.com/lincc-frameworks/hyrax/issues/291
+            # TODO: Find more elegant solution than just using spawn
+            with mp.get_context("spawn").Pool(processes=mp.cpu_count()) as pool:
+                # iterate over the mapped results to write out the umapped points
+                # imap returns results as they complete so writing should complete
+                # in parallel for large datasets
+                for batch_ids, transformed_batch in tqdm(
+                    pool.imap(self._transform_batch, args),
+                    desc="Creating lower dimensional representation using UMAP:",
+                    total=num_batches,
+                ):
+                    umap_results.write_batch(batch_ids, transformed_batch)
+        else:
+            # Sequential loop
+            for batch_ids, batch in tqdm(
+                args,
                 desc="Creating lower dimensional representation using UMAP:",
                 total=num_batches,
             ):
-                logger.debug("Writing a batch out async...")
+                transformed_batch = self.reducer.transform(batch)
+                self._log_memory_usage(f"During transformation of batch of shape {batch.shape}")
                 umap_results.write_batch(batch_ids, transformed_batch)
 
         umap_results.write_index()
+        logger.info("Finished transforming all data through UMAP")
 
     def _transform_batch(self, batch_tuple: tuple):
         """Private helper to transform a single batch
@@ -163,3 +188,21 @@ class Umap(Verb):
             warnings.simplefilter(action="ignore", category=FutureWarning)
             logger.debug("Transforming a batch ...")
             return (batch_ids, self.reducer.transform(batch))
+
+    @staticmethod
+    def _log_memory_usage(message: str = ""):
+        """
+        Log the current resident set size (RSS) memory usage of the current process in gigabytes.
+
+        Parameters
+        ----------
+        message : str, optional
+            A descriptive message to include in the log output for context.
+
+        Notes
+        -----
+        This method is intended for debugging and performance monitoring.
+        """
+        process = psutil.Process(os.getpid())
+        mem_gb = process.memory_info().rss / 1024**3
+        logger.debug(f"{message} | Memory usage: {mem_gb:.2f} GB")

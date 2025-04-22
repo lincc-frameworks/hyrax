@@ -226,6 +226,12 @@ inference_dir = false
 # Number of data points used to fit the umap transform.
 fit_sample_size = 1024
 
+# Save the fitted umap as a pickle file 
+save_fit_umap = true
+
+# Use multiprocessing during transforming to umap space (More memory intensive)
+parallel = false
+
 # Name of the umap implementation to use
 name = "umap.UMAP"
 
