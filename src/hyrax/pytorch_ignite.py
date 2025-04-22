@@ -490,7 +490,6 @@ def create_trainer(
     )
 
     def neg_loss_score(engine):
-        print(engine.state)
         return -engine.state.output["loss"]
 
     best_checkpoint = Checkpoint(
