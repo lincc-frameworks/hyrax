@@ -83,8 +83,19 @@ class HyraxDataset:
             1. the metadata columns desired for visualization AND
             2. in the order your data will be enumerated.
         """
+        import numpy as np
+
         self._config = config
         self._metadata_table = metadata_table
+
+        # If your metadata does not contain an object_id field
+        # we use your required .ids() method to create the column
+        if self._metadata_table is not None:
+            colnames = self._metadata_table.colnames
+            if "object_id" not in colnames:
+                ids = np.array(list(self.ids()))
+                self._metadata_table.add_column(ids, name="object_id")
+
         self.tensorboardx_logger = None
 
     def is_iterable(self):

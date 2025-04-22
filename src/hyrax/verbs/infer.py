@@ -72,7 +72,7 @@ class Infer(Verb):
         if config["data_loader"]["shuffle"]:
             msg = "Data loader shuffling not supported in inference mode. "
             msg += "Setting config['data_loader']['shuffle'] = False"
-            logger.warn(msg)
+            logger.warning(msg)
             config["data_loader"]["shuffle"] = False
 
         data_loader, data_loader_indexes = dist_data_loader(data_set, config, split=config["infer"]["split"])

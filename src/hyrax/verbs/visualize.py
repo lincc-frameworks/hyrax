@@ -56,8 +56,8 @@ class Visualize(Verb):
 
         from hyrax.data_sets.inference_dataset import InferenceDataSet
 
-        # TODO Is this an argument or config to visualize?
-        fields = ["object_id", "ra", "dec"]
+        fields = ["object_id"]
+        fields += self.config["visualize"]["fields"]
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")

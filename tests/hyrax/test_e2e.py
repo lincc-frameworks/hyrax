@@ -97,4 +97,4 @@ def test_getting_started(hyrax_instance):
     hyrax_instance.train()
     hyrax_instance.infer()
     hyrax_instance.umap()
-    # hyrax_instance.visualize()
+    hyrax_instance.visualize()

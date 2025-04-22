@@ -244,3 +244,8 @@ n_components = 2
 # Controls how UMAP balances local versus global structure in the data.
 # See official documentation for details.
 n_neighbors = 15
+
+[visualize]
+
+# List of metadata field names to use in visualizer. Must be available as metadata in your dataset
+fields = []

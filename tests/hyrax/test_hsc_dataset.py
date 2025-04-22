@@ -12,8 +12,12 @@ from hyrax.data_sets.hsc_data_set import FitsImageDataSet, HSCDataSet
 
 test_dir = Path(__file__).parent / "test_data" / "dataloader"
 
-HSCDataSet._called_from_test = True
-FitsImageDataSet._called_from_test = True
+
+@pytest.fixture(scope="module")
+def hsc_test_mode():
+    """Turn on unit test mode for HSC and FitsImage datasets. This allows them to run without metadata"""
+    HSCDataSet._called_from_test = True
+    FitsImageDataSet._called_from_test = True
 
 
 class FakeFitsFS:
@@ -172,7 +176,7 @@ def generate_filter_catalog(test_files: dict, config: dict) -> dict:
         return HSCDataSet(config).files
 
 
-def test_load(caplog):
+def test_load(caplog, hsc_test_mode):
     """Test to ensure loading a perfectly regular set of files works"""
     caplog.set_level(logging.WARNING)
     test_files = generate_files(num_objects=10, num_filters=5, shape=(262, 263))
@@ -189,7 +193,7 @@ def test_load(caplog):
         assert caplog.text == ""
 
 
-def test_load_duplicate(caplog):
+def test_load_duplicate(caplog, hsc_test_mode):
     """Test to ensure duplicate fits files that reference the same object id and filter create the
     appropriate error messages.
     """
@@ -217,7 +221,7 @@ def test_load_duplicate(caplog):
             assert "_duplicate_" not in str(filepath)
 
 
-def test_prune_warn_1_percent(caplog):
+def test_prune_warn_1_percent(caplog, hsc_test_mode):
     """Test to ensure when >1% of loaded objects are missing a filter, that is a warning
     and that the resulting dataset drops the objects that are missing filters
     """
@@ -244,7 +248,7 @@ def test_prune_warn_1_percent(caplog):
         assert "Dropping object" in caplog.text
 
 
-def test_prune_error_5_percent(caplog):
+def test_prune_error_5_percent(caplog, hsc_test_mode):
     """Test to ensure when >5% of loaded objects are missing a filter, that is an error
     and that the resulting dataset drops the objects that are missing filters
     """
@@ -268,7 +272,7 @@ def test_prune_error_5_percent(caplog):
         assert "Greater than 5% of objects in the data directory were pruned." in caplog.text
 
 
-def test_crop(caplog):
+def test_crop(caplog, hsc_test_mode):
     """Test to ensure that in the presence of heterogenous sizes within 1px of a central size
     We load all images and crop to the smallest dimenensions without any logs
     """
@@ -294,7 +298,7 @@ def test_crop(caplog):
         assert caplog.text == ""
 
 
-def test_crop_warn_2px_larger(caplog):
+def test_crop_warn_2px_larger(caplog, hsc_test_mode):
     """Test to ensure that in the presence of heterogenous sizes within 2px of a central size
     We load all images and crop to the smallest dimenensions and warn the user of the issue
     """
@@ -320,7 +324,7 @@ def test_crop_warn_2px_larger(caplog):
         assert "Some images differ" in caplog.text
 
 
-def test_crop_warn_2px_smaller(caplog):
+def test_crop_warn_2px_smaller(caplog, hsc_test_mode):
     """Test to ensure that in the presence of heterogenous sizes within 2px of a central size
     We load all images and crop to the smallest dimenensions and warn the user of the issue
     """
@@ -346,7 +350,7 @@ def test_crop_warn_2px_smaller(caplog):
         assert "Some images differ" in caplog.text
 
 
-def test_prune_size(caplog):
+def test_prune_size(caplog, hsc_test_mode):
     """Test to ensure images that are too small will be pruned from the data set when a custom size is
     passed."""
     caplog.set_level(logging.WARNING)
@@ -368,7 +372,7 @@ def test_prune_size(caplog):
         assert "too small" in caplog.text
 
 
-def test_prune_filter_size_mismatch(caplog):
+def test_prune_filter_size_mismatch(caplog, hsc_test_mode):
     """Test to ensure images with different sizes per filter will be dropped"""
     caplog.set_level(logging.WARNING)
     test_files = {}
@@ -386,7 +390,7 @@ def test_prune_filter_size_mismatch(caplog):
         assert "first filter" in caplog.text
 
 
-def test_prune_bad_filename(caplog):
+def test_prune_bad_filename(caplog, hsc_test_mode):
     """Test to ensure images with filenames set wrong will be dropped"""
     caplog.set_level(logging.WARNING)
     test_files = {}
@@ -414,7 +418,7 @@ def test_prune_bad_filename(caplog):
         assert "manifest is likely corrupt" in caplog.text
 
 
-def test_partial_filter(caplog):
+def test_partial_filter(caplog, hsc_test_mode):
     """Test to ensure when we only load some of the filters, only those filters end up in the dataset"""
     caplog.set_level(logging.WARNING)
     test_files = generate_files(num_objects=10, num_filters=5, shape=(262, 263))
@@ -431,7 +435,7 @@ def test_partial_filter(caplog):
         assert caplog.text == ""
 
 
-def test_partial_filter_prune_warn_1_percent(caplog):
+def test_partial_filter_prune_warn_1_percent(caplog, hsc_test_mode):
     """Test to ensure when a the user supplies a filter list and >1% of loaded objects are
     missing a filter, that is a warning and that the resulting dataset drops the objects that
     are missing filters.
@@ -459,7 +463,7 @@ def test_partial_filter_prune_warn_1_percent(caplog):
         assert "Dropping object" in caplog.text
 
 
-def test_valid_transform_string(caplog):
+def test_valid_transform_string(caplog, hsc_test_mode):
     """Test to ensure that a valid string passed to transform
     will map to a numpy function"""
 
@@ -483,7 +487,7 @@ def test_valid_transform_string(caplog):
         assert lambda_transform.lambd == np.tanh
 
 
-def test_invalid_transform_string(caplog):
+def test_invalid_transform_string(caplog, hsc_test_mode):
     """Test to ensure that an invalid string passed to transform will raise an error"""
 
     caplog.set_level(logging.ERROR)
@@ -494,7 +498,7 @@ def test_invalid_transform_string(caplog):
             HSCDataSet(mkconfig(transform="invalid_function"))
 
 
-def test_false_transform(caplog):
+def test_false_transform(caplog, hsc_test_mode):
     """Test to ensure that false passed to transform behaves as expected"""
 
     caplog.set_level(logging.ERROR)
