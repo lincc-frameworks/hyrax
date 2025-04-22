@@ -71,7 +71,7 @@ class VectorDB(ABC):
 
         Parameters
         ----------
-        vectors : np.ndarray
+        vectors : list[np.ndarray]
             The vector to use when searching for nearest neighbors
         k : int, optional
             The number of nearest neighbors to return, by default 1, return only

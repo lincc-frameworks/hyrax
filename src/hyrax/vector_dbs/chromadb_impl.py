@@ -35,7 +35,7 @@ def _query_for_nn(results_dir: str, shard_name: str, vectors: list[np.ndarray], 
     return collection.query(query_embeddings=vectors, n_results=k)
 
 
-def _query_for_id(results_dir: str, shard_name: str, id: str):
+def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]]):
     """The query function for the ProcessPoolExecutor to query a shard for the
     vector associated with a given id.
 
@@ -45,13 +45,13 @@ def _query_for_id(results_dir: str, shard_name: str, id: str):
         The directory where the ChromaDB results are stored
     shard_name : str
         The name of the ChromaDB shard to load and query
-    id : str
-        The id of the vector in the database shard we are trying to retrieve
+    id : Union[str, list[str]]
+        One or more ids of vectors in the database shard we are trying to retrieve
 
     Returns
     -------
     dict
-        The results of the id query for the given id in the given shard.
+        The results of the query for the given ids in the given shard.
     """
     chromadb_client = chromadb.PersistentClient(path=str(results_dir))
     collection = chromadb_client.get_collection(name=shard_name)
@@ -71,6 +71,9 @@ class ChromaDB(VectorDB):
 
         # The approximate maximum size of a shard before a new one is created
         self.shard_size_limit = 65_536
+
+        # Min number of shards before using multiprocess to parallelize the search
+        self.min_shards_for_parallelization = MIN_SHARDS_FOR_PARALLELIZATION
 
     def connect(self):
         """Create a database connection"""
@@ -166,7 +169,10 @@ class ChromaDB(VectorDB):
         vectors = []
 
         # ~ ProcessPoolExecutor parallelized
-        if len(shards) > MIN_SHARDS_FOR_PARALLELIZATION:
+        if len(shards) > self.min_shards_for_parallelization:
+            import multiprocessing
+
+            multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
                     executor.submit(_query_for_id, self.context["results_dir"], shard.name, id): shard
@@ -205,7 +211,7 @@ class ChromaDB(VectorDB):
 
         Parameters
         ----------
-        vectors : np.ndarray
+        vectors : list[np.ndarray]
             The vector to use when searching for nearest neighbors
         k : int, optional
             The number of nearest neighbors to return, by default 1, return only
@@ -220,6 +226,8 @@ class ChromaDB(VectorDB):
 
         if k < 1:
             raise ValueError("k must be greater than 0")
+
+        #! Should to check that the input `vectors` is list[np.arrays]
 
         # create the database connection
         if self.chromadb_client is None:
@@ -239,7 +247,10 @@ class ChromaDB(VectorDB):
         }
 
         # ~ ProcessPoolExecutor parallelized
-        if len(shards) > MIN_SHARDS_FOR_PARALLELIZATION:
+        if len(shards) > self.min_shards_for_parallelization:
+            import multiprocessing
+
+            multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
                     executor.submit(_query_for_nn, self.context["results_dir"], shard.name, vectors, k): shard
@@ -267,3 +278,49 @@ class ChromaDB(VectorDB):
             result_dict[i] = [intermediate_results[i]["ids"][j] for j in sorted_indicies][:k]
 
         return result_dict
+
+    def get_by_id(self, ids: list[Union[str, int]]) -> dict[Union[str, int], list[float]]:
+        """Retrieve the vectors associated with a list of ids.
+
+        Parameters
+        ----------
+        ids : list[Union[str, int]]
+            The ids of the vectors to retrieve. For ChromaDB instances, these should
+            always be strings.
+
+        Returns
+        -------
+        dict[str, list[float]]
+            Dictionary with the ids as the keys and the vectors as the values.
+        """
+
+        # create the database connection
+        if self.chromadb_client is None:
+            self.connect()
+
+        shards = self.chromadb_client.list_collections()
+        vectors = {}
+
+        if len(shards) > self.min_shards_for_parallelization:
+            import multiprocessing
+
+            multiprocessing.set_start_method("spawn", force=True)
+            with ProcessPoolExecutor() as executor:
+                futures = {
+                    executor.submit(_query_for_id, self.context["results_dir"], shard.name, ids): shard
+                    for shard in shards
+                }
+                for future in as_completed(futures):
+                    results = future.result()
+                    for indx, result_id in enumerate(results["ids"]):
+                        vectors[result_id] = results["embeddings"][indx]
+
+        else:
+            for shard in shards:
+                collection = self.chromadb_client.get_collection(shard.name)
+                results = collection.get(ids, include=["embeddings"])
+
+                for indx, result_id in enumerate(results["ids"]):
+                    vectors[result_id] = results["embeddings"][indx]
+
+        return vectors

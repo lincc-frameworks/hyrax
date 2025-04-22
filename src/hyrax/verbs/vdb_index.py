@@ -102,7 +102,7 @@ class Index(Verb):
         elif config["vector_db"]["vector_db_dir"]:
             vector_db_dir = config["vector_db"]["vector_db_dir"]
         else:
-            vector_db_dir = create_results_dir(config, "vector_db")
+            vector_db_dir = create_results_dir(config, "index")
 
         # Create an instance of the vector database to insert into
         vector_db = vector_db_factory(config, context={"results_dir": vector_db_dir})
