@@ -36,7 +36,7 @@ class VectorDB(ABC):
 
         Parameters
         ----------
-        ids : list[Union[str | int]]
+        ids : list[Union[str, int]]
             The ids to associate with the vectors
         vectors : list[np.ndarray]
             The vectors to insert into the database
@@ -50,7 +50,7 @@ class VectorDB(ABC):
 
         Parameters
         ----------
-        id : Union[str | int]
+        id : Union[str, int]
             The id of the vector in the database for which we want to find the
             k nearest neighbors
         k : int, optional
@@ -66,13 +66,15 @@ class VectorDB(ABC):
         pass
 
     @abstractmethod
-    def search_by_vector(self, vectors: list[np.ndarray], k: int = 1) -> dict[int, list[Union[str, int]]]:
+    def search_by_vector(
+        self, vectors: Union[np.ndarray, list[np.ndarray]], k: int = 1
+    ) -> dict[int, list[Union[str, int]]]:
         """Get the ids of the k nearest neighbors for a given vector.
 
         Parameters
         ----------
-        vectors : list[np.ndarray]
-            The vector to use when searching for nearest neighbors
+        vectors : Union[np.array, list[np.ndarray]]
+            The one or more vectors to use when searching for nearest neighbors
         k : int, optional
             The number of nearest neighbors to return, by default 1, return only
             the closest neighbor
