@@ -46,6 +46,7 @@ dependencies = [
     "onnx", # Used to export models to ONNX format
     "onnxruntime", # Used to run ONNX models
     "plotly", # Used in 3d visualization
+    "psutil", # Used for memory monitoring
 ]
 
 [project.scripts]
