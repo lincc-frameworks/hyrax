@@ -92,21 +92,43 @@ class Infer(Verb):
 
         # These are values the _save_batch callback needs to run
         write_index = 0
-        batch_index = 0
         object_ids = np.array(list(data_set.ids()))[data_loader_indexes]  # type: ignore[attr-defined]
 
-        def _save_batch(batch_results: Tensor):
+        def _save_batch(batch: Union[Tensor, list, tuple, dict], batch_results: Tensor):
             """Receive and write results tensors to results_dir immediately
             This function writes a single numpy binary file for each object.
             """
             nonlocal write_index
-            nonlocal batch_index
             nonlocal object_ids
             nonlocal data_writer
 
             batch_len = len(batch_results)
             batch_results = batch_results.detach().to("cpu")
-            batch_object_ids = [object_ids[id] for id in range(write_index, write_index + len(batch_results))]
+
+            batch_is_list = isinstance(batch, (tuple, list))
+            # Batch lacks ids if it is a Tensor, or a list/tuple of tensors
+            batch_lacks_ids = isinstance(batch, Tensor) or (
+                batch_is_list and isinstance(batch.get(0), Tensor)
+            )
+
+            # Batch has IDs if it is dict of tensors with the needed key
+            batch_has_ids = isinstance(batch, dict) and "object_id" in batch
+
+            if batch_lacks_ids:
+                # This fallback is brittle to any re-ordering of data that occurs during data loading
+                batch_object_ids = [
+                    object_ids[id] for id in range(write_index, write_index + len(batch_results))
+                ]
+            elif batch_has_ids:
+                batch_object_ids = batch["object_id"].tolist()
+            elif isinstance(batch, dict):
+                msg = "Dataset dictionary should be returning object_ids to avoid ordering errors. "
+                msg += "Modify the __getitem__ or __iter__ function of your dataset to include 'object_id' "
+                msg += "with unique values per data member in the dictionary it returns."
+                raise RuntimeError(msg)
+            else:
+                msg = f"Could not determine object IDs from batch. Batch has type {type(batch)}"
+                raise RuntimeError(msg)
 
             # Save results to vector database
             nonlocal vector_db

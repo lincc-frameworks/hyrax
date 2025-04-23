@@ -85,6 +85,8 @@ def run(config):
 
     # Get a sample of input data. If the data is labeled, only return the input data.
     batch_sample = next(iter(train_data_loader))
+    if isinstance(batch_sample, dict):
+        batch_sample = model.to_tensor(batch_sample)
     sample = batch_sample[0] if isinstance(batch_sample, (list, tuple)) else batch_sample
 
     export_to_onnx(model, sample, config, context)

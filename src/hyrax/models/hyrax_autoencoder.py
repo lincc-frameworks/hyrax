@@ -8,6 +8,7 @@
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
+from torch import Tensor
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
@@ -131,6 +132,22 @@ class HyraxAutoencoder(nn.Module):
         self.optimizer.step()
 
         return {"loss": loss.item()}
+
+    @staticmethod
+    def to_tensor(data_dict) -> tuple[Tensor]:
+        """This function converts structured data to the input tensor we need to run
+
+        Parameters
+        ----------
+        data_dict : dict
+            The dictionary returned from our data source
+        """
+        if "image" in data_dict and "label" in data_dict:
+            image = data_dict["image"]
+            label = data_dict["label"]
+            return (image, label)
+        else:
+            raise RuntimeError("Data dict did not contain both image and label keys.")
 
     def _optimizer(self):
         return optim.Adam(self.parameters(), lr=1e-3)
