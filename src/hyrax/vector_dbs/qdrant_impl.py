@@ -3,6 +3,8 @@ from typing import Union
 
 import chromadb
 import numpy as np
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, PointStruct, VectorParams
 
 from hyrax.vector_dbs.vector_db_interface import VectorDB
 
@@ -58,12 +60,12 @@ def _query_for_id(results_dir: str, shard_name: str, id: str):
     return collection.get(id, include=["embeddings"])
 
 
-class ChromaDB(VectorDB):
+class QdrantDB(VectorDB):
     """Implementation of the VectorDB interface using ChromaDB as the backend."""
 
     def __init__(self, config, context):
         super().__init__(config, context)
-        self.chromadb_client = None
+        self.qdrantdb_client = None
         self.collection = None
 
         self.shard_index = 0  # The current shard id for insertion
@@ -75,29 +77,25 @@ class ChromaDB(VectorDB):
     def connect(self):
         """Create a database connection"""
         results_dir = self.context["results_dir"]
-        self.chromadb_client = chromadb.PersistentClient(path=str(results_dir))
-        return self.chromadb_client
+        self.qdrantdb_client = QdrantClient(path=results_dir)
+        return self.qdrantdb_client
 
     def create(self):
         """Create a new database"""
 
-        if self.chromadb_client is None:
+        if self.qdrantdb_client is None:
             self.connect()
 
         # Create a chromadb shard (a.k.a. "collection")
-        self.collection = self.chromadb_client.create_collection(
-            name=f"shard_{self.shard_index}",
-            metadata={
-                # These are chromadb defaults, may want to make them configurable
-                "hsnw:space": "l2",
-                "hsnw:construction_ef": 100,
-                "hsnw:search_ef": 100,
-            },
+        self.collection = f"shard_{self.shard_index}"
+        self.qdrantdb_client.create_collection(
+            collection_name=self.collection,
+            vectors_config=VectorParams(size=64, distance=Distance.EUCLID),
         )
 
         return self.collection
 
-    def insert(self, ids: list[Union[str, int]], vectors: list[np.ndarray]):
+    def insert(self, ids: list[Union[str | int]], vectors: list[np.ndarray]):
         """Insert a batch of vectors into the database.
 
         Parameters
@@ -115,9 +113,12 @@ class ChromaDB(VectorDB):
             self.shard_size = len(ids)
             self.collection = self.create()
 
-        self.collection.add(ids=ids, embeddings=vectors)
+        self.qdrantdb_client.upsert(
+            collection_name=self.collection,
+            points=[PointStruct(id=int(id), vector=vector) for id, vector in zip(ids, vectors)],
+        )
 
-    def search_by_id(self, id: Union[str, int], k: int = 1) -> dict[int, list[Union[str, int]]]:
+    def search_by_id(self, id: Union[str | int], k: int = 1) -> dict[int, list[Union[str | int]]]:
         """Get the ids of the k nearest neighbors for a given id in the database.
 
         Parameters
@@ -147,14 +148,14 @@ class ChromaDB(VectorDB):
             raise ValueError("k must be greater than 0")
 
         # create the database connection
-        if self.chromadb_client is None:
+        if self.qdrantdb_client is None:
             self.connect()
 
         if isinstance(id, int):
             id = str(id)
 
         # get all the shards
-        shards = self.chromadb_client.list_collections()
+        shards = self.qdrantdb_client.list_collections()
 
         vectors = []
 
@@ -174,11 +175,11 @@ class ChromaDB(VectorDB):
             # Query each shard, return vector for the given id.
             for shard in shards:
                 # Get the vector for the id
-                collection = self.chromadb_client.get_collection(name=shard.name)
+                collection = self.qdrantdb_client.get_collection(name=shard.name)
                 results = collection.get(id, include=["embeddings"])
                 vectors.extend(results["embeddings"])
 
-        query_results: dict[int, list[Union[str, int]]] = {}
+        query_results: dict[int, list[Union[str | int]]] = {}
         # no matching id found in database
         if len(vectors) == 0:
             query_results = {}
@@ -193,7 +194,7 @@ class ChromaDB(VectorDB):
 
         return query_results
 
-    def search_by_vector(self, vectors: list[np.ndarray], k: int = 1) -> dict[int, list[Union[str, int]]]:
+    def search_by_vector(self, vectors: list[np.ndarray], k: int = 1) -> dict[int, list[Union[str | int]]]:
         """Get the ids of the k nearest neighbors for a given vector.
 
         Parameters
@@ -215,19 +216,19 @@ class ChromaDB(VectorDB):
             raise ValueError("k must be greater than 0")
 
         # create the database connection
-        if self.chromadb_client is None:
+        if self.qdrantdb_client is None:
             self.connect()
 
         # get all the shards
-        shards = self.chromadb_client.list_collections()
+        shards = self.qdrantdb_client.list_collections()
 
         # This dictionary will hold the k nearest neighbors ids for each input vector
-        result_dict: dict[int, list[Union[str, int]]] = {i: [] for i in range(len(vectors))}
+        result_dict: dict[int, list[Union[str | int]]] = {i: [] for i in range(len(vectors))}
 
         # Intermediate results holds all of the query results from all shards.
         # These results will be sorted and trimmed to the appropriate length before
         # being added to `result_dict`.
-        intermediate_results: dict[int, dict[str, list[Union[str, int]]]] = {
+        intermediate_results: dict[int, dict[str, list[Union[str | int]]]] = {
             i: {"ids": [], "distances": []} for i in range(len(vectors))
         }
 
@@ -248,7 +249,7 @@ class ChromaDB(VectorDB):
         else:
             # Query each shard, return the k nearest neighbors from each shard.
             for shard in shards:
-                collection = self.chromadb_client.get_collection(name=shard.name)
+                collection = self.qdrantdb_client.get_collection(name=shard.name)
                 results = collection.query(query_embeddings=vectors, n_results=k)
                 for i in range(len(results["ids"])):
                     intermediate_results[i]["ids"].extend(results["ids"][i])
