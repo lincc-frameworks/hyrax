@@ -216,6 +216,13 @@ split = false
 # The type of vector db to use. Use "false" to disable vector database.
 name = "chromadb"
 
+# The directory where the vector database will be stored. Use "false" to create
+# a new vector database in a timestamped directory. Otherwise set to a path.
+vector_db_dir = false
+
+# The path to inference results. Setting to "false" will use the most recent
+# inference results.
+infer_results_dir = false
 
 [results]
 # Path to inference results to use for visualization and lookups. Uses latest inference run if none provided.

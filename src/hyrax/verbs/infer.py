@@ -20,7 +20,6 @@ from hyrax.pytorch_ignite import (
     setup_dataset,
     setup_model,
 )
-from hyrax.vector_dbs.vector_db_factory import vector_db_factory
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -84,10 +83,6 @@ class Infer(Verb):
         # Log Results directory
         logger.info(f"Saving inference results at: {results_dir}")
 
-        vector_db = vector_db_factory(config, context)
-        if vector_db:
-            vector_db.create()
-
         data_writer = InferenceDataSetWriter(data_set, results_dir)
 
         # These are values the _save_batch callback needs to run
@@ -129,15 +124,6 @@ class Infer(Verb):
             else:
                 msg = f"Could not determine object IDs from batch. Batch has type {type(batch)}"
                 raise RuntimeError(msg)
-
-            # Save results to vector database
-            nonlocal vector_db
-            if vector_db:
-                logger.debug(f"Writing Vector DB for index {write_index}")
-                ids: list[str | int] = [str(id) for id in batch_object_ids]
-                vectors: list[np.ndarray] = [t.flatten().numpy() for t in batch_results]
-                logger.debug("Inseerting vectors into database")
-                vector_db.insert(ids=ids, vectors=vectors)
 
             # Save results from this batch in a numpy file as a structured array
             data_writer.write_batch(np.array(batch_object_ids), [t.numpy() for t in batch_results])

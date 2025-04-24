@@ -30,7 +30,7 @@ dependencies = [
     "tensorboardX", # Used to log training metrics
     "tensorboard", # Used to log training metrics
     "schwimmbad", # Used to speedup hsc data loader file scans
-    "chromadb", # Used for similarity search
+    "chromadb > 1.0", # Used for similarity search
     "holoviews", # Used in Holoviews visualization prototype
     "bokeh", # Used in Holoviews visualization prototype
     "jupyter_bokeh", # Used in Holoviews visualization prototype
@@ -45,6 +45,7 @@ dependencies = [
     "pooch", # Used to download data files
     "onnx", # Used to export models to ONNX format
     "onnxruntime", # Used to run ONNX models
+    "tqdm", # Used to show progress bars
 ]
 
 [project.scripts]
