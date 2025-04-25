@@ -8,11 +8,6 @@ from .data_set_registry import HyraxDataset
 class LSSTDataset(HyraxDataset, Dataset):
     """LSSTDataset: A dataset to access deep_coadd images from lsst pipelines
     via the butler. Must be run in an RSP.
-
-    Input catalog is hardcoded
-    Cutout code incorrect near the edges of a tract or patch
-
-    Batteries not included, use at your own risk etc.
     """
 
     # BANDS = ["u", "g", "r", "i", "z", "y"]
@@ -68,7 +63,7 @@ class LSSTDataset(HyraxDataset, Dataset):
 
         # Ra/Dec is left handed on the sky. Pixel coordinates are right handed on the sky.
         # In the variable names below min/max mean the min/max coordinate values in the
-        # right-handed pixel space
+        # right-handed pixel space, not the left-handed sky space.
 
         # Move + in ra (0.0) for width and - in dec (270.0) along a great circle
         min_pt_sky = radec.offset(0.0 * degrees, sw).offset(270.0 * degrees, sh)
@@ -76,10 +71,29 @@ class LSSTDataset(HyraxDataset, Dataset):
         max_pt_sky = radec.offset(180.0 * degrees, sw).offset(90.0 * degrees, sh)
 
         wcs = patch.getWcs()
-        min_pt_pixel_f = wcs.skyToPixel(min_pt_sky)
-        max_pt_pixel_f = wcs.skyToPixel(max_pt_sky)
-        box_f = Box2D(min_pt_pixel_f, max_pt_pixel_f)
-        return Box2I(box_f, Box2I.EXPAND)
+        minmax_pt_pixel_f = wcs.skyToPixel([min_pt_sky, max_pt_sky])
+        box_pixel_f = Box2D(*minmax_pt_pixel_f)
+        box_pixel_i = Box2I(box_pixel_f, Box2I.EXPAND)
+
+        # Throw if box_pixel_i extends outside the patch outer bbox
+        # TODO: Do we want to fill nan's in this case?
+        #       Do we want to conditionally fill nan's if a nan-infill strategy is configured in
+        #       hyrax and error otherwise?
+        if not patch.getOuterBBox().contains(box_pixel_i):
+            msg = f"Bounding box for object at ra {radec.getLongitude().asDegrees()} deg "
+            msg += f"dec {radec.getLatitude().asDegrees()} with semi-height {sh.asArcseconds()} arcsec "
+            msg += f"and semi-width {sh.asArcseconds()} arcsec extends outside the bounding box of a "
+            msg += "patch. Choose smaller values for config['data_set']['semi_height_deg'] and "
+            msg += "config['data_set']['semi_width_deg']."
+            raise RuntimeError(msg)
+
+        # Throw if box_pixel_i does not contain any points
+        if box_pixel_i.isEmpty():
+            msg = "Calculated size for cutout is 0x0 pixels. Did you set "
+            msg += "config['data_set']['semi_height_deg'] and config['data_set']['semi_width_deg']?"
+            raise RuntimeError(msg)
+
+        return box_pixel_i
 
     def _parse_sphere_point(self, row):
         """
@@ -100,13 +114,6 @@ class LSSTDataset(HyraxDataset, Dataset):
         """
         radec = self._parse_sphere_point(row)
         tract_info = self.skymap.findTract(radec)
-
-        # Note: How to look up all tracts for the ra/dec (this will happen sometimes because of
-        # overlapping tracts)
-        #
-        # [(tract, tract.findPatch(radec)) for tract in skymap.findAllTracts(radec)]
-        # print(tractInfo.getId(), patchInfo.sequential_index)
-        #
         return (tract_info, tract_info.findPatch(radec))
 
     # super basic patch caching
