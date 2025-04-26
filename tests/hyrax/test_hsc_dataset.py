@@ -96,6 +96,9 @@ def mkconfig(
             "use_cache": use_cache,
             "transform": transform,
             "preload_cache": False,  # Don't run the preloading in unit tests, because it needs real data.
+            "object_id_column_name": False,
+            "filter_column_name": False,
+            "filename_column_name": False,
         },
     }
 

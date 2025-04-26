@@ -66,7 +66,7 @@ class HSCDataSet(FitsImageDataSet):
 
         if isinstance(retval, Table):
             colnames = retval.colnames
-            if ("filter" not in colnames) ^ ("filename" not in colnames):
+            if (self.filter_column_name not in colnames) ^ (self.filename_column_name not in colnames):
                 msg = f"Filter catalog file {filter_catalog_path} provides one of filters or filenames "
                 msg += "without the other. Filesystem scan will still occur without both defined."
                 logger.warning(msg)
@@ -79,18 +79,18 @@ class HSCDataSet(FitsImageDataSet):
     # In the HSC case this will also have to do fallback and call
     # _scan_file_dimensions() and/or _scan_file_names() and pass back only the files dict.
     def _parse_filter_catalog(self, table: Table) -> None:
-        object_id_missing = "object_id" not in table.colnames if table is not None else True
-        filter_missing = "filter" not in table.colnames if table is not None else True
-        filename_missing = "filename" not in table.colnames if table is not None else True
+        object_id_missing = self.object_id_column_name not in table.colnames if table is not None else True
+        filter_missing = self.filter_column_name not in table.colnames if table is not None else True
+        filename_missing = self.filename_column_name not in table.colnames if table is not None else True
 
         file_scan = table is None or object_id_missing or filter_missing or filename_missing
 
         object_ids_for_filescan = None
         if not object_id_missing:
             if filter_missing and filename_missing:
-                object_ids_for_filescan = list(table["object_id"])
+                object_ids_for_filescan = list(table[self.object_id_column_name])
             elif filter_missing or filename_missing:
-                object_ids_for_filescan = list(set(table["object_id"]))
+                object_ids_for_filescan = list(set(table[self.object_id_column_name]))
 
         # Detect the list of filters, but allow config based override
         if file_scan:
@@ -109,9 +109,9 @@ class HSCDataSet(FitsImageDataSet):
                 dim_catalog: dim_dict = {}
 
                 for row in table:
-                    object_id = str(row["object_id"])
-                    # filter = row["filter"]
-                    filename = row["filename"]
+                    object_id = str(row[self.object_id_column_name])
+                    # filter = row[self.filter_column_name]
+                    filename = row[self.filename_column_name]
                     dim = tuple(row["dim"])
 
                     # Skip over any files that are marked as didn't download or have <1x1 size, removing the
