@@ -178,25 +178,6 @@ class HyraxDataset:
         else:
             return NotImplementedError("You must define __len__ or __iter__ to use automatic id()")
 
-    def shape(self) -> tuple:
-        """Returns the shape tuple of the tensors this dataset will return.
-
-        This default implementation uses the first item in the dataset to determine the shape.
-
-        Returns
-        -------
-        tuple
-            Shape tuple of the tensor that will be returned from the dataset.
-        """
-        if self.is_map():
-            data_sample = self[0]
-            return data_sample[0].shape if isinstance(data_sample, tuple) else data_sample.shape
-        elif self.is_iterable():
-            data_sample = next(iter(self))
-            return data_sample[0].shape if isinstance(data_sample, tuple) else data_sample.shape
-        else:
-            return NotImplementedError("You must define __getitem__ or __iter__ to use automatic shape()")
-
     def metadata_fields(self) -> list[str]:
         """Returns a list of metadata fields supported by this object
 

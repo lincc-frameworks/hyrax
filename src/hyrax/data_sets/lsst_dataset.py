@@ -1,7 +1,5 @@
 import functools
 
-import astropy.units as u
-from astropy.table import Table
 from torch.utils.data import Dataset
 
 from .data_set_registry import HyraxDataset
@@ -17,52 +15,40 @@ class LSSTDataset(HyraxDataset, Dataset):
     Batteries not included, use at your own risk etc.
     """
 
-    # Hardcode catalog for now (will need to get from a file via config)
-    INPUT_CATALOG = Table(
-        {
-            "ra": [53.182137366954045 * u.deg],
-            "dec": [-28.27055798839844 * u.deg],
-            "sh": [(20 * u.arcsec).to(u.deg)],
-            "sw": [(20 * u.arcsec).to(u.deg)],
-        }
-    )
-
-    # Hardcode butler for now (will need to get from config or environment)
-    BUTLER_CONFIG = {
-        "repo": "/repo/main",
-        # collections = 'LSSTComCam/runs/DRP/DP1/w_2025_07/DM-48940'
-        # collections = 'LSSTComCam/runs/DRP/DP1/w_2025_09/DM-49235'
-        # collections = 'LSSTComCam/runs/DRP/DP1/w_2025_10/DM-49359'
-        # collections = 'LSSTComCam/runs/DRP/DP1/w_2025_11/DM-49472'
-        #'collection': 'LSSTComCam/runs/DRP/DP1/v29_0_0_rc2/DM-49592',
-        "collection": "LSSTComCam/runs/DRP/DP1/v29_0_0_rc6/DM-50098",
-        "skymap": "lsst_cells_v1",
-    }
-
+    # BANDS = ["u", "g", "r", "i", "z", "y"]
     BANDS = ["g", "r", "i"]
 
     def __init__(self, config):
         try:
+            import lsdb
             import lsst.daf.butler as butler
         except ImportError as e:
             msg = "LSSTDataset can only be used in a Rubin Software Platform environment"
-            msg += " with access to the lsst pipeline tools."
+            msg += " with access to the lsst pipeline tools and lsdb"
             raise ImportError(msg) from e
 
-        super().__init__(config)
         self.butler = butler.Butler(
-            LSSTDataset.BUTLER_CONFIG["repo"], collections=LSSTDataset.BUTLER_CONFIG["collection"]
+            config["data_set"]["butler_repo"], collections=config["data_set"]["butler_collection"]
         )
+        self.skymap = self.butler.get("skyMap", {"skymap": config["data_set"]["skymap"]})
 
-        self.skymap = self.butler.get("skyMap", {"skymap": LSSTDataset.BUTLER_CONFIG["skymap"]})
+        # We compute the entire catalog so we have a nested frame which we can access.
+        self.catalog = lsdb.read_hats(config["data_set"]["hats_catalog"]).compute()
+        self.sh_deg = config["data_set"]["semi_height_deg"]
+        self.sw_deg = config["data_set"]["semi_width_deg"]
+
+        # TODO: Metadata from the catalog
+        super().__init__(config)
 
     def __len__(self):
-        return len(LSSTDataset.INPUT_CATALOG)
+        return len(self.catalog)
 
     def __getitem__(self, idxs):
-        rows = LSSTDataset.INPUT_CATALOG[idxs]
-        rows = rows if isinstance(rows, list) else [rows]
-        cutouts = [self._fetch_single_cutout(row) for row in rows]
+        from nested_pandas import NestedFrame
+
+        frame = self.catalog.iloc[idxs]
+        frame = frame if isinstance(frame, NestedFrame) else NestedFrame(frame).T
+        cutouts = [self._fetch_single_cutout(row) for _, row in frame.iterrows()]
 
         return cutouts if len(cutouts) > 1 else cutouts[0]
 
@@ -77,8 +63,8 @@ class LSSTDataset(HyraxDataset, Dataset):
         from lsst.geom import Box2D, Box2I, degrees
 
         radec = self._parse_sphere_point(row)
-        sw = row["sw"] * degrees
-        sh = row["sh"] * degrees
+        sw = self.sh_deg * degrees
+        sh = self.sw_deg * degrees
 
         # Ra/Dec is left handed on the sky. Pixel coordinates are right handed on the sky.
         # In the variable names below min/max mean the min/max coordinate values in the
@@ -102,8 +88,8 @@ class LSSTDataset(HyraxDataset, Dataset):
         """
         from lsst.geom import SpherePoint, degrees
 
-        ra = row["ra"]
-        dec = row["dec"]
+        ra = row["coord_ra"]
+        dec = row["coord_dec"]
         return SpherePoint(ra, dec, degrees)
 
     def _get_tract_patch(self, row):
@@ -141,7 +127,7 @@ class LSSTDataset(HyraxDataset, Dataset):
             butler_dict = {
                 "tract": tract_index,
                 "patch": patch_index,
-                "skymap": LSSTDataset.BUTLER_CONFIG["skymap"],
+                "skymap": self.config["data_set"]["skymap"],
                 "band": band,
             }
 
