@@ -27,7 +27,7 @@ class Visualize(Verb):
         """CLI not implemented for this verb"""
         logger.error("Running visualize from the cli is unimplemented")
 
-    def run(self, input_dir: Optional[Union[Path, str]] = None, **kwargs):
+    def run(self, input_dir: Optional[Union[Path, str]] = None, *, return_verb: bool = False, **kwargs):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.
 
         The plot contains two holoviews objects, a scatter plot of the latent space, and a table of objects
@@ -39,6 +39,10 @@ class Visualize(Verb):
             Directory holding the output from the 'umap' verb, by default None. When not provided, we use
             the most recent umap int he current results directory.
 
+        return_verb : bool, optional
+            If True, also return the underlying Visualize instance for post-hoc access
+            to selection state. Defaults to False.
+
         **kwargs :
             Keyword arguments are passed through as options for the plot object as
             `plot_pane.opts(**plot_options)`. It is not recommended to override the "tools" plot option,
@@ -46,8 +50,11 @@ class Visualize(Verb):
 
         Returns
         -------
-        Holoview
+        Holoview by default
             Combined holoview object
+
+        tuple of (pane, Visualize), if return_verb = True
+           Returns a 2-tuple with the pane and the verb instance.
         """
         from holoviews import DynamicMap, extension
         from holoviews.operation.datashader import dynspread, rasterize
@@ -121,8 +128,21 @@ class Visualize(Verb):
         table_options = {"width": plot_options["width"]}
         table_pane = DynamicMap(self.selected_objects, streams=table_streams).opts(**table_options)
 
-        # Return the plot pane and table pane as a combined object
-        return plot_pane + table_pane
+        # Pane is the plot pane and table pane as a combined object
+        pane = plot_pane + table_pane
+
+        if return_verb:
+            # In addition to the returning the reference to self we will also attempt to display the pane
+            try:
+                from IPython.display import display
+
+                display(pane)
+            except ImportError:
+                logger.warning("Couldn't find IPython display environment. Skipping display step.")
+
+            return pane, self
+        else:
+            return pane
 
     def visible_points(self, x_range: Union[tuple, list], y_range: Union[tuple, list]) -> Points:
         """Generate a hv.Points object with the points inside the bounding box passed.
@@ -349,3 +369,28 @@ class Visualize(Verb):
             xmax = x_center + x_dim / 2.0
 
         return (xmin, xmax, ymin, ymax)
+
+    def get_selected_df(self):
+        """
+        Retrieve a pandas DataFrame containing the currently selected points and their associated metadata.
+
+        Returns
+        -------
+        pd.DataFrame
+            A DataFrame with one row per selected point and columns:
+            ["object_id", "x", "y", *additional_fields].
+        """
+
+        import pandas as pd
+
+        if len(self.points_id) == 0:
+            logger.error("No points selected")
+
+        df = pd.DataFrame(self.points, columns=["x", "y"])
+        df["object_id"] = self.points_id
+        meta = self.umap_results.metadata(self.points_idx, self.data_fields)
+        meta_df = pd.DataFrame(meta, columns=self.data_fields)
+
+        cols = ["object_id", "x", "y"] + self.data_fields
+        result = pd.concat([df.reset_index(drop=True), meta_df.reset_index(drop=True)], axis=1)
+        return result.reindex(columns=cols)
