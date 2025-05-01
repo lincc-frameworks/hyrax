@@ -1,10 +1,13 @@
 import logging
+import random
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
-from holoviews import Points, Table
+import panel as pn
+from astropy.io import fits
+from holoviews import Image, Layout, Points, Table
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -50,21 +53,23 @@ class Visualize(Verb):
 
         Returns
         -------
-        Holoview by default
-            Combined holoview object
+        Holoviews, if return_verb = True (defaul)
+            A Collection of Haloviews Panes
 
         tuple of (pane, Visualize), if return_verb = True
            Returns a 2-tuple with the pane and the verb instance.
         """
         from holoviews import DynamicMap, extension
         from holoviews.operation.datashader import dynspread, rasterize
-        from holoviews.streams import Lasso, RangeXY, SelectionXY, Tap
+        from holoviews.streams import Lasso, Params, RangeXY, SelectionXY, Tap
         from scipy.spatial import KDTree
 
         from hyrax.data_sets.inference_dataset import InferenceDataSet
 
         fields = ["object_id"]
         fields += self.config["visualize"]["fields"]
+        if self.config["visualize"]["display_images"]:
+            fields += ["filename"]
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")
@@ -124,12 +129,56 @@ class Visualize(Verb):
         # self.table = Table(tuple([[0]]*(3+len(self.data_fields))), ["object_id"], self.data_fields)
         self.points = np.array([])
         self.points_id = np.array([])
+        self.points_idx = np.array([])
+
         self.table = self._table_from_points()
         table_options = {"width": plot_options["width"]}
         table_pane = DynamicMap(self.selected_objects, streams=table_streams).opts(**table_options)
 
-        # Pane is the plot pane and table pane as a combined object
-        pane = plot_pane + table_pane
+        # If display_images is set to True then display randomly chosen images from the selected
+        # sample underneath the table pane
+        if self.config["visualize"]["display_images"]:
+            pn.extension()
+
+            # Create a small loading spinner same height as button
+            spinner = pn.indicators.LoadingSpinner(
+                value=False,  # Start with spinner off
+                height=30,  # Smaller height to match button
+                width=30,  # Smaller width
+                margin=(5, 10, 5, 0),  # Add some margin for spacing
+            )
+
+            refresh_btn = pn.widgets.Button(name="Resample Images", button_type="primary")
+
+            # Create a button row with spinner next to button
+            button_row = pn.Row(refresh_btn, spinner, align="start")
+
+            def load_images(**kwargs):
+                # Turn on spinner manually before loading
+                spinner.value = True
+                # Load images
+                result = self._make_image_pane(total_width=plot_options["width"])
+                # Turn off spinner when done
+                spinner.value = False
+                return result
+
+            image_pane = DynamicMap(load_images, streams=[Params(refresh_btn, ["clicks"]), *table_streams])
+
+            images_panel = pn.pane.HoloViews(image_pane)
+
+            plot_panel = pn.panel(plot_pane)
+
+            # Set the table pane to be max 30% of the height
+            table_h = int(plot_options["height"] * 0.3)
+            table_panel = pn.panel(table_pane, height=table_h)
+
+            right = pn.Column(table_panel, images_panel, button_row)
+
+            pane = pn.Row(plot_panel, right)
+
+        else:
+            # Plot pane and table pane side by side
+            pane = plot_pane + table_pane
 
         if return_verb:
             # In addition to the returning the reference to self we will also attempt to display the pane
@@ -394,3 +443,95 @@ class Visualize(Verb):
         cols = ["object_id", "x", "y"] + self.data_fields
         result = pd.concat([df.reset_index(drop=True), meta_df.reset_index(drop=True)], axis=1)
         return result.reindex(columns=cols)
+
+    def _make_image_pane(self, total_width: int = 500, *args, **kwargs) -> Layout:
+        """
+        Sample up to 6 of the selected object_ids,
+        load their FITS cutouts from [general][data_dir], and
+        render as small hv.Image thumbnails in a grid.
+        """
+
+        def style_plot(plot, element):
+            bokeh_plot = plot.state
+            bokeh_plot.toolbar.autohide = True
+            bokeh_plot.title.text_font_size = "8pt"
+
+        def crop_center(arr: np.ndarray, crop_shape: tuple[int, int]) -> np.ndarray:
+            crop_h, crop_w = crop_shape
+            h, w = arr.shape
+
+            if crop_h > h or crop_w > w:
+                logger.warning(f"Crop size {crop_shape} exceeds image size {arr.shape}. Skipping crop.")
+                return arr
+
+            top = (h - crop_h) // 2
+            left = (w - crop_w) // 2
+            return arr[top : top + crop_h, left : left + crop_w]
+
+        n_images = 6
+        n_rows = 2
+        n_cols = int(n_images / n_rows)
+        imgs = []
+
+        if len(self.points_id) > 0:
+            id_map = dict(zip(self.points_idx, self.points_id))
+
+            # If we have fewer than n_images points, use all of them but force a fresh load
+            if len(self.points_idx) <= n_images:
+                chosen_idx = list(self.points_idx)
+            else:
+                chosen_idx = random.sample(list(self.points_idx), n_images)
+
+            sampled_ids = [id_map[idx] for idx in chosen_idx]
+            meta = self.umap_results.metadata(chosen_idx, ["filename"])
+            filenames = meta["filename"]
+            filenames = [f.decode("utf-8") for f in filenames]
+        else:
+            sampled_ids = []
+            filenames = []
+
+        base_dir = Path(self.umap_results.original_config["general"]["data_dir"])
+        crop_to = self.umap_results.original_config["data_set"]["crop_to"]
+
+        for i in range(n_images):
+            if i < len(sampled_ids):
+                try:
+                    cutout_path = Path(filenames[i])
+                    if not cutout_path.is_absolute():
+                        cutout_path = base_dir / cutout_path
+                    arr = fits.getdata(cutout_path)
+                    if crop_to:
+                        arr = crop_center(arr, crop_to)
+
+                    # Normalize to [0, 1] after checking it's safe to do so
+                    arr = (arr - np.min(arr)) / np.ptp(arr) if np.ptp(arr) > 0 else np.zeros_like(arr)
+
+                    # Log Scaling
+                    arr = np.log1p(arr)  # log(1 + x), safe for zeros
+                    arr = arr / np.max(arr)  # re-normalize
+
+                    title = f"{sampled_ids[i]}"
+                except Exception as e:
+                    logger.warning(f"Could not load FITS file: {e}")
+                    with open("./hyrax_visualize.log", "a") as f:
+                        f.write(f"Could not load FITS file: {e}\n")
+                    arr = np.full((64, 64), 1.0)
+                    title = f"NL:{sampled_ids[i]}"
+            else:
+                arr = np.full((64, 64), 1.0)
+                title = "No Selection"
+
+            img = Image(arr).opts(
+                cmap="gray",
+                width=int((0.9 * total_width) / n_cols),
+                height=int((0.9 * total_width) / n_cols),
+                title=title,
+                tools=[],
+                shared_axes=False,
+                hooks=[style_plot],
+                xaxis=None,
+                yaxis=None,
+            )
+            imgs.append(img)
+
+        return Layout(imgs).cols(n_cols)

@@ -235,8 +235,8 @@ class FitsImageDataSet(HyraxDataset, Dataset):
 
         # Filter for the appropriate columns
         colnames = list(self.filter_catalog_table.colnames)
-        colnames.remove("filename")
-        colnames.remove("filter")
+        #colnames.remove("filename")
+        #colnames.remove("filter")
 
         logger.debug("Finished preparing metadata")
         return metadata[colnames]
