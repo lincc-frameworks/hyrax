@@ -1,5 +1,4 @@
 import logging
-import random
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Union
@@ -94,7 +93,7 @@ class Visualize(Verb):
 
         # Set up the plot pane
         xmin, xmax, ymin, ymax = self._even_aspect_bounding_box()
-        plot_options = {
+        self.plot_options = {
             "tools": ["box_select", "lasso_select", "tap"],
             "width": 500,
             "height": 500,
@@ -102,10 +101,10 @@ class Visualize(Verb):
             "ylim": (ymin, ymax),
             "cnorm": "eq_hist",
         }
-        plot_options.update(kwargs)
+        self.plot_options.update(kwargs)
 
         plot_dm = DynamicMap(self.visible_points, streams=[RangeXY()])
-        plot_pane = dynspread(rasterize(plot_dm).opts(**plot_options))
+        plot_pane = dynspread(rasterize(plot_dm).opts(**self.plot_options))
 
         # Setup the table pane event handler
         self.prev_kwargs = {
@@ -132,7 +131,7 @@ class Visualize(Verb):
         self.points_idx = np.array([])
 
         self.table = self._table_from_points()
-        table_options = {"width": plot_options["width"]}
+        table_options = {"width": self.plot_options["width"]}
         table_pane = DynamicMap(self.selected_objects, streams=table_streams).opts(**table_options)
 
         # If display_images is set to True then display randomly chosen images from the selected
@@ -141,7 +140,7 @@ class Visualize(Verb):
             pn.extension()
 
             # Create a small loading spinner same height as button
-            spinner = pn.indicators.LoadingSpinner(
+            self.spinner = pn.indicators.LoadingSpinner(
                 value=False,  # Start with spinner off
                 height=30,  # Smaller height to match button
                 width=30,  # Smaller width
@@ -151,25 +150,18 @@ class Visualize(Verb):
             refresh_btn = pn.widgets.Button(name="Resample Images", button_type="primary")
 
             # Create a button row with spinner next to button
-            button_row = pn.Row(refresh_btn, spinner, align="start")
+            button_row = pn.Row(refresh_btn, self.spinner, align="start")
 
-            def load_images(**kwargs):
-                # Turn on spinner manually before loading
-                spinner.value = True
-                # Load images
-                result = self._make_image_pane(total_width=plot_options["width"])
-                # Turn off spinner when done
-                spinner.value = False
-                return result
-
-            image_pane = DynamicMap(load_images, streams=[Params(refresh_btn, ["clicks"]), *table_streams])
+            image_pane = DynamicMap(
+                self._load_images, streams=[Params(refresh_btn, ["clicks"]), *table_streams]
+            )
 
             images_panel = pn.pane.HoloViews(image_pane)
 
             plot_panel = pn.panel(plot_pane)
 
             # Set the table pane to be max 30% of the height
-            table_h = int(plot_options["height"] * 0.3)
+            table_h = int(self.plot_options["height"] * 0.3)
             table_panel = pn.panel(table_pane, height=table_h)
 
             right = pn.Column(table_panel, images_panel, button_row)
@@ -217,11 +209,10 @@ class Visualize(Verb):
 
         return Points(self.box_select_points(x_range, y_range)[0])
 
-    def selected_objects(self, **kwargs) -> Table:
-        """Generate the holoview table for a selected set of objects based on input from the
-        Lasso, Tap, and SelectionXY streams.
-
-        This is the main UI event handler for selection tools on the plot, and is called by Holoviews.
+    def update_points(self, **kwargs) -> None:
+        """
+        This is the main UI event handler for selection tools on the plot. If you are a dynamic map
+        in the layout of the visualizer who updates based on plot selection you MUST call this function.
 
         This function accepts the data values from all streams and uses the differences between the current
         call and prior calls to differentiate between different UI events.
@@ -229,12 +220,10 @@ class Visualize(Verb):
         The self.prev_kwargs dictionary is used to store previous calls to this function, and the _called_*
         helpers perform the differencing for each case.
 
-        Returns
-        -------
-        hv.Table
-            Table with Object ID, x, y locations of the selected objects
+        Calling this function GUARANTEES that self.points, self.points_id, and self.points_idx
+        are up-to-date with the user's latest selection, regardless of the order that Holoviews evaluates
+        the DynamicMaps in.
         """
-
         if self._called_lasso(kwargs):
             self.points, self.points_id, self.points_idx = self.poly_select_points(kwargs["geometry"])
         elif self._called_tap(kwargs):
@@ -247,38 +236,11 @@ class Visualize(Verb):
                 kwargs["x_selection"], kwargs["y_selection"]
             )
         else:
-            # We return whatever cached table state we have if we were not called by any event
-            # This normally happens during initialization.
-            self.prev_kwargs = kwargs
-            return self.table
-
-        self.table = self._table_from_points()
+            # We saw no change that indicated a user intent; therefore, this is either initialization
+            # OR we are not the first DynamicMap to run.
+            pass
 
         self.prev_kwargs = kwargs
-        return self.table
-
-    def _table_from_points(self) -> Table:
-        # Basic table with x/y pairs
-        key_dims = ["object_id"]
-        value_dims = ["x", "y"] + self.data_fields
-
-        if not len(self.points_id):
-            columns = [[1]] * (len(key_dims) + len(value_dims))
-            return Table(tuple(columns), key_dims, value_dims)
-
-        # these are the object_id, x, and y columns
-        columns = [self.points_id, self.points.T[0], self.points.T[1]]  # type: ignore[list-item]
-
-        # These are the rest of the columns, pulled from metadata
-        try:
-            metadata = self.umap_results.metadata(self.points_idx, self.data_fields)
-        except Exception as e:
-            # Leave in this try/catch beause some notebook implementations dont
-            # allow us to return an exception to the console.
-            return Table(([str(e)]), ["message"])
-
-        columns += [metadata[field] for field in self.data_fields]  # type: ignore[call-overload,misc,index]
-        return Table(tuple(columns), key_dims, value_dims)
 
     def _called_lasso(self, kwargs):
         return kwargs["geometry"] is not None and (
@@ -361,7 +323,8 @@ class Visualize(Verb):
         """
         indexes = self.box_select_indexes(x_range, y_range)
         ids = np.array(list(self.umap_results.ids()))[indexes]
-        return self.umap_results[indexes].numpy(), ids, indexes
+        points = self.umap_results[indexes].numpy()
+        return points, ids, indexes
 
     def box_select_indexes(self, x_range: Union[tuple, list], y_range: Union[tuple, list]):
         """Return the indexes inside of a particular box in the latent space
@@ -387,7 +350,54 @@ class Visualize(Verb):
         # Find larger of  half-width and half-height to use as our search radius.
         radius = np.max([np.max(x_range) - xc, np.max(y_range) - yc])
 
-        return self.tree.query_ball_point(query_pt, radius, p=np.inf)
+        # This is slightly overzealous, grabbing points outside the box sometimes.
+        indexes = self.tree.query_ball_point(query_pt, radius, p=np.inf)
+
+        def _inside_box(pt):
+            x, y = pt
+            xmin, xmax = x_range
+            ymin, ymax = y_range
+            return x > xmin and x < xmax and y > ymin and y < ymax
+
+        # Filter for points properly inside the box
+        return [i for i in indexes if _inside_box(self.umap_results[i].numpy())]
+
+    def selected_objects(self, **kwargs) -> Table:
+        """
+        Generate the holoview table for a selected set of objects based on input from the
+        Lasso, Tap, and SelectionXY streams.
+
+        Returns
+        -------
+        hv.Table
+            Table with Object ID, x, y locations of the selected objects
+        """
+        self.update_points(**kwargs)
+        self.table = self._table_from_points()
+        return self.table
+
+    def _table_from_points(self) -> Table:
+        # Basic table with x/y pairs
+        key_dims = ["object_id"]
+        value_dims = ["x", "y"] + self.data_fields
+
+        if not len(self.points_id):
+            columns = [[1]] * (len(key_dims) + len(value_dims))
+            return Table(tuple(columns), key_dims, value_dims)
+
+        # these are the object_id, x, and y columns
+        columns = [self.points_id, self.points.T[0], self.points.T[1]]  # type: ignore[list-item]
+
+        # These are the rest of the columns, pulled from metadata
+        try:
+            metadata = self.umap_results.metadata(self.points_idx, self.data_fields)
+        except Exception as e:
+            # Leave in this try/catch beause some notebook implementations dont
+            # allow us to return an exception to the console.
+            return Table(([str(e)]), ["message"])
+
+        columns += [metadata[field] for field in self.data_fields]  # type: ignore[call-overload,misc,index]
+        return Table(tuple(columns), key_dims, value_dims)
 
     @staticmethod
     def _bounding_box(points):
@@ -444,6 +454,16 @@ class Visualize(Verb):
         result = pd.concat([df.reset_index(drop=True), meta_df.reset_index(drop=True)], axis=1)
         return result.reindex(columns=cols)
 
+    def _load_images(self, **kwargs):
+        # Turn on spinner manually before loading
+        self.spinner.value = True
+        self.update_points(**kwargs)
+        # Load images
+        result = self._make_image_pane(total_width=self.plot_options["width"])
+        # Turn off spinner when done
+        self.spinner.value = False
+        return result
+
     def _make_image_pane(self, total_width: int = 500, *args, **kwargs) -> Layout:
         """
         Sample up to 6 of the selected object_ids,
@@ -479,11 +499,14 @@ class Visualize(Verb):
             # If we have fewer than n_images points, use all of them but force a fresh load
             if len(self.points_idx) <= n_images:
                 chosen_idx = list(self.points_idx)
+                # chosen_pt_idx = range(len(self.points_idx))
             else:
-                chosen_idx = random.sample(list(self.points_idx), n_images)
+                # chosen_pt_idx = random.sample(range(len(self.points_idx)), n_images)
+                chosen_idx = self.points_idx[0:n_images]
+                # chosen_idx = random.sample(list(self.points_idx), n_images)
 
             sampled_ids = [id_map[idx] for idx in chosen_idx]
-            meta = self.umap_results.metadata(chosen_idx, ["filename"])
+            meta = self.umap_results.metadata(chosen_idx, ["object_id", "filename"])
             filenames = meta["filename"]
             filenames = [f.decode("utf-8") for f in filenames]
         else:
@@ -510,7 +533,8 @@ class Visualize(Verb):
                     arr = np.log1p(arr)  # log(1 + x), safe for zeros
                     arr = arr / np.max(arr)  # re-normalize
 
-                    title = f"{sampled_ids[i]}"
+                    # title = f"{chosen_idx[i]} {meta['object_id'][i]} {sampled_ids[i]}"
+                    title = f"{meta['object_id'][i]}"
                 except Exception as e:
                     logger.warning(f"Could not load FITS file: {e}")
                     with open("./hyrax_visualize.log", "a") as f:

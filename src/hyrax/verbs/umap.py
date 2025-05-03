@@ -166,6 +166,8 @@ class Umap(Verb):
         umap_results.write_index()
         logger.info("Finished transforming all data through UMAP")
 
+        return InferenceDataSet(self.config, results_dir)
+
     def _transform_batch(self, batch_tuple: tuple):
         """Private helper to transform a single batch
 
