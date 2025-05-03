@@ -599,37 +599,96 @@ function maximizePanel() {
   * Fetch and populate the JSON file list dropdown
   */
  function fetchJSONList() {
-    const files = CONFIG.DATA.DEFAULT_FILES;
+   // Show loading message
+   showMessage("Fetching available JSON files...");
+   
+   // Fetch JSON file list from server endpoint
+   fetch("/list_jsons")
+       .then(response => {
+           if (!response.ok) {
+               throw new Error(`HTTP error! Status: ${response.status}`);
+           }
+           return response.json();
+       })
+       .then(files => {
+           hideMessage();
+           
+           // Reset dropdown
+           elements.jsonFileSelect.innerHTML = '<option value="">Select a JSON File</option>';
+           
+           if (files.length === 0) {
+               showError(CONFIG.MESSAGES.NO_FILES);
+               return;
+           }
+           
+           // Populate dropdown
+           files.forEach((file, index) => {
+               const option = document.createElement("option");
+               option.value = file;
+               option.textContent = file;
+               elements.jsonFileSelect.appendChild(option);
+           });
+           
+           // Automatically select & load the first file
+           if (files.length > 0) {
+               elements.jsonFileSelect.selectedIndex = 1; // Select first file
+               loadJSONData(files[0]);
+           }
+           
+           console.log(`Found ${files.length} JSON files`);
+       })
+       .catch(error => {
+           hideMessage();
+           showError(`Error fetching JSON file list: ${error.message}`);
+           console.error("Error fetching JSON list:", error);
+           
+           // Fallback to default files if fetch fails
+           const fallbackFiles = CONFIG.DATA.DEFAULT_FILES;
+           
+           // Display warning
+           showMessage("Using fallback file list");
+           setTimeout(hideMessage, 3000);
+           
+           // Continue with fallback files
+           populateDropdownWithFiles(fallbackFiles);
+       });
+       
+   // Event listener for manual selection changes (only add once)
+   if (!elements.jsonFileSelect._hasChangeListener) {
+       elements.jsonFileSelect.addEventListener("change", function() {
+           if (this.value) {
+               loadJSONData(this.value);
+           }
+       });
+       elements.jsonFileSelect._hasChangeListener = true;
+   }
+}
 
-    elements.jsonFileSelect.innerHTML = '<option value="">Select a JSON File</option>'; // Reset dropdown
-
-    if (files.length === 0) {
+// Helper function to populate dropdown with files (used for fallback)
+function populateDropdownWithFiles(files) {
+   // Reset dropdown
+   elements.jsonFileSelect.innerHTML = '<option value="">Select a JSON File</option>';
+   
+   if (files.length === 0) {
        showError(CONFIG.MESSAGES.NO_FILES);
        return;
-    }
-
-    // Populate dropdown
-    files.forEach((file, index) => {
+   }
+   
+   // Populate dropdown
+   files.forEach((file, index) => {
        const option = document.createElement("option");
        option.value = file;
        option.textContent = file;
        elements.jsonFileSelect.appendChild(option);
-    });
-
-    // Automatically select & load the default file
-    const defaultIndex = CONFIG.DATA.DEFAULT_FILE_INDEX;
-    if (defaultIndex >= 0 && defaultIndex < files.length) {
+   });
+   
+   // Automatically select & load the default file
+   const defaultIndex = CONFIG.DATA.DEFAULT_FILE_INDEX;
+   if (defaultIndex >= 0 && defaultIndex < files.length) {
        elements.jsonFileSelect.selectedIndex = defaultIndex + 1; // +1 for the default empty option
        loadJSONData(files[defaultIndex]);
-    }
-
-    // Event listener for manual selection changes
-    elements.jsonFileSelect.addEventListener("change", function() {
-       if (this.value) {
-          loadJSONData(this.value);
-       }
-    });
- }
+   }
+}
 
  /**
   * Load JSON data from file

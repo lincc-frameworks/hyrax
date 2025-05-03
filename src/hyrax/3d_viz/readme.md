@@ -17,6 +17,8 @@ Finally, navigate to http://localhost:8181/
 
 ## Saving UMAPs as json
 To convert a UMAP created by fibad to the JSON format, use save_umap_to_json.py
+This can be run using `python save_umap_to_json.py /path/to/results/dir`
+To see optional argments do `python save_umap_to_json.py --help`
 
 
 ## Simpler Notebook Version
