@@ -3,7 +3,7 @@
    <head>
       <meta charset="UTF-8">
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>Interactive 3D UMAP Visualization</title>
+      <title>Hyrax 3D Latent Space Explorer</title>
        
       <!-- Include Three.js and OrbitControls for 3D visualization -->	
       <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
@@ -21,6 +21,8 @@
    <body>
       <div id="rotation-message" class="panel">Loading Data...</div>
       <div id="error-message"></div>
+
+      <div id="app-title">Hyrax 3D Latent Space Explorer</div>
        
       <!-- Control instructions box -->
       <div id="controls-box" class="panel">
@@ -35,8 +37,7 @@
          <ul>
             <li><b>Move Camera:</b> Left-click + drag for rotation. Right clik + drag for translation.</li>
             <li><b>Zoom:</b> Scroll</li>
-            <li><b>Select Points:</b> Press the S key + Left-Click + Drag to draw a sqaure </li>
-            <li><b>Selection Behavior:</b> Selected points turn white, previous selections are cleared</li>
+            <li><b>Select Points:</b> Press the S key + Left-Click + Drag to draw a sqaure</li>
          </ul>
          
          <!-- JSON File Selector -->
@@ -98,19 +99,47 @@
        
       <!-- Reset selection button -->
       <div id="reset-selection" class="panel">Reset Selection</div>
-      
-      <script src="script.js"></script>
 
-
-    <!-- Adding a Colorbar -->
-    <div id="colorbar-container" class="panel">
+      <!-- Adding a Colorbar -->
+      <div id="colorbar-container" class="panel">
         <div class="colorbar-header">Color Legend</div>
         <div id="colorbar-gradient"></div>
         <div class="colorbar-labels">
         <span id="min-value">Min</span>
         <span id="max-value">Max</span>
         </div>
-    </div>
+      </div>
+
+      <!-- Container Showing a Subset of Selected Images -->
+     <div id="image-viewer-container" style="display: none;">
+        <div class="table-header">
+            <div id="image-viewer-title">Selected Images</div>
+        </div>
+        <div id="image-display-area">
+            <!-- Images will be added here dynamically -->
+        </div>
+        <div id="image-controls">
+            <button id="load-more-images" class="control-button">Load More Images</button>
+            <div id="image-status"></div>
+        </div>
+     </div>
+
+      <!-- Load Javascripts -->
+      <script src="script.js"></script>
+      <script src="image-viewer.js"></script>
+      <script src="fits.js"></script>
+
+      <script type="text/javascript">
+        var FITS = astro.FITS;
+      </script>
+
+      <!-- DEBUG: Check if FITS is available -->
+      <script>
+        console.log('FITS available?', typeof FITS);
+        if (typeof FITS === 'undefined') {
+            console.error('FITS library failed to load!');
+        }
+    </script>
        
    </body>
 </html>

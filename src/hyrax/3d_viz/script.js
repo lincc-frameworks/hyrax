@@ -376,6 +376,9 @@ function maximizePanel() {
  /**
  * Process the current selection box and find points within it
  */
+/**
+ * Process the current selection box and find points within it
+ */
 function processSelection() {
    // Calculate normalized selection box coordinates
    const minX = (Math.min(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
@@ -383,8 +386,9 @@ function processSelection() {
    const minY = -(Math.max(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
    const maxY = -(Math.min(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
 
-   // Reset selected points
+   // Reset selected points - key change here
    state.selectedPoints = [];
+   const uniqueIds = new Set(); // Use Set to track unique IDs
 
    if (!state.pointCloud) {
       console.warn("No point cloud available");
@@ -415,9 +419,13 @@ function processSelection() {
 
       // Check if point is in selection box
       if (vector.x >= minX && vector.x <= maxX && vector.y >= minY && vector.y <= maxY) {
-         // Add to selected points
+         // Only add if the point and ID exist
          if (state.points[i] && state.points[i].id !== undefined) {
-            state.selectedPoints.push(state.points[i].id);
+            // Check if ID is not already selected to avoid duplicates
+            if (!uniqueIds.has(state.points[i].id)) {
+               uniqueIds.add(state.points[i].id);
+               state.selectedPoints.push(state.points[i].id);
+            }
          }
 
          // Change color to white (selected)
@@ -596,6 +604,9 @@ function processSelection() {
  /**
  * Update info box with selected points data
  */
+ /**
+ * Update info box with selected points data
+ */
 function updateInfoBox() {
    const footerElement = document.getElementById('selection-info-footer');
    const tableContainer = document.getElementById('selection-table-container');
@@ -614,10 +625,18 @@ function updateInfoBox() {
        // Update footer text with selection count
        footerElement.textContent = `Selected ${state.selectedPoints.length} points`;
        
+       // DEBUG: Log selected IDs
+       console.log('DEBUG: Selected point IDs:', state.selectedPoints);
+       
        // Get selected point objects from the state.points array
        const selectedPointObjects = state.points.filter(point => 
            state.selectedPoints.includes(point.id)
        );
+       
+       // DEBUG: Log selected point objects
+       //console.log('DEBUG: Selected point objects:', selectedPointObjects);
+       //console.log('DEBUG: Expected rows:', state.selectedPoints.length);
+       //console.log('DEBUG: Actual rows:', selectedPointObjects.length);
        
        if (selectedPointObjects.length > 0) {
            // Filter to only use visible columns
@@ -633,8 +652,11 @@ function updateInfoBox() {
            });
            
            // Create table rows for each selected point, showing only visible columns
-           selectedPointObjects.forEach(point => {
+           selectedPointObjects.forEach((point, index) => {
                const tr = document.createElement('tr');
+               
+               // DEBUG: Log each point being added to table
+               // console.log(`DEBUG: Adding point ${index}:`, point);
                
                visibleColumns.forEach(columnName => {
                    const td = document.createElement('td');
@@ -659,6 +681,13 @@ function updateInfoBox() {
            
            // Show the table
            tableContainer.style.display = 'block';
+
+           // Update the image viewer with the selected points and columns
+           if (typeof updateImageViewer === 'function') {
+               // Get all available columns from the first selected point
+               const allAvailableColumns = Object.keys(selectedPointObjects[0]);
+               updateImageViewer(state.selectedPoints, state.points, allAvailableColumns);
+           }
        }
    } else {
        // Remove 'has-data' class when no points are selected
@@ -670,6 +699,11 @@ function updateInfoBox() {
 
        // Hide Settings Panel
        document.getElementById('column-settings-panel').classList.add('hidden');
+
+       // Update image viewer to hide it
+       if (typeof updateImageViewer === 'function') {
+         updateImageViewer([], [], []);
+       }
    }
 }
 
@@ -860,41 +894,159 @@ function populateDropdownWithFiles(files) {
    }
 }
 
+/**
+  * Function to Check for Duplicate IDs when Data is Loaded
+  */
+function checkForDuplicateIds(data) {
+   const points = data.points || [];
+   const seenIds = new Set();
+   const duplicateIds = new Set();
+   
+   points.forEach((point, index) => {
+       const id = point.id;
+       
+       // Convert to string for consistent comparison
+       const stringId = String(id);
+       
+       if (seenIds.has(stringId)) {
+           duplicateIds.add(stringId);
+           console.warn(`Duplicate ID found: ${stringId} at index ${index}`);
+       } else {
+           seenIds.add(stringId);
+       }
+   });
+   
+   if (duplicateIds.size > 0) {
+       console.error('Duplicate IDs found:', Array.from(duplicateIds));
+       // Log the indices of duplicate ID entries
+       points.forEach((point, index) => {
+           if (duplicateIds.has(String(point.id))) {
+               console.log(`ID ${point.id} at index ${index}:`, point);
+           }
+       });
+   }
+   
+   return Array.from(duplicateIds);
+}
+
+
+function checkIdPrecision(data) {
+    const points = data.points || [];
+    
+    // Analyze ID types and values
+    const idAnalysis = {
+        types: {},
+        sampleValues: {},
+        largeIntegers: [],
+        duplicatesAfterStringify: new Set()
+    };
+    
+    // Check each point's ID
+    points.forEach((point, index) => {
+        const id = point.id;
+        const type = typeof id;
+        
+        // Count ID types
+        idAnalysis.types[type] = (idAnalysis.types[type] || 0) + 1;
+        
+        // Sample values by type
+        if (!idAnalysis.sampleValues[type]) {
+            idAnalysis.sampleValues[type] = [];
+        }
+        if (idAnalysis.sampleValues[type].length < 5) {
+            idAnalysis.sampleValues[type].push({index, id});
+        }
+        
+        // Check for large integers that might lose precision
+        if (type === 'number' && Number.isInteger(id) && Math.abs(id) > Number.MAX_SAFE_INTEGER) {
+            idAnalysis.largeIntegers.push({index, id, precision: `${id}`});
+        }
+        
+        // Check for duplicates when stringified
+        const stringId = String(id);
+        if (idAnalysis.duplicatesAfterStringify.has(stringId)) {
+            console.log(`Duplicate stringified ID found: "${stringId}" at index ${index}`);
+        } else {
+            idAnalysis.duplicatesAfterStringify.add(stringId);
+        }
+    });
+    
+    return idAnalysis;
+}
+
+// Add a custom JSON parser that handles large integers by converting IDs to strings
+function parseLargeIntegerJson(response) {
+   return response.text().then(jsonText => {
+       // Replace large integers (15+ digits) with quoted versions
+       const processedJsonText = jsonText.replace(
+           /:\s*(\d{15,})/g, 
+           ': "$1"'
+       );
+       
+       // Now parse the modified JSON text
+       const data = JSON.parse(processedJsonText);
+       return data;
+   });
+}
+
+
  /**
   * Load JSON data from file
   * @param {string} filename - The file to load
   */
  function loadJSONData(filename) {
-    // Show loading message
-    showMessage(`Loading ${filename}...`);
+   showMessage(`Loading ${filename}...`);
 
-    fetch(filename)
-       .then(response => {
-          if (!response.ok) {
-             throw new Error(`HTTP error! Status: ${response.status}`);
-          }
-          return response.json();
-       })
-       .then(data => {
-          // Hide loading message
-          hideMessage();
+   fetch(filename)
+      .then(response => {
+         if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+         }
+         // Use custom parser to preserve large integers as strings
+         return parseLargeIntegerJson(response);
+      })
+      .then(data => {
+         hideMessage();
+         
+         // Debug: Check that IDs are now strings
+         // const idAnalysis = checkIdPrecision(data);
+         // console.log('ID Analysis after conversion:', idAnalysis);
+         
+         // Debug: Verify no duplicate IDs
+         const duplicates = checkForDuplicateIds(data);
+         if (duplicates.length > 0) {
+             console.warn('Found duplicate IDs in data:', duplicates);
+         } else {
+             console.log('✓ No duplicate IDs found after conversion');
+         }
 
-          // Update visualization
-          updateVisualization(data);
-          console.log(`Loaded: ${filename}`);
+         updateVisualization(data);
+         console.log(`Loaded: ${filename}`);
+         elements.jsonFileSelect.value = filename;
+         populateColorDropdown(data);
+      })
+      .catch(error => {
+         hideMessage();
+         showError(`Error loading ${filename}: ${error.message}`);
+         console.error("Error loading JSON:", error);
+      });
+}
 
-          // Update dropdown selection to reflect the current file
-          elements.jsonFileSelect.value = filename;
-
-          // Populate the color selection dropdown
-          populateColorDropdown(data);
-       })
-       .catch(error => {
-          hideMessage();
-          showError(`Error loading ${filename}: ${error.message}`);
-          console.error("Error loading JSON:", error);
-       });
- }
+ // Helper function to find duplicates in an array
+function findDuplicates(arr) {
+   const seen = new Set();
+   const duplicates = new Set();
+   
+   arr.forEach(item => {
+       if (seen.has(item)) {
+           duplicates.add(item);
+       } else {
+           seen.add(item);
+       }
+   });
+   
+   return Array.from(duplicates);
+}
 
  /**
  * Reset the current selection
@@ -1092,6 +1244,16 @@ function resetSelection() {
        elements.errorBox.style.display = "none";
     }, 5000);
  }
+
+/**
+ * Check if an element has a scrollbar
+ * @param {HTMLElement} element - The element to check
+ * @returns {boolean} - Whether the element is scrollable
+ */
+function isScrollable(element) {
+   return element.scrollHeight > element.clientHeight;
+}
+
 
 /**
  * Create a circular texture for points

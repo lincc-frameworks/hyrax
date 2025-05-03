@@ -255,7 +255,11 @@ def save_umap_json(
         # Convert numpy types to Python native types for JSON serialization
         for col in df.columns:
             if pd.api.types.is_numeric_dtype(df[col]):
-                df[col] = df[col].astype("float")
+                # Only convert to float for actual float columns, preserve ints
+                if pd.api.types.is_integer_dtype(df[col]):
+                    df[col] = df[col].astype("int64")  # or leave as is
+                else:
+                    df[col] = df[col].astype("float64")
     else:
         # If no FITS table provided, just convert UMAP data to pandas
         df = umap_table.to_pandas()

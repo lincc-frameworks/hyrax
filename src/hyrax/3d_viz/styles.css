@@ -281,10 +281,35 @@ canvas {
    border-radius: 3px;
 }
 
+#app-title {
+   position: absolute;
+   top: 20px;
+   right: 20px;
+   width: 280px;
+   /*color: var(--text-highlight);*/
+   font-size: 20px;
+   font-weight: 1000;
+   text-align: left;
+   z-index: 100;
+   padding: 4px;
+   margin-bottom: 8px;
+
+   /*background: linear-gradient(90deg, #5a5cdc, #a855f7); Blue to purple gradient */
+   background: linear-gradient(90deg, 
+        rgb(180, 96, 128),   /* Pink/purple start */
+        rgb(200, 130, 120),  /* Orange-pink */
+        rgb(220, 150, 100),  /* Orange */
+        rgb(235, 170, 80)    /* Golden yellow end */
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
  /* Controls panel styling */
  #controls-box {
     position: absolute;
-    top: 20px;
+    top: 100px;
     right: 20px;
     width: 280px;
     z-index: 100;
@@ -369,7 +394,7 @@ canvas {
  /* Minimized tab styling */
  #controls-tab {
        position: absolute;
-       top: 20px;
+       top: 100px;
        right: 0;
        background: var(--panel-bg);
        color: var(--text-primary);
@@ -604,6 +629,155 @@ canvas {
  }
 
 
+ /* Image Viewer styling */
+ #image-viewer-container {
+   position: absolute;
+   bottom: 20px;
+   left: 20px;
+   width: calc(100% - 340px);
+   max-height: 40vh;
+   overflow-y: auto;
+   display: none; /* Hidden by default */
+   z-index: 100; /* Ensure it's above other elements */
+}
+
+#image-display-area {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 10px;
+   padding: 10px 0;
+   max-height: calc(40vh - 100px);
+   overflow-y: auto;
+   /* Ensure scrollbar is always visible when needed */
+   scrollbar-width: auto; /* Firefox */
+}
+
+/* Make sure the scrollbar is visible on all browsers */
+#image-display-area::-webkit-scrollbar {
+   width: 8px;
+}
+
+#image-display-area::-webkit-scrollbar-track {
+   background: rgba(0, 0, 0, 0.1);
+   border-radius: 3px;
+}
+
+#image-display-area::-webkit-scrollbar-thumb {
+   background: var(--accent-color);
+   border-radius: 3px;
+}
+
+/* Show scrollbar thumb clearly on hover */
+#image-display-area:hover::-webkit-scrollbar-thumb {
+   background: var(--accent-hover);
+}
+
+.image-item {
+   position: relative;
+   width: calc(12.50% - 10px); 
+   min-width: 170px; 
+   aspect-ratio: 1/1;
+   margin-bottom: 10px;
+   background: rgba(20, 20, 20, 0.8);
+   border-radius: 4px;
+   overflow: hidden;
+   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.image-item img {
+   width: 100%;
+   height: auto;
+   display: block;
+}
+
+.image-item canvas {
+   width: 100%;
+   height: auto;
+   object-fit: contain;
+   display: block;
+}
+
+.image-title {
+   position: absolute;
+   top: 0;
+   left: 0;
+   right: 0;
+   padding: 4px 8px;
+   background: rgba(0, 0, 0, 0.7);
+   color: var(--text-primary);
+   font-size: 12px;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+
+.image-loading {
+   position: absolute;
+   top: 0;
+   left: 0;
+   width: 100%;
+   height: 100%;
+   display: flex;
+   justify-content: center;
+   align-items: center;
+   background: rgba(0, 0, 0, 0.5);
+}
+
+.image-loading::after {
+   content: "";
+   width: 20px;
+   height: 20px;
+   border: 2px solid var(--accent-color);
+   border-radius: 50%;
+   border-top-color: transparent;
+   animation: spin 1s linear infinite;
+}
+
+.image-error {
+   display: flex;
+   justify-content: center;
+   align-items: center;
+   width: 100%;
+   height: 100px;
+   color: var(--error-color);
+   font-size: 12px;
+   text-align: center;
+   background: rgba(20, 20, 20, 0.6);
+}
+
+#image-controls {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   margin-top: 10px;
+}
+
+#load-more-images {
+   background: var(--accent-color);
+   color: white;
+   border: none;
+   padding: 6px 12px;
+   border-radius: 4px;
+   cursor: pointer;
+   font-size: 14px;
+}
+
+#load-more-images:hover {
+   background: var(--accent-hover);
+}
+
+#load-more-images.disabled {
+   background: #555;
+   cursor: not-allowed;
+}
+
+#image-status {
+   color: var(--text-secondary);
+   font-size: 12px;
+}
+
+
+
  /* Animation keyframes */
  @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-10px) translateX(-50%); }
@@ -617,6 +791,10 @@ canvas {
     75% { transform: translate(-50%, -50%) rotate(-1deg); }
     100% { transform: translate(-50%, -50%) rotate(0deg); }
  }
+
+ @keyframes spin {
+   to { transform: rotate(360deg); }
+}
 
  /* Responsive adjustments */
  @media (max-width: 768px) {
@@ -660,9 +838,20 @@ canvas {
       max-height: calc(40vh - 40px);
    }
 
+   #image-viewer-container {
+      width: calc(100% - 40px);
+      bottom: 140px;
+      left: 20px;
+   }
+
    .checkbox-group {
       max-height: 80px;
   }
+
+   .image-item {
+   width: calc(50% - 10px); /* 2 images per row on mobile */
+   min-width: 150px;
+   }
 
  }
 
