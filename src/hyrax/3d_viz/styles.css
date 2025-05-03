@@ -70,10 +70,16 @@ canvas {
     left: 20px; 
     color: var(--text-highlight);
     max-width: 75vw;
-    max-height: 15vh;
+    max-height: 25vh;
     overflow-y: auto;
     z-index: 100;
  }
+
+ /* Hide gear icon when no data is selected */
+ #info:not(.has-data) #column-settings-toggle {
+   display: none;
+ }
+
 
  #info::-webkit-scrollbar {
     width: 6px;
@@ -98,6 +104,182 @@ canvas {
     border-radius: 4px;
     z-index: 90;
  }
+
+ #selection-info-header {
+   color: var(--text-highlight);
+   margin-bottom: 8px;
+   font-weight: 600;
+}
+
+#selection-table-container {
+   max-height: 300px;
+   overflow-y: auto;
+   overflow-x: auto;
+   display: none; /* Hidden by default, shown when points are selected */
+   margin-top: 10px;
+   margin-bottom: 8px;
+   border-radius: 4px;
+   border: 1px solid var(--panel-border);
+   scrollbar-width: thin;
+}
+
+#selection-table-container::-webkit-scrollbar {
+   width: 6px; /* Thin scrollbar */
+   height: 6px;
+}
+
+#selection-table-container::-webkit-scrollbar-track {
+   background: rgba(0, 0, 0, 0.1);
+   border-radius: 3px;
+}
+
+#selection-table-container::-webkit-scrollbar-thumb {
+   background: var(--accent-color);
+   border-radius: 3px;
+}
+
+/* Hide scrollbar when not needed */
+#selection-table-container:not(:hover)::-webkit-scrollbar-thumb {
+   background: transparent;
+}
+
+/* Only show scrollbar on hover */
+#selection-table-container:hover::-webkit-scrollbar-thumb {
+   background: var(--accent-color);
+}
+
+#selection-table {
+   width: 100%;
+   border-collapse: collapse;
+   font-size: 13px;
+}
+
+#selection-table th {
+   position: sticky;
+   top: 0;
+   background: var(--panel-bg);
+   padding: 8px;
+   text-align: left;
+   color: var(--text-highlight);
+   font-weight: 600;
+   border-bottom: 1px solid var(--panel-border);
+   z-index: 10; /* Ensure headers appear above table content during scroll */
+}
+
+#selection-table td {
+   padding: 6px 8px;
+   border-bottom: 1px solid var(--panel-border);
+   color: var(--text-primary);
+}
+
+#selection-table tbody tr:hover {
+   background-color: rgba(255, 255, 255, 0.05);
+}
+
+#selection-info-footer {
+   color: var(--text-highlight);
+   padding: 4px 0;
+   font-size: 13px;
+   margin-top: 8px;
+}
+
+/* Table header with settings icon */
+.table-header {
+   display: none;
+}
+
+#table-title {
+   color: var(--text-highlight);
+   font-weight: 600;
+   font-size: 14px;
+}
+
+#column-settings-toggle {
+   position: absolute;
+   top: 10px;
+   right: 10px;
+   color: var(--text-secondary);
+   cursor: pointer;
+   padding: 4px;
+   border-radius: 4px;
+   transition: all 0.2s ease;
+   z-index: 102;
+}
+
+#column-settings-toggle:hover {
+   color: var(--text-primary);
+   background: rgba(255, 255, 255, 0.1);
+}
+
+/* Column settings panel */
+#column-settings-panel {
+   background: var(--panel-bg);
+   border: 1px solid var(--panel-border);
+   border-radius: 4px;
+   padding: 12px;
+   transition: all 0.3s ease;
+   position: absolute;
+   top: 40px;
+   right: 10px;
+   width: 220px;
+   z-index: 101;
+   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+#column-settings-panel.hidden {
+   opacity: 0;
+   visibility: hidden;
+   transform: translateY(-10px);
+   pointer-events: none;
+}
+
+.column-settings-header {
+   font-size: 13px;
+   font-weight: 600;
+   margin-bottom: 8px;
+   color: var(--text-highlight);
+}
+
+
+/* Column selector styles */
+.checkbox-group {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 8px;
+   max-height: 120px;
+   overflow-y: auto;
+   padding: 4px;
+   border-radius: 4px;
+   background: rgba(40, 40, 40, 0.3);
+}
+
+#column-settings-panel .checkbox-group {
+   max-height: 200px;
+}
+
+.column-checkbox {
+   display: flex;
+   align-items: center;
+   margin-right: 8px;
+   white-space: nowrap;
+   padding: 4px 0;
+}
+
+.column-checkbox input {
+   margin-right: 4px;
+   cursor: pointer;
+}
+
+.column-checkbox label {
+   font-size: 13px;
+   color: var(--text-primary);
+   cursor: pointer;
+}
+
+.column-checkbox:hover {
+   background-color: rgba(255, 255, 255, 0.05);
+   border-radius: 3px;
+}
 
  /* Controls panel styling */
  #controls-box {
@@ -389,6 +571,39 @@ canvas {
 }
 
 
+/* Colorbar styling */
+#colorbar-container {
+   position: absolute;
+   bottom: 90px; 
+   right: 20px; 
+   width: 200px;
+   padding: 10px;
+   z-index: 100;
+ }
+ 
+ .colorbar-header {
+   font-size: 14px;
+   font-weight: 600;
+   margin-bottom: 8px;
+   color: var(--text-highlight);
+ }
+ 
+ #colorbar-gradient {
+   height: 20px;
+   width: 100%;
+   border-radius: 3px;
+   background: linear-gradient(to right, #1e3799, #4a69bd, #78e08f, #f6b93b);
+   margin-bottom: 4px;
+ }
+ 
+ .colorbar-labels {
+   display: flex;
+   justify-content: space-between;
+   font-size: 12px;
+   color: var(--text-primary);
+ }
+
+
  /* Animation keyframes */
  @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-10px) translateX(-50%); }
@@ -405,40 +620,49 @@ canvas {
 
  /* Responsive adjustments */
  @media (max-width: 768px) {
-    #controls-box {
+   #controls-box {
        width: calc(100% - 40px);
        bottom: 80px;
        top: auto;
        right: 20px;
        max-height: 30vh;
        overflow-y: auto;
-    }
+   }
 
-    #selection-toggle {
+   #selection-toggle {
        bottom: 20px;
        right: 20px;
-    }
+   }
 
-    #selection-status {
+   #selection-status {
        bottom: 70px;
        right: 20px;
-    }
+   }
 
-    #info {
+   #info {
        top: 20px;
        left: 20px;
        max-width: calc(100% - 40px);
-    }
+       max-height: 50vh;
+   }
 
-     #reset-selection {
+   #reset-selection {
       bottom: 20px;
       left: 20px;
    }
 
-     #controls-tab {
+   #controls-tab {
       top: auto;
       bottom: 80px;
    }
+
+   #selection-table-container {
+      max-height: calc(40vh - 40px);
+   }
+
+   .checkbox-group {
+      max-height: 80px;
+  }
 
  }
 

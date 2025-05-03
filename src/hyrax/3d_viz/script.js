@@ -69,7 +69,10 @@
     // Data state
     points: [],
     originalColors: [],
-    currentColors: []
+    currentColors: [],
+
+    // Currently visible columns
+    visibleColumns: [] 
  };
 
  // ======== DOM Elements Cache ========
@@ -165,6 +168,9 @@
     // Window resize
     window.addEventListener("resize", onWindowResize, false);
 
+    // Column Settings toggle
+    document.getElementById('column-settings-toggle').addEventListener('click', toggleColumnSettingsPanel);
+
     console.log("Event listeners initialized");
  }
 
@@ -209,6 +215,7 @@ function maximizePanel() {
    elements.controlsTab.classList.add('hidden');
    localStorage.setItem('controlsPanelMinimized', 'false');
 } 
+
 
 
 
@@ -367,73 +374,73 @@ function maximizePanel() {
  }
 
  /**
-  * Process the current selection box and find points within it
-  */
- function processSelection() {
-    // Calculate normalized selection box coordinates
-    const minX = (Math.min(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
-    const maxX = (Math.max(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
-    const minY = -(Math.max(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
-    const maxY = -(Math.min(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
+ * Process the current selection box and find points within it
+ */
+function processSelection() {
+   // Calculate normalized selection box coordinates
+   const minX = (Math.min(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
+   const maxX = (Math.max(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
+   const minY = -(Math.max(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
+   const maxY = -(Math.min(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
 
-    // Reset selected points
-    state.selectedPoints = [];
+   // Reset selected points
+   state.selectedPoints = [];
 
-    if (!state.pointCloud) {
-       console.warn("No point cloud available");
-       return;
-    }
+   if (!state.pointCloud) {
+      console.warn("No point cloud available");
+      return;
+   }
 
-    const geometry = state.pointCloud.geometry;
-    const positions = geometry.attributes.position.array;
-    const colors = geometry.attributes.color.array;
+   const geometry = state.pointCloud.geometry;
+   const positions = geometry.attributes.position.array;
+   const colors = geometry.attributes.color.array;
 
-    // Reset all points to current coloring scheme
-    for (let i = 0; i < colors.length / 3; i++) {
-       if (i < state.currentColors.length) {
-          colors[i * 3] = state.currentColors[i][0];
-          colors[i * 3 + 1] = state.currentColors[i][1];
-          colors[i * 3 + 2] = state.currentColors[i][2];
-       }
-    }
+   // Reset all points to current coloring scheme
+   for (let i = 0; i < colors.length / 3; i++) {
+      if (i < state.currentColors.length) {
+         colors[i * 3] = state.currentColors[i][0];
+         colors[i * 3 + 1] = state.currentColors[i][1];
+         colors[i * 3 + 2] = state.currentColors[i][2];
+      }
+   }
 
-    // Find points in the selection box
-    for (let i = 0; i < positions.length / 3; i++) {
-       // Project 3D point to screen space
-       const vector = new THREE.Vector3(
-          positions[i * 3],
-          positions[i * 3 + 1],
-          positions[i * 3 + 2]
-       ).project(state.camera);
+   // Find points in the selection box
+   for (let i = 0; i < positions.length / 3; i++) {
+      // Project 3D point to screen space
+      const vector = new THREE.Vector3(
+         positions[i * 3],
+         positions[i * 3 + 1],
+         positions[i * 3 + 2]
+      ).project(state.camera);
 
-       // Check if point is in selection box
-       if (vector.x >= minX && vector.x <= maxX && vector.y >= minY && vector.y <= maxY) {
-          // Add to selected points
-          if (state.points[i] && state.points[i].id !== undefined) {
-             state.selectedPoints.push(state.points[i].id);
-          }
+      // Check if point is in selection box
+      if (vector.x >= minX && vector.x <= maxX && vector.y >= minY && vector.y <= maxY) {
+         // Add to selected points
+         if (state.points[i] && state.points[i].id !== undefined) {
+            state.selectedPoints.push(state.points[i].id);
+         }
 
-          // Change color to white (selected)
-          colors[i * 3] = 1;     // Red
-          colors[i * 3 + 1] = 1; // Green
-          colors[i * 3 + 2] = 1; // Blue
-       }
-    }
+         // Change color to white (selected)
+         colors[i * 3] = 1;     // Red
+         colors[i * 3 + 1] = 1; // Green
+         colors[i * 3 + 2] = 1; // Blue
+      }
+   }
 
-    // Update color buffer
-    geometry.attributes.color.needsUpdate = true;
+   // Update color buffer
+   geometry.attributes.color.needsUpdate = true;
 
-    // Update info display
-    updateInfoBox();
+   // Update info display
+   updateInfoBox();
 
-    // Show feedback if points were selected
-    if (state.selectedPoints.length > 0) {
-       showMessage(`Selected ${state.selectedPoints.length} points`);
-       setTimeout(hideMessage, 2000);
-    }
+   // Show feedback if points were selected
+   if (state.selectedPoints.length > 0) {
+      showMessage(`Selected ${state.selectedPoints.length} points`);
+      setTimeout(hideMessage, 2000);
+   }
 
-    console.log(`Selected ${state.selectedPoints.length} points`);
- }
+   console.log(`Selected ${state.selectedPoints.length} points`);
+}
 
  /**
   * Handle window resize event
@@ -536,6 +543,9 @@ function maximizePanel() {
     });
     state.pointCloud = new THREE.Points(geometry, material);
     state.scene.add(state.pointCloud);
+
+    //Colorbar
+    updateColorbar("x", minX, maxX);
  }
 
  /**
@@ -584,15 +594,175 @@ function maximizePanel() {
  // ======== UI Interaction Functions ========
 
  /**
-  * Update info box with selected points
+ * Update info box with selected points data
+ */
+function updateInfoBox() {
+   const footerElement = document.getElementById('selection-info-footer');
+   const tableContainer = document.getElementById('selection-table-container');
+   const tableHeader = document.getElementById('selection-table-header');
+   const tableBody = document.getElementById('selection-table-body');
+   const infoElement = document.getElementById('info');
+   
+   // Clear previous content
+   tableHeader.innerHTML = '';
+   tableBody.innerHTML = '';
+   
+   if (state.selectedPoints.length > 0) {
+       // Add 'has-data' class to info element when points are selected
+       infoElement.classList.add('has-data');
+
+       // Update footer text with selection count
+       footerElement.textContent = `Selected ${state.selectedPoints.length} points`;
+       
+       // Get selected point objects from the state.points array
+       const selectedPointObjects = state.points.filter(point => 
+           state.selectedPoints.includes(point.id)
+       );
+       
+       if (selectedPointObjects.length > 0) {
+           // Filter to only use visible columns
+           const visibleColumns = state.visibleColumns.filter(col => 
+               Object.keys(selectedPointObjects[0]).includes(col)
+           );
+           
+           // Create table header with only visible columns
+           visibleColumns.forEach(columnName => {
+               const th = document.createElement('th');
+               th.textContent = columnName;
+               tableHeader.appendChild(th);
+           });
+           
+           // Create table rows for each selected point, showing only visible columns
+           selectedPointObjects.forEach(point => {
+               const tr = document.createElement('tr');
+               
+               visibleColumns.forEach(columnName => {
+                   const td = document.createElement('td');
+                   
+                   // Format the cell value based on its type
+                   const value = point[columnName];
+                   if (typeof value === 'number') {
+                     if (Number.isInteger(value)) {
+                        td.textContent = value;
+                     } else {
+                        td.textContent = value.toFixed(2);
+                     }
+                   } else {
+                       td.textContent = value;
+                   }
+                   
+                   tr.appendChild(td);
+               });
+               
+               tableBody.appendChild(tr);
+           });
+           
+           // Show the table
+           tableContainer.style.display = 'block';
+       }
+   } else {
+       // Remove 'has-data' class when no points are selected
+       infoElement.classList.remove('has-data');
+
+       // If no points selected, hide table and show default message
+       footerElement.textContent = "Drag to select multiple points";
+       tableContainer.style.display = 'none';
+
+       // Hide Settings Panel
+       document.getElementById('column-settings-panel').classList.add('hidden');
+   }
+}
+
+  /**
+  * Update the color bar on relevant events
   */
- function updateInfoBox() {
-    if (state.selectedPoints.length > 0) {
-       elements.infoBox.innerHTML = `Selected Object IDs: <b>${state.selectedPoints.join(", ")}</b>`;
-    } else {
-       elements.infoBox.innerHTML = "Drag to select multiple points";
-    }
+ function updateColorbar(column, minVal, maxVal) {
+   // Update colorbar header
+   const colorbarHeader = document.querySelector('.colorbar-header');
+   colorbarHeader.textContent = `${column}`;
+   
+   // Update min/max labels
+   document.getElementById('min-value').textContent = minVal.toFixed(2);
+   document.getElementById('max-value').textContent = maxVal.toFixed(2);
+   
+   // Update gradient - recreate the same gradient used in calculateColormap
+   const gradientStops = [];
+   for (let i = 0; i <= 10; i++) {
+     const t = i / 10;
+     const r = Math.max(0.4, Math.min(88 + 180 * t, 255)) / 255 * 255;
+     const g = Math.max(0.5, Math.min(50 + 160 * t, 255)) / 255 * 255;
+     const b = Math.max(0.6, Math.min(120 - 40 * t, 255)) / 255 * 255;
+     
+     gradientStops.push(`rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`);
+   }
+   
+   const gradient = `linear-gradient(to right, ${gradientStops.join(', ')})`;
+   document.getElementById('colorbar-gradient').style.background = gradient;
  }
+
+
+ // Function to toggle column settings panel
+ function toggleColumnSettingsPanel() {
+   const panel = document.getElementById('column-settings-panel');
+   panel.classList.toggle('hidden');
+ }
+
+ /**
+ * Populate Column Check Boxes 
+ */
+ function populateColumnCheckboxes(data) {
+   // Get the column checkboxes container from the settings panel
+   const columnCheckboxesContainer = document.querySelector('#column-settings-panel .checkbox-group');
+   columnCheckboxesContainer.innerHTML = ''; // Clear existing checkboxes
+   
+   if (!data.points || data.points.length === 0) return;
+   
+   // Extract all available columns from the first point
+   const allColumns = Object.keys(data.points[0]);
+   
+   // Initialize visibleColumns if it's empty - show first 4
+   if (state.visibleColumns.length === 0) {
+      // Just take the first 4 columns
+      state.visibleColumns = allColumns.slice(0, 4);
+   }
+   
+   // Create a checkbox for each column
+   allColumns.forEach(column => {
+       const checkboxDiv = document.createElement('div');
+       checkboxDiv.className = 'column-checkbox';
+       
+       const checkbox = document.createElement('input');
+       checkbox.type = 'checkbox';
+       checkbox.id = `col-${column}`;
+       checkbox.checked = state.visibleColumns.includes(column);
+       checkbox.addEventListener('change', () => toggleColumnVisibility(column, checkbox.checked));
+       
+       const label = document.createElement('label');
+       label.htmlFor = `col-${column}`;
+       label.textContent = column;
+       
+       checkboxDiv.appendChild(checkbox);
+       checkboxDiv.appendChild(label);
+       columnCheckboxesContainer.appendChild(checkboxDiv);
+   });
+}
+ 
+
+ // Function to toggle column visibility in table 
+ function toggleColumnVisibility(column, isVisible) {
+   if (isVisible && !state.visibleColumns.includes(column)) {
+       state.visibleColumns.push(column);
+   } else if (!isVisible) {
+       state.visibleColumns = state.visibleColumns.filter(col => col !== column);
+   }
+   
+   // Update the table if it's currently displayed
+   if (state.selectedPoints.length > 0) {
+       updateInfoBox();
+   }
+ }
+
+
 
  // ======== Data Loading Functions ========
  /**
@@ -786,6 +956,9 @@ function resetSelection() {
        // Create new point cloud
        createPointCloud();
 
+       // Populate column checkboxes with the new data
+       populateColumnCheckboxes(newData);
+
        // Start camera rotation for better overview
        rotateCameraAnimation(CONFIG.ANIMATION.DURATION);
 
@@ -819,11 +992,14 @@ function resetSelection() {
        elements.colorColumnSelect.appendChild(option);
     });
 
-    // Default to the first column (if available)
-    if (columns.length > 0) {
-       elements.colorColumnSelect.value = columns[0];
-       updatePointColors(columns[0]); // Apply initial coloring
-    }
+    // Default to the 'x' column if available, otherwise use the first column
+    if (columns.includes('x')) {
+         elements.colorColumnSelect.value = 'x';
+         updatePointColors('x'); // Apply initial coloring using 'x'
+    } else if (columns.length > 0) {
+         elements.colorColumnSelect.value = columns[0];
+         updatePointColors(columns[0]); // Apply initial coloring with first column
+   }
 
     // Add event listener to change coloring dynamically
     elements.colorColumnSelect.addEventListener("change", function() {
@@ -880,6 +1056,9 @@ function resetSelection() {
     // Reset any active selection
     state.selectedPoints = [];
     updateInfoBox();
+
+   // Update Colorbar
+    updateColorbar(column, minVal, maxVal);
  }
 
  // ======== Helper Functions ========
