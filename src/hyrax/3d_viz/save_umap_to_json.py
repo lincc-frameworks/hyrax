@@ -62,7 +62,10 @@ def save_umap_json(
     batch_files = sorted([f for f in results_dir.glob("batch_*.npy") if re.match(r"batch_\d+\.npy$", f.name)])
 
     if not batch_files:
-        logger.error(f"No valid batch files found in {results_dir}")
+        raise FileNotFoundError(
+            f"No valid batch files found in {results_dir}. Ensure the directory\
+                                contains files matching batch_<number>.npy"
+        )
 
     embeddings_list = []
     object_ids_list = []
@@ -331,7 +334,7 @@ if __name__ == "__main__":
         type=str,
         default=None,
         help="Path to a table format accepted by Astropy Tables or pickle file for\
-                            cross-matching and incoproation of additional metadata",
+                            cross-matching and incorproation of additional metadata",
     )
     parser.add_argument(
         "--columns_to_include",
