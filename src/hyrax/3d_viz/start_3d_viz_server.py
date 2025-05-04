@@ -23,7 +23,7 @@ class CustomHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"cutouts_dir": self.cutouts_dir}).encode())
         else:
-            #print(f"DEBUG: Attempting to serve file from: {os.path.join(os.getcwd(), self.path[1:])}")
+            # print(f"DEBUG: Attempting to serve file from: {os.path.join(os.getcwd(), self.path[1:])}")
             super().do_GET()  # Serve static files (HTML, JS, CSS, etc.)
 
 

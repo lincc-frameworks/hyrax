@@ -629,6 +629,73 @@ canvas {
  }
 
 
+.colorbar-header-container {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   margin-bottom: 8px;
+}
+
+/* Colormap settings panel */
+#colormap-settings-toggle {
+   color: var(--text-secondary);
+   cursor: pointer;
+   padding: 4px;
+   border-radius: 4px;
+   transition: all 0.2s ease;
+}
+
+#colormap-settings-toggle:hover {
+   color: var(--text-primary);
+   background: rgba(255, 255, 255, 0.1);
+}
+
+#colormap-settings-panel {
+   background: var(--panel-bg);
+   border: 1px solid var(--panel-border);
+   border-radius: 4px;
+   padding: 8px;
+   position: absolute;
+   top: 40px;
+   left: 0;
+   width: 180px;
+   z-index: 101;
+   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+   transition: all 0.3s ease;
+}
+
+#colormap-settings-panel.hidden {
+   opacity: 0;
+   visibility: hidden;
+   transform: translateY(-10px);
+   pointer-events: none;
+}
+
+.colormap-settings-header {
+   font-size: 12px;
+   font-weight: 600;
+   margin-bottom: 6px;
+   color: var(--text-highlight);
+}
+
+#colormapSelect {
+   width: 100%;
+   padding: 6px 10px;
+   background: rgba(40, 40, 40, 0.9);
+   color: var(--text-primary);
+   border: 1px solid var(--panel-border);
+   border-radius: 4px;
+   font-family: inherit;
+   font-size: 12px;
+   appearance: none;
+   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5' /%3E%3C/svg%3E");
+   background-repeat: no-repeat;
+   background-position: right 6px center;
+   background-size: 12px;
+   cursor: pointer;
+}
+
+
  /* Image Viewer styling */
  #image-viewer-container {
    position: absolute;
@@ -667,7 +734,6 @@ canvas {
    border-radius: 3px;
 }
 
-/* Show scrollbar thumb clearly on hover */
 #image-display-area:hover::-webkit-scrollbar-thumb {
    background: var(--accent-hover);
 }
@@ -795,6 +861,7 @@ canvas {
  @keyframes spin {
    to { transform: rotate(360deg); }
 }
+
 
  /* Responsive adjustments */
  @media (max-width: 768px) {

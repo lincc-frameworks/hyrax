@@ -4,7 +4,7 @@
  * Source: https://github.com/astrojs/fitsjs
  * License: MIT
  * 
- * This file was downloaded from the official GitHub repository since it cannot be 
+ * This file was downloaded from the official GitHub repository since it could not be 
  * loaded via CDN. FITS.js provides client-side parsing and processing of 
  * astronomical FITS image files in web browsers.
  * 

@@ -1,10 +1,3 @@
-
- /**
-  * 3D UMAP Visualization with Interactive Selection
-  * This script creates an interactive 3D visualization of UMAP data
-  * with point selection capabilities.
-  */
-
  // ======== Configuration Constants ========
  const CONFIG = {
     // Visualization settings
@@ -115,6 +108,9 @@
     // Trigger initial camera rotation animation
     rotateCameraAnimation(CONFIG.ANIMATION.DURATION);
 
+    // Initializing Colormap
+    initColormapSettings();
+
     console.log("Initialization complete");
  }
 
@@ -171,6 +167,12 @@
     // Column Settings toggle
     document.getElementById('column-settings-toggle').addEventListener('click', toggleColumnSettingsPanel);
 
+    // Add to your initEventListeners() function
+    document.getElementById('colormap-settings-toggle').addEventListener('click', toggleColormapSettings);
+    document.getElementById('colormapSelect').addEventListener('change', function() {
+      setColormap(this.value);
+    });
+
     console.log("Event listeners initialized");
  }
 
@@ -215,10 +217,6 @@ function maximizePanel() {
    elements.controlsTab.classList.add('hidden');
    localStorage.setItem('controlsPanelMinimized', 'false');
 } 
-
-
-
-
 
  // ======== Event Handlers ========
  /**
@@ -471,24 +469,147 @@ function processSelection() {
     }
  }
 
- /**
-  * Create a color based on a value within a range
-  * @param {number} value - The value to map to a color
-  * @param {number} min - Minimum value in the range
-  * @param {number} max - Maximum value in the range
-  * @returns {Array} RGB color values as an array [r, g, b]
-  */
- function calculateColormap(value, min, max) {
-    // Normalize between 0 and 1
-    const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+ // ======== Colormap Functions ========
+const COLORMAPS = {
+   viridis: function(t) {
+       const r = 0.267 * Math.pow(t, 0.8) + 0.392 * Math.pow(t, 1.2) - 0.133 * Math.pow(t, 1.6) + 0.474 * Math.pow(t, 2.0);
+       const g = 0.00588 + 1.91 * Math.pow(t, 1.8) - 2.95 * Math.pow(t, 2.0) + 1.41 * Math.pow(t, 2.4);
+       const b = 0.417 + 3.30 * Math.pow(t, 1.0) - 7.53 * Math.pow(t, 1.5) + 7.52 * Math.pow(t, 2.0) - 2.79 * Math.pow(t, 2.5);
+       return [r, g, b];
+   },
+   
+   plasma: function(t) {
+       const r = 0.505 + 1.905 * t - 1.08 * Math.pow(t, 2) + 0.5 * Math.pow(t, 3);
+       const g = 0.016 - 0.392 * t + 1.56 * Math.pow(t, 2) - 1.68 * Math.pow(t, 3) + 1.08 * Math.pow(t, 4);
+       const b = 0.531 - 1.79 * t + 2.28 * Math.pow(t, 2) - 1.06 * Math.pow(t, 3);
+       return [Math.max(0, Math.min(1, r)), Math.max(0, Math.min(1, g)), Math.max(0, Math.min(1, b))];
+   },
+   
+   turbo: function(t) {
+       let r, g, b;
+       
+       if (t < 0.125) {
+           r = 48 - 256 * (t - 0.5);
+           g = 15 + 896 * t;
+           b = 255;
+       } else if (t < 0.375) {
+           r = 0;
+           g = 112 + 512 * (t - 0.125);
+           b = 255 - 896 * (t - 0.125);
+       } else if (t < 0.625) {
+           r = 384 * (t - 0.375);
+           g = 255;
+           b = 0;
+       } else if (t < 0.875) {
+           r = 255;
+           g = 384 - 512 * (t - 0.625);
+           b = 0;
+       } else {
+           r = 320 - 256 * (t - 0.875);
+           g = 0;
+           b = 0;
+       }
+       
+       return [r/255, g/255, b/255];
+   },
+   
+   modifiedVirdis: function(t) {
+       // Your current custom colormap
+       const r = Math.max(0.4, Math.min(88 + 180 * t, 255)) / 255;
+       const g = Math.max(0.5, Math.min(50 + 160 * t, 255)) / 255;
+       const b = Math.max(0.6, Math.min(120 - 40 * t, 255)) / 255;
+       return [r, g, b];
+   },
+   
+   purpleYellow: function(t) {
+       // Purple to yellow
+       if (t < 0.25) {
+           const localT = t / 0.25;
+           return [
+               0.2 + 0.1 * localT,
+               0.1 * localT,
+               0.4 + 0.2 * localT
+           ];
+       } else if (t < 0.5) {
+           const localT = (t - 0.25) / 0.25;
+           return [
+               0.3 - 0.1 * localT,
+               0.1 + 0.3 * localT,
+               0.6 + 0.2 * localT
+           ];
+       } else if (t < 0.75) {
+           const localT = (t - 0.5) / 0.25;
+           return [
+               0.2 - 0.1 * localT,
+               0.4 + 0.4 * localT,
+               0.8 - 0.4 * localT
+           ];
+       } else {
+           const localT = (t - 0.75) / 0.25;
+           return [
+               0.1 + 0.8 * localT,
+               0.8 + 0.2 * localT,
+               0.4 - 0.4 * localT
+           ];
+       }
+   },
+   
+   coolWarm: function(t) {
+       // Blue to red through white
+       const r = 0.230 + 0.270 * Math.pow(t, 0.3) - 0.034 * Math.pow(t, 1.2) + 0.537 * Math.pow(t, 2);
+       const g = 0.850 - 0.851 * Math.pow(t, 0.7) + 0.0026 * Math.pow(t, 1.3);
+       const b = 0.850 - 0.300 * Math.pow(t, 0.3) - 0.550 * Math.pow(t, 1.8);
+       return [Math.max(0, Math.min(1, r)), Math.max(0, Math.min(1, g)), Math.max(0, Math.min(1, b))];
+   }
+};
 
-    // Increased brightness for the entire Viridis spectrum
-    const r = Math.max(0.4, Math.min(88 + 180 * t, 255)) / 255;
-    const g = Math.max(0.5, Math.min(50 + 160 * t, 255)) / 255;
-    const b = Math.max(0.6, Math.min(120 - 40 * t, 255)) / 255;
+// Current active colormap
+let activeColormap = 'modifiedVirdis';
 
-    return [r, g, b];
- }
+// Main colormap function that uses the active colormap
+function calculateColormap(value, min, max) {
+   // Normalize between 0 and 1
+   const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+   
+   // Use the active colormap
+   return COLORMAPS[activeColormap](t);
+}
+
+// Function to change colormap
+function setColormap(colormapName) {
+   if (COLORMAPS[colormapName]) {
+       activeColormap = colormapName;
+       console.log(`Colormap changed to: ${colormapName}`);
+       
+       // Update the select element
+       const select = document.getElementById('colormapSelect');
+       if (select) {
+           select.value = colormapName;
+       }
+       
+       // Update the visualization
+       const currentColumn = elements.colorColumnSelect.value;
+       if (currentColumn) {
+           updatePointColors(currentColumn);
+       }
+   } else {
+       console.error(`Unknown colormap: ${colormapName}`);
+   }
+}
+
+function toggleColormapSettings() {
+   const panel = document.getElementById('colormap-settings-panel');
+   panel.classList.toggle('hidden');
+}
+
+// When initializing, set the dropdown to the default colormap
+function initColormapSettings() {
+   const select = document.getElementById('colormapSelect');
+   if (select) {
+       select.value = activeColormap;
+   }
+}
+
 
  /**
   * Create the 3D point cloud visualization
@@ -604,9 +725,6 @@ function processSelection() {
  /**
  * Update info box with selected points data
  */
- /**
- * Update info box with selected points data
- */
 function updateInfoBox() {
    const footerElement = document.getElementById('selection-info-footer');
    const tableContainer = document.getElementById('selection-table-container');
@@ -710,7 +828,7 @@ function updateInfoBox() {
   /**
   * Update the color bar on relevant events
   */
- function updateColorbar(column, minVal, maxVal) {
+  function updateColorbar(column, minVal, maxVal) {
    // Update colorbar header
    const colorbarHeader = document.querySelector('.colorbar-header');
    colorbarHeader.textContent = `${column}`;
@@ -719,15 +837,13 @@ function updateInfoBox() {
    document.getElementById('min-value').textContent = minVal.toFixed(2);
    document.getElementById('max-value').textContent = maxVal.toFixed(2);
    
-   // Update gradient - recreate the same gradient used in calculateColormap
+   // Generate gradient using the active colormap
    const gradientStops = [];
    for (let i = 0; i <= 10; i++) {
-     const t = i / 10;
-     const r = Math.max(0.4, Math.min(88 + 180 * t, 255)) / 255 * 255;
-     const g = Math.max(0.5, Math.min(50 + 160 * t, 255)) / 255 * 255;
-     const b = Math.max(0.6, Math.min(120 - 40 * t, 255)) / 255 * 255;
-     
-     gradientStops.push(`rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`);
+       const t = i / 10;
+       const [r, g, b] = COLORMAPS[activeColormap](t);
+       const rgb = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+       gradientStops.push(rgb);
    }
    
    const gradient = `linear-gradient(to right, ${gradientStops.join(', ')})`;
@@ -929,7 +1045,7 @@ function checkForDuplicateIds(data) {
    return Array.from(duplicateIds);
 }
 
-
+// DEBUG Function
 function checkIdPrecision(data) {
     const points = data.points || [];
     
@@ -974,7 +1090,7 @@ function checkIdPrecision(data) {
     return idAnalysis;
 }
 
-// Add a custom JSON parser that handles large integers by converting IDs to strings
+// Custom JSON parser that handles large integers by converting IDs to strings
 function parseLargeIntegerJson(response) {
    return response.text().then(jsonText => {
        // Replace large integers (15+ digits) with quoted versions
