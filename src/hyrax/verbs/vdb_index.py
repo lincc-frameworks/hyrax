@@ -108,6 +108,12 @@ class Index(Verb):
         vector_db = vector_db_factory(config, context={"results_dir": vector_db_dir})
         if vector_db:
             vector_db.create()
+        else:
+            raise RuntimeError(
+                "No vector database configured. "
+                "Please specify a supported vector db in the ['vector_db']['name'] "
+                "section of the hyrax config."
+            )
 
         # Use the batch_index to get the list of batches.
         batches = np.unique(inference_data_set.batch_index["batch_num"])
@@ -124,4 +130,4 @@ class Index(Verb):
             # ids here so that we only have to open one file to get the vectors.
             vectors = inference_data_set._load_from_batch_file(batch, ids)
 
-            vector_db.insert(ids=list(ids), vectors=vectors["tensor"])
+            vector_db.insert(ids=list(vectors["id"]), vectors=list(vectors["tensor"]))
