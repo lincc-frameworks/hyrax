@@ -1,4 +1,5 @@
 import logging
+import random
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Union
@@ -502,13 +503,36 @@ class Visualize(Verb):
                 # chosen_pt_idx = range(len(self.points_idx))
             else:
                 # chosen_pt_idx = random.sample(range(len(self.points_idx)), n_images)
-                chosen_idx = self.points_idx[0:n_images]
-                # chosen_idx = random.sample(list(self.points_idx), n_images)
+                # chosen_idx = self.points_idx[0:n_images]
+                chosen_idx = random.sample(list(self.points_idx), n_images)
 
+            # Get sampled ids -- this will match whatever order chosen, idx is in
             sampled_ids = [id_map[idx] for idx in chosen_idx]
+
+            # Get metadata - WARNING: this is sorted by index!
             meta = self.umap_results.metadata(chosen_idx, ["object_id", "filename"])
-            filenames = meta["filename"]
-            filenames = [f.decode("utf-8") for f in filenames]
+
+            # Create a dictionary to map indices to metadata
+            meta_idx_map = dict(zip(sorted(chosen_idx), range(len(meta["object_id"]))))
+
+            # Reorder metadata to match the original selection order
+            ordered_object_ids = []
+            ordered_filenames = []
+
+            for idx in chosen_idx:
+                meta_position = meta_idx_map[idx]
+                ordered_object_ids.append(meta["object_id"][meta_position])
+                ordered_filenames.append(meta["filename"][meta_position])
+
+            filenames = [f.decode("utf-8") for f in ordered_filenames]
+
+            # with open("hyrax_debug.log", "a") as dbg:
+            #    dbg.write(f"chosen_idx: {chosen_idx}\n")
+            #    dbg.write(f"sampled_ids: {sampled_ids}\n")
+            #    dbg.write(f"meta['object_id']: {list(meta['object_id'])}\n\n")
+            #    dbg.write(f"Is points_idxsorted? {all(self.points_idx[i] <= self.points_idx[i+1]
+            #                          for i in range(len(self.points_idx)-1))}\n")
+
         else:
             sampled_ids = []
             filenames = []
@@ -533,8 +557,9 @@ class Visualize(Verb):
                     arr = np.log1p(arr)  # log(1 + x), safe for zeros
                     arr = arr / np.max(arr)  # re-normalize
 
-                    # title = f"{chosen_idx[i]} {meta['object_id'][i]} {sampled_ids[i]}"
-                    title = f"{meta['object_id'][i]}"
+                    # title = f"{chosen_idx[i]} {meta['object_id'][i]}\n{sampled_ids[i]}"
+                    title = f"{chosen_idx[i]}:{ordered_object_ids[i]}\n{sampled_ids[i]}"
+                    # title = f"{meta['object_id'][i]}"
                 except Exception as e:
                     logger.warning(f"Could not load FITS file: {e}")
                     with open("./hyrax_visualize.log", "a") as f:
