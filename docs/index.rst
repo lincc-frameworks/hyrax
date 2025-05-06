@@ -112,11 +112,10 @@ section to learn how to configure Hyrax for your specific use case.
    About <about>
    Configuration <configuration>
    Verbs <verbs>
-   External libraries <external_libraries>
+   Custom Datasets and Models <external_libraries>
    Data set splits <data_set_splits>
    Model comparison <model_comparison>
    Architecture overview <architecture_overview>
    Developer guide <dev_guide>
    API Reference <autoapi/index>
    Example notebooks <notebooks>
-
