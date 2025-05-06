@@ -20,9 +20,9 @@ is in a package called ``mydataset``, then you would configure as follows:
 
         .. code-block:: python
 
-            import hyrax
-            f = hyrax.Hyrax()
-            f.config["data_set"]["name"] = "mydataset.MyDataSet"
+            from hyrax import Hyrax
+            h = Hyrax()
+            h.config["data_set"]["name"] = "mydataset.MyDataSet"
 
     .. group-tab:: CLI
 

@@ -24,11 +24,11 @@ or a ratio of the dataset, where 1.0 represents the entire dataset. For example:
 
         .. code-block:: python
 
-            import hyrax
-            f = hyrax.Hyrax()
-            f.config["data_set"]["train_size"] = 0.6
-            f.config["data_set"]["validate_size"] = 0.2
-            f.config["data_set"]["test_size"] = 0.2
+            from hyrax import Hyrax
+            h = Hyrax()
+            h.config["data_set"]["train_size"] = 0.6
+            h.config["data_set"]["validate_size"] = 0.2
+            h.config["data_set"]["test_size"] = 0.2
 
     .. group-tab:: CLI
 
@@ -64,11 +64,11 @@ infer on only the test split:
 
         .. code-block:: python
 
-            import hyrax
-            f = hyrax.Hyrax()
-            f.config["infer"]["split"] = "test"
+            from hyrax import Hyrax
+            h = Hyrax()
+            h.config["infer"]["split"] = "test"
 
-            f.infer()
+            h.infer()
 
     .. group-tab:: CLI
 
@@ -94,9 +94,9 @@ You can specify a random seed with the ``[data_set]`` ``seed`` configuration key
 
         .. code-block:: python
 
-            import hyrax
-            f = hyrax.Hyrax()
-            f.config["data_set"]["seed"] = 1
+            from hyrax import Hyrax
+            h = Hyrax()
+            h.config["data_set"]["seed"] = 1
 
     .. group-tab:: CLI
 
