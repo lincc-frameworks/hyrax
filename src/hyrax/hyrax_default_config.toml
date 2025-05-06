@@ -265,3 +265,6 @@ n_neighbors = 15
 
 # List of metadata field names to use in visualizer. Must be available as metadata in your dataset
 fields = []
+
+# Whether to display a panel of randomly chosen images corresponding to the selected points
+display_images = false

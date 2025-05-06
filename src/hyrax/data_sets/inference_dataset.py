@@ -124,7 +124,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
             batch_original_indexes = original_indexes[batch_mask]
 
             # Lookup in each batch file
-            batch_tensors = self._load_from_batch_file(batch_num, batch_ids)
+            batch_tensors = np.sort(self._load_from_batch_file(batch_num, batch_ids), order="id")
 
             # Place the resulting tensors in the results array where they go.
             all_tensors[batch_original_indexes] = batch_tensors["tensor"]
