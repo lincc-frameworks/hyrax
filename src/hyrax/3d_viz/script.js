@@ -1,10 +1,3 @@
-
- /**
-  * 3D UMAP Visualization with Interactive Selection
-  * This script creates an interactive 3D visualization of UMAP data
-  * with point selection capabilities.
-  */
-
  // ======== Configuration Constants ========
  const CONFIG = {
     // Visualization settings
@@ -69,7 +62,10 @@
     // Data state
     points: [],
     originalColors: [],
-    currentColors: []
+    currentColors: [],
+
+    // Currently visible columns
+    visibleColumns: [] 
  };
 
  // ======== DOM Elements Cache ========
@@ -111,6 +107,9 @@
 
     // Trigger initial camera rotation animation
     rotateCameraAnimation(CONFIG.ANIMATION.DURATION);
+
+    // Initializing Colormap
+    initColormapSettings();
 
     console.log("Initialization complete");
  }
@@ -165,6 +164,15 @@
     // Window resize
     window.addEventListener("resize", onWindowResize, false);
 
+    // Column Settings toggle
+    document.getElementById('column-settings-toggle').addEventListener('click', toggleColumnSettingsPanel);
+
+    // Add to your initEventListeners() function
+    document.getElementById('colormap-settings-toggle').addEventListener('click', toggleColormapSettings);
+    document.getElementById('colormapSelect').addEventListener('change', function() {
+      setColormap(this.value);
+    });
+
     console.log("Event listeners initialized");
  }
 
@@ -209,9 +217,6 @@ function maximizePanel() {
    elements.controlsTab.classList.add('hidden');
    localStorage.setItem('controlsPanelMinimized', 'false');
 } 
-
-
-
 
  // ======== Event Handlers ========
  /**
@@ -367,73 +372,81 @@ function maximizePanel() {
  }
 
  /**
-  * Process the current selection box and find points within it
-  */
- function processSelection() {
-    // Calculate normalized selection box coordinates
-    const minX = (Math.min(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
-    const maxX = (Math.max(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
-    const minY = -(Math.max(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
-    const maxY = -(Math.min(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
+ * Process the current selection box and find points within it
+ */
+/**
+ * Process the current selection box and find points within it
+ */
+function processSelection() {
+   // Calculate normalized selection box coordinates
+   const minX = (Math.min(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
+   const maxX = (Math.max(state.selectionStart.x, state.selectionEnd.x) / window.innerWidth) * 2 - 1;
+   const minY = -(Math.max(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
+   const maxY = -(Math.min(state.selectionStart.y, state.selectionEnd.y) / window.innerHeight) * 2 + 1;
 
-    // Reset selected points
-    state.selectedPoints = [];
+   // Reset selected points - key change here
+   state.selectedPoints = [];
+   const uniqueIds = new Set(); // Use Set to track unique IDs
 
-    if (!state.pointCloud) {
-       console.warn("No point cloud available");
-       return;
-    }
+   if (!state.pointCloud) {
+      console.warn("No point cloud available");
+      return;
+   }
 
-    const geometry = state.pointCloud.geometry;
-    const positions = geometry.attributes.position.array;
-    const colors = geometry.attributes.color.array;
+   const geometry = state.pointCloud.geometry;
+   const positions = geometry.attributes.position.array;
+   const colors = geometry.attributes.color.array;
 
-    // Reset all points to current coloring scheme
-    for (let i = 0; i < colors.length / 3; i++) {
-       if (i < state.currentColors.length) {
-          colors[i * 3] = state.currentColors[i][0];
-          colors[i * 3 + 1] = state.currentColors[i][1];
-          colors[i * 3 + 2] = state.currentColors[i][2];
-       }
-    }
+   // Reset all points to current coloring scheme
+   for (let i = 0; i < colors.length / 3; i++) {
+      if (i < state.currentColors.length) {
+         colors[i * 3] = state.currentColors[i][0];
+         colors[i * 3 + 1] = state.currentColors[i][1];
+         colors[i * 3 + 2] = state.currentColors[i][2];
+      }
+   }
 
-    // Find points in the selection box
-    for (let i = 0; i < positions.length / 3; i++) {
-       // Project 3D point to screen space
-       const vector = new THREE.Vector3(
-          positions[i * 3],
-          positions[i * 3 + 1],
-          positions[i * 3 + 2]
-       ).project(state.camera);
+   // Find points in the selection box
+   for (let i = 0; i < positions.length / 3; i++) {
+      // Project 3D point to screen space
+      const vector = new THREE.Vector3(
+         positions[i * 3],
+         positions[i * 3 + 1],
+         positions[i * 3 + 2]
+      ).project(state.camera);
 
-       // Check if point is in selection box
-       if (vector.x >= minX && vector.x <= maxX && vector.y >= minY && vector.y <= maxY) {
-          // Add to selected points
-          if (state.points[i] && state.points[i].id !== undefined) {
-             state.selectedPoints.push(state.points[i].id);
-          }
+      // Check if point is in selection box
+      if (vector.x >= minX && vector.x <= maxX && vector.y >= minY && vector.y <= maxY) {
+         // Only add if the point and ID exist
+         if (state.points[i] && state.points[i].id !== undefined) {
+            // Check if ID is not already selected to avoid duplicates
+            if (!uniqueIds.has(state.points[i].id)) {
+               uniqueIds.add(state.points[i].id);
+               state.selectedPoints.push(state.points[i].id);
+            }
+         }
 
-          // Change color to white (selected)
-          colors[i * 3] = 1;     // Red
-          colors[i * 3 + 1] = 1; // Green
-          colors[i * 3 + 2] = 1; // Blue
-       }
-    }
+         // Change color to white (selected)
+         colors[i * 3] = 1;     // Red
+         colors[i * 3 + 1] = 1; // Green
+         colors[i * 3 + 2] = 1; // Blue
+      }
+   }
 
-    // Update color buffer
-    geometry.attributes.color.needsUpdate = true;
+   // Update color buffer
+   geometry.attributes.color.needsUpdate = true;
 
-    // Update info display
-    updateInfoBox();
+   // Update info display
+   updateInfoBox();
 
-    // Show feedback if points were selected
-    if (state.selectedPoints.length > 0) {
-       showMessage(`Selected ${state.selectedPoints.length} points`);
-       setTimeout(hideMessage, 2000);
-    }
+   // Show feedback if points were selected
+   if (state.selectedPoints.length > 0) {
+      showMessage(`Selected ${state.selectedPoints.length} points`);
+      setTimeout(hideMessage, 2000);
+   }
 
-    console.log(`Selected ${state.selectedPoints.length} points`);
- }
+   console.log(`Selected ${state.selectedPoints.length} points`);
+}
 
  /**
   * Handle window resize event
@@ -456,24 +469,147 @@ function maximizePanel() {
     }
  }
 
- /**
-  * Create a color based on a value within a range
-  * @param {number} value - The value to map to a color
-  * @param {number} min - Minimum value in the range
-  * @param {number} max - Maximum value in the range
-  * @returns {Array} RGB color values as an array [r, g, b]
-  */
- function calculateColormap(value, min, max) {
-    // Normalize between 0 and 1
-    const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+ // ======== Colormap Functions ========
+const COLORMAPS = {
+   viridis: function(t) {
+       const r = 0.267 * Math.pow(t, 0.8) + 0.392 * Math.pow(t, 1.2) - 0.133 * Math.pow(t, 1.6) + 0.474 * Math.pow(t, 2.0);
+       const g = 0.00588 + 1.91 * Math.pow(t, 1.8) - 2.95 * Math.pow(t, 2.0) + 1.41 * Math.pow(t, 2.4);
+       const b = 0.417 + 3.30 * Math.pow(t, 1.0) - 7.53 * Math.pow(t, 1.5) + 7.52 * Math.pow(t, 2.0) - 2.79 * Math.pow(t, 2.5);
+       return [r, g, b];
+   },
+   
+   plasma: function(t) {
+       const r = 0.505 + 1.905 * t - 1.08 * Math.pow(t, 2) + 0.5 * Math.pow(t, 3);
+       const g = 0.016 - 0.392 * t + 1.56 * Math.pow(t, 2) - 1.68 * Math.pow(t, 3) + 1.08 * Math.pow(t, 4);
+       const b = 0.531 - 1.79 * t + 2.28 * Math.pow(t, 2) - 1.06 * Math.pow(t, 3);
+       return [Math.max(0, Math.min(1, r)), Math.max(0, Math.min(1, g)), Math.max(0, Math.min(1, b))];
+   },
+   
+   turbo: function(t) {
+       let r, g, b;
+       
+       if (t < 0.125) {
+           r = 48 - 256 * (t - 0.5);
+           g = 15 + 896 * t;
+           b = 255;
+       } else if (t < 0.375) {
+           r = 0;
+           g = 112 + 512 * (t - 0.125);
+           b = 255 - 896 * (t - 0.125);
+       } else if (t < 0.625) {
+           r = 384 * (t - 0.375);
+           g = 255;
+           b = 0;
+       } else if (t < 0.875) {
+           r = 255;
+           g = 384 - 512 * (t - 0.625);
+           b = 0;
+       } else {
+           r = 320 - 256 * (t - 0.875);
+           g = 0;
+           b = 0;
+       }
+       
+       return [r/255, g/255, b/255];
+   },
+   
+   modifiedVirdis: function(t) {
+       // Your current custom colormap
+       const r = Math.max(0.4, Math.min(88 + 180 * t, 255)) / 255;
+       const g = Math.max(0.5, Math.min(50 + 160 * t, 255)) / 255;
+       const b = Math.max(0.6, Math.min(120 - 40 * t, 255)) / 255;
+       return [r, g, b];
+   },
+   
+   purpleYellow: function(t) {
+       // Purple to yellow
+       if (t < 0.25) {
+           const localT = t / 0.25;
+           return [
+               0.2 + 0.1 * localT,
+               0.1 * localT,
+               0.4 + 0.2 * localT
+           ];
+       } else if (t < 0.5) {
+           const localT = (t - 0.25) / 0.25;
+           return [
+               0.3 - 0.1 * localT,
+               0.1 + 0.3 * localT,
+               0.6 + 0.2 * localT
+           ];
+       } else if (t < 0.75) {
+           const localT = (t - 0.5) / 0.25;
+           return [
+               0.2 - 0.1 * localT,
+               0.4 + 0.4 * localT,
+               0.8 - 0.4 * localT
+           ];
+       } else {
+           const localT = (t - 0.75) / 0.25;
+           return [
+               0.1 + 0.8 * localT,
+               0.8 + 0.2 * localT,
+               0.4 - 0.4 * localT
+           ];
+       }
+   },
+   
+   coolWarm: function(t) {
+       // Blue to red through white
+       const r = 0.230 + 0.270 * Math.pow(t, 0.3) - 0.034 * Math.pow(t, 1.2) + 0.537 * Math.pow(t, 2);
+       const g = 0.850 - 0.851 * Math.pow(t, 0.7) + 0.0026 * Math.pow(t, 1.3);
+       const b = 0.850 - 0.300 * Math.pow(t, 0.3) - 0.550 * Math.pow(t, 1.8);
+       return [Math.max(0, Math.min(1, r)), Math.max(0, Math.min(1, g)), Math.max(0, Math.min(1, b))];
+   }
+};
 
-    // Increased brightness for the entire Viridis spectrum
-    const r = Math.max(0.4, Math.min(88 + 180 * t, 255)) / 255;
-    const g = Math.max(0.5, Math.min(50 + 160 * t, 255)) / 255;
-    const b = Math.max(0.6, Math.min(120 - 40 * t, 255)) / 255;
+// Current active colormap
+let activeColormap = 'modifiedVirdis';
 
-    return [r, g, b];
- }
+// Main colormap function that uses the active colormap
+function calculateColormap(value, min, max) {
+   // Normalize between 0 and 1
+   const t = Math.max(0, Math.min(1, (value - min) / (max - min)));
+   
+   // Use the active colormap
+   return COLORMAPS[activeColormap](t);
+}
+
+// Function to change colormap
+function setColormap(colormapName) {
+   if (COLORMAPS[colormapName]) {
+       activeColormap = colormapName;
+       console.log(`Colormap changed to: ${colormapName}`);
+       
+       // Update the select element
+       const select = document.getElementById('colormapSelect');
+       if (select) {
+           select.value = colormapName;
+       }
+       
+       // Update the visualization
+       const currentColumn = elements.colorColumnSelect.value;
+       if (currentColumn) {
+           updatePointColors(currentColumn);
+       }
+   } else {
+       console.error(`Unknown colormap: ${colormapName}`);
+   }
+}
+
+function toggleColormapSettings() {
+   const panel = document.getElementById('colormap-settings-panel');
+   panel.classList.toggle('hidden');
+}
+
+// When initializing, set the dropdown to the default colormap
+function initColormapSettings() {
+   const select = document.getElementById('colormapSelect');
+   if (select) {
+       select.value = activeColormap;
+   }
+}
+
 
  /**
   * Create the 3D point cloud visualization
@@ -536,6 +672,9 @@ function maximizePanel() {
     });
     state.pointCloud = new THREE.Points(geometry, material);
     state.scene.add(state.pointCloud);
+
+    //Colorbar
+    updateColorbar("x", minX, maxX);
  }
 
  /**
@@ -584,88 +723,446 @@ function maximizePanel() {
  // ======== UI Interaction Functions ========
 
  /**
-  * Update info box with selected points
+ * Update info box with selected points data
+ */
+function updateInfoBox() {
+   const footerElement = document.getElementById('selection-info-footer');
+   const tableContainer = document.getElementById('selection-table-container');
+   const tableHeader = document.getElementById('selection-table-header');
+   const tableBody = document.getElementById('selection-table-body');
+   const infoElement = document.getElementById('info');
+   
+   // Clear previous content
+   tableHeader.innerHTML = '';
+   tableBody.innerHTML = '';
+   
+   if (state.selectedPoints.length > 0) {
+       // Add 'has-data' class to info element when points are selected
+       infoElement.classList.add('has-data');
+
+       // Update footer text with selection count
+       footerElement.textContent = `Selected ${state.selectedPoints.length} points`;
+       
+       // DEBUG: Log selected IDs
+       console.log('DEBUG: Selected point IDs:', state.selectedPoints);
+       
+       // Get selected point objects from the state.points array
+       const selectedPointObjects = state.points.filter(point => 
+           state.selectedPoints.includes(point.id)
+       );
+       
+       // DEBUG: Log selected point objects
+       //console.log('DEBUG: Selected point objects:', selectedPointObjects);
+       //console.log('DEBUG: Expected rows:', state.selectedPoints.length);
+       //console.log('DEBUG: Actual rows:', selectedPointObjects.length);
+       
+       if (selectedPointObjects.length > 0) {
+           // Filter to only use visible columns
+           const visibleColumns = state.visibleColumns.filter(col => 
+               Object.keys(selectedPointObjects[0]).includes(col)
+           );
+           
+           // Create table header with only visible columns
+           visibleColumns.forEach(columnName => {
+               const th = document.createElement('th');
+               th.textContent = columnName;
+               tableHeader.appendChild(th);
+           });
+           
+           // Create table rows for each selected point, showing only visible columns
+           selectedPointObjects.forEach((point, index) => {
+               const tr = document.createElement('tr');
+               
+               // DEBUG: Log each point being added to table
+               // console.log(`DEBUG: Adding point ${index}:`, point);
+               
+               visibleColumns.forEach(columnName => {
+                   const td = document.createElement('td');
+                   
+                   // Format the cell value based on its type
+                   const value = point[columnName];
+                   if (typeof value === 'number') {
+                     if (Number.isInteger(value)) {
+                        td.textContent = value;
+                     } else {
+                        td.textContent = value.toFixed(2);
+                     }
+                   } else {
+                       td.textContent = value;
+                   }
+                   
+                   tr.appendChild(td);
+               });
+               
+               tableBody.appendChild(tr);
+           });
+           
+           // Show the table
+           tableContainer.style.display = 'block';
+
+           // Update the image viewer with the selected points and columns
+           if (typeof updateImageViewer === 'function') {
+               // Get all available columns from the first selected point
+               const allAvailableColumns = Object.keys(selectedPointObjects[0]);
+               updateImageViewer(state.selectedPoints, state.points, allAvailableColumns);
+           }
+       }
+   } else {
+       // Remove 'has-data' class when no points are selected
+       infoElement.classList.remove('has-data');
+
+       // If no points selected, hide table and show default message
+       footerElement.textContent = "Drag to select multiple points";
+       tableContainer.style.display = 'none';
+
+       // Hide Settings Panel
+       document.getElementById('column-settings-panel').classList.add('hidden');
+
+       // Update image viewer to hide it
+       if (typeof updateImageViewer === 'function') {
+         updateImageViewer([], [], []);
+       }
+   }
+}
+
+  /**
+  * Update the color bar on relevant events
   */
- function updateInfoBox() {
-    if (state.selectedPoints.length > 0) {
-       elements.infoBox.innerHTML = `Selected Object IDs: <b>${state.selectedPoints.join(", ")}</b>`;
-    } else {
-       elements.infoBox.innerHTML = "Drag to select multiple points";
-    }
+  function updateColorbar(column, minVal, maxVal) {
+   // Update colorbar header
+   const colorbarHeader = document.querySelector('.colorbar-header');
+   colorbarHeader.textContent = `${column}`;
+   
+   // Update min/max labels
+   document.getElementById('min-value').textContent = minVal.toFixed(2);
+   document.getElementById('max-value').textContent = maxVal.toFixed(2);
+   
+   // Generate gradient using the active colormap
+   const gradientStops = [];
+   for (let i = 0; i <= 10; i++) {
+       const t = i / 10;
+       const [r, g, b] = COLORMAPS[activeColormap](t);
+       const rgb = `rgb(${Math.round(r * 255)}, ${Math.round(g * 255)}, ${Math.round(b * 255)})`;
+       gradientStops.push(rgb);
+   }
+   
+   const gradient = `linear-gradient(to right, ${gradientStops.join(', ')})`;
+   document.getElementById('colorbar-gradient').style.background = gradient;
  }
+
+
+ // Function to toggle column settings panel
+ function toggleColumnSettingsPanel() {
+   const panel = document.getElementById('column-settings-panel');
+   panel.classList.toggle('hidden');
+ }
+
+ /**
+ * Populate Column Check Boxes 
+ */
+ function populateColumnCheckboxes(data) {
+   // Get the column checkboxes container from the settings panel
+   const columnCheckboxesContainer = document.querySelector('#column-settings-panel .checkbox-group');
+   columnCheckboxesContainer.innerHTML = ''; // Clear existing checkboxes
+   
+   if (!data.points || data.points.length === 0) return;
+   
+   // Extract all available columns from the first point
+   const allColumns = Object.keys(data.points[0]);
+   
+   // Initialize visibleColumns if it's empty - show first 4
+   if (state.visibleColumns.length === 0) {
+      // Just take the first 4 columns
+      state.visibleColumns = allColumns.slice(0, 4);
+   }
+   
+   // Create a checkbox for each column
+   allColumns.forEach(column => {
+       const checkboxDiv = document.createElement('div');
+       checkboxDiv.className = 'column-checkbox';
+       
+       const checkbox = document.createElement('input');
+       checkbox.type = 'checkbox';
+       checkbox.id = `col-${column}`;
+       checkbox.checked = state.visibleColumns.includes(column);
+       checkbox.addEventListener('change', () => toggleColumnVisibility(column, checkbox.checked));
+       
+       const label = document.createElement('label');
+       label.htmlFor = `col-${column}`;
+       label.textContent = column;
+       
+       checkboxDiv.appendChild(checkbox);
+       checkboxDiv.appendChild(label);
+       columnCheckboxesContainer.appendChild(checkboxDiv);
+   });
+}
+ 
+
+ // Function to toggle column visibility in table 
+ function toggleColumnVisibility(column, isVisible) {
+   if (isVisible && !state.visibleColumns.includes(column)) {
+       state.visibleColumns.push(column);
+   } else if (!isVisible) {
+       state.visibleColumns = state.visibleColumns.filter(col => col !== column);
+   }
+   
+   // Update the table if it's currently displayed
+   if (state.selectedPoints.length > 0) {
+       updateInfoBox();
+   }
+ }
+
+
 
  // ======== Data Loading Functions ========
  /**
   * Fetch and populate the JSON file list dropdown
   */
  function fetchJSONList() {
-    const files = CONFIG.DATA.DEFAULT_FILES;
+   // Show loading message
+   showMessage("Fetching available JSON files...");
+   
+   // Fetch JSON file list from server endpoint
+   fetch("/list_jsons")
+       .then(response => {
+           if (!response.ok) {
+               throw new Error(`HTTP error! Status: ${response.status}`);
+           }
+           return response.json();
+       })
+       .then(files => {
+           hideMessage();
+           
+           // Reset dropdown
+           elements.jsonFileSelect.innerHTML = '<option value="">Select a JSON File</option>';
+           
+           if (files.length === 0) {
+               showError(CONFIG.MESSAGES.NO_FILES);
+               return;
+           }
+           
+           // Populate dropdown
+           files.forEach((file, index) => {
+               const option = document.createElement("option");
+               option.value = file;
+               option.textContent = file;
+               elements.jsonFileSelect.appendChild(option);
+           });
+           
+           // Automatically select & load the first file
+           if (files.length > 0) {
+               elements.jsonFileSelect.selectedIndex = 1; // Select first file
+               loadJSONData(files[0]);
+           }
+           
+           console.log(`Found ${files.length} JSON files`);
+       })
+       .catch(error => {
+           hideMessage();
+           showError(`Error fetching JSON file list: ${error.message}`);
+           console.error("Error fetching JSON list:", error);
+           
+           // Fallback to default files if fetch fails
+           const fallbackFiles = CONFIG.DATA.DEFAULT_FILES;
+           
+           // Display warning
+           showMessage("Using fallback file list");
+           setTimeout(hideMessage, 3000);
+           
+           // Continue with fallback files
+           populateDropdownWithFiles(fallbackFiles);
+       });
+       
+   // Event listener for manual selection changes (only add once)
+   if (!elements.jsonFileSelect._hasChangeListener) {
+       elements.jsonFileSelect.addEventListener("change", function() {
+           if (this.value) {
+               loadJSONData(this.value);
+           }
+       });
+       elements.jsonFileSelect._hasChangeListener = true;
+   }
+}
 
-    elements.jsonFileSelect.innerHTML = '<option value="">Select a JSON File</option>'; // Reset dropdown
-
-    if (files.length === 0) {
+// Helper function to populate dropdown with files (used for fallback)
+function populateDropdownWithFiles(files) {
+   // Reset dropdown
+   elements.jsonFileSelect.innerHTML = '<option value="">Select a JSON File</option>';
+   
+   if (files.length === 0) {
        showError(CONFIG.MESSAGES.NO_FILES);
        return;
-    }
-
-    // Populate dropdown
-    files.forEach((file, index) => {
+   }
+   
+   // Populate dropdown
+   files.forEach((file, index) => {
        const option = document.createElement("option");
        option.value = file;
        option.textContent = file;
        elements.jsonFileSelect.appendChild(option);
-    });
-
-    // Automatically select & load the default file
-    const defaultIndex = CONFIG.DATA.DEFAULT_FILE_INDEX;
-    if (defaultIndex >= 0 && defaultIndex < files.length) {
+   });
+   
+   // Automatically select & load the default file
+   const defaultIndex = CONFIG.DATA.DEFAULT_FILE_INDEX;
+   if (defaultIndex >= 0 && defaultIndex < files.length) {
        elements.jsonFileSelect.selectedIndex = defaultIndex + 1; // +1 for the default empty option
        loadJSONData(files[defaultIndex]);
-    }
+   }
+}
 
-    // Event listener for manual selection changes
-    elements.jsonFileSelect.addEventListener("change", function() {
-       if (this.value) {
-          loadJSONData(this.value);
+/**
+  * Function to Check for Duplicate IDs when Data is Loaded
+  */
+function checkForDuplicateIds(data) {
+   const points = data.points || [];
+   const seenIds = new Set();
+   const duplicateIds = new Set();
+   
+   points.forEach((point, index) => {
+       const id = point.id;
+       
+       // Convert to string for consistent comparison
+       const stringId = String(id);
+       
+       if (seenIds.has(stringId)) {
+           duplicateIds.add(stringId);
+           console.warn(`Duplicate ID found: ${stringId} at index ${index}`);
+       } else {
+           seenIds.add(stringId);
        }
+   });
+   
+   if (duplicateIds.size > 0) {
+       console.error('Duplicate IDs found:', Array.from(duplicateIds));
+       // Log the indices of duplicate ID entries
+       points.forEach((point, index) => {
+           if (duplicateIds.has(String(point.id))) {
+               console.log(`ID ${point.id} at index ${index}:`, point);
+           }
+       });
+   }
+   
+   return Array.from(duplicateIds);
+}
+
+// DEBUG Function
+function checkIdPrecision(data) {
+    const points = data.points || [];
+    
+    // Analyze ID types and values
+    const idAnalysis = {
+        types: {},
+        sampleValues: {},
+        largeIntegers: [],
+        duplicatesAfterStringify: new Set()
+    };
+    
+    // Check each point's ID
+    points.forEach((point, index) => {
+        const id = point.id;
+        const type = typeof id;
+        
+        // Count ID types
+        idAnalysis.types[type] = (idAnalysis.types[type] || 0) + 1;
+        
+        // Sample values by type
+        if (!idAnalysis.sampleValues[type]) {
+            idAnalysis.sampleValues[type] = [];
+        }
+        if (idAnalysis.sampleValues[type].length < 5) {
+            idAnalysis.sampleValues[type].push({index, id});
+        }
+        
+        // Check for large integers that might lose precision
+        if (type === 'number' && Number.isInteger(id) && Math.abs(id) > Number.MAX_SAFE_INTEGER) {
+            idAnalysis.largeIntegers.push({index, id, precision: `${id}`});
+        }
+        
+        // Check for duplicates when stringified
+        const stringId = String(id);
+        if (idAnalysis.duplicatesAfterStringify.has(stringId)) {
+            console.log(`Duplicate stringified ID found: "${stringId}" at index ${index}`);
+        } else {
+            idAnalysis.duplicatesAfterStringify.add(stringId);
+        }
     });
- }
+    
+    return idAnalysis;
+}
+
+// Custom JSON parser that handles large integers by converting IDs to strings
+function parseLargeIntegerJson(response) {
+   return response.text().then(jsonText => {
+       // Replace large integers (15+ digits) with quoted versions
+       const processedJsonText = jsonText.replace(
+           /:\s*(\d{15,})/g, 
+           ': "$1"'
+       );
+       
+       // Now parse the modified JSON text
+       const data = JSON.parse(processedJsonText);
+       return data;
+   });
+}
+
 
  /**
   * Load JSON data from file
   * @param {string} filename - The file to load
   */
  function loadJSONData(filename) {
-    // Show loading message
-    showMessage(`Loading ${filename}...`);
+   showMessage(`Loading ${filename}...`);
 
-    fetch(filename)
-       .then(response => {
-          if (!response.ok) {
-             throw new Error(`HTTP error! Status: ${response.status}`);
-          }
-          return response.json();
-       })
-       .then(data => {
-          // Hide loading message
-          hideMessage();
+   fetch(filename)
+      .then(response => {
+         if (!response.ok) {
+            throw new Error(`HTTP error! Status: ${response.status}`);
+         }
+         // Use custom parser to preserve large integers as strings
+         return parseLargeIntegerJson(response);
+      })
+      .then(data => {
+         hideMessage();
+         
+         // Debug: Check that IDs are now strings
+         // const idAnalysis = checkIdPrecision(data);
+         // console.log('ID Analysis after conversion:', idAnalysis);
+         
+         // Debug: Verify no duplicate IDs
+         const duplicates = checkForDuplicateIds(data);
+         if (duplicates.length > 0) {
+             console.warn('Found duplicate IDs in data:', duplicates);
+         } else {
+             console.log('✓ No duplicate IDs found after conversion');
+         }
 
-          // Update visualization
-          updateVisualization(data);
-          console.log(`Loaded: ${filename}`);
+         updateVisualization(data);
+         console.log(`Loaded: ${filename}`);
+         elements.jsonFileSelect.value = filename;
+         populateColorDropdown(data);
+      })
+      .catch(error => {
+         hideMessage();
+         showError(`Error loading ${filename}: ${error.message}`);
+         console.error("Error loading JSON:", error);
+      });
+}
 
-          // Update dropdown selection to reflect the current file
-          elements.jsonFileSelect.value = filename;
-
-          // Populate the color selection dropdown
-          populateColorDropdown(data);
-       })
-       .catch(error => {
-          hideMessage();
-          showError(`Error loading ${filename}: ${error.message}`);
-          console.error("Error loading JSON:", error);
-       });
- }
+ // Helper function to find duplicates in an array
+function findDuplicates(arr) {
+   const seen = new Set();
+   const duplicates = new Set();
+   
+   arr.forEach(item => {
+       if (seen.has(item)) {
+           duplicates.add(item);
+       } else {
+           seen.add(item);
+       }
+   });
+   
+   return Array.from(duplicates);
+}
 
  /**
  * Reset the current selection
@@ -727,6 +1224,9 @@ function resetSelection() {
        // Create new point cloud
        createPointCloud();
 
+       // Populate column checkboxes with the new data
+       populateColumnCheckboxes(newData);
+
        // Start camera rotation for better overview
        rotateCameraAnimation(CONFIG.ANIMATION.DURATION);
 
@@ -760,11 +1260,14 @@ function resetSelection() {
        elements.colorColumnSelect.appendChild(option);
     });
 
-    // Default to the first column (if available)
-    if (columns.length > 0) {
-       elements.colorColumnSelect.value = columns[0];
-       updatePointColors(columns[0]); // Apply initial coloring
-    }
+    // Default to the 'x' column if available, otherwise use the first column
+    if (columns.includes('x')) {
+         elements.colorColumnSelect.value = 'x';
+         updatePointColors('x'); // Apply initial coloring using 'x'
+    } else if (columns.length > 0) {
+         elements.colorColumnSelect.value = columns[0];
+         updatePointColors(columns[0]); // Apply initial coloring with first column
+   }
 
     // Add event listener to change coloring dynamically
     elements.colorColumnSelect.addEventListener("change", function() {
@@ -821,6 +1324,9 @@ function resetSelection() {
     // Reset any active selection
     state.selectedPoints = [];
     updateInfoBox();
+
+   // Update Colorbar
+    updateColorbar(column, minVal, maxVal);
  }
 
  // ======== Helper Functions ========
@@ -854,6 +1360,16 @@ function resetSelection() {
        elements.errorBox.style.display = "none";
     }, 5000);
  }
+
+/**
+ * Check if an element has a scrollbar
+ * @param {HTMLElement} element - The element to check
+ * @returns {boolean} - Whether the element is scrollable
+ */
+function isScrollable(element) {
+   return element.scrollHeight > element.clientHeight;
+}
+
 
 /**
  * Create a circular texture for points

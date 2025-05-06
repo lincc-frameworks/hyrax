@@ -70,10 +70,16 @@ canvas {
     left: 20px; 
     color: var(--text-highlight);
     max-width: 75vw;
-    max-height: 15vh;
+    max-height: 25vh;
     overflow-y: auto;
     z-index: 100;
  }
+
+ /* Hide gear icon when no data is selected */
+ #info:not(.has-data) #column-settings-toggle {
+   display: none;
+ }
+
 
  #info::-webkit-scrollbar {
     width: 6px;
@@ -99,10 +105,211 @@ canvas {
     z-index: 90;
  }
 
+ #selection-info-header {
+   color: var(--text-highlight);
+   margin-bottom: 8px;
+   font-weight: 600;
+}
+
+#selection-table-container {
+   max-height: 300px;
+   overflow-y: auto;
+   overflow-x: auto;
+   display: none; /* Hidden by default, shown when points are selected */
+   margin-top: 10px;
+   margin-bottom: 8px;
+   border-radius: 4px;
+   border: 1px solid var(--panel-border);
+   scrollbar-width: thin;
+}
+
+#selection-table-container::-webkit-scrollbar {
+   width: 6px; /* Thin scrollbar */
+   height: 6px;
+}
+
+#selection-table-container::-webkit-scrollbar-track {
+   background: rgba(0, 0, 0, 0.1);
+   border-radius: 3px;
+}
+
+#selection-table-container::-webkit-scrollbar-thumb {
+   background: var(--accent-color);
+   border-radius: 3px;
+}
+
+/* Hide scrollbar when not needed */
+#selection-table-container:not(:hover)::-webkit-scrollbar-thumb {
+   background: transparent;
+}
+
+/* Only show scrollbar on hover */
+#selection-table-container:hover::-webkit-scrollbar-thumb {
+   background: var(--accent-color);
+}
+
+#selection-table {
+   width: 100%;
+   border-collapse: collapse;
+   font-size: 13px;
+}
+
+#selection-table th {
+   position: sticky;
+   top: 0;
+   background: var(--panel-bg);
+   padding: 8px;
+   text-align: left;
+   color: var(--text-highlight);
+   font-weight: 600;
+   border-bottom: 1px solid var(--panel-border);
+   z-index: 10; /* Ensure headers appear above table content during scroll */
+}
+
+#selection-table td {
+   padding: 6px 8px;
+   border-bottom: 1px solid var(--panel-border);
+   color: var(--text-primary);
+}
+
+#selection-table tbody tr:hover {
+   background-color: rgba(255, 255, 255, 0.05);
+}
+
+#selection-info-footer {
+   color: var(--text-highlight);
+   padding: 4px 0;
+   font-size: 13px;
+   margin-top: 8px;
+}
+
+/* Table header with settings icon */
+.table-header {
+   display: none;
+}
+
+#table-title {
+   color: var(--text-highlight);
+   font-weight: 600;
+   font-size: 14px;
+}
+
+#column-settings-toggle {
+   position: absolute;
+   top: 10px;
+   right: 10px;
+   color: var(--text-secondary);
+   cursor: pointer;
+   padding: 4px;
+   border-radius: 4px;
+   transition: all 0.2s ease;
+   z-index: 102;
+}
+
+#column-settings-toggle:hover {
+   color: var(--text-primary);
+   background: rgba(255, 255, 255, 0.1);
+}
+
+/* Column settings panel */
+#column-settings-panel {
+   background: var(--panel-bg);
+   border: 1px solid var(--panel-border);
+   border-radius: 4px;
+   padding: 12px;
+   transition: all 0.3s ease;
+   position: absolute;
+   top: 40px;
+   right: 10px;
+   width: 220px;
+   z-index: 101;
+   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+#column-settings-panel.hidden {
+   opacity: 0;
+   visibility: hidden;
+   transform: translateY(-10px);
+   pointer-events: none;
+}
+
+.column-settings-header {
+   font-size: 13px;
+   font-weight: 600;
+   margin-bottom: 8px;
+   color: var(--text-highlight);
+}
+
+
+/* Column selector styles */
+.checkbox-group {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 8px;
+   max-height: 120px;
+   overflow-y: auto;
+   padding: 4px;
+   border-radius: 4px;
+   background: rgba(40, 40, 40, 0.3);
+}
+
+#column-settings-panel .checkbox-group {
+   max-height: 200px;
+}
+
+.column-checkbox {
+   display: flex;
+   align-items: center;
+   margin-right: 8px;
+   white-space: nowrap;
+   padding: 4px 0;
+}
+
+.column-checkbox input {
+   margin-right: 4px;
+   cursor: pointer;
+}
+
+.column-checkbox label {
+   font-size: 13px;
+   color: var(--text-primary);
+   cursor: pointer;
+}
+
+.column-checkbox:hover {
+   background-color: rgba(255, 255, 255, 0.05);
+   border-radius: 3px;
+}
+
+#app-title {
+   position: absolute;
+   top: 20px;
+   right: 20px;
+   width: 280px;
+   /*color: var(--text-highlight);*/
+   font-size: 20px;
+   font-weight: 1000;
+   text-align: left;
+   z-index: 100;
+   padding: 4px;
+   margin-bottom: 8px;
+
+   /*background: linear-gradient(90deg, #5a5cdc, #a855f7); Blue to purple gradient */
+   background: linear-gradient(90deg, 
+        rgb(180, 96, 128),   /* Pink/purple start */
+        rgb(200, 130, 120),  /* Orange-pink */
+        rgb(220, 150, 100),  /* Orange */
+        rgb(235, 170, 80)    /* Golden yellow end */
+    );
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
  /* Controls panel styling */
  #controls-box {
     position: absolute;
-    top: 20px;
+    top: 100px;
     right: 20px;
     width: 280px;
     z-index: 100;
@@ -187,7 +394,7 @@ canvas {
  /* Minimized tab styling */
  #controls-tab {
        position: absolute;
-       top: 20px;
+       top: 100px;
        right: 0;
        background: var(--panel-bg);
        color: var(--text-primary);
@@ -389,6 +596,254 @@ canvas {
 }
 
 
+/* Colorbar styling */
+#colorbar-container {
+   position: absolute;
+   bottom: 90px; 
+   right: 20px; 
+   width: 200px;
+   padding: 10px;
+   z-index: 100;
+ }
+ 
+ .colorbar-header {
+   font-size: 14px;
+   font-weight: 600;
+   margin-bottom: 8px;
+   color: var(--text-highlight);
+ }
+ 
+ #colorbar-gradient {
+   height: 20px;
+   width: 100%;
+   border-radius: 3px;
+   background: linear-gradient(to right, #1e3799, #4a69bd, #78e08f, #f6b93b);
+   margin-bottom: 4px;
+ }
+ 
+ .colorbar-labels {
+   display: flex;
+   justify-content: space-between;
+   font-size: 12px;
+   color: var(--text-primary);
+ }
+
+
+.colorbar-header-container {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   margin-bottom: 8px;
+}
+
+/* Colormap settings panel */
+#colormap-settings-toggle {
+   color: var(--text-secondary);
+   cursor: pointer;
+   padding: 4px;
+   border-radius: 4px;
+   transition: all 0.2s ease;
+}
+
+#colormap-settings-toggle:hover {
+   color: var(--text-primary);
+   background: rgba(255, 255, 255, 0.1);
+}
+
+#colormap-settings-panel {
+   background: var(--panel-bg);
+   border: 1px solid var(--panel-border);
+   border-radius: 4px;
+   padding: 8px;
+   position: absolute;
+   top: 40px;
+   left: 0;
+   width: 180px;
+   z-index: 101;
+   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+   transition: all 0.3s ease;
+}
+
+#colormap-settings-panel.hidden {
+   opacity: 0;
+   visibility: hidden;
+   transform: translateY(-10px);
+   pointer-events: none;
+}
+
+.colormap-settings-header {
+   font-size: 12px;
+   font-weight: 600;
+   margin-bottom: 6px;
+   color: var(--text-highlight);
+}
+
+#colormapSelect {
+   width: 100%;
+   padding: 6px 10px;
+   background: rgba(40, 40, 40, 0.9);
+   color: var(--text-primary);
+   border: 1px solid var(--panel-border);
+   border-radius: 4px;
+   font-family: inherit;
+   font-size: 12px;
+   appearance: none;
+   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke-width='1.5' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19.5 8.25l-7.5 7.5-7.5-7.5' /%3E%3C/svg%3E");
+   background-repeat: no-repeat;
+   background-position: right 6px center;
+   background-size: 12px;
+   cursor: pointer;
+}
+
+
+ /* Image Viewer styling */
+ #image-viewer-container {
+   position: absolute;
+   bottom: 20px;
+   left: 20px;
+   width: calc(100% - 340px);
+   max-height: 40vh;
+   overflow-y: auto;
+   display: none; /* Hidden by default */
+   z-index: 100; /* Ensure it's above other elements */
+}
+
+#image-display-area {
+   display: flex;
+   flex-wrap: wrap;
+   gap: 10px;
+   padding: 10px 0;
+   max-height: calc(40vh - 100px);
+   overflow-y: auto;
+   /* Ensure scrollbar is always visible when needed */
+   scrollbar-width: auto; /* Firefox */
+}
+
+/* Make sure the scrollbar is visible on all browsers */
+#image-display-area::-webkit-scrollbar {
+   width: 8px;
+}
+
+#image-display-area::-webkit-scrollbar-track {
+   background: rgba(0, 0, 0, 0.1);
+   border-radius: 3px;
+}
+
+#image-display-area::-webkit-scrollbar-thumb {
+   background: var(--accent-color);
+   border-radius: 3px;
+}
+
+#image-display-area:hover::-webkit-scrollbar-thumb {
+   background: var(--accent-hover);
+}
+
+.image-item {
+   position: relative;
+   width: calc(12.50% - 10px); 
+   min-width: 170px; 
+   aspect-ratio: 1/1;
+   margin-bottom: 10px;
+   background: rgba(20, 20, 20, 0.8);
+   border-radius: 4px;
+   overflow: hidden;
+   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.image-item img {
+   width: 100%;
+   height: auto;
+   display: block;
+}
+
+.image-item canvas {
+   width: 100%;
+   height: auto;
+   object-fit: contain;
+   display: block;
+}
+
+.image-title {
+   position: absolute;
+   top: 0;
+   left: 0;
+   right: 0;
+   padding: 4px 8px;
+   background: rgba(0, 0, 0, 0.7);
+   color: var(--text-primary);
+   font-size: 12px;
+   white-space: nowrap;
+   overflow: hidden;
+   text-overflow: ellipsis;
+}
+
+.image-loading {
+   position: absolute;
+   top: 0;
+   left: 0;
+   width: 100%;
+   height: 100%;
+   display: flex;
+   justify-content: center;
+   align-items: center;
+   background: rgba(0, 0, 0, 0.5);
+}
+
+.image-loading::after {
+   content: "";
+   width: 20px;
+   height: 20px;
+   border: 2px solid var(--accent-color);
+   border-radius: 50%;
+   border-top-color: transparent;
+   animation: spin 1s linear infinite;
+}
+
+.image-error {
+   display: flex;
+   justify-content: center;
+   align-items: center;
+   width: 100%;
+   height: 100px;
+   color: var(--error-color);
+   font-size: 12px;
+   text-align: center;
+   background: rgba(20, 20, 20, 0.6);
+}
+
+#image-controls {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   margin-top: 10px;
+}
+
+#load-more-images {
+   background: var(--accent-color);
+   color: white;
+   border: none;
+   padding: 6px 12px;
+   border-radius: 4px;
+   cursor: pointer;
+   font-size: 14px;
+}
+
+#load-more-images:hover {
+   background: var(--accent-hover);
+}
+
+#load-more-images.disabled {
+   background: #555;
+   cursor: not-allowed;
+}
+
+#image-status {
+   color: var(--text-secondary);
+   font-size: 12px;
+}
+
+
+
  /* Animation keyframes */
  @keyframes fadeIn {
     from { opacity: 0; transform: translateY(-10px) translateX(-50%); }
@@ -403,41 +858,66 @@ canvas {
     100% { transform: translate(-50%, -50%) rotate(0deg); }
  }
 
+ @keyframes spin {
+   to { transform: rotate(360deg); }
+}
+
+
  /* Responsive adjustments */
  @media (max-width: 768px) {
-    #controls-box {
+   #controls-box {
        width: calc(100% - 40px);
        bottom: 80px;
        top: auto;
        right: 20px;
        max-height: 30vh;
        overflow-y: auto;
-    }
+   }
 
-    #selection-toggle {
+   #selection-toggle {
        bottom: 20px;
        right: 20px;
-    }
+   }
 
-    #selection-status {
+   #selection-status {
        bottom: 70px;
        right: 20px;
-    }
+   }
 
-    #info {
+   #info {
        top: 20px;
        left: 20px;
        max-width: calc(100% - 40px);
-    }
+       max-height: 50vh;
+   }
 
-     #reset-selection {
+   #reset-selection {
       bottom: 20px;
       left: 20px;
    }
 
-     #controls-tab {
+   #controls-tab {
       top: auto;
       bottom: 80px;
+   }
+
+   #selection-table-container {
+      max-height: calc(40vh - 40px);
+   }
+
+   #image-viewer-container {
+      width: calc(100% - 40px);
+      bottom: 140px;
+      left: 20px;
+   }
+
+   .checkbox-group {
+      max-height: 80px;
+  }
+
+   .image-item {
+   width: calc(50% - 10px); /* 2 images per row on mobile */
+   min-width: 150px;
    }
 
  }

@@ -40,6 +40,20 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         else:
             self.transform = None
 
+        self.object_id_column_name = (
+            config["data_set"]["object_id_column_name"]
+            if config["data_set"]["object_id_column_name"]
+            else "object_id"
+        )
+        self.filter_column_name = (
+            config["data_set"]["filter_column_name"] if config["data_set"]["filter_column_name"] else "filter"
+        )
+        self.filename_column_name = (
+            config["data_set"]["filename_column_name"]
+            if config["data_set"]["filename_column_name"]
+            else "filename"
+        )
+
         self._init_from_path(config["general"]["data_dir"])
 
         # Relies on self.filters_ref and self.filter_catalog_table which are both determined
@@ -83,8 +97,9 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         if self.files is None:
             msg = "Cannot continue without files. Please ensure the table passed in "
             msg += "config['data_set']['filter_catalog'] is well formed. It should minimally be "
-            msg += "a fits file with columns: object_id, filename, filter. "
-            msg += "This may also occur because of a misimplemented subclass"
+            msg += f"a table readable by Astropy's Table.read() with columns: {self.object_id_column_name}, "
+            msg += f"{self.filename_column_name}, and {self.filter_column_name}. This may also occur because "
+            msg += "of a misimplemented subclass"
             raise RuntimeError(msg)
 
         first_filter_dict = next(iter(self.files.values()))
@@ -129,23 +144,40 @@ class FitsImageDataSet(HyraxDataset, Dataset):
             msg = f"Filter catalog file {filter_catalog_path} given in config does not exist."
             raise RuntimeError(msg)
 
-        table = Table.read(filter_catalog_path, format="fits")
+        table = Table.read(filter_catalog_path)
         colnames = table.colnames
 
-        if "object_id" not in colnames:
-            msg = f"Filter catalog file {filter_catalog_path} has no column object_id"
+        object_id_missing = self.object_id_column_name not in colnames
+        filename_missing = self.filename_column_name not in colnames
+        filter_missing = self.filter_column_name not in colnames
+
+        if object_id_missing:
+            msg = f"Filter catalog file {filter_catalog_path} has no column '{self.object_id_column_name}'"
             raise RuntimeError(msg)
 
-        if "filename" not in colnames:
-            msg = f"Filter catalog file {filter_catalog_path} has no column filename"
+        if filename_missing:
+            msg = f"Filter catalog file {filter_catalog_path} has no column '{self.filename_column_name}'"
             raise RuntimeError(msg)
 
-        if "filter" not in colnames:
-            msg = f"Filter catalog file {filter_catalog_path} has no column filter"
-            raise RuntimeError(msg)
+        if filter_missing:
+            msg = f"Filter catalog file {filter_catalog_path} has no column '{self.filter_column_name}'. "
+            logger.warning(msg)
 
-        table.add_index("object_id")
-        table.add_index("filter")
+            _, counts = np.unique(table[self.object_id_column_name], return_counts=True)
+            if np.max(counts) == 1:
+                msg = "Object IDs are unique, filling in the same filter value across all objects"
+                logger.warning(msg)
+                table.add_column(np.full(len(table), "Unknown_filter"), name=self.filter_column_name)
+            else:
+                msg = "Object IDs are not unique. you must add a 'filter' column to your table or name "
+                msg += "the appropriate column by setting config['data_set']['filter_column_name']"
+                raise RuntimeError(msg)
+
+        table.add_index(self.object_id_column_name)
+
+        if not filter_missing:
+            table.add_index(self.filter_column_name)
+
         return table
 
     def _parse_filter_catalog(self, table: Optional[Table]) -> None:
@@ -165,9 +197,9 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         filter_catalog: files_dict = {}
 
         for row in table:
-            object_id = str(row["object_id"])
-            filter = row["filter"]
-            filename = row["filename"]
+            object_id = str(row[self.object_id_column_name])
+            filter = row[self.filter_column_name]
+            filename = row[self.filename_column_name]
 
             # Insert into the filter catalog.
             if object_id not in filter_catalog:
@@ -217,11 +249,11 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         # Filter for a single reference filter to deduplicate object_id rows
         first_filter_dict = next(iter(self.files.values()))
         first_filter = next(iter(first_filter_dict))
-        mask = self.filter_catalog_table["filter"] == first_filter
+        mask = self.filter_catalog_table[self.filter_column_name] == first_filter
         filter_catalog_table_dedup = self.filter_catalog_table[mask]
 
         # Build fast lookup from object_id to row index
-        id_to_index = {oid: i for i, oid in enumerate(filter_catalog_table_dedup["object_id"])}
+        id_to_index = {oid: i for i, oid in enumerate(filter_catalog_table_dedup[self.object_id_column_name])}
 
         # Extract rows in the desired order
         try:
@@ -235,8 +267,8 @@ class FitsImageDataSet(HyraxDataset, Dataset):
 
         # Filter for the appropriate columns
         colnames = list(self.filter_catalog_table.colnames)
-        #colnames.remove("filename")
-        #colnames.remove("filter")
+        #colnames.remove(self.filename_column_name)
+        #colnames.remove(self.filter_column_name)
 
         logger.debug("Finished preparing metadata")
         return metadata[colnames]

@@ -319,10 +319,19 @@ class InferenceDataSetWriter:
         batch_index = np.zeros(len(self.all_ids), batch_index_dtype)
         batch_index["id"] = np.array(self.all_ids)
         batch_index["batch_num"] = np.array(self.all_batch_nums)
-        batch_index.sort(order="id")
 
+        # Save the batch index in insertion order
+        filename = "batch_index_insertion_order.npy"
+        self._save_file(filename, batch_index)
+
+        # Sort the batch index by id, and save it again
+        batch_index.sort(order="id")
         filename = "batch_index.npy"
+        self._save_file(filename, batch_index)
+
+    def _save_file(self, filename: str, data: np.ndarray):
+        """Save a numpy array to a file in the result directory provided"""
         savepath = self.result_dir / filename
         if savepath.exists():
-            RuntimeError("The path to save batch index already exists.")
-        np.save(savepath, batch_index, allow_pickle=False)
+            raise RuntimeError(f"The path to save {filename} already exists.")
+        np.save(savepath, data, allow_pickle=False)
