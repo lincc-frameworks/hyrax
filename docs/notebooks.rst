@@ -6,3 +6,4 @@ Example notebooks
 
     Getting started with Hyrax <pre_executed/train_model>
     Getting started with Hyrax Custom Datasets <pre_executed/custom_dataset>
+    Training to Similarity Search <pre_executed/hsc_train_to_similarity_search>
