@@ -150,6 +150,8 @@ it's ``x`` input. See the example below, which stacks the g, r, and i fluxes int
 Note that ``to_tensor`` must be defined with ``@staticmethod`` as in the example. The function does not have
 access to the model's data members through the typical ``self`` argument in python.
 
+.. _custom-dataset-instructions:
+
 Defining a dataset class
 ------------------------
 

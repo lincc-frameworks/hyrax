@@ -1,4 +1,57 @@
 # ruff: noqa: D101, D102
+"""
+FitsImageDataSet is for if you have image data in a single directory and some sort of tabular catalog file.
+
+At minimum, your tabular catalog **must** contain the following:
+#. A unique ID column for each astronomical object you are interested in
+#. A filename column containing the filename of the fits image file.
+#. If you have multiple images with the same object ID, they must have separate rows in the catalog, one for
+each image. There must be a column describing the filter on the telescope that differentiates these objects
+
+We recommend all your fits images be roughly the same size.
+
+Setting up hyrax to use FitsImageDataSet works as follows in a notebook. The same configuration options can go
+in a configuration file if you are running from the CLI
+
+.. code-block:: python
+
+    import hyrax
+    h = hyrax.Hyrax()
+    h.config["data_set"]["name"] = "FitsImageDataSet"
+    h.config["general"]["data_dir"] = "/file/path/to/where/your/fits/files/are"
+
+    # Location of your catalog file. Any file format supported by astropy.Table will work
+    h.config["data_set"]["filter_catalog"] = "/file/path/to/your/catalog.fits"
+
+    # Size in pixels to send to ML model. All images must be this size or larger on
+    # both dimensions
+    h.config["data_set"]["crop_to"] = (100,100)
+
+    # This is good to simply attempt to construct the dataset. Once things are working you might try
+    # to train or infer
+    dataset = h.prepare()
+
+This is the minimal setup that can work; however, there are several other configuration options you may need
+to set depending on your usage.
+
+The column names for the required columns are configurable. By default we use ``object_id``, ``filter``, and
+``filename``; however, by setting ``h.config["data_set"]["object_id_column_name"]`` you can set the correct
+name for your catalog file. ``h.config["data_set"]["filter_column_name"]`` and
+``h.config["data_set"]["filename_column_name"]`` work in a corresponding manner.
+
+If your dataset does not fit in memory on your system, we recommend setting
+``h.config["data_set"]["use_cache"]`` and ``h.config["data_set"]["preload_cache"]`` to ``False``.
+Both are ``True`` by default. The former caches all tensors read during an epoch into system RAM, with the
+intent of speeding up later epochs of training if your disk has low bandwidth. The latter begins this process
+of caching all tensors into system RAM in a background thread as soon as the ``FitsImageDataSet`` is
+constructed, front-running the ``train`` or ``infer`` verb requesting tensors. The intent of this optimization
+is to speed up the first epoch of training in the case where your disk has high latency. Both will result in
+crashes if there is not enough room in your system RAM for the entire dataset.
+
+If you need to truncate your dataset to fit in RAM, the easiest way is to select a small number of rows
+from your original catalog file. FitsImageDataSet will only attempt to load images that exist in the catalog.
+
+"""
 
 import logging
 import time
@@ -26,9 +79,26 @@ files_dict = dict[str, dict[str, str]]
 
 
 class FitsImageDataSet(HyraxDataset, Dataset):
+    """
+    Dataset for Fits Images, typically cutouts.
+    """
+
     _called_from_test = False
 
     def __init__(self, config: ConfigDict):
+        """
+        .. py:method:: __init__
+
+        Initialize a FitsImageDataSet
+
+        Most work is done in ``_init_from_path`` and functions it calls in order to allow
+        subclasses to override behavior.
+
+        Parameters
+        ----------
+        config : ConfigDict
+            Nested configuration dictionary for hyrax
+        """
         self._config = config
 
         transform_str = config["data_set"]["transform"]

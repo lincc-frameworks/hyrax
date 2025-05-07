@@ -8,7 +8,10 @@ class VectorDB(ABC):
     """Interface for a vector database"""
 
     def __init__(self, config: Optional[dict] = None, context: Optional[dict] = None):
-        """Create a new instance of a `VectorDB` object.
+        """
+        .. py:method:: __init__
+
+        Create a new instance of a `VectorDB` object.
 
         Parameters
         ----------

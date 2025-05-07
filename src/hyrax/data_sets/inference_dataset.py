@@ -240,6 +240,10 @@ class InferenceDataSetWriter:
     """
 
     def __init__(self, original_dataset: Dataset, result_dir: Union[str, Path]):
+        """
+        .. py:method:: __init__
+
+        """
         self.result_dir = result_dir if isinstance(result_dir, Path) else Path(result_dir)
         self.batch_index = 0
 

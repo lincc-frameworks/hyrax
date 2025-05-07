@@ -153,7 +153,7 @@ class Infer(Verb):
         ----------
         config : ConfigDict
             Full runtime configuration
-        model : _type_
+        model : nn.Module
             The model class to load weights into
 
         """

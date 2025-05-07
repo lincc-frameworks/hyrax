@@ -34,9 +34,15 @@ dim_dict = dict[str, list[tuple[int, int]]]
 
 
 class HSCDataSet(FitsImageDataSet):
+    """Dataset for sets of HSC cutouts created by the ``fibad download`` command."""
+
     _called_from_test = False
 
     def __init__(self, config: ConfigDict):
+        """
+        .. py:method:: __init__
+
+        """
         # Note "rebuild_manifest" is not a config, its a hack for rebuild_manifest mode
         # to ensure we don't use the manifest we believe is corrupt.
         rebuild_manifest = config["rebuild_manifest"] if "rebuild_manifest" in config else False  # noqa: SIM401
@@ -303,7 +309,7 @@ class HSCDataSet(FitsImageDataSet):
         filters_ref : list[str]
             List of the filter names
 
-        cutout_shape: : tuple[int, int]
+        cutout_shape: tuple[int, int]
             Cutout shape tuple provided from constructor
         """
         filters_ref = sorted(filters_ref)

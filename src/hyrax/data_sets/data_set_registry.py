@@ -16,7 +16,9 @@ DATA_SET_REGISTRY: dict[str, type["HyraxDataset"]] = {}
 
 class HyraxDataset:
     """
-    How to make a hyrax dataset::
+    How to make a hyrax dataset:
+
+    .. code-block:: python
 
         from hyrax.data_sets import HyraxDataset
         from torch.utils.data import Dataset
@@ -38,19 +40,24 @@ class HyraxDataset:
     ``ids()`` -> Subclasses may override this directly with their own ids function
     returning a generator of strings
 
-    metadata -> Subclasses may pass an astropy table of metadata to `__init__` in the
-    superclass. This table of metadata will be available through the `metadata_fields` and
-    `metadata` functions.  If desired, a subclass may override these functions directly
+    ``metadata`` -> Subclasses may pass an astropy table of metadata to ``__init__`` in the
+    superclass. This table of metadata will be available through the ``metadata_fields`` and
+    ``metadata`` functions.  If desired, a subclass may override these functions directly
     rather than using the astropy Table interface.
 
-    Further documentation is in the :doc:`/pre_executed/custom_dataset` example notebook
+    Further documentation is in the :doc:`/pre_executed/custom_dataset` example notebook.
 
     """
 
     def __init__(self, config: ConfigDict, metadata_table: Optional[Table] = None):
-        """Overall initialization for all DataSets which saves the config
+        """
+        .. py:method:: __init__
 
-        Subclasses of HyraxDataSet ought call this at the end of their __init__ like::
+        Overall initialization for all DataSets which saves the config
+
+        Subclasses of HyraxDataSet ought call this at the end of their __init__ like:
+
+        .. code-block:: python
 
             from hyrax.data_sets import HyraxDataset
             from torch.utils.data import Dataset
@@ -62,7 +69,9 @@ class HyraxDataset:
 
         If per tensor metadata is available, it is recommended that dataset authors create an
         astropy Table of that data, in the same order as their data and pass that `metadata_table`
-        as shown below::
+        as shown below:
+
+        .. code-block:: python
 
             from hyrax.data_sets import HyraxDataset
             from torch.utils.data import Dataset
