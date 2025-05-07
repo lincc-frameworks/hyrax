@@ -32,7 +32,8 @@ class SubsetSequentialSampler(Sampler[int]):
     r"""Samples elements sequentially from a given list of indices, without replacement.
 
     Args:
-        indices (sequence): a sequence of indices
+        indices : sequence
+            a sequence of indices
     """
 
     indices: Sequence[int]
@@ -312,7 +313,7 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module) -
 
 def extract_model_method(model, method_name):
     """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-     or DataParallel object. For instance, method_name could be `train_step` or
+    or DataParallel object. For instance, method_name could be `train_step` or
     `forward`.
 
     Parameters

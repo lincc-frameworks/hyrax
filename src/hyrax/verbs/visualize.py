@@ -46,9 +46,9 @@ class Visualize(Verb):
             If True, also return the underlying Visualize instance for post-hoc access
             to selection state. Defaults to False.
 
-        **kwargs :
+        kwargs :
             Keyword arguments are passed through as options for the plot object as
-            `plot_pane.opts(**plot_options)`. It is not recommended to override the "tools" plot option,
+            ``plot_pane.opts(**plot_options)``. It is not recommended to override the "tools" plot option,
             because that will break the integration between the plot selection operations and the table.
 
         Returns
@@ -218,8 +218,8 @@ class Visualize(Verb):
         This function accepts the data values from all streams and uses the differences between the current
         call and prior calls to differentiate between different UI events.
 
-        The self.prev_kwargs dictionary is used to store previous calls to this function, and the _called_*
-        helpers perform the differencing for each case.
+        The self.prev_kwargs dictionary is used to store previous calls to this function, and the
+        ``_called_*`` helpers perform the differencing for each case.
 
         Calling this function GUARANTEES that self.points, self.points_id, and self.points_idx
         are up-to-date with the user's latest selection, regardless of the order that Holoviews evaluates
@@ -431,14 +431,14 @@ class Visualize(Verb):
         return (xmin, xmax, ymin, ymax)
 
     def get_selected_df(self):
-        """
+        r"""
         Retrieve a pandas DataFrame containing the currently selected points and their associated metadata.
 
         Returns
         -------
         pd.DataFrame
             A DataFrame with one row per selected point and columns:
-            ["object_id", "x", "y", *additional_fields].
+            ["object_id", "x", "y", \*additional_fields].
         """
 
         import pandas as pd

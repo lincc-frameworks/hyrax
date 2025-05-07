@@ -12,12 +12,18 @@ from hyrax.models.model_registry import hyrax_model
 
 
 class ArcsinhActivation(nn.Module):
+    """Helper module for HSCDAE to use the arcsinh function"""
+
     def forward(self, x):
         return torch.arcsinh(x)
 
 
 @hyrax_model
 class HSCDCAE(nn.Module):
+    """
+    This autoencoder is designed to work with datasets that are prepared with Hyrax's HSC Data Set class.
+    """
+
     def __init__(self, config, shape):
         super().__init__()
 
@@ -76,8 +82,8 @@ class HSCDCAE(nn.Module):
 
         Returns
         -------
-        Current loss value
-            The loss value for the current batch.
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
         """
 
         # Dropping labels if present

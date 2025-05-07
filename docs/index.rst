@@ -112,6 +112,7 @@ section to learn how to configure Hyrax for your specific use case.
    About <about>
    Configuration <configuration>
    Verbs <verbs>
+   Builtin Datasets <autoapi/hyrax/data_sets/index>
    Custom Datasets and Models <external_libraries>
    Data set splits <data_set_splits>
    Model comparison <model_comparison>

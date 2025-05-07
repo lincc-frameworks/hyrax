@@ -14,6 +14,10 @@ class LSSTDataset(HyraxDataset, Dataset):
     BANDS = ["g", "r", "i"]
 
     def __init__(self, config):
+        """
+        .. py:method:: __init__
+
+        """
         try:
             import lsdb
             import lsst.daf.butler as butler

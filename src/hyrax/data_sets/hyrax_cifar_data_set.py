@@ -15,6 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 class HyraxCifarBase:
+    """Base class for Hyrax Cifar datasets"""
+
     def __init__(self, config: ConfigDict):
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
@@ -29,7 +31,9 @@ class HyraxCifarBase:
 
 
 class HyraxCifarDataSet(HyraxCifarBase, HyraxDataset, Dataset):
-    """This is simply a version of CIFAR10 that is initialized using Hyrax config with a transformation
+    """Map style CIFAR 10 dataset for Hyrax
+
+    This is simply a version of CIFAR10 that is initialized using Hyrax config with a transformation
     that works well for example code.
 
     We only use the training split in the data, because it is larger (50k images). Hyrax will then divide that
@@ -49,7 +53,9 @@ class HyraxCifarDataSet(HyraxCifarBase, HyraxDataset, Dataset):
 
 
 class HyraxCifarIterableDataSet(HyraxCifarBase, HyraxDataset, IterableDataset):
-    """This is simply a version of CIFAR10 that is initialized using Hyrax config with a transformation
+    """Iterable style CIFAR 10 dataset for Hyrax
+
+    This is simply a version of CIFAR10 that is initialized using Hyrax config with a transformation
     that works well for example code. This version only supports iteration, and not map-style access
 
     We only use the training split in the data, because it is larger (50k images). Hyrax will then divide that

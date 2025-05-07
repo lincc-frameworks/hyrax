@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# ruff: noqa: N999
 import argparse
 import base64
 import contextlib

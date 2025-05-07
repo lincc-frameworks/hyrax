@@ -1,9 +1,5 @@
 # ruff: noqa: D101, D102
 
-# This example model is taken from the autoenocoder tutorial here
-# https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html
-
-# The train function has been converted into train_step for use with pytorch-ignite.
 
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
@@ -17,6 +13,15 @@ from hyrax.models.model_registry import hyrax_model
 
 @hyrax_model
 class HyraxAutoencoder(nn.Module):
+    """
+    This autoencoder is designed to work with a wide range of image datasets to allow testing.
+
+    This example model is taken from this
+    `autoenocoder tutorial <https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html>`_
+
+    The train function has been converted into train_step for use with pytorch-ignite.
+    """
+
     def __init__(self, config, shape=(5, 250, 250)):
         super().__init__()
         self.config = config
@@ -114,8 +119,8 @@ class HyraxAutoencoder(nn.Module):
 
         Returns
         -------
-        Current loss value
-            The loss value for the current batch.
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
         """
         # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
         x = batch[0] if isinstance(batch, tuple) else batch

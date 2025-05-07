@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 @hyrax_verb
 class Umap(Verb):
-    """Stub of visualization verb"""
+    """Umap latent space points into 2d"""
 
     cli_name = "umap"
     add_parser_kwargs = {}
