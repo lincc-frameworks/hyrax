@@ -2,10 +2,7 @@
 import logging
 
 import numpy as np
-import torchvision.transforms as transforms
-from astropy.table import Table
 from torch.utils.data import Dataset, IterableDataset
-from torchvision.datasets import CIFAR10
 
 from hyrax.config_utils import ConfigDict
 
@@ -18,6 +15,10 @@ class HyraxCifarBase:
     """Base class for Hyrax Cifar datasets"""
 
     def __init__(self, config: ConfigDict):
+        import torchvision.transforms as transforms
+        from astropy.table import Table
+        from torchvision.datasets import CIFAR10
+
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         )

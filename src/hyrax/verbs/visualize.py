@@ -4,10 +4,7 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Union
 
-import numpy as np
-import panel as pn
-from astropy.io import fits
-from holoviews import Image, Layout, Points, Table
+import numpy.typing as npt
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -59,6 +56,8 @@ class Visualize(Verb):
         tuple of (pane, Visualize), if return_verb = True
            Returns a 2-tuple with the pane and the verb instance.
         """
+        import numpy as np
+        import panel as pn
         from holoviews import DynamicMap, extension
         from holoviews.operation.datashader import dynspread, rasterize
         from holoviews.streams import Lasso, Params, RangeXY, SelectionXY, Tap
@@ -186,7 +185,7 @@ class Visualize(Verb):
         else:
             return pane
 
-    def visible_points(self, x_range: Union[tuple, list], y_range: Union[tuple, list]) -> Points:
+    def visible_points(self, x_range: Union[tuple, list], y_range: Union[tuple, list]):
         """Generate a hv.Points object with the points inside the bounding box passed.
 
         This is the event handler for moving or scaling the latent space plot, and is called by Holoviews.
@@ -225,6 +224,8 @@ class Visualize(Verb):
         are up-to-date with the user's latest selection, regardless of the order that Holoviews evaluates
         the DynamicMaps in.
         """
+        import numpy as np
+
         if self._called_lasso(kwargs):
             self.points, self.points_id, self.points_idx = self.poly_select_points(kwargs["geometry"])
         elif self._called_tap(kwargs):
@@ -270,7 +271,7 @@ class Visualize(Verb):
             )
         )
 
-    def poly_select_points(self, geometry) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    def poly_select_points(self, geometry) -> tuple[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike]:
         """Select points inside a polygon.
 
         Parameters
@@ -284,6 +285,7 @@ class Visualize(Verb):
             First element is an ndarray of x/y points in latent space inside the polygon
             Second element is an ndarray of corresponding object ids
         """
+        import numpy as np
         from scipy.spatial import Delaunay
 
         # Coarse grain the points within the axis-aligned bounding box of the geometry
@@ -306,7 +308,7 @@ class Visualize(Verb):
 
     def box_select_points(
         self, x_range: Union[tuple, list], y_range: Union[tuple, list]
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    ) -> tuple[npt.ArrayLike, npt.ArrayLike, npt.ArrayLike]:
         """Return the points and IDs for a box in the latent space
 
         Parameters
@@ -322,6 +324,8 @@ class Visualize(Verb):
             First element is an ndarray of x/y points in latent space inside the box
             Second element is an ndarray of corresponding object ids
         """
+        import numpy as np
+
         indexes = self.box_select_indexes(x_range, y_range)
         ids = np.array(list(self.umap_results.ids()))[indexes]
         points = self.umap_results[indexes].numpy()
@@ -343,6 +347,8 @@ class Visualize(Verb):
         np.ndarray
             Array of data indexes where the latent space representation falls inside the given box.
         """
+        import numpy as np
+
         # Find center
         xc = (x_range[0] + x_range[1]) / 2.0
         yc = (y_range[0] + y_range[1]) / 2.0
@@ -363,7 +369,7 @@ class Visualize(Verb):
         # Filter for points properly inside the box
         return [i for i in indexes if _inside_box(self.umap_results[i].numpy())]
 
-    def selected_objects(self, **kwargs) -> Table:
+    def selected_objects(self, **kwargs):
         """
         Generate the holoview table for a selected set of objects based on input from the
         Lasso, Tap, and SelectionXY streams.
@@ -377,7 +383,9 @@ class Visualize(Verb):
         self.table = self._table_from_points()
         return self.table
 
-    def _table_from_points(self) -> Table:
+    def _table_from_points(self):
+        from holoviews import Table
+
         # Basic table with x/y pairs
         key_dims = ["object_id"]
         value_dims = ["x", "y"] + self.data_fields
@@ -402,6 +410,8 @@ class Visualize(Verb):
 
     @staticmethod
     def _bounding_box(points):
+        import numpy as np
+
         # Find bounding box for the current dataset.
         xmin, xmax, ymin, ymax = (np.inf, -np.inf, np.inf, -np.inf)
         for x, y in points:
@@ -440,7 +450,6 @@ class Visualize(Verb):
             A DataFrame with one row per selected point and columns:
             ["object_id", "x", "y", \*additional_fields].
         """
-
         import pandas as pd
 
         if len(self.points_id) == 0:
@@ -465,12 +474,15 @@ class Visualize(Verb):
         self.spinner.value = False
         return result
 
-    def _make_image_pane(self, total_width: int = 500, *args, **kwargs) -> Layout:
+    def _make_image_pane(self, total_width: int = 500, *args, **kwargs):
         """
         Sample up to 6 of the selected object_ids,
         load their FITS cutouts from [general][data_dir], and
         render as small hv.Image thumbnails in a grid.
         """
+        import numpy as np
+        from astropy.io import fits
+        from holoviews import Image, Layout
 
         def style_plot(plot, element):
             bokeh_plot = plot.state
