@@ -55,7 +55,7 @@ from your original catalog file. FitsImageDataSet will only attempt to load imag
 
 import logging
 import time
-from collections.abc import Generator, Iterable, Iterator
+from collections.abc import Generator, Iterable
 from concurrent.futures import Executor
 from pathlib import Path
 from threading import Thread
@@ -63,11 +63,7 @@ from typing import Any, Callable, Optional, Union
 
 import numpy as np
 import numpy.typing as npt
-from astropy.io import fits
-from astropy.table import Table
-from torch import Tensor, from_numpy
 from torch.utils.data import Dataset
-from torchvision.transforms.v2 import CenterCrop, Compose, Lambda, Transform
 
 from hyrax.config_utils import ConfigDict
 
@@ -99,6 +95,8 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         config : ConfigDict
             Nested configuration dictionary for hyrax
         """
+        from torchvision.transforms.v2 import Lambda
+
         self._config = config
 
         transform_str = config["data_set"]["transform"]
@@ -155,6 +153,9 @@ class FitsImageDataSet(HyraxDataset, Dataset):
             Path or string specifying the directory path that is the root of all filenames in the
             catalog table
         """
+        from torch import Tensor
+        from torchvision.transforms.v2 import Compose
+
         self.path = path
 
         # This is common code
@@ -186,7 +187,7 @@ class FitsImageDataSet(HyraxDataset, Dataset):
 
         logger.info(f"FitsImageDataSet has {len(self)} objects")
 
-    def _set_crop_transform(self) -> Transform:
+    def _set_crop_transform(self):
         """
         Returns the crop transform on the image
 
@@ -196,6 +197,8 @@ class FitsImageDataSet(HyraxDataset, Dataset):
 
         2) Return the crop transform only so it can be added to the transform stack appropriately.
         """
+        from torchvision.transforms.v2 import CenterCrop
+
         self.cutout_shape = self.config["data_set"]["crop_to"] if self.config["data_set"]["crop_to"] else None
 
         if not isinstance(self.cutout_shape, list) or len(self.cutout_shape) != 2:
@@ -205,7 +208,9 @@ class FitsImageDataSet(HyraxDataset, Dataset):
 
         return CenterCrop(size=self.cutout_shape)
 
-    def _read_filter_catalog(self, filter_catalog_path: Optional[Path]) -> Optional[Table]:
+    def _read_filter_catalog(self, filter_catalog_path: Optional[Path]):
+        from astropy.table import Table
+
         if filter_catalog_path is None:
             msg = "Must provide a filter catalog in config['data_set']['filter_catalog']"
             raise RuntimeError(msg)
@@ -250,7 +255,7 @@ class FitsImageDataSet(HyraxDataset, Dataset):
 
         return table
 
-    def _parse_filter_catalog(self, table: Optional[Table]) -> None:
+    def _parse_filter_catalog(self, table) -> None:
         """Sets self.files by parsing the catalog.
 
         Subclasses may override this function to control parsing of the table more directly, but the
@@ -305,7 +310,7 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         # fetching
         pass
 
-    def _prepare_metadata(self) -> Optional[Table]:
+    def _prepare_metadata(self):
         # This happens when filter_catalog_table is injected in unit tests
         if FitsImageDataSet._called_from_test:
             return None
@@ -366,7 +371,7 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         """
         return len(self.files)
 
-    def __getitem__(self, idx: int) -> Tensor:
+    def __getitem__(self, idx: int):
         if idx >= len(self.files) or idx < 0:
             raise IndexError
 
@@ -528,7 +533,7 @@ class FitsImageDataSet(HyraxDataset, Dataset):
                     self._log_duration_tensorboard("preload_1k_obj_s", start_time)
                     start_time = time.monotonic_ns()
 
-    def _lazy_map_executor(self, executor: Executor, ids: Iterable[str]) -> Iterator[Tensor]:
+    def _lazy_map_executor(self, executor: Executor, ids: Iterable[str]):
         """This is a version of concurrent.futures.Executor map() which lazily evaluates the iterator passed
         We do this because we do not want all of the tensors to remain in memory during pre-loading. We would
         prefer a smaller set of in-flight tensors.
@@ -554,8 +559,9 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         Iterator[torch.Tensor]
             An iterator over torch tensors, lazily loaded by running the work_fn as needed.
         """
-
         from concurrent.futures import FIRST_COMPLETED, Future, wait
+
+        from torch import Tensor
 
         max_futures = FitsImageDataSet._determine_numprocs_preload()
         queue: list[Future[Tensor]] = []
@@ -609,15 +615,17 @@ class FitsImageDataSet(HyraxDataset, Dataset):
             duration_s = (now - start_time) / 1.0e9
             self.tensorboardx_logger.add_scalar(name, duration_s, since_tensorboard_start_us)
 
-    def _check_object_id_to_tensor_cache(self, object_id: str) -> Optional[Tensor]:
+    def _check_object_id_to_tensor_cache(self, object_id: str):
         return self.tensors.get(object_id, None)
 
-    def _populate_object_id_to_tensor_cache(self, object_id: str) -> Tensor:
+    def _populate_object_id_to_tensor_cache(self, object_id: str):
         data_torch = self._read_object_id(object_id)
         self.tensors[object_id] = data_torch
         return data_torch
 
-    def _read_object_id(self, object_id: str) -> Tensor:
+    def _read_object_id(self, object_id: str):
+        from astropy.io import fits
+
         start_time = time.monotonic_ns()
 
         # Read all the files corresponding to this object
@@ -635,7 +643,9 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         self._log_duration_tensorboard("object_total_read_time_s", start_time)
         return data_torch
 
-    def _convert_to_torch(self, data: list[npt.ArrayLike]) -> Tensor:
+    def _convert_to_torch(self, data: list[npt.ArrayLike]):
+        from torch import from_numpy
+
         start_time = time.monotonic_ns()
 
         # Push all the filter data into a tensor object
@@ -655,7 +665,7 @@ class FitsImageDataSet(HyraxDataset, Dataset):
     # Do we want to memoize them on first __getitem__ call?
     #
     # For now we just do it the naive way
-    def _object_id_to_tensor(self, object_id: str) -> Tensor:
+    def _object_id_to_tensor(self, object_id: str):
         """Converts an object_id to a pytorch tensor with dimenstions (self.num_filters, self.cutout_shape[0],
         self.cutout_shape[1]). This is done by reading the file and slicing away any excess pixels at the
         far corners of the image from (0,0).
