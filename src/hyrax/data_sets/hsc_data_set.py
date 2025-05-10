@@ -10,22 +10,9 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from astropy.io import fits
-from astropy.table import Table
 from schwimmbad import MultiPool
-from torchvision.transforms.v2 import CenterCrop
 
 from hyrax.config_utils import ConfigDict
-from hyrax.download import Downloader
-from hyrax.downloadCutout.downloadCutout import (
-    parse_bool,
-    parse_degree,
-    parse_latitude,
-    parse_longitude,
-    parse_rerun,
-    parse_tract_opt,
-    parse_type,
-)
 
 from .fits_image_dataset import FitsImageDataSet, files_dict
 
@@ -43,6 +30,8 @@ class HSCDataSet(FitsImageDataSet):
         .. py:method:: __init__
 
         """
+        from hyrax.download import Downloader
+
         # Note "rebuild_manifest" is not a config, its a hack for rebuild_manifest mode
         # to ensure we don't use the manifest we believe is corrupt.
         rebuild_manifest = config["rebuild_manifest"] if "rebuild_manifest" in config else False  # noqa: SIM401
@@ -61,7 +50,9 @@ class HSCDataSet(FitsImageDataSet):
 
         super().__init__(config)
 
-    def _read_filter_catalog(self, filter_catalog_path: Optional[Path]) -> Optional[Table]:
+    def _read_filter_catalog(self, filter_catalog_path: Optional[Path]):
+        from astropy.table import Table
+
         try:
             retval = super()._read_filter_catalog(filter_catalog_path)
         except RuntimeError:
@@ -84,7 +75,7 @@ class HSCDataSet(FitsImageDataSet):
     #
     # In the HSC case this will also have to do fallback and call
     # _scan_file_dimensions() and/or _scan_file_names() and pass back only the files dict.
-    def _parse_filter_catalog(self, table: Table) -> None:
+    def _parse_filter_catalog(self, table) -> None:
         object_id_missing = self.object_id_column_name not in table.colnames if table is not None else True
         filter_missing = self.filter_column_name not in table.colnames if table is not None else True
         filename_missing = self.filename_column_name not in table.colnames if table is not None else True
@@ -137,6 +128,8 @@ class HSCDataSet(FitsImageDataSet):
         return self.files
 
     def _set_crop_transform(self):
+        from torchvision.transforms.v2 import CenterCrop
+
         cutout_shape = self.config["data_set"]["crop_to"] if self.config["data_set"]["crop_to"] else None
         self.cutout_shape = self._check_file_dimensions() if cutout_shape is None else cutout_shape
         return CenterCrop(size=self.cutout_shape)
@@ -285,6 +278,8 @@ class HSCDataSet(FitsImageDataSet):
 
     @staticmethod
     def _fits_file_dims(filepath) -> tuple[int, int]:
+        from astropy.io import fits
+
         try:
             with fits.open(filepath) as hdul:
                 return (hdul[1].shape[0], hdul[1].shape[1])
@@ -439,6 +434,19 @@ class HSCDataSet(FitsImageDataSet):
         return cutout_width, cutout_height
 
     def _rebuild_manifest(self, config):
+        from astropy.table import Table
+
+        from hyrax.download import Downloader
+        from hyrax.downloadCutout.downloadCutout import (
+            parse_bool,
+            parse_degree,
+            parse_latitude,
+            parse_longitude,
+            parse_rerun,
+            parse_tract_opt,
+            parse_type,
+        )
+
         if self.filter_catalog:
             raise RuntimeError("Cannot rebuild manifest. Set the filter_catalog=false and rerun")
 

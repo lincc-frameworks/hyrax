@@ -1,11 +1,8 @@
 # ruff: noqa: D102, B027
 import logging
 from collections.abc import Generator
-from typing import Optional
 
 import numpy.typing as npt
-from astropy.table import Table
-from torch.utils.data import Dataset, IterableDataset
 
 from hyrax.config_utils import ConfigDict
 from hyrax.plugin_utils import get_or_load_class, update_registry
@@ -49,7 +46,7 @@ class HyraxDataset:
 
     """
 
-    def __init__(self, config: ConfigDict, metadata_table: Optional[Table] = None):
+    def __init__(self, config: ConfigDict, metadata_table=None):
         """
         .. py:method:: __init__
 
@@ -117,6 +114,8 @@ class HyraxDataset:
         bool
             True if underlying dataset is iterable
         """
+        from torch.utils.data import Dataset, IterableDataset
+
         if isinstance(self, (Dataset, IterableDataset)):
             return isinstance(self, IterableDataset)
         else:
@@ -132,6 +131,8 @@ class HyraxDataset:
         bool
             True if underlying dataset is map-style
         """
+        from torch.utils.data import Dataset, IterableDataset
+
         if isinstance(self, (Dataset, IterableDataset)):
             # All torch IterableDatasets are also Datasets
             return not isinstance(self, IterableDataset)
