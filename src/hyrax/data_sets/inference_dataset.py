@@ -6,7 +6,6 @@ from typing import Optional, Union
 
 import numpy as np
 import numpy.typing as npt
-from torch import Tensor, from_numpy
 from torch.utils.data import Dataset
 
 from hyrax.config_utils import find_most_recent_results_dir
@@ -98,7 +97,9 @@ class InferenceDataSet(HyraxDataset, Dataset):
         """
         return (str(id) for id in self.batch_index["id"])
 
-    def __getitem__(self, idx: Union[int, np.ndarray]) -> Tensor:
+    def __getitem__(self, idx: Union[int, np.ndarray]):
+        from torch import from_numpy
+
         try:
             _ = (e for e in idx)  # type: ignore[union-attr]
         except TypeError:

@@ -3,23 +3,7 @@ from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Union
 
-import numpy as np
-from tensorboardX import SummaryWriter
-from torch import Tensor
-
-from hyrax.config_utils import (
-    ConfigDict,
-    create_results_dir,
-    find_most_recent_results_dir,
-    log_runtime_config,
-)
-from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
-from hyrax.pytorch_ignite import (
-    create_evaluator,
-    dist_data_loader,
-    setup_dataset,
-    setup_model,
-)
+from hyrax.config_utils import ConfigDict
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -52,6 +36,22 @@ class Infer(Verb):
         config : ConfigDict
             The parsed config file as a nested dict
         """
+        import numpy as np
+        from tensorboardX import SummaryWriter
+        from torch import Tensor
+
+        from hyrax.config_utils import (
+            create_results_dir,
+            log_runtime_config,
+        )
+        from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
+        from hyrax.pytorch_ignite import (
+            create_evaluator,
+            dist_data_loader,
+            setup_dataset,
+            setup_model,
+        )
+
         config = self.config
         context = {}
 
@@ -157,6 +157,8 @@ class Infer(Verb):
             The model class to load weights into
 
         """
+        from hyrax.config_utils import find_most_recent_results_dir
+
         weights_file: Optional[Union[str, Path]] = (
             config["infer"]["model_weights_file"] if config["infer"]["model_weights_file"] else None
         )
