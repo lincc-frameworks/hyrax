@@ -23,5 +23,20 @@
         "version": "089635b7375b19f5c790c7337625b200db3327a27d63c756ac5dbb4c1fc25b62",
         "warmup_time": -1
     },
+    "benchmarks.time_import": {
+        "code": "def time_import():\n    \"\"\"\n    time how long it takes to import our package. This should stay relatively fast.\n\n    Note, the actual import time will be slightly lower than this on a comparable system\n    However, high import times do affect this metric proportionally.\n    \"\"\"\n    result = subprocess.run([\"python\", \"-c\", \"import hyrax\"])\n    assert result.returncode == 0",
+        "min_run_count": 2,
+        "name": "benchmarks.time_import",
+        "number": 0,
+        "param_names": [],
+        "params": [],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "type": "time",
+        "unit": "seconds",
+        "version": "6a64ee071d3191fd146072ef269ea2f274ab7d7e90f8b4958584aa5636e6d64c",
+        "warmup_time": -1
+    },
     "version": 2
 }
