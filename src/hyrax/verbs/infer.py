@@ -1,9 +1,6 @@
 import logging
-from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Union
-
-from hyrax.config_utils import ConfigDict
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -18,11 +15,11 @@ class Infer(Verb):
     add_parser_kwargs = {}
 
     @staticmethod
-    def setup_parser(parser: ArgumentParser):
+    def setup_parser(parser):
         """We don't need any parser setup for CLI opts"""
         pass
 
-    def run_cli(self, args: Optional[Namespace] = None):
+    def run_cli(self, args=None):
         """CLI stub for Infer verb"""
         logger.info("infer run from CLI")
 
@@ -145,7 +142,7 @@ class Infer(Verb):
         return InferenceDataSet(config, results_dir)
 
     @staticmethod
-    def load_model_weights(config: ConfigDict, model):
+    def load_model_weights(config, model):
         """Loads the model weights from a file. Raises RuntimeError if this is not possible due to
         config, missing or malformed file
 
