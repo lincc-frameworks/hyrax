@@ -3,9 +3,6 @@ import sys
 from pathlib import Path
 from typing import Optional, Union
 
-from .config_utils import ConfigManager
-from .verbs.verb_registry import all_class_verbs, fetch_verb_class, is_verb_class
-
 
 class Hyrax:
     """
@@ -48,6 +45,8 @@ class Hyrax:
         environments.
 
         """
+        from .config_utils import ConfigManager
+
         self.config_manager = ConfigManager(runtime_config_filepath=config_file)
         self.config = self.config_manager.config
 
@@ -196,9 +195,13 @@ class Hyrax:
     # functions from the various verb classes appear to be
     # methods on the hyrax object
     def __dir__(self):
+        from .verbs.verb_registry import all_class_verbs
+
         return sorted(dir(Hyrax) + list(self.__dict__.keys()) + all_class_verbs())
 
     def __getattr__(self, name):
+        from .verbs.verb_registry import fetch_verb_class, is_verb_class
+
         if not is_verb_class(name):
             return None
 

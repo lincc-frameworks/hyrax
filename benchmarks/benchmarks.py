@@ -5,17 +5,7 @@ https://asv.readthedocs.io/en/stable/writing_benchmarks.html."""
 
 import subprocess
 
-from hyrax import example_benchmarks
-
-
-def time_computation():
-    """Time computations are prefixed with 'time'."""
-    example_benchmarks.runtime_computation()
-
-
-def mem_list():
-    """Memory computations are prefixed with 'mem' or 'peakmem'."""
-    return example_benchmarks.memory_computation()
+import hyrax
 
 
 def time_import():
@@ -27,3 +17,99 @@ def time_import():
     """
     result = subprocess.run(["python", "-c", "import hyrax"])
     assert result.returncode == 0
+
+
+def time_help():
+    """
+    time how long it takes to run --help from the CLI
+    """
+    result = subprocess.run(["hyrax", "--help"])
+    assert result.returncode == 0
+
+
+def time_infer_help():
+    """
+    time how long it takes to do verb-specific help for infer
+    """
+    result = subprocess.run(["hyrax", "infer", "--help"])
+    assert result.returncode == 0
+
+
+def time_train_help():
+    """
+    time how long it takes to do verb-specific help for train
+    """
+    result = subprocess.run(["hyrax", "train", "--help"])
+    assert result.returncode == 0
+
+
+def time_lookup_help():
+    """
+    time how long it takes to do verb-specific help for lookup
+    """
+    result = subprocess.run(["hyrax", "lookup", "--help"])
+    assert result.returncode == 0
+
+
+def time_umap_help():
+    """
+    time how long it takes to do verb-specific help for lookup
+    """
+    result = subprocess.run(["hyrax", "umap", "--help"])
+    assert result.returncode == 0
+
+
+def time_index_help():
+    """
+    time how long it takes to do verb-specific help for lookup
+    """
+    result = subprocess.run(["hyrax", "index", "--help"])
+    assert result.returncode == 0
+
+
+def time_download_help():
+    """
+    time how long it takes to do verb-specific help for download
+    """
+    result = subprocess.run(["hyrax", "download", "--help"])
+    assert result.returncode == 0
+
+
+def time_prepare_help():
+    """
+    time how long it takes to do verb-specific help for prepare
+    """
+    result = subprocess.run(["hyrax", "prepare", "--help"])
+    assert result.returncode == 0
+
+
+def time_rebuild_manifest_help():
+    """
+    time how long it takes to do verb-specific help for rebuild_manifest
+    """
+    result = subprocess.run(["hyrax", "rebuild_manifest", "--help"])
+    assert result.returncode == 0
+
+
+def time_visualize_help():
+    """
+    time how long it takes to do verb-specific help for visualize
+    """
+    result = subprocess.run(["hyrax", "visualize", "--help"])
+    assert result.returncode == 0
+
+
+def time_nb_obj_construct():
+    """
+    time how long notebook users must wait for our interface object to construct
+    """
+    hyrax.Hyrax()
+
+
+def time_nb_obj_dir():
+    """
+    Time how long it takes to construct the interface object and load the
+    dynamcally generated list of verbs using `dir()`
+    """
+    h = hyrax.Hyrax()
+    dir(h)

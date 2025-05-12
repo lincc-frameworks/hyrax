@@ -2,9 +2,6 @@ import logging
 from abc import ABC
 from typing import Optional
 
-from hyrax.config_utils import ConfigDict
-from hyrax.plugin_utils import update_registry
-
 logger = logging.getLogger(__name__)
 
 
@@ -16,7 +13,7 @@ class Verb(ABC):  # noqa: B024
     # subparser.add_parser()
     add_parser_kwargs: dict[str, str] = {}
 
-    def __init__(self, config: ConfigDict):
+    def __init__(self, config):
         """
         .. py:method:: __init__
 
@@ -39,6 +36,8 @@ VERB_REGISTRY: dict[str, Optional[type[Verb]]] = {
 
 def hyrax_verb(cls: type[Verb]) -> type[Verb]:
     """Decorator to register a hyrax verb"""
+    from hyrax.plugin_utils import update_registry
+
     update_registry(VERB_REGISTRY, cls.cli_name, cls)  # type: ignore[attr-defined]
     return cls
 

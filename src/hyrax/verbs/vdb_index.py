@@ -9,7 +9,6 @@ from hyrax.config_utils import (
     create_results_dir,
     find_most_recent_results_dir,
 )
-from hyrax.data_sets.inference_dataset import InferenceDataSet
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -69,6 +68,7 @@ class Index(Verb):
         """
         from tqdm import tqdm
 
+        from hyrax.data_sets.inference_dataset import InferenceDataSet
         from hyrax.vector_dbs.vector_db_factory import vector_db_factory
 
         config = self.config
