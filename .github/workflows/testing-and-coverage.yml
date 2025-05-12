@@ -31,7 +31,7 @@ jobs:
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Run unit tests with pytest
       run: |
-        python -m pytest --cov=hyrax --cov-report=xml
+        python -m pytest --cov=hyrax --cov-report=xml -m "not slow"
     - name: Upload coverage report to codecov
       uses: codecov/codecov-action@v5
       with:

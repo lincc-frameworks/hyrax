@@ -1,13 +1,10 @@
 # ruff: noqa: D101, D102
 
-# This example model is taken from the autoenocoder tutorial here
-# https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html
-
-# The train function has been converted into train_step for use with pytorch-ignite.
 
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
+from torch import Tensor
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
@@ -16,6 +13,15 @@ from hyrax.models.model_registry import hyrax_model
 
 @hyrax_model
 class HyraxAutoencoder(nn.Module):
+    """
+    This autoencoder is designed to work with a wide range of image datasets to allow testing.
+
+    This example model is taken from this
+    `autoenocoder tutorial <https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html>`_
+
+    The train function has been converted into train_step for use with pytorch-ignite.
+    """
+
     def __init__(self, config, shape=(5, 250, 250)):
         super().__init__()
         self.config = config
@@ -113,8 +119,8 @@ class HyraxAutoencoder(nn.Module):
 
         Returns
         -------
-        Current loss value
-            The loss value for the current batch.
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
         """
         # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
         x = batch[0] if isinstance(batch, tuple) else batch
@@ -131,6 +137,22 @@ class HyraxAutoencoder(nn.Module):
         self.optimizer.step()
 
         return {"loss": loss.item()}
+
+    @staticmethod
+    def to_tensor(data_dict) -> tuple[Tensor]:
+        """This function converts structured data to the input tensor we need to run
+
+        Parameters
+        ----------
+        data_dict : dict
+            The dictionary returned from our data source
+        """
+        if "image" in data_dict and "label" in data_dict:
+            image = data_dict["image"]
+            label = data_dict["label"]
+            return (image, label)
+        else:
+            raise RuntimeError("Data dict did not contain both image and label keys.")
 
     def _optimizer(self):
         return optim.Adam(self.parameters(), lr=1e-3)

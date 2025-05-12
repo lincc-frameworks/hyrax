@@ -195,9 +195,22 @@ use_cache = true
 # Warning: Only suitable for situations where the entire dataset fits in system memory
 preload_cache = true
 
+# Override the name of the object_id column for FitsImageDataset and HSCDataset
+object_id_column_name = false
+
+# Override the name of the filter column for FitsImageDataset and HSCDataset
+filter_column_name = false
+
+# Override the name of the filename column for FitsImageDataset and HSCDataset
+filename_column_name = false
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
+
+# STRONG RECOMMENDATION: Leave this as `false`.
+# Ensure that the data loader does no secondary shuffling of the data.
+shuffle = false
 
 
 [infer]
@@ -212,6 +225,13 @@ split = false
 # The type of vector db to use. Use "false" to disable vector database.
 name = "chromadb"
 
+# The directory where the vector database will be stored. Use "false" to create
+# a new vector database in a timestamped directory. Otherwise set to a path.
+vector_db_dir = false
+
+# The path to inference results. Setting to "false" will use the most recent
+# inference results.
+infer_results_dir = false
 
 [results]
 # Path to inference results to use for visualization and lookups. Uses latest inference run if none provided.
@@ -221,6 +241,12 @@ inference_dir = false
 [umap]
 # Number of data points used to fit the umap transform.
 fit_sample_size = 1024
+
+# Save the fitted umap as a pickle file 
+save_fit_umap = true
+
+# Use multiprocessing during transforming to umap space (More memory intensive)
+parallel = false
 
 # Name of the umap implementation to use
 name = "umap.UMAP"
@@ -234,3 +260,11 @@ n_components = 2
 # Controls how UMAP balances local versus global structure in the data.
 # See official documentation for details.
 n_neighbors = 15
+
+[visualize]
+
+# List of metadata field names to use in visualizer. Must be available as metadata in your dataset
+fields = []
+
+# Whether to display a panel of randomly chosen images corresponding to the selected points
+display_images = false

@@ -1,6 +1,6 @@
-.. _model_evaluation:
+.. _model_comparison:
 
-Model evaluation
+Model comparison
 ================
 
 One goal of Hyrax is to make model evaluation easier. Many tools exist for visualization
@@ -23,7 +23,7 @@ MLFlow
 Hyrax supports MLFlow for model tracking and experiment management.
 By default the data collected for each run will be nested under the experiment
 "notebook" using a run name that is the same as the results directory,
-i.e. <timestampe>-train-<uid>.
+i.e. <timestamp>-train-<uid>.
 
 The MLFlow server can be run from within a notebook or from the command line.
 

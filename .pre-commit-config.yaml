@@ -50,7 +50,7 @@ repos:
       - id: xcxc-check
         name: Check for note-to-self comments (xcxc)
         description: Grep all source files for xcxc which signifies a comment that shouldn't be checked in.
-        entry: bash -c "[[ $(grep -riI xcxc --exclude .pre-commit-config.yaml --exclude-dir _readthedocs --exclude-dir htmlcov ./* >&2 ; echo $?) == 1 ]]"
+        entry: bash -c "[[ $(grep -rniI xcxc --exclude .pre-commit-config.yaml --exclude-dir _readthedocs --exclude-dir htmlcov  --exclude-dir _results --exclude-dir env ./* >&2 ; echo $?) == 1 ]]"
         language: system
         pass_filenames: false
         always_run: true
@@ -94,6 +94,9 @@ repos:
             "./docs/_build/doctrees", # Directory
             "-D", # Flag to override settings in conf.py
             "exclude_patterns=notebooks/*,_build", # Exclude our notebooks from pre-commit
+            "-W", # Warnings are errors
+            "--keep-going", # Finish generating docs even if errors occur
+            "-n", # Nitpick mode among other things checks for broken links
           ]
     # Run unit tests, verify that they pass. Note that coverage is run against
     # the ./src directory here because that is what will be committed. In the
@@ -105,7 +108,7 @@ repos:
       - id: pytest-check
         name: Run unit tests
         description: Run unit tests with pytest.
-        entry: bash -c "if python -m pytest --co -qq; then python -m pytest --cov=./src --cov-report=html; fi"
+        entry: bash -c "if python -m pytest --co -qq -m 'not slow'; then python -m pytest --cov=./src --cov-report=html -m 'not slow'; fi"
         language: system
         pass_filenames: false
         always_run: true

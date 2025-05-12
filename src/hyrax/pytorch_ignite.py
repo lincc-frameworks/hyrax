@@ -11,20 +11,43 @@ with warnings.catch_warnings():
     warnings.simplefilter(action="ignore", category=DeprecationWarning)
     import mlflow
 
+from collections.abc import Iterator, Sequence
+
 import torch
-from ignite.engine import Engine, Events
+from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from tensorboardX import SummaryWriter
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset
-from torch.utils.data.sampler import SubsetRandomSampler
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.config_utils import ConfigDict
 from hyrax.data_sets.data_set_registry import HyraxDataset, fetch_data_set_class
 from hyrax.models.model_registry import fetch_model_class
 
 logger = logging.getLogger(__name__)
+
+
+class SubsetSequentialSampler(Sampler[int]):
+    r"""Samples elements sequentially from a given list of indices, without replacement.
+
+    Args:
+        indices : sequence
+            a sequence of indices
+    """
+
+    indices: Sequence[int]
+
+    def __init__(self, indices: Sequence[int], generator=None) -> None:
+        self.indices = indices
+        self.generator = generator
+
+    def __iter__(self) -> Iterator[int]:
+        for i in self.indices:
+            yield i
+
+    def __len__(self) -> int:
+        return len(self.indices)
 
 
 def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
@@ -70,7 +93,7 @@ def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    model = model_cls(config=config, shape=dataset.shape())  # type: ignore[attr-defined]
+    model = model_cls(config=config, dataset=dataset)  # type: ignore[attr-defined]
 
     return model
 
@@ -103,10 +126,24 @@ def dist_data_loader(
     For multiple splits, we return a dictionary where the keys are the names of the splits
     and the value is either a Dataloader as described above or the value None if the split
     was not configured.
+
+    If an iterable dataset is passed, we cannot create multiple splits with a pyTorch sampler object
+    so we return the same thing for all splits, which is a dataloader representing the entire iterable
     """
     # Handle case where no split is needed.
     if isinstance(split, bool):
-        return idist.auto_dataloader(data_set, sampler=None, **config["data_loader"])
+        # We still need to return the list of indexes used by the dataloader,
+        # but here, it will simply be the indexes for the entire dataset.
+        if data_set.is_iterable():
+            ids = list(data_set.ids())
+            indexes = list(range(len(ids)))
+        else:
+            indexes = list(range(len(data_set)))
+
+        # Note that when sampler=None, a default sampler is used. The default config
+        # defines shuffle=False, which should prevent any shuffling of of the data.
+        # We expect that this will be the primary use case when running inference.
+        return idist.auto_dataloader(data_set, sampler=None, **config["data_loader"]), indexes
 
     # Sanitize split argument
     if isinstance(split, str):
@@ -118,18 +155,30 @@ def dist_data_loader(
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    # Create the indexes for all splits based on config.
-    indexes = create_splits(data_set, config)
+    if data_set.is_iterable():
+        ids = list(data_set.ids())
+        indexes = list(range(len(ids)))
+        dataloaders = {
+            s: (idist.auto_dataloader(data_set, pin_memory=True, **config["data_loader"]), indexes)
+            for s in split
+        }
+    else:
+        # Create the indexes for all splits based on config.
+        indexes = create_splits(data_set, config)
 
-    # Create samplers and dataloaders for each split we are interested in
-    samplers = {
-        s: SubsetRandomSampler(indexes[s], generator=torch_rng) if indexes.get(s) else None for s in split
-    }
+        # Create samplers and dataloaders for each split we are interested in
+        samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
 
-    dataloaders = {
-        split: idist.auto_dataloader(data_set, sampler=sampler, **config["data_loader"]) if sampler else None
-        for split, sampler in samplers.items()
-    }
+        dataloaders = {
+            split: (idist.auto_dataloader(data_set, sampler=sampler, **config["data_loader"]), indexes[split])
+            if sampler
+            else None
+            for split, sampler in samplers.items()
+        }
+
+        none_keys = [k for k, v in dataloaders.items() if v is None]
+        for key in none_keys:
+            del dataloaders[key]
 
     # Return only one if we were only passed one split in, return the dictionary otherwise.
     return dataloaders[split[0]] if len(split) == 1 else dataloaders
@@ -243,18 +292,20 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module) -
     """
 
     # This wraps a model-specific function (func) to move data to the appropriate device.
-    def _inner_loop(func, device, engine, batch):
-        #! This feels brittle, it would be worth revisiting this.
-        #  We assume that the batch data will generally have two forms.
-        # 1) A torch.Tensor that represents N samples.
-        # 2) A tuple (or list) of torch.Tensors, where the first tensor is the
-        # data, and the second is labels.
+    def _inner_loop(func, to_tensor, device, engine, batch):
+        # If we have a dict of lists, we need to decode the dict
+        # This will give us either a tensor of the whole batch or a tuple
+        if isinstance(batch, dict):
+            batch = to_tensor(batch)
+
+        # Send the batch to the device
         batch = batch.to(device) if isinstance(batch, torch.Tensor) else tuple(i.to(device) for i in batch)
         return func(batch)
 
     def _create_process_func(funcname, device, model):
         inner_step = extract_model_method(model, funcname)
-        inner_loop = functools.partial(_inner_loop, inner_step, device)
+        to_tensor = extract_model_method(model, "to_tensor")
+        inner_loop = functools.partial(_inner_loop, inner_step, to_tensor, device)
         return inner_loop
 
     return Engine(_create_process_func(funcname, device, model))
@@ -262,7 +313,7 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module) -
 
 def extract_model_method(model, method_name):
     """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-     or DataParallel object. For instance, method_name could be `train_step` or
+    or DataParallel object. For instance, method_name could be `train_step` or
     `forward`.
 
     Parameters
@@ -281,7 +332,9 @@ def extract_model_method(model, method_name):
     return getattr(model.module if wrapped else model, method_name)
 
 
-def create_evaluator(model: torch.nn.Module, save_function: Callable[[torch.Tensor], Any]) -> Engine:
+def create_evaluator(
+    model: torch.nn.Module, save_function: Callable[[torch.Tensor, torch.Tensor], Any]
+) -> Engine:
     """Creates an evaluator engine
     Primary purpose of this function is to attach the appropriate handlers to an evaluator engine
 
@@ -311,7 +364,7 @@ def create_evaluator(model: torch.nn.Module, save_function: Callable[[torch.Tens
 
     @evaluator.on(Events.ITERATION_COMPLETED)
     def log_iteration_complete(evaluator):
-        save_function(evaluator.state.output)
+        save_function(evaluator.state.batch, evaluator.state.output)
 
     @evaluator.on(Events.COMPLETED)
     def log_total_time(evaluator):
@@ -363,6 +416,7 @@ def create_validator(
     model = idist.auto_model(model)
 
     validator = create_engine("train_step", device, model)
+    fixup_engine(validator)
 
     @validator.on(Events.STARTED)
     def set_model_to_eval_mode():
@@ -372,12 +426,12 @@ def create_validator(
     def set_model_to_train_mode():
         model.train()
 
-    @validator.on(Events.EPOCH_COMPLETED)
+    @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss():
         logger.debug(f"Validation run time: {validator.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Validation metrics: {validator.state.output}")
 
-    @trainer.on(Events.EPOCH_COMPLETED)
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
         validator.run(validation_data_loader)
 
@@ -386,7 +440,7 @@ def create_validator(
         tensorboardx_logger.add_scalar("training/validation/loss", validator.state.output["loss"], step)
         mlflow.log_metrics({"validation/loss": validator.state.output["loss"]}, step=step)
 
-    validator.add_event_handler(Events.EPOCH_COMPLETED, log_validation_loss, trainer)
+    validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
     return validator
 
@@ -419,6 +473,7 @@ def create_trainer(
     model.train()
     model = idist.auto_model(model)
     trainer = create_engine("train_step", device, model)
+    fixup_engine(trainer)
 
     optimizer = extract_model_method(model, "optimizer")
 
@@ -435,7 +490,7 @@ def create_trainer(
         to_save,
         DiskSaver(results_directory, require_empty=False),
         n_saved=1,
-        global_step_transform=global_step_from_engine(trainer),
+        global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
         filename_pattern="{name}_epoch_{global_step}.{ext}",
     )
 
@@ -446,7 +501,7 @@ def create_trainer(
         to_save,
         DiskSaver(results_directory, require_empty=False),
         n_saved=1,
-        global_step_transform=global_step_from_engine(trainer),
+        global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
         score_name="loss",
         score_function=neg_loss_score,
         greater_or_equal=True,
@@ -473,13 +528,13 @@ def create_trainer(
         tensorboardx_logger.add_scalar("training/training/loss", trainer.state.output["loss"], step)
         mlflow.log_metrics({"training/loss": trainer.state.output["loss"]}, step=step)
 
-    @trainer.on(Events.EPOCH_COMPLETED)
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss(trainer):
         logger.debug(f"Epoch {trainer.state.epoch} run time: {trainer.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Epoch {trainer.state.epoch} metrics: {trainer.state.output}")
 
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, latest_checkpoint)
-    trainer.add_event_handler(Events.EPOCH_COMPLETED, best_checkpoint)
+    trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
+    trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
 
     @trainer.on(Events.COMPLETED)
     def log_total_time(trainer):
@@ -498,3 +553,38 @@ def create_trainer(
     pbar.attach(trainer)
 
     return trainer
+
+
+class HyraxEvents(EventEnum):
+    """
+    Workaround event for a pytorch ignite bug. See fixup_engine for details
+    """
+
+    HYRAX_EPOCH_COMPLETED = "HyraxEpochCompleted"
+
+
+def fixup_engine(engine: Engine) -> Engine:
+    """
+    Workaround for this pytorch ignite bug (https://github.com/pytorch/ignite/issues/3372) where
+    engine.state.output is not available at EPOCH_COMPLETED or later times (COMPLETED, etc)
+
+    We create a new event HYRAX_EPOCH_COMPLETED which triggers at ITERATION_COMPLETED, but only on the final
+    iteration. This is just before the erronious state reset.
+
+    This hack relies on pytorch ignite internal state, but can be removed as soon as our fix is mainlined
+    (https://github.com/pytorch/ignite/pull/3373) in version 0.6.0 estimated August 2025
+    """
+    from more_itertools import peekable
+
+    engine.register_events(*HyraxEvents)
+
+    @engine.on(Events.ITERATION_COMPLETED)
+    def maintain_event_handler(engine):
+        # Ensure we have a peekable iterator in the engine.
+        if not hasattr(engine._dataloader_iter, "peek"):
+            # Replace with a pass-through peekable iterator
+            engine._dataloader_iter = peekable(engine._dataloader_iter)
+
+        # On the last iteration the peekable iterator evaluates as true
+        if not engine._dataloader_iter:
+            engine.fire_event(HyraxEvents.HYRAX_EPOCH_COMPLETED)

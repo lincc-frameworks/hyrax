@@ -16,7 +16,10 @@ class Hyrax:
     """
 
     def __init__(self, *, config_file: Optional[Union[Path, str]] = None, setup_logging: bool = True):
-        """Initialize hyrax. Always applies the default config, and merges it with any provided config file.
+        """
+        .. py:method:: __init__
+
+        Initialize hyrax. Always applies the default config, and merges it with any provided config file.
 
         Parameters
         ----------
@@ -27,20 +30,23 @@ class Hyrax:
             Logging setup for a hyrax object is global loggers named "hyrax.*" If you want to turn off
             logging config for "hyrax.*" python loggers, pass False here. By default True.
 
-            You may want to set this to True if:
-            - You have multiple Hyrax objects in your application or notebook, and would like to control
-              which of their logging configs is used globally. By creating one of your objects with
-              setup_logging=True and the others with setup_logging=False, the single object created with
-              setup_logging=True will control where the log is emitted to and what the threshold level is.
-            - You have another library which needs overall control over python logging's config, and you
-              do not want hyrax to alter any global logging config. In this case you should always pass
-              setup_logging=False. Hyrax will still send logs into python logging; however, the other
-              system will be responsible for where those logs are emitted, and what the threshold level
-              is.
+        Notes
+        -----
+        You may want to set ``setup_logging`` manually if:
+        - You have multiple Hyrax objects in your application or notebook, and would like to control
+        which of their logging configs is used globally. By creating one of your objects with
+        setup_logging=True and the others with setup_logging=False, the single object created with
+        setup_logging=True will control where the log is emitted to and what the threshold level is.
+        - You have another library which needs overall control over python logging's config, and you
+        do not want hyrax to alter any global logging config. In this case you should always pass
+        setup_logging=False. Hyrax will still send logs into python logging; however, the other
+        system will be responsible for where those logs are emitted, and what the threshold level
+        is.
 
-            You may want to leave the default of setup_logging=True if:
-            - You have a single Hyrax object in use at any time. This is true in most notebook like
-              environments.
+        You may want to leave the default of setup_logging=True if:
+        - You have a single Hyrax object in use at any time. This is true in most notebook like
+        environments.
+
         """
         self.config_manager = ConfigManager(runtime_config_filepath=config_file)
         self.config = self.config_manager.config
@@ -168,14 +174,6 @@ class Hyrax:
 
         downloader = Downloader(config=self.config)
         return downloader.run(**kwargs)
-
-    def infer(self, **kwargs):
-        """
-        See Hyrax.infer.run()
-        """
-        from .infer import run
-
-        return run(config=self.config, **kwargs)
 
     def prepare(self, **kwargs):
         """

@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+   <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Hyrax 3D Latent Space Explorer</title>
+       
+      <!-- Include Three.js and OrbitControls for 3D visualization -->	
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+      <script src="https://cdn.jsdelivr.net/npm/three@latest/examples/js/controls/OrbitControls.js"></script>
+
+      <!-- Google Fonts -->
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+       
+      <!-- CSS --> 
+      <link rel="stylesheet" href="styles.css">
+       
+   </head>
+   <body>
+      <div id="rotation-message" class="panel">Loading Data...</div>
+      <div id="error-message"></div>
+
+      <div id="app-title">Hyrax 3D Latent Space Explorer</div>
+       
+      <!-- Control instructions box -->
+      <div id="controls-box" class="panel">
+         <div class="panel-header">
+          <h3>Controls & Data</h3>
+              <button id="minimize-button" aria-label="Minimize panel">
+                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="9 6 15 12 9 18"></polyline>
+   </svg>
+              </button>
+         </div>
+         <ul>
+            <li><b>Move Camera:</b> Left-click + drag for rotation. Right clik + drag for translation.</li>
+            <li><b>Zoom:</b> Scroll</li>
+            <li><b>Select Points:</b> Press the S key + Left-Click + Drag to draw a sqaure</li>
+         </ul>
+         
+         <!-- JSON File Selector -->
+         <div id="json-selector-container" class="selector-container">
+            <label for="jsonFileSelect" class="selector-label">Select Data File:</label>
+            <select id="jsonFileSelect"></select>
+         </div>
+         
+         <!-- Color Column Selector -->
+         <div id="color-selector-container" class="selector-container">
+            <label for="colorColumnSelect" class="selector-label">Color Points By:</label>
+            <select id="colorColumnSelect"></select>
+         </div>
+      </div>
+       
+      <!-- Add a minimized tab that appears when the panel is collapsed -->
+      <div id="controls-tab" class="hidden">
+           <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="15 6 9 12 15 18"></polyline>
+   </svg>
+      </div>
+     
+      <!-- Information Text & Selected Points Table -->
+      <div id="info" class="panel">
+         <div id="column-settings-toggle">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3"></circle>
+                <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+            </svg>
+        </div>
+         
+         <div id="column-settings-panel" class="hidden">
+             <div class="column-settings-header">Display Columns</div>
+             <div id="column-checkboxes" class="checkbox-group">
+                 <!-- Checkboxes will be added dynamically -->
+             </div>
+         </div>
+         
+         <div id="selection-table-container">
+             <table id="selection-table">
+                 <thead>
+                     <tr id="selection-table-header">
+                         <!-- Table headers will be dynamically inserted -->
+                     </tr>
+                 </thead>
+                 <tbody id="selection-table-body">
+                     <!-- Table rows will be dynamically inserted -->
+                 </tbody>
+             </table>
+         </div>
+         <div id="selection-info-footer">Drag to select multiple points</div>
+     </div>
+      
+      <!-- Selection box -->
+      <div id="selectionBox"></div>
+      
+      <!-- Selection mode status indicator -->
+      <div id="selection-status">Selection Mode: OFF</div>
+       
+      <!-- Reset selection button -->
+      <div id="reset-selection" class="panel">Reset Selection</div>
+
+      <!-- Adding a Colorbar -->
+      <!-- Update the colorbar container in index.html -->
+      <div id="colorbar-container" class="panel">
+        <div class="colorbar-header-container">
+            <div class="colorbar-header">Color Legend</div>
+            <div id="colormap-settings-toggle">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </div>
+        </div>
+        
+        <div id="colormap-settings-panel" class="hidden">
+            <div class="colormap-settings-header">Select Colormap</div>
+            <select id="colormapSelect">
+                <option value="modifiedVirdis">Modified Viridis</option>
+                <option value="viridis">Viridis</option>
+                <option value="plasma">Plasma</option>
+                <option value="turbo">Turbo</option>
+                <option value="purpleYellow">Purple-Yellow</option>
+                <option value="coolWarm">Cool-Warm</option>
+            </select>
+        </div>
+        
+        <div id="colorbar-gradient"></div>
+        <div class="colorbar-labels">
+            <span id="min-value">Min</span>
+            <span id="max-value">Max</span>
+        </div>
+      </div>
+
+      <!-- Container Showing a Subset of Selected Images -->
+     <div id="image-viewer-container" style="display: none;">
+        <div class="table-header">
+            <div id="image-viewer-title">Selected Images</div>
+        </div>
+        <div id="image-display-area">
+            <!-- Images will be added here dynamically -->
+        </div>
+        <div id="image-controls">
+            <button id="load-more-images" class="control-button">Load More Images</button>
+            <div id="image-status"></div>
+        </div>
+     </div>
+
+      <!-- Load Javascripts -->
+      <script src="script.js"></script>
+      <script src="image-viewer.js"></script>
+      <script src="fits.js"></script>
+
+      <script type="text/javascript">
+        var FITS = astro.FITS;
+      </script>
+
+      <!-- DEBUG: Check if FITS is available -->
+      <script>
+        console.log('FITS available?', typeof FITS);
+        if (typeof FITS === 'undefined') {
+            console.error('FITS library failed to load!');
+        }
+    </script>
+       
+   </body>
+</html>

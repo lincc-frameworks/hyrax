@@ -6,7 +6,6 @@ from typing import Optional, Union
 
 import numpy as np
 import numpy.typing as npt
-from torch import Tensor, from_numpy
 from torch.utils.data import Dataset
 
 from hyrax.config_utils import find_most_recent_results_dir
@@ -57,9 +56,17 @@ class InferenceDataSet(HyraxDataset, Dataset):
         self._original_dataset_config = ConfigManager(
             self.results_dir / ORIGINAL_DATASET_CONFIG_FILENAME
         ).config
+
+        # Disable cache preloading on this dataset because it will only be used for its metadata
+        # TODO: May want to add some sort of metadata_only optional arg to dataset constructor
+        #       so we can opt-out of expensive dataset operations conditional on us only needing metadata
+        #
+        #       Alternatively this may be an opportunity for a metadata mixin sort of class structure where
+        #       we can bring up Only the metadata for a dataset, without constructing the whole thing.
+        self._original_dataset_config["data_set"]["preload_cache"] = False
         self.original_dataset = setup_dataset(self._original_dataset_config)  # type: ignore[arg-type]
 
-    def shape(self):
+    def _shape(self):
         """The shape of the dataset (Discovered from files)
 
         Note: our __getitem__() needs self.shape() to work. We cannot use HraxDataset.shape()
@@ -90,7 +97,9 @@ class InferenceDataSet(HyraxDataset, Dataset):
         """
         return (str(id) for id in self.batch_index["id"])
 
-    def __getitem__(self, idx: Union[int, np.ndarray]) -> Tensor:
+    def __getitem__(self, idx: Union[int, np.ndarray]):
+        from torch import from_numpy
+
         try:
             _ = (e for e in idx)  # type: ignore[union-attr]
         except TypeError:
@@ -98,7 +107,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         # Allocate a numpy array to hold all the tensors we will get in order
         # Needs to be the appropriate shape
-        shape_tuple = tuple([len(idx)] + list(self.shape()))
+        shape_tuple = tuple([len(idx)] + list(self._shape()))
         all_tensors = np.zeros(shape=shape_tuple)
 
         # We need to look up all the batches for the ids we get
@@ -116,7 +125,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
             batch_original_indexes = original_indexes[batch_mask]
 
             # Lookup in each batch file
-            batch_tensors = self._load_from_batch_file(batch_num, batch_ids)
+            batch_tensors = np.sort(self._load_from_batch_file(batch_num, batch_ids), order="id")
 
             # Place the resulting tensors in the results array where they go.
             all_tensors[batch_original_indexes] = batch_tensors["tensor"]
@@ -232,6 +241,10 @@ class InferenceDataSetWriter:
     """
 
     def __init__(self, original_dataset: Dataset, result_dir: Union[str, Path]):
+        """
+        .. py:method:: __init__
+
+        """
         self.result_dir = result_dir if isinstance(result_dir, Path) else Path(result_dir)
         self.batch_index = 0
 
@@ -311,10 +324,19 @@ class InferenceDataSetWriter:
         batch_index = np.zeros(len(self.all_ids), batch_index_dtype)
         batch_index["id"] = np.array(self.all_ids)
         batch_index["batch_num"] = np.array(self.all_batch_nums)
-        batch_index.sort(order="id")
 
+        # Save the batch index in insertion order
+        filename = "batch_index_insertion_order.npy"
+        self._save_file(filename, batch_index)
+
+        # Sort the batch index by id, and save it again
+        batch_index.sort(order="id")
         filename = "batch_index.npy"
+        self._save_file(filename, batch_index)
+
+    def _save_file(self, filename: str, data: np.ndarray):
+        """Save a numpy array to a file in the result directory provided"""
         savepath = self.result_dir / filename
         if savepath.exists():
-            RuntimeError("The path to save batch index already exists.")
-        np.save(savepath, batch_index, allow_pickle=False)
+            raise RuntimeError(f"The path to save {filename} already exists.")
+        np.save(savepath, data, allow_pickle=False)

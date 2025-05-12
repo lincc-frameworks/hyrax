@@ -17,7 +17,12 @@ dynamic = ["version"]
 requires-python = ">=3.9"
 dependencies = [
     "astropy", # Used to load fits files of sources to query HSC cutout server
-    "pytorch-ignite", # Used for distributed training, logging, etc.
+    # Pin to the current version of pytorch ignite so workarounds to 
+    # https://github.com/pytorch/ignite/issues/3372 function correctly
+    # while allowing us to release packages that don't depend on dev versions
+    # of pytorch-ignite.
+    "pytorch-ignite <= 0.5.2", # Used for distributed training, logging, etc.
+    "more-itertools", # Used to work around the issue in pytorch-ignite above
     "toml", # Used to load configuration files as dictionaries
     "tomlkit", # Used to load configuration files as dictionaries and retain comments
     "torch", # Used for CNN model and in train.py
@@ -25,7 +30,7 @@ dependencies = [
     "tensorboardX", # Used to log training metrics
     "tensorboard", # Used to log training metrics
     "schwimmbad", # Used to speedup hsc data loader file scans
-    "chromadb", # Used for similarity search
+    "chromadb > 1.0", # Used for similarity search
     "holoviews", # Used in Holoviews visualization prototype
     "bokeh", # Used in Holoviews visualization prototype
     "jupyter_bokeh", # Used in Holoviews visualization prototype
@@ -40,6 +45,9 @@ dependencies = [
     "pooch", # Used to download data files
     "onnx", # Used to export models to ONNX format
     "onnxruntime", # Used to run ONNX models
+    "plotly", # Used in 3d visualization
+    "psutil", # Used for memory monitoring
+    "tqdm", # Used to show progress bars
 ]
 
 [project.scripts]
@@ -60,6 +68,7 @@ dev = [
     "pre-commit", # Used to run checks before finalizing a git commit
     "pytest",
     "pytest-cov", # Used to report total code coverage
+    "pytest-env", # Used to set environment variables in testing
     "ruff", # Used for static linting of files
 ]
 
@@ -76,6 +85,15 @@ write_to = "src/hyrax/_version.py"
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
+    "src",
+    "docs",
+]
+addopts = "--doctest-modules --doctest-glob=*.rst"
+env = [
+    "TQDM_DISABLE=1",
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 
 [tool.black]

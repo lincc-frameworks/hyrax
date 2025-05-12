@@ -15,6 +15,10 @@ logger = logging.getLogger(__name__)
 
 @hyrax_model
 class HyraxCNN(nn.Module):
+    """
+    This CNN is designed to work with datasets that are prepared with Hyrax's HSC Data Set class.
+    """
+
     def __init__(self, config, shape):
         super().__init__()
         self.conv1 = nn.Conv2d(3, 6, 5)
@@ -54,8 +58,8 @@ class HyraxCNN(nn.Module):
 
         Returns
         -------
-        Current loss value
-            The loss value for the current batch.
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
         """
         inputs, labels = batch
 

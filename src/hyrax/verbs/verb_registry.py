@@ -17,7 +17,11 @@ class Verb(ABC):  # noqa: B024
     add_parser_kwargs: dict[str, str] = {}
 
     def __init__(self, config: ConfigDict):
-        """Overall initialization for all verbs that saves the config"""
+        """
+        .. py:method:: __init__
+
+        Overall initialization for all verbs that saves the config
+        """
         self.config = config
 
 

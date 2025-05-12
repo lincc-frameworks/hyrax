@@ -405,10 +405,10 @@ class ConfigManager:
     def resolve_runtime_config(runtime_config_filepath: Union[Path, str, None] = None) -> Path:
         """Resolve a user-supplied runtime config to where we will actually pull config from.
 
-        1) If a runtime config file is specified, we will use that file.
-        2) If no file is specified and there is a file named "hyrax_config.toml" in the cwd we will use it.
-        3) If no file is specified and there is no file named "hyrax_config.toml" in the cwd we will
-        exclusively work off the configuration defaults in the packaged "hyrax_default_config.toml" file.
+        #. If a runtime config file is specified, we will use that file.
+        #. If no file is specified and there is a file named "hyrax_config.toml" in the cwd we will use it.
+        #. If no file is specified and there is no file named "hyrax_config.toml" in the cwd we will
+           exclusively work off the configuration defaults in the packaged "hyrax_default_config.toml" file.
 
         Parameters
         ----------

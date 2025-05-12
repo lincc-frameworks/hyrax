@@ -1,10 +1,8 @@
 # ruff: noqa: D102, B027
 import logging
 from collections.abc import Generator
-from typing import Optional
 
 import numpy.typing as npt
-from astropy.table import Table
 
 from hyrax.config_utils import ConfigDict
 from hyrax.plugin_utils import get_or_load_class, update_registry
@@ -15,7 +13,9 @@ DATA_SET_REGISTRY: dict[str, type["HyraxDataset"]] = {}
 
 class HyraxDataset:
     """
-    How to make a hyrax dataset::
+    How to make a hyrax dataset:
+
+    .. code-block:: python
 
         from hyrax.data_sets import HyraxDataset
         from torch.utils.data import Dataset
@@ -37,19 +37,24 @@ class HyraxDataset:
     ``ids()`` -> Subclasses may override this directly with their own ids function
     returning a generator of strings
 
-    metadata -> Subclasses may pass an astropy table of metadata to `__init__` in the
-    superclass. This table of metadata will be available through the `metadata_fields` and
-    `metadata` functions.  If desired, a subclass may override these functions directly
+    ``metadata`` -> Subclasses may pass an astropy table of metadata to ``__init__`` in the
+    superclass. This table of metadata will be available through the ``metadata_fields`` and
+    ``metadata`` functions.  If desired, a subclass may override these functions directly
     rather than using the astropy Table interface.
 
-    Further documentation is in the :doc:`/pre_executed/custom_dataset` example notebook
+    Further documentation is in the :doc:`/pre_executed/custom_dataset` example notebook.
 
     """
 
-    def __init__(self, config: ConfigDict, metadata_table: Optional[Table] = None):
-        """Overall initialization for all DataSets which saves the config
+    def __init__(self, config: ConfigDict, metadata_table=None):
+        """
+        .. py:method:: __init__
 
-        Subclasses of HyraxDataSet ought call this at the end of their __init__ like::
+        Overall initialization for all DataSets which saves the config
+
+        Subclasses of HyraxDataSet ought call this at the end of their __init__ like:
+
+        .. code-block:: python
 
             from hyrax.data_sets import HyraxDataset
             from torch.utils.data import Dataset
@@ -61,7 +66,9 @@ class HyraxDataset:
 
         If per tensor metadata is available, it is recommended that dataset authors create an
         astropy Table of that data, in the same order as their data and pass that `metadata_table`
-        as shown below::
+        as shown below:
+
+        .. code-block:: python
 
             from hyrax.data_sets import HyraxDataset
             from torch.utils.data import Dataset
@@ -82,19 +89,65 @@ class HyraxDataset:
             1. the metadata columns desired for visualization AND
             2. in the order your data will be enumerated.
         """
+        import numpy as np
+
         self._config = config
         self._metadata_table = metadata_table
+
+        # If your metadata does not contain an object_id field
+        # we use your required .ids() method to create the column
+        if self._metadata_table is not None:
+            colnames = self._metadata_table.colnames
+            if "object_id" not in colnames:
+                ids = np.array(list(self.ids()))
+                self._metadata_table.add_column(ids, name="object_id")
+
         self.tensorboardx_logger = None
+
+    def is_iterable(self):
+        """
+        Returns true if underlying dataset is iterable style, supporting __iter__ vs map style
+        where  __getitem__/__len__ are the preferred access methods.
+
+        Returns
+        -------
+        bool
+            True if underlying dataset is iterable
+        """
+        from torch.utils.data import Dataset, IterableDataset
+
+        if isinstance(self, (Dataset, IterableDataset)):
+            return isinstance(self, IterableDataset)
+        else:
+            return hasattr(self, "__iter__")
+
+    def is_map(self):
+        """
+        Returns true if underlying dataset is map style, supporting __getitem__/__len__ vs iterable
+        where __iter__ is the preferred access method.
+
+        Returns
+        -------
+        bool
+            True if underlying dataset is map-style
+        """
+        from torch.utils.data import Dataset, IterableDataset
+
+        if isinstance(self, (Dataset, IterableDataset)):
+            # All torch IterableDatasets are also Datasets
+            return not isinstance(self, IterableDataset)
+        else:
+            return hasattr(self, "__getitem__")
 
     @property
     def config(self):
         return self._config
 
     def __init_subclass__(cls):
-        from torch.utils.data import IterableDataset
+        from abc import ABC
 
-        if IterableDataset in cls.__bases__ or hasattr(cls, "__iter__"):
-            logger.error("Hyrax does not fully support iterable data sets yet. Proceed at your own risk.")
+        if ABC in cls.__bases__:
+            return
 
         # Paranoia. Deriving from a torch dataset class should ensure this, but if an external dataset author
         # Forgets to to do that, we tell them.
@@ -126,33 +179,14 @@ class HyraxDataset:
             A generator yielding all the string IDs of the dataset.
 
         """
-        if hasattr(self, "__len__"):
+        if self.is_map():
             for x in range(len(self)):
                 yield str(x)
-        elif hasattr(self, "__iter__"):
+        elif self.is_iterable():
             for index, _ in enumerate(iter(self)):
                 yield (str(index))
         else:
             return NotImplementedError("You must define __len__ or __iter__ to use automatic id()")
-
-    def shape(self) -> tuple:
-        """Returns the shape tuple of the tensors this dataset will return.
-
-        This default implementation uses the first item in the dataset to determine the shape.
-
-        Returns
-        -------
-        tuple
-            Shape tuple of the tensor that will be returned from the dataset.
-        """
-        if hasattr(self, "__getitem__"):
-            data_sample = self[0]
-            return data_sample[0].shape if isinstance(data_sample, tuple) else data_sample.shape
-        elif hasattr(self, "__iter__"):
-            data_sample = next(iter(self))
-            return data_sample[0].shape if isinstance(data_sample, tuple) else data_sample.shape
-        else:
-            return NotImplementedError("You must define __getitem__ or __iter__ to use automatic shape()")
 
     def metadata_fields(self) -> list[str]:
         """Returns a list of metadata fields supported by this object

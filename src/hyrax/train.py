@@ -40,8 +40,8 @@ def run(config):
 
     # Create a data loader for the training set (and validation split if configured)
     data_loaders = dist_data_loader(data_set, config, ["train", "validate"])
-    train_data_loader = data_loaders["train"]
-    validation_data_loader = data_loaders["validate"]
+    train_data_loader, _ = data_loaders["train"]
+    validation_data_loader, _ = data_loaders.get("validate", (None, None))
 
     # Create trainer, a pytorch-ignite `Engine` object
     trainer = create_trainer(model, config, results_dir, tensorboardx_logger)
@@ -85,6 +85,8 @@ def run(config):
 
     # Get a sample of input data. If the data is labeled, only return the input data.
     batch_sample = next(iter(train_data_loader))
+    if isinstance(batch_sample, dict):
+        batch_sample = model.to_tensor(batch_sample)
     sample = batch_sample[0] if isinstance(batch_sample, (list, tuple)) else batch_sample
 
     export_to_onnx(model, sample, config, context)

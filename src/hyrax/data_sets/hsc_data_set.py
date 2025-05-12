@@ -6,203 +6,155 @@ import multiprocessing
 import os
 import re
 import resource
-import time
-from collections.abc import Generator, Iterable, Iterator
-from concurrent.futures import Executor
 from pathlib import Path
-from threading import Thread
-from typing import Any, Callable, Optional, Union
+from typing import Optional
 
 import numpy as np
-import numpy.typing as npt
-from astropy.io import fits
-from astropy.table import Table
 from schwimmbad import MultiPool
-from torch import Tensor, from_numpy
-from torch.utils.data import Dataset
-from torchvision.transforms.v2 import CenterCrop, Compose, Lambda
 
 from hyrax.config_utils import ConfigDict
-from hyrax.download import Downloader
-from hyrax.downloadCutout.downloadCutout import (
-    parse_bool,
-    parse_degree,
-    parse_latitude,
-    parse_longitude,
-    parse_rerun,
-    parse_tract_opt,
-    parse_type,
-)
 
-from .data_set_registry import HyraxDataset
+from .fits_image_dataset import FitsImageDataSet, files_dict
 
 logger = logging.getLogger(__name__)
 dim_dict = dict[str, list[tuple[int, int]]]
-files_dict = dict[str, dict[str, str]]
 
 
-class HSCDataSet(HyraxDataset, Dataset):
+class HSCDataSet(FitsImageDataSet):
+    """Dataset for sets of HSC cutouts created by the ``fibad download`` command."""
+
     _called_from_test = False
 
     def __init__(self, config: ConfigDict):
-        crop_to = config["data_set"]["crop_to"]
-        filters = config["data_set"]["filters"]
-        transform_str = config["data_set"]["transform"]
-        self.use_cache = config["data_set"]["use_cache"]
+        """
+        .. py:method:: __init__
 
-        if transform_str:
-            transform_func = self._get_np_function(transform_str)
-            transform = Lambda(lambd=transform_func)
-        else:
-            transform = None
+        """
+        from hyrax.download import Downloader
 
         # Note "rebuild_manifest" is not a config, its a hack for rebuild_manifest mode
         # to ensure we don't use the manifest we believe is corrupt.
         rebuild_manifest = config["rebuild_manifest"] if "rebuild_manifest" in config else False  # noqa: SIM401
 
-        if config["data_set"]["filter_catalog"]:
-            filter_catalog = Path(config["data_set"]["filter_catalog"])
-        elif not rebuild_manifest:
-            filter_catalog = Path(config["general"]["data_dir"]) / Downloader.MANIFEST_FILE_NAME
-            if not filter_catalog.exists():
-                filter_catalog = None
-        else:
-            filter_catalog = None
+        # Set the filter catalog
+        # If we are in rebuild manifest mode don't use any filter catalog
+        if rebuild_manifest:
+            config["data_set"]["filter_catalog"] = False
+        # If there's no filter catalog, try to use the manifest file if it exists
+        elif not config["data_set"]["filter_catalog"]:
+            catalog = Path(config["general"]["data_dir"]) / Downloader.MANIFEST_FILE_NAME
+            if catalog.exists():
+                config["data_set"]["filter_catalog"] = str(catalog.expanduser().resolve())
 
-        self._init_from_path(
-            config["general"]["data_dir"],
-            transform=transform,
-            cutout_shape=crop_to if crop_to else None,
-            filters=filters if filters else None,
-            filter_catalog=filter_catalog,
-        )
+        self.filters_config = config["data_set"]["filters"] if config["data_set"]["filters"] else None
 
-        # Relies on self.filters_ref and self.filter_catalog_table which are both determined
-        # inside _init_from_path()
-        metadata = self._prepare_metadata()
-        super().__init__(config, metadata)
+        super().__init__(config)
 
-        if config["data_set"]["preload_cache"] and self.use_cache:
-            self.preload_thread = Thread(
-                name="HSCDataSet-preload-tensor-cache",
-                daemon=True,
-                # Note we are passing only the function and self explicitly to the thread
-                # This ensures the current object is in shared thread memory.
-                target=self._preload_tensor_cache.__func__,  # type: ignore[attr-defined]
-                args=(self,),
-            )
-            self.preload_thread.start()
-
-    def _get_np_function(self, transform_str: str) -> Callable[..., Any]:
-        """
-        _get_np_function. Returns the numpy mathematical function that the
-        supplied string maps to; or raises an error if the supplied string
-        cannot be mapped to a function.
-
-        Parameters
-        ----------
-        transform_str: str
-            The string to me mapped to a numpy function
-        """
+    def _read_filter_catalog(self, filter_catalog_path: Optional[Path]):
+        from astropy.table import Table
 
         try:
-            func: Callable[..., Any] = getattr(np, transform_str)
-            if callable(func):
-                return func
-        except AttributeError as err:
-            msg = f"{transform_str} is not a valid numpy function.\n"
-            msg += "The string passed to the transform variable needs to be a numpy function"
-            raise RuntimeError(msg) from err
+            retval = super()._read_filter_catalog(filter_catalog_path)
+        except RuntimeError:
+            # _read_filter_catalog is persnickity about filter_catalog_path.
+            # Ignore all of the error checking in there and _parse_filter_catalog
+            # will try to recover if the table is malformed/missing.
+            retval = None
 
-    def _init_from_path(
-        self,
-        path: Union[Path, str],
-        *,
-        transform=None,
-        cutout_shape: Optional[tuple[int, int]] = None,
-        filters: Optional[list[str]] = None,
-        filter_catalog: Optional[Path] = None,
-    ):
-        """__init__ helper. Initialize an HSC data set from a path. This involves several filesystem scan
-        operations and will ultimately open and read the header info of every fits file in the given directory
+        if isinstance(retval, Table):
+            colnames = retval.colnames
+            if (self.filter_column_name not in colnames) ^ (self.filename_column_name not in colnames):
+                msg = f"Filter catalog file {filter_catalog_path} provides one of filters or filenames "
+                msg += "without the other. Filesystem scan will still occur without both defined."
+                logger.warning(msg)
 
-        Parameters
-        ----------
-        path : Union[Path, str]
-            Path or string specifying the directory path to scan. It is expected that all files will
-            be flat in this directory
-        transform : torchvision.transforms.v2.Transform, optional
-            Transformation to apply to every image in the dataset, by default None
-        cutout_shape: tuple[int,int], optional
-            Forces all cutouts to be a particular pixel size. If this size is larger than the pixel dimension
-            of particular cutouts on the filesystem, those objects are dropped from the data set.
-        filters: list[str], optional
-            Forces all cutout tensors provided to be from the list of HSC filters provided. If provided, any
-            cutouts which do not have fits files corresponding to every filter in the list will be dropped
-            from the data set. Defaults to None. If not provided, the filters available on the filesystem for
-            the first object in the directory will be used.
-        filter_catalog: Path, optional
-            Path to a .fits file which specifies objects and or files to use directly, bypassing the default
-            of attempting to use every file in the path.
-            Columns for this fits file are object_id (required), filter (optional), filename (optional), and
-            dims (optional tuple of x/y pixel size of images).
-             - Filenames must be relative to the path provided to this function.
-             - When filters and filenames are both provided, initialization skips a directory listing, which
-               can provide better performance on large datasets.
-             - When filters, filenames, and dims are specified we also skip opening the files to get
-               the dimensions. This can also provide better performance on large datasets.
-        """
-        self.path = path
-        self.transform = transform
+        return retval
 
-        self.filter_catalog_table = self._read_filter_catalog(filter_catalog)
+    # The main job of this function is to transmute the filter catalog table into
+    # the dictionaries that the rest of the class uses.
+    #
+    # In the HSC case this will also have to do fallback and call
+    # _scan_file_dimensions() and/or _scan_file_names() and pass back only the files dict.
+    def _parse_filter_catalog(self, table) -> None:
+        object_id_missing = self.object_id_column_name not in table.colnames if table is not None else True
+        filter_missing = self.filter_column_name not in table.colnames if table is not None else True
+        filename_missing = self.filename_column_name not in table.colnames if table is not None else True
 
-        self.filter_catalog = (
-            None
-            if self.filter_catalog_table is None
-            else self._parse_filter_catalog(self.filter_catalog_table)
-        )
+        file_scan = table is None or object_id_missing or filter_missing or filename_missing
 
-        if isinstance(self.filter_catalog, tuple):
-            self.files = self.filter_catalog[0]
-            self.dims = self.filter_catalog[1]
-        elif isinstance(self.filter_catalog, dict):
-            self.files = self.filter_catalog
+        object_ids_for_filescan = None
+        if not object_id_missing:
+            if filter_missing and filename_missing:
+                object_ids_for_filescan = list(table[self.object_id_column_name])
+            elif filter_missing or filename_missing:
+                object_ids_for_filescan = list(set(table[self.object_id_column_name]))
+
+        # Detect the list of filters, but allow config based override
+        if file_scan:
+            self.files = self._scan_file_names(self.filters_config, object_ids_for_filescan)
             self.dims = self._scan_file_dimensions()
+
+        # Otherwise we have a well formed table
         else:
-            self.files = self._scan_file_names(filters)
-            self.dims = self._scan_file_dimensions()
+            # Have the superclass assemble self.files
+            self.files = super()._parse_filter_catalog(table)
 
-        # If no filters provided, we choose the first file in the dict as the prototypical set of filters
-        # Any objects lacking this full set of filters will be pruned by _prune_objects
-        self.filters_ref = list(list(self.files.values())[0]) if filters is None else filters
+            # Assemble dims for ourself if the column is available or fallback to self._scan_file_dimensions()
+            if "dim" not in table.colnames:
+                self.dims = self._scan_file_dimensions()
+            else:
+                dim_catalog: dim_dict = {}
 
-        self.num_filters = len(self.filters_ref)
+                for row in table:
+                    object_id = str(row[self.object_id_column_name])
+                    # filter = row[self.filter_column_name]
+                    filename = row[self.filename_column_name]
+                    dim = tuple(row["dim"])
 
-        self.pruned_objects: dict[str, str] = {}
-        self._prune_objects(self.filters_ref, cutout_shape)
+                    # Skip over any files that are marked as didn't download or have <1x1 size, removing the
+                    # relevant object from the files dict if it exists
+                    if filename == "Attempted" or min(dim) < 1:
+                        if object_id in self.files:
+                            del self.files[object_id]
+                        continue
 
+                    # Dimension is optional, insert into dimension catalog.
+                    if object_id not in dim_catalog:
+                        dim_catalog[object_id] = []
+                    dim_catalog[object_id].append(dim)
+
+                self.dims = dim_catalog
+
+        return self.files
+
+    def _set_crop_transform(self):
+        from torchvision.transforms.v2 import CenterCrop
+
+        cutout_shape = self.config["data_set"]["crop_to"] if self.config["data_set"]["crop_to"] else None
         self.cutout_shape = self._check_file_dimensions() if cutout_shape is None else cutout_shape
+        return CenterCrop(size=self.cutout_shape)
 
-        # Set up our default transform to center-crop the image to the common size before
-        # Applying any transforms we were passed.
-        crop = CenterCrop(size=self.cutout_shape)
-        self.transform = Compose([crop, self.transform]) if self.transform is not None else crop
+    def _before_preload(self):
+        self.filters_ref = (
+            list(list(self.files.values())[0]) if self.filters_config is None else self.filters_config
+        )
+        self.pruned_objects: dict[str, str] = {}
+        self._prune_objects(self.filters_ref, self.cutout_shape)
 
-        self.tensors: dict[str, Tensor] = {}
-        self.tensorboard_start_ns = time.monotonic_ns()
-        self.tensorboardx_logger = None
-
-        logger.info(f"HSC Data set loader has {len(self)} objects")
-
-    def _scan_file_names(self, filters: Optional[list[str]] = None) -> files_dict:
+    def _scan_file_names(
+        self, filters: Optional[list[str]], filter_obj_ids: Optional[list[str]] = None
+    ) -> files_dict:
         """Class initialization helper
 
         Parameters
         ----------
-        filters : list[str], optional
-            If passed, only these filters will be scanned for from the data files. Defaults to None, which
-            corresponds to the standard set of filters ["HSC-G","HSC-R","HSC-I","HSC-Z","HSC-Y"].
+        filters: list[str], Optional:
+            List of filters that we should look for in the data corpus
+
+        filter_obj_ids: list[str], Optional:
+            Filter the file scan to only file names which have the provided object IDs, skipping other files
+            When not provided, all file names in the configured data directory that match the pattern from
+            hyrax download are parsed.
 
         Returns
         -------
@@ -225,7 +177,7 @@ class HSCDataSet(HyraxDataset, Dataset):
             # If we are filtering based off a user-provided catalog of object ids, Filter out any
             # objects_ids not in the catalog. Do this before regex match for speed of discarding
             # irrelevant files.
-            if isinstance(self.filter_catalog, list) and filename[:17] not in self.filter_catalog:
+            if isinstance(filter_obj_ids, list) and filename[:17] not in filter_obj_ids:
                 continue
 
             m = re.match(full_regex, filename)
@@ -253,73 +205,6 @@ class HSCDataSet(HyraxDataset, Dataset):
             logger.info(f"Processed {index + 1} files")
 
         return files
-
-    def _read_filter_catalog(self, filter_catalog_path: Optional[Path]) -> Table:
-        if filter_catalog_path is None:
-            return None
-
-        if not filter_catalog_path.exists():
-            logger.error(f"Filter catalog file {filter_catalog_path} given in config does not exist.")
-            return None
-
-        table = Table.read(filter_catalog_path, format="fits")
-        colnames = table.colnames
-
-        if "object_id" not in colnames:
-            logger.error(f"Filter catalog file {filter_catalog_path} has no column object_id")
-            return None
-
-        table.add_index("object_id")
-        table.add_index("filter")
-
-        if ("filter" not in colnames) ^ ("filename" not in colnames):
-            msg = f"Filter catalog file {filter_catalog_path} provides one of filters or filenames "
-            msg += "without the other. Filesystem scan will still occur without both defined."
-            logger.warning(msg)
-
-        return table
-
-    def _parse_filter_catalog(
-        self, table: Table
-    ) -> Optional[Union[list[str], files_dict, tuple[files_dict, dim_dict]]]:
-        colnames = table.colnames
-        # We are dealing with just a list of object_ids
-        if "filter" not in colnames and "filename" not in colnames:
-            return list(table["object_id"])
-
-        # Or a table that lacks both filter and filename
-        elif "filter" not in colnames or "filename" not in colnames:
-            return list(set(table["object_id"]))
-
-        # We have filter and filename defined so we can assemble the catalog at file level.
-        filter_catalog: files_dict = {}
-        if "dim" in colnames:
-            dim_catalog: dim_dict = {}
-
-        for row in table:
-            object_id = str(row["object_id"])
-            filter = row["filter"]
-            filename = row["filename"]
-            if "dim" in colnames:
-                dim = tuple(row["dim"])
-
-            # Skip over any files that are marked as didn't download.
-            # or have a dimension listed less than 1px x 1px
-            if filename == "Attempted" or min(dim) < 1:
-                continue
-
-            # Insert into the filter catalog.
-            if object_id not in filter_catalog:
-                filter_catalog[object_id] = {}
-            filter_catalog[object_id][filter] = filename
-
-            # Dimension is optional, insert into dimension catalog.
-            if "dim" in colnames:
-                if object_id not in dim_catalog:
-                    dim_catalog[object_id] = []
-                dim_catalog[object_id].append(dim)
-
-        return (filter_catalog, dim_catalog) if "dim" in colnames else filter_catalog
 
     @staticmethod
     def _determine_numprocs() -> int:
@@ -375,10 +260,12 @@ class HSCDataSet(HyraxDataset, Dataset):
         # Scan the filesystem to get the widths and heights of all images into a dict
         logger.info("Scanning for dimensions...")
 
+        # So we can use super() with no args inside the generator expression below
+        super_obj = super()
         retval = {}
         with MultiPool(processes=HSCDataSet._determine_numprocs()) as pool:
             args = (
-                (object_id, list(self._object_files(object_id)))
+                (object_id, list(super_obj._object_files(object_id)))
                 for object_id in self.ids(log_every=1_000_000)
             )
             retval = dict(pool.imap(self._scan_file_dimension, args, chunksize=1000))
@@ -391,6 +278,8 @@ class HSCDataSet(HyraxDataset, Dataset):
 
     @staticmethod
     def _fits_file_dims(filepath) -> tuple[int, int]:
+        from astropy.io import fits
+
         try:
             with fits.open(filepath) as hdul:
                 return (hdul[1].shape[0], hdul[1].shape[1])
@@ -415,7 +304,7 @@ class HSCDataSet(HyraxDataset, Dataset):
         filters_ref : list[str]
             List of the filter names
 
-        cutout_shape: : tuple[int, int]
+        cutout_shape: tuple[int, int]
             Cutout shape tuple provided from constructor
         """
         filters_ref = sorted(filters_ref)
@@ -433,7 +322,7 @@ class HSCDataSet(HyraxDataset, Dataset):
                 # Drop objects that can't meet the cutout size provided
                 for shape in self.dims[object_id]:
                     if shape[0] < cutout_shape[0] or shape[1] < cutout_shape[1]:
-                        msg = f"A file for object {object_id} has shape ({shape[1]}px, {shape[1]}px)"
+                        msg = f"A file for object {object_id} has shape ({shape[0]}px, {shape[1]}px)"
                         msg += " this is too small for the given cutout size of "
                         msg += f"({cutout_shape[0]}px, {cutout_shape[1]}px)"
                         self._mark_for_prune(object_id, msg)
@@ -545,6 +434,19 @@ class HSCDataSet(HyraxDataset, Dataset):
         return cutout_width, cutout_height
 
     def _rebuild_manifest(self, config):
+        from astropy.table import Table
+
+        from hyrax.download import Downloader
+        from hyrax.downloadCutout.downloadCutout import (
+            parse_bool,
+            parse_degree,
+            parse_latitude,
+            parse_longitude,
+            parse_rerun,
+            parse_tract_opt,
+            parse_type,
+        )
+
         if self.filter_catalog:
             raise RuntimeError("Cannot rebuild manifest. Set the filter_catalog=false and rerun")
 
@@ -639,38 +541,6 @@ class HSCDataSet(HyraxDataset, Dataset):
         # Replace the old manifest
         manifest_table.write(manifest_file_path, overwrite=True, format="fits")
 
-    def shape(self) -> tuple[int, int, int]:
-        """Shape of the individual cutouts this will give to a model
-
-        Returns
-        -------
-        tuple[int,int,int]
-            Tuple describing the dimensions of the 3 dimensional tensor handed back to models
-            The first index is the number of filters
-            The second index is the width of each image
-            The third index is the height of each image
-        """
-        return (self.num_filters, self.cutout_shape[0], self.cutout_shape[1])
-
-    def __len__(self) -> int:
-        """Returns number of objects in this loader
-
-        Returns
-        -------
-        int
-            number of objects in this data loader
-        """
-        return len(self.files)
-
-    def __getitem__(self, idx: int) -> Tensor:
-        if idx >= len(self.files) or idx < 0:
-            raise IndexError
-
-        # Use the list of object IDs for explicit indexing
-        object_id = list(self.files.keys())[idx]
-
-        return self._object_id_to_tensor(object_id)
-
     def __contains__(self, object_id: str) -> bool:
         """Allows you to do `object_id in dataset` queries. Used by testing code.
 
@@ -685,53 +555,6 @@ class HSCDataSet(HyraxDataset, Dataset):
             True of the object_id given is in the data set
         """
         return object_id in list(self.files.keys()) and object_id in list(self.dims.keys())
-
-    def _get_file(self, index: int) -> Path:
-        """Private indexing method across all files.
-
-        Returns the file path corresponding to the given index.
-
-        The index is zero-based and defined in the same manner as the total order of _all_files() and
-        _object_files() iterator. Useful if you have an np.array() or list built from _all_files() and you
-        need to select an individual item.
-
-        Only valid after self.object_ids, self.files, self.path, and self.num_filters have been initialized
-        in __init__
-
-        Parameters
-        ----------
-        index : int
-            Index, see above for order semantics
-
-        Returns
-        -------
-        Path
-            The path to the file
-        """
-        object_index = int(index / self.num_filters)
-        object_id = list(self.files.keys())[object_index]
-        filters = self.files[object_id]
-        filter_names = sorted(list(filters))
-        filter = filter_names[index % self.num_filters]
-        return self._file_to_path(filters[filter])
-
-    def ids(self, log_every=None) -> Generator[str]:
-        """Public read-only iterator over all object_ids that enforces a strict total order across
-        objects. Will not work prior to self.files initialization in __init__
-
-        Yields
-        ------
-        Iterator[str]
-            Object IDs currently in the dataset
-        """
-        log = log_every is not None and isinstance(log_every, int)
-        for index, object_id in enumerate(self.files):
-            if log and index != 0 and index % log_every == 0:
-                logger.info(f"Processed {index} objects")
-            yield str(object_id)
-        else:
-            if log:
-                logger.info(f"Processed {index} objects")
 
     def _all_files_full(self):
         """
@@ -752,50 +575,7 @@ class HSCDataSet(HyraxDataset, Dataset):
             for idx, (filter, filename) in enumerate(self._filter_filename(object_id)):
                 yield (object_id, filter, filename, dims[idx])
 
-    def _all_files(self):
-        """
-        Private read-only iterator over all files that enforces a strict total order across
-        objects and filters. Will not work prior to self.files, and self.path initialization in __init__
-
-        Yields
-        ------
-        Path
-            The path to the file.
-        """
-        for object_id in self.ids():
-            for filename in self._object_files(object_id):
-                yield filename
-
-    def _filter_filename(self, object_id):
-        """
-        Private read-only iterator over all files for a given object. This enforces a strict total order
-        across filters. Will not work prior to self.files initialization in __init__
-
-        Yields
-        ------
-        filter_name, file name
-            The name of a filter and the file name for the fits file.
-            The file name is relative to self.path
-        """
-        filters = self.files[object_id]
-        filter_names = sorted(list(filters))
-        for filter_name in filter_names:
-            yield filter_name, filters[filter_name]
-
     def _object_files(self, object_id):
-        """
-        Private read-only iterator over all files for a given object. This enforces a strict total order
-        across filters. Will not work prior to self.files, and self.path initialization in __init__
-
-        Yields
-        ------
-        Path
-            The path to the file.
-        """
-        for _, filename in self._filter_filename(object_id):
-            yield self._file_to_path(filename)
-
-    def _object_files_filters_ref(self, object_id):
         """
         Private read-only iterator over all files for a given object. This enforces a strict total order
         across filters. Will not work prior to self.files, and self.path initialization in __init__
@@ -810,236 +590,3 @@ class HSCDataSet(HyraxDataset, Dataset):
         for filter, filename in self._filter_filename(object_id):
             if filter in self.filters_ref:
                 yield self._file_to_path(filename)
-
-    def _file_to_path(self, filename: str) -> Path:
-        """Turns a filename into a full path suitable for open. Equivalent to:
-
-        `Path(self.path) / Path(filename)`
-
-        Parameters
-        ----------
-        filename : str
-            The filename string
-
-        Returns
-        -------
-        Path
-            A full path that is openable.
-        """
-        return Path(self.path) / Path(filename)
-
-    @staticmethod
-    def _determine_numprocs_preload():
-        # This is hardcoded to a reasonable value for hyak
-        # TODO: Unify this function and _determine_numprocs(). Ideally we would have
-        # either a multiprocessing.Pool or concurrent.futures.Executor interface taking
-        # an i/o bound callable which returns a number of bytes read. This reusable
-        # component would titrate the number of worker threads/processes to achieve a
-        # maximal throughput as measured by returns from the callable vs wall-clock time.
-        return 50
-
-    def _preload_tensor_cache(self):
-        """
-        When preloading the tensor cache is configured, this is called on a separate thread by __init__()
-        to perform a preload of every tensor in the dataset.
-        """
-        from concurrent.futures import ThreadPoolExecutor
-
-        logger.info("Preloading HSCDataSet cache...")
-
-        with ThreadPoolExecutor(max_workers=HSCDataSet._determine_numprocs_preload()) as executor:
-            tensors = self._lazy_map_executor(executor, self.ids(log_every=1_000_000))
-
-            start_time = time.monotonic_ns()
-            for idx, (id, tensor) in enumerate(zip(self.ids(), tensors)):
-                self.tensors[id] = tensor
-
-                # Output timing every 1k tensors
-                if idx % 1_000 == 0 and idx != 0:
-                    self._log_duration_tensorboard("HSCDataSet/preload_1k_obj_s", start_time)
-                    start_time = time.monotonic_ns()
-
-    def _lazy_map_executor(self, executor: Executor, ids: Iterable[str]) -> Iterator[Tensor]:
-        """This is a version of concurrent.futures.Executor map() which lazily evaluates the iterator passed
-        We do this because we do not want all of the tensors to remain in memory during pre-loading. We would
-        prefer a smaller set of in-flight tensors.
-
-        The total number of in progress jobs is set at HSCDataSet._determine_numprocs().
-
-        The total number of tensors is slightly greater than that owing to out-of-order execution.
-
-        This approach was copied from:
-        https://gist.github.com/CallumJHays/0841c5fdb7b2774d2a0b9b8233689761
-
-        Parameters
-        ----------
-        executor : concurrent.futures.Executor
-            An executour for running our futures
-        work_fn : Callable[[str], torch.Tensor]
-            The function that makes tensors out of object_ids
-        ids : Iterable[str]
-            An iterable list of object IDs.
-
-        Yields
-        ------
-        Iterator[torch.Tensor]
-            An iterator over torch tensors, lazily loaded by running the work_fn as needed.
-        """
-
-        from concurrent.futures import FIRST_COMPLETED, Future, wait
-
-        max_futures = HSCDataSet._determine_numprocs_preload()
-        queue: list[Future[Tensor]] = []
-        in_progress: set[Future[Tensor]] = set()
-        ids_iter = iter(ids)
-
-        try:
-            while True:
-                for _ in range(max_futures - len(in_progress)):
-                    id = next(ids_iter)
-                    future = executor.submit(self._read_object_id.__func__, self, id)  # type: ignore[attr-defined]
-                    queue.append(future)
-                    in_progress.add(future)
-
-                _, in_progress = wait(in_progress, return_when=FIRST_COMPLETED)
-
-                while queue and queue[0].done():
-                    yield queue.pop(0).result()
-
-        except StopIteration:
-            wait(queue)
-            for future in queue:
-                try:
-                    result = future.result()
-                except Exception as e:
-                    raise e
-                else:
-                    yield result
-
-    def _log_duration_tensorboard(self, name: str, start_time: int):
-        """Log a duration to tensorboardX. NOOP if no tensorboard logger configured
-
-        The time logged is a floating point number of seconds derived from integer
-        monotonic nanosecond measurements. time.monotonic_ns() is used for the current time
-
-        The step number for the scalar series is an integer number of microseonds.
-
-        Parameters
-        ----------
-        name : str
-            The name of the scalar to log to tensorboard
-        start_time : int
-            integer number of nanoseconds. Should be from time.monotonic_ns() when the duration started
-
-        """
-        now = time.monotonic_ns()
-        if self.tensorboardx_logger:
-            since_tensorboard_start_us = (start_time - self.tensorboard_start_ns) / 1.0e3
-
-            duration_s = (now - start_time) / 1.0e9
-            self.tensorboardx_logger.add_scalar(name, duration_s, since_tensorboard_start_us)
-
-    def _check_object_id_to_tensor_cache(self, object_id: str) -> Optional[Tensor]:
-        return self.tensors.get(object_id, None)
-
-    def _populate_object_id_to_tensor_cache(self, object_id: str) -> Tensor:
-        data_torch = self._read_object_id(object_id)
-        self.tensors[object_id] = data_torch
-        return data_torch
-
-    def _read_object_id(self, object_id: str) -> Tensor:
-        start_time = time.monotonic_ns()
-
-        # Read all the files corresponding to this object
-        data = []
-
-        for filepath in self._object_files_filters_ref(object_id):
-            file_start_time = time.monotonic_ns()
-            raw_data = fits.getdata(filepath, memmap=False)
-            data.append(raw_data)
-            self._log_duration_tensorboard("HSCDataSet/file_read_time_s", file_start_time)
-
-        self._log_duration_tensorboard("HSCDataSet/object_read_time_s", start_time)
-
-        data_torch = self._convert_to_torch(data)
-        self._log_duration_tensorboard("HSCDataSet/object_total_read_time_s", start_time)
-        return data_torch
-
-    def _convert_to_torch(self, data: list[npt.ArrayLike]) -> Tensor:
-        start_time = time.monotonic_ns()
-
-        # Push all the filter data into a tensor object
-        data_np = np.array(data)
-        data_torch = from_numpy(data_np.astype(np.float32))
-
-        # Apply our transform stack
-        data_torch = self.transform(data_torch) if self.transform is not None else data_torch
-
-        self._log_duration_tensorboard("HSCDataSet/object_convert_tensor_time_s", start_time)
-        return data_torch
-
-    # TODO: Performance Change when files are read/cache pytorch tensors?
-    #
-    # This function loads from a file every time __getitem__ is called
-    # Do we want to pre-cache these into memory in init?
-    # Do we want to memoize them on first __getitem__ call?
-    #
-    # For now we just do it the naive way
-    def _object_id_to_tensor(self, object_id: str) -> Tensor:
-        """Converts an object_id to a pytorch tensor with dimenstions (self.num_filters, self.cutout_shape[0],
-        self.cutout_shape[1]). This is done by reading the file and slicing away any excess pixels at the
-        far corners of the image from (0,0).
-
-        The current implementation reads the files once the first time they are accessed, and then
-        keeps them in a dict for future accesses.
-
-        Parameters
-        ----------
-        object_id : str
-            The object_id requested
-
-        Returns
-        -------
-        torch.Tensor
-            A tensor with dimension (self.num_filters, self.cutout_shape[0], self.cutout_shape[1])
-        """
-        start_time = time.monotonic_ns()
-
-        if self.use_cache is False:
-            return self._read_object_id(object_id)
-
-        data_torch = self._check_object_id_to_tensor_cache(object_id)
-        if data_torch is not None:
-            self._log_duration_tensorboard("HSCDataSet/cache_hit_s", start_time)
-            return data_torch
-
-        data_torch = self._populate_object_id_to_tensor_cache(object_id)
-        self._log_duration_tensorboard("HSCDataSet/cache_miss_s", start_time)
-        return data_torch
-
-    def _prepare_metadata(self) -> Optional[Table]:
-        if self.filter_catalog_table is None:
-            return None
-
-        # This happens when filter_catalog_table is injected in unit tests
-        if isinstance(self.filter_catalog_table, str):
-            return None
-
-        # We're going to be operating on object_id and filter columns en masse.
-        self.filter_catalog_table.add_index(["object_id", "filter"])
-
-        # Get all object_ids in enumeration order
-        sorted_object_ids = np.array([int(id) for id in self.ids()])
-
-        # Get a single row per object_id by selecting for a single filter
-        filter_catalog_table_dedup = self.filter_catalog_table.loc["filter", self.filters_ref[0]]
-
-        # Get all rows in enumeration order using the object_ids
-        metadata = filter_catalog_table_dedup.loc["object_id", sorted_object_ids]
-
-        # Filter for the appropriate columns
-        colnames = list(self.filter_catalog_table.colnames)
-        colnames.remove("filename")
-        colnames.remove("filter")
-
-        return metadata[colnames]

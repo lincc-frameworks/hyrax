@@ -1,7 +1,13 @@
-from .lookup import Lookup
-from .umap import Umap
-from .verb_registry import all_class_verbs, all_verbs, fetch_verb_class, is_verb_class
-from .visualize import Visualize
+# Remove import sorting, these are imported in the order written so that
+# autoapi docs are generated with ordering controlled below.
+# ruff: noqa: I001
+from hyrax.verbs.umap import Umap
+from hyrax.verbs.infer import Infer
+from hyrax.verbs.visualize import Visualize
+from hyrax.verbs.lookup import Lookup
+from hyrax.verbs.vdb_index import Index
+from hyrax.verbs.verb_registry import Verb
+from hyrax.verbs.verb_registry import all_class_verbs, all_verbs, fetch_verb_class, is_verb_class
 
 __all__ = [
     "VERB_REGISTRY",
@@ -12,4 +18,7 @@ __all__ = [
     "Lookup",
     "Umap",
     "Visualize",
+    "Infer",
+    "Index",
+    "Verb",
 ]

@@ -10,11 +10,12 @@ acquisition, scales seamlessly from laptops to HPC, and ensures reproducibility
 
 Getting Started
 ==================
-To get started, we recommend creating a virtual environment (e.g., venv or conda) and installing Hyrax using ``pip``.
+To get started, we recommend creating a virtual environment (e.g., venv or conda)
+and then install Hyrax using ``pip``.
 
 .. code-block:: console
 
-   >> conda create env -n hyrax python=3.10
+   >> conda create env -n hyrax python=3.12
    >> conda activate hyrax
    >> pip install hyrax
 
@@ -29,10 +30,10 @@ With Hyrax installed in your environment, you can train a built in autoencoder r
            from hyrax import Hyrax
 
            # Create an instance of the Hyrax object
-           f = Hyrax()
+           h = Hyrax()
 
            # Train the default autoencoder model
-           f.train()
+           h.train()
 
     .. group-tab:: CLI
 
@@ -52,7 +53,7 @@ Once the model is trained, we can immediately use it for inference.
         .. code-block:: python
 
            # Infer on the CiFAR test dataset
-           f.infer()
+           h.infer()
 
     .. group-tab:: CLI
 
@@ -74,7 +75,7 @@ To visualize the results, we should created an embedded lower dimensional space.
         .. code-block:: python
 
            # Create a 2D UMAP representation of the 64 element vectors
-           f.umap()
+           h.umap()
 
     .. group-tab:: CLI
 
@@ -90,13 +91,13 @@ withing a Jupyter notebook.
 .. code-block:: python
 
    # Visualize the UMAP results
-   f.visualize()
+   h.visualize()
 
 .. figure:: _static/umap_visualization.JPG
    :align: center
    :alt: An example UMAP visualization of the CiFAR dataset.
 
-   An example UMAP visualization of the CiFAR dataset.
+   An example UMAP visualization of the CiFAR dataset in a Jupyter notebook.
 
 This example shows how Hyrax can be used to quickly train, infer, and visualize
 data.
@@ -108,13 +109,14 @@ section to learn how to configure Hyrax for your specific use case.
    :hidden:
 
    Getting started <self>
+   About <about>
    Configuration <configuration>
    Verbs <verbs>
-   External libraries <external_libraries>
+   Builtin Datasets <autoapi/hyrax/data_sets/index>
+   Custom Datasets and Models <external_libraries>
    Data set splits <data_set_splits>
-   Model evaluation <model_evaluation>
+   Model comparison <model_comparison>
    Architecture overview <architecture_overview>
    Developer guide <dev_guide>
    API Reference <autoapi/index>
    Example notebooks <notebooks>
-   About <about>

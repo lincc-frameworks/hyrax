@@ -22,8 +22,8 @@ and deployment to an HPC or Slurm system for large scale training.
 
            from hyrax import Hyrax
 
-           hyrax_instance = Hyrax(config_file = 'my_config.toml')
-           hyrax_instance.train()
+           h = Hyrax(config_file = 'my_config.toml')
+           h.train()
 
     .. group-tab:: CLI
 

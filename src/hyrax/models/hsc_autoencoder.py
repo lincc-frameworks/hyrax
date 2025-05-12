@@ -1,8 +1,5 @@
 # ruff: noqa: D101, D102
 
-# This autoencoder is designed to work with datasets
-# that are prepared with Hyrax's HSC Data Set class.
-
 
 import torch.nn as nn
 
@@ -12,6 +9,10 @@ from hyrax.models.model_registry import hyrax_model
 
 @hyrax_model
 class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
+    """
+    This autoencoder is designed to work with datasets that are prepared with Hyrax's HSC Data Set class.
+    """
+
     def __init__(self, config, shape):
         super().__init__()
 
@@ -43,7 +44,8 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         return decoded
 
     def train_step(self, batch):
-        """This function contains the logic for a single training step. i.e. the
+        """
+        This function contains the logic for a single training step. i.e. the
         contents of the inner loop of a ML training process.
 
         Parameters
@@ -53,8 +55,8 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
 
         Returns
         -------
-        Current loss value
-            The loss value for the current batch.
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
         """
 
         data = batch[0]

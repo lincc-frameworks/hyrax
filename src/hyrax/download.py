@@ -277,9 +277,9 @@ resuming the correct download? Deleting the manifest and cutout files will start
 
         object_id: The object ID from the original catalog
         filename: The file name where the file can be found OR the string "Attempted" indicating the download
-                  did not complete successfully.
+        did not complete successfully.
         tract: The HSC tract ID number this either comes from the catalog or is the tract ID returned by the
-               cutout server for downloaded files.
+        cutout server for downloaded files.
 
         ra: Right ascension in degrees of the center of the cutout box
         dec: Declination in degrees of the center of the cutout box

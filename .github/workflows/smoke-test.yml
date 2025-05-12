@@ -39,4 +39,4 @@ jobs:
         pip list
     - name: Run unit tests with pytest
       run: |
-        python -m pytest
+        python -m pytest -m "not slow"
