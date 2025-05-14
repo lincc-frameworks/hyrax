@@ -253,3 +253,7 @@ def test_get_by_id_many_shards(chromadb_instance, random_vector_generator):
 
     result = chromadb_instance.get_by_id("id1")
     assert np.all(result["id1"] == [1, 2, 3])
+
+    for indx, id in enumerate(ids):
+        result = chromadb_instance.get_by_id(id)
+        assert np.all(result[id] == vectors[indx])
