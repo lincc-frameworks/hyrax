@@ -3,10 +3,10 @@
 FitsImageDataSet is for if you have image data in a single directory and some sort of tabular catalog file.
 
 At minimum, your tabular catalog **must** contain the following:
+
 #. A unique ID column for each astronomical object you are interested in
 #. A filename column containing the filename of the fits image file.
-#. If you have multiple images with the same object ID, they must have separate rows in the catalog, one for
-each image. There must be a column describing the filter on the telescope that differentiates these objects
+#. If you have multiple images with the same object ID, they must have separate rows in the catalog, one for each image. There must be a column describing the filter on the telescope that differentiates these objects
 
 We recommend all your fits images be roughly the same size.
 
@@ -51,7 +51,7 @@ crashes if there is not enough room in your system RAM for the entire dataset.
 If you need to truncate your dataset to fit in RAM, the easiest way is to select a small number of rows
 from your original catalog file. FitsImageDataSet will only attempt to load images that exist in the catalog.
 
-"""
+"""  # noqa: E501
 
 import logging
 import time
