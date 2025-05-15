@@ -23,7 +23,6 @@ class LoopbackModel(nn.Module):
 
         def load(self, weight_file):
             """Load Weights, we have no weights so we do nothing"""
-            print("got here")
             pass
 
         # We override this way rather than defining a method because
