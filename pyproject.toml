@@ -69,6 +69,7 @@ dev = [
     "pytest",
     "pytest-cov", # Used to report total code coverage
     "pytest-env", # Used to set environment variables in testing
+    "pytest-xdist", # Used to parallelize unit tests
     "ruff", # Used for static linting of files
 ]
 
