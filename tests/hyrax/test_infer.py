@@ -10,11 +10,13 @@ def loopback_hyrax(tmp_path_factory, request):
     which is configured to use the loopback model
     and a simple dataset yielding random numbers
     """
+    results_dir = tmp_path_factory.mktemp(f"loopback_hyrax_{request.param}")
+
     h = hyrax.Hyrax()
     h.config["model"]["name"] = "LoopbackModel"
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 5
-    h.config["general"]["results_dir"] = str(tmp_path_factory.mktemp(f"loopback_hyrax_{request.param}"))
+    h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
     h.config["data_set"]["name"] = request.param
@@ -25,9 +27,12 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["data_set"]["test_size"] = 0.2
     h.config["data_set"]["train_size"] = 0.6
 
-    dataset = h.prepare()
-    h.train()
+    weights_file = results_dir / "fakeweights"
+    with open(weights_file, "a"):
+        pass
+    h.config["infer"]["model_weights_file"] = str(weights_file)
 
+    dataset = h.prepare()
     return h, dataset
 
 

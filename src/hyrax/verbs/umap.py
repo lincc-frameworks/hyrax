@@ -130,7 +130,7 @@ class Umap(Verb):
                 # We flatten all dimensions of the input array except the dimension
                 # corresponding to batch elements. This ensures that all inputs to
                 # the UMAP algorithm are flattend per input item in the batch
-                inference_results[batch_indexes].reshape(len(batch_indexes), -1),
+                inference_results[batch_indexes].numpy().reshape(len(batch_indexes), -1),
             )
             for batch_indexes in np.array_split(all_indexes, num_batches)
         )
