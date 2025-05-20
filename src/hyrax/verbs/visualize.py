@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy.typing as npt
+from matplotlib.colors import LogNorm
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -172,15 +173,15 @@ class Visualize(Verb):
             # Plot pane and table pane side by side
             pane = plot_pane + table_pane
 
+        # We attempt to display the pane (fails outside a notebook)
+        try:
+            from IPython.display import display
+
+            display(pane)
+        except ImportError:
+            logger.warning("Couldn't find IPython display environment. Skipping display step.")
+
         if return_verb:
-            # In addition to the returning the reference to self we will also attempt to display the pane
-            try:
-                from IPython.display import display
-
-                display(pane)
-            except ImportError:
-                logger.warning("Couldn't find IPython display environment. Skipping display step.")
-
             return pane, self
         else:
             return pane
@@ -512,10 +513,7 @@ class Visualize(Verb):
             # If we have fewer than n_images points, use all of them but force a fresh load
             if len(self.points_idx) <= n_images:
                 chosen_idx = list(self.points_idx)
-                # chosen_pt_idx = range(len(self.points_idx))
             else:
-                # chosen_pt_idx = random.sample(range(len(self.points_idx)), n_images)
-                # chosen_idx = self.points_idx[0:n_images]
                 chosen_idx = random.sample(list(self.points_idx), n_images)
 
             # Get sampled ids -- this will match whatever order chosen, idx is in
@@ -538,13 +536,6 @@ class Visualize(Verb):
 
             filenames = [f.decode("utf-8") for f in ordered_filenames]
 
-            # with open("hyrax_debug.log", "a") as dbg:
-            #    dbg.write(f"chosen_idx: {chosen_idx}\n")
-            #    dbg.write(f"sampled_ids: {sampled_ids}\n")
-            #    dbg.write(f"meta['object_id']: {list(meta['object_id'])}\n\n")
-            #    dbg.write(f"Is points_idxsorted? {all(self.points_idx[i] <= self.points_idx[i+1]
-            #                          for i in range(len(self.points_idx)-1))}\n")
-
         else:
             sampled_ids = []
             filenames = []
@@ -562,16 +553,17 @@ class Visualize(Verb):
                     if crop_to:
                         arr = crop_center(arr, crop_to)
 
-                    # Normalize to [0, 1] after checking it's safe to do so
-                    arr = (arr - np.min(arr)) / np.ptp(arr) if np.ptp(arr) > 0 else np.zeros_like(arr)
+                    # Ensure data is positive for log scaling
+                    min_positive = np.min(arr[arr > 0]) if np.any(arr > 0) else 1e-10
+                    arr = np.maximum(arr, min_positive)  # Replace zeros/negatives with minimum positive value
 
-                    # Log Scaling
-                    arr = np.log1p(arr)  # log(1 + x), safe for zeros
-                    arr = arr / np.max(arr)  # re-normalize
+                    # Apply LogNorm-like scaling
+                    norm = LogNorm(vmin=min_positive, vmax=np.max(arr))
+                    arr = norm(arr)
 
-                    # title = f"{chosen_idx[i]} {meta['object_id'][i]}\n{sampled_ids[i]}"
-                    title = f"{chosen_idx[i]}:{ordered_object_ids[i]}\n{sampled_ids[i]}"
-                    # title = f"{meta['object_id'][i]}"
+                    # title = f"{chosen_idx[i]}:{ordered_object_ids[i]}\n{sampled_ids[i]}"
+                    title = f"{sampled_ids[i]}"
+
                 except Exception as e:
                     logger.warning(f"Could not load FITS file: {e}")
                     with open("./hyrax_visualize.log", "a") as f:
@@ -583,7 +575,7 @@ class Visualize(Verb):
                 title = "No Selection"
 
             img = Image(arr).opts(
-                cmap="gray",
+                cmap="gray_r",
                 width=int((0.9 * total_width) / n_cols),
                 height=int((0.9 * total_width) / n_cols),
                 title=title,
