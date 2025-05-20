@@ -112,7 +112,7 @@ class SaveToDatabase(Verb):
             raise RuntimeError(f"Database directory {str(vector_db_path)} does not exist.")
 
         # Create an instance of the vector database to insert into
-        vector_db = vector_db_factory(config, context={"results_dir": vector_db_dir})
+        vector_db = vector_db_factory(config, context={"results_dir": str(vector_db_path)})
         if vector_db:
             vector_db.create()
         else:
@@ -124,8 +124,8 @@ class SaveToDatabase(Verb):
 
         # Log the config with updated values for the input and output directories.
         config["vector_db"]["infer_results_dir"] = str(inference_results_path)
-        config["vector_db"]["vector_db_dir"] = str(vector_db_dir)
-        log_runtime_config(config, vector_db_dir)
+        config["vector_db"]["vector_db_dir"] = str(vector_db_path)
+        log_runtime_config(config, vector_db_path)
 
         # Use the batch_index to get the list of batches.
         batches = np.unique(inference_data_set.batch_index["batch_num"])

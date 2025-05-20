@@ -1,5 +1,5 @@
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Union
+from typing import Optional, Union
 
 import chromadb
 import numpy as np
@@ -35,7 +35,7 @@ def _query_for_nn(results_dir: str, shard_name: str, vectors: list[np.ndarray], 
     return collection.query(query_embeddings=vectors, n_results=k)
 
 
-def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]]):
+def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]], include: Optional[list[str]]):
     """The query function for the ProcessPoolExecutor to query a shard for the
     vector associated with a given id.
 
@@ -47,6 +47,8 @@ def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]]):
         The name of the ChromaDB shard to load and query
     id : Union[str, list[str]]
         One or more ids of vectors in the database shard we are trying to retrieve
+    include : list[str], optional
+        The fields to include in the results.
 
     Returns
     -------
@@ -55,7 +57,9 @@ def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]]):
     """
     chromadb_client = chromadb.PersistentClient(path=str(results_dir))
     collection = chromadb_client.get_collection(name=shard_name)
-    return collection.get(id, include=["embeddings"])
+    if not include:
+        include = ["embeddings"]
+    return collection.get(id, include=include)
 
 
 class ChromaDB(VectorDB):
@@ -117,6 +121,18 @@ class ChromaDB(VectorDB):
         vectors : list[np.ndarray]
             The vectors to insert into the database
         """
+
+        # Check to see if the ids we're about to insert are already in the database
+        pre_existing_ids = self._get_ids(ids=ids)
+
+        # create a mask, so that we don't insert vectors that are already present in the database
+        mask = [i for i in range(len(ids)) if ids[i] not in pre_existing_ids]
+        ids = [ids[i] for i in mask]
+        vectors = [vectors[i] for i in mask]
+
+        if len(ids) == 0:
+            # no new vectors to insert
+            return
 
         # increment counter, if exceeds shard limit, create a new collection
         self.shard_size += len(ids)
@@ -307,7 +323,9 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(_query_for_id, self.context["results_dir"], shard.name, ids): shard
+                    executor.submit(
+                        _query_for_id, self.context["results_dir"], shard.name, ids, ["embeddings"]
+                    ): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):
@@ -324,3 +342,48 @@ class ChromaDB(VectorDB):
                     vectors[result_id] = results["embeddings"][indx]
 
         return vectors
+
+    def _get_ids(self, ids: list[Union[str, int]]) -> set[str]:
+        """For the given list of ids, return the ids that are already in the database.
+
+        Parameters
+        ----------
+        ids : list[Union[str, int]]
+            The ids of the vectors to retrieve. For ChromaDB instances, these should
+            always be strings.
+
+        Returns
+        -------
+        set(str)
+            Set of ids that are already in the database.
+        """
+
+        # create the database connection
+        if self.chromadb_client is None:
+            self.connect()
+
+        shards = self.chromadb_client.list_collections()
+        found_ids = set()
+
+        if len(shards) > self.min_shards_for_parallelization:
+            import multiprocessing
+
+            multiprocessing.set_start_method("spawn", force=True)
+            with ProcessPoolExecutor() as executor:
+                futures = {
+                    executor.submit(
+                        _query_for_id, self.context["results_dir"], shard.name, ids, include=[]
+                    ): shard
+                    for shard in shards
+                }
+                for future in as_completed(futures):
+                    results = future.result()
+                    found_ids.update(results["ids"])
+
+        else:
+            for shard in shards:
+                collection = self.chromadb_client.get_collection(shard.name)
+                results = collection.get(ids, include=[])
+                found_ids.update(results["ids"])
+
+        return found_ids

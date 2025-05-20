@@ -63,7 +63,10 @@ class DatabaseConnection(Verb):
 
         vector_db_path = Path(vector_db_dir).resolve()
         if not vector_db_path.is_dir():
-            raise RuntimeError(f"Database directory {str(vector_db_path)} does not exist.")
+            raise RuntimeError(
+                f"Database directory {str(vector_db_path)} does not exist. \
+                    Have you run `hyrax.save_to_database(output_dir={vector_db_path})`?"
+            )
 
         # Get the flavor of database (i.e. Chroma, Qdrant, etc) from the config
         # file saved in `vector_db_path`. This ensures that we will use the correct
