@@ -142,7 +142,7 @@ class ChromaDB(VectorDB):
         Returns
         -------
         dict[int, list[Union[str, int]]]
-            Dictionary with input id index as the key and the ids of the k
+            Dictionary with input id as the key and the ids of the k
             nearest neighbors as the value. Because this function accepts only 1
             id, the key will always be 0. i.e. {0: [id1, id2, ...]}
 
@@ -203,7 +203,8 @@ class ChromaDB(VectorDB):
         else:
             query_results = self.search_by_vector(vectors, k=k)
 
-        return query_results
+        # Return the dictionary as {id: neighbor_ids}
+        return {id: query_results[0]}
 
     def search_by_vector(
         self, vectors: Union[np.ndarray, list[np.ndarray]], k: int = 1

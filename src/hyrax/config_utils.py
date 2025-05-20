@@ -201,13 +201,13 @@ class ConfigManager:
         runtime_config_filepath: Optional[Union[Path, str]] = None,
         default_config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH,
     ):
-        self.hyrax_default_config: TOMLDocument = ConfigManager._read_runtime_config(default_config_filepath)
+        self.hyrax_default_config: TOMLDocument = ConfigManager.read_runtime_config(default_config_filepath)
 
         self.runtime_config_filepath = ConfigManager.resolve_runtime_config(runtime_config_filepath)
         if self.runtime_config_filepath is DEFAULT_CONFIG_FILEPATH:
             self.user_specific_config = TOMLDocument()
         else:
-            self.user_specific_config = ConfigManager._read_runtime_config(self.runtime_config_filepath)
+            self.user_specific_config = ConfigManager.read_runtime_config(self.runtime_config_filepath)
 
         self.external_library_config_paths = ConfigManager._find_external_library_default_config_paths(
             self.user_specific_config
@@ -222,7 +222,7 @@ class ConfigManager:
             ConfigManager._validate_runtime_config(self.config, self.overall_default_config)
 
     @staticmethod
-    def _read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:
+    def read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:
         """Read a single toml file and return a ConfigDict
 
         Parameters
@@ -293,7 +293,7 @@ class ConfigManager:
 
         # Merge all external library default configurations first
         for path in self.external_library_config_paths:
-            external_library_config = self._read_runtime_config(path)
+            external_library_config = self.read_runtime_config(path)
             self.overall_default_config = self.merge_configs(
                 self.overall_default_config, external_library_config
             )
