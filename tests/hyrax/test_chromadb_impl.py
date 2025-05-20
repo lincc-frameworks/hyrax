@@ -85,23 +85,23 @@ def test_search_by_id(chromadb_instance):
 
     # Search by single vector should return the id1 and id2 in that order
     result = chromadb_instance.search_by_id("id1", k=2)
-    assert len(result[0]) == 2
-    assert np.all(result[0] == ["id1", "id2"])
+    assert len(result["id1"]) == 2
+    assert np.all(result["id1"] == ["id1", "id2"])
 
     # Search should return all ids when k is larger than the number of ids
     result = chromadb_instance.search_by_id("id1", k=5)
-    assert len(result[0]) == 2
-    assert np.all(result[0] == ["id1", "id2"])
+    assert len(result["id1"]) == 2
+    assert np.all(result["id1"] == ["id1", "id2"])
 
     # Search should return 1 id when k is 1
     result = chromadb_instance.search_by_id("id1", k=1)
-    assert len(result[0]) == 1
-    assert np.all(result[0] == ["id1"])
+    assert len(result["id1"]) == 1
+    assert np.all(result["id1"] == ["id1"])
 
     # Search by another vector should return the id2 and id1 in that order
     result = chromadb_instance.search_by_id("id2", k=2)
-    assert len(result[0]) == 2
-    assert np.all(result[0] == ["id2", "id1"])
+    assert len(result["id2"]) == 2
+    assert np.all(result["id2"] == ["id2", "id1"])
 
 
 def test_search_by_id_many_shards(chromadb_instance, random_vector_generator):
@@ -129,8 +129,8 @@ def test_search_by_id_many_shards(chromadb_instance, random_vector_generator):
 
     # Search should return 1 id when k is 1
     result = chromadb_instance.search_by_id("id1", k=1)
-    assert len(result[0]) == 1
-    assert np.all(result[0] == ["id1"])
+    assert len(result["id1"]) == 1
+    assert np.all(result["id1"] == ["id1"])
 
 
 def test_search_by_vector(chromadb_instance):

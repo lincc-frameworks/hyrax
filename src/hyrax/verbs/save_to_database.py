@@ -5,22 +5,17 @@ from typing import Optional, Union
 
 import numpy as np
 
-from hyrax.config_utils import (
-    create_results_dir,
-    find_most_recent_results_dir,
-)
-
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
 
 
 @hyrax_verb
-class Index(Verb):
+class SaveToDatabase(Verb):
     """Verb to insert inference results into a vector database index for fast
     similarity search."""
 
-    cli_name = "index"
+    cli_name = "save_to_database"
     add_parser_kwargs = {}
 
     @staticmethod
@@ -66,15 +61,22 @@ class Index(Verb):
             or a directory containing an existing vector database. If the latter, the
             database will be updated with the new vectors.
         """
+        from copy import deepcopy
+
         from tqdm import tqdm
 
+        from hyrax.config_utils import (
+            create_results_dir,
+            find_most_recent_results_dir,
+            log_runtime_config,
+        )
         from hyrax.data_sets.inference_dataset import InferenceDataSet
         from hyrax.vector_dbs.vector_db_factory import vector_db_factory
 
-        config = self.config
+        config = deepcopy(self.config)
 
         # Attempt to find the directory containing inference results. Check for
-        # the input_dir argument first, then check the config file for
+        # the --input-dir argument first, then check the config file for
         # vector_db.infer_results_dir, and finally check for the most recent
         # results directory.
         infer_results_dir = None
@@ -88,25 +90,29 @@ class Index(Verb):
         if infer_results_dir is None:
             raise RuntimeError("Must define infer_results_dir in the [vector_db] section of hyrax config.")
 
-        inference_results_path = Path(infer_results_dir)
+        inference_results_path = Path(infer_results_dir).resolve()
         if not inference_results_path.is_dir():
-            raise RuntimeError(f"Input directory {input_dir} does not exist.")
+            raise RuntimeError(f"Input directory {inference_results_path} does not exist.")
 
         # Create an instance of the InferenceDataSet
         inference_data_set = InferenceDataSet(config, inference_results_path)
 
-        # Get the vector db output directory by using the input parameter or
+        # Get the vector db output directory by using the --output-dir parameter or
         # config value or creating a new directory, in that order.
-        vector_db_dir = None
+        vector_db_dir = Path()
         if output_dir is not None:
             vector_db_dir = output_dir
         elif config["vector_db"]["vector_db_dir"]:
             vector_db_dir = config["vector_db"]["vector_db_dir"]
         else:
-            vector_db_dir = create_results_dir(config, "index")
+            vector_db_dir = create_results_dir(config, "vector-db")
+
+        vector_db_path = Path(vector_db_dir).resolve()
+        if not vector_db_path.is_dir():
+            raise RuntimeError(f"Database directory {str(vector_db_path)} does not exist.")
 
         # Create an instance of the vector database to insert into
-        vector_db = vector_db_factory(config, context={"results_dir": vector_db_dir})
+        vector_db = vector_db_factory(config, context={"results_dir": str(vector_db_path)})
         if vector_db:
             vector_db.create()
         else:
@@ -115,6 +121,11 @@ class Index(Verb):
                 "Please specify a supported vector db in the ['vector_db']['name'] "
                 "section of the hyrax config."
             )
+
+        # Log the config with updated values for the input and output directories.
+        config["vector_db"]["infer_results_dir"] = str(inference_results_path)
+        config["vector_db"]["vector_db_dir"] = str(vector_db_path)
+        log_runtime_config(config, vector_db_path)
 
         # Use the batch_index to get the list of batches.
         batches = np.unique(inference_data_set.batch_index["batch_num"])
