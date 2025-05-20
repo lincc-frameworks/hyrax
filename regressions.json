@@ -1,1 +1,1 @@
-{"regressions": []}
+{"regressions": [["benchmarks.time_nb_obj_construct", "graphs/Cython/branch-HEAD/build/machine-gh-runner/packaging/python-3.10/benchmarks.time_nb_obj_construct.json", {}, null, 0.023556789999929606, 0.020603903500159504, [[null, 210, 0.020603903500159504, 0.021956540999781282], [null, 220, 0.021956540999781282, 0.023556789999929606]]]]}
