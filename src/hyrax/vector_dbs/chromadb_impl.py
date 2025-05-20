@@ -190,7 +190,9 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(_query_for_id, self.context["results_dir"], shard.name, id): shard
+                    executor.submit(
+                        _query_for_id, self.context["results_dir"], shard.name, id, ["embeddings"]
+                    ): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):
