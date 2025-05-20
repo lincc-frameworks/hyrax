@@ -127,7 +127,7 @@ class Infer(Verb):
             write_index += batch_len
 
         # Run inference
-        evaluator = create_evaluator(model, _save_batch)
+        evaluator = create_evaluator(model, _save_batch, config)
         evaluator.run(data_loader)
 
         # Write out a dictionary to map IDs->Batch
