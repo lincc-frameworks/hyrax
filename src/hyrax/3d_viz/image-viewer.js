@@ -416,27 +416,29 @@ function processImageData(data, width, height) {
         const processedData = new Uint8ClampedArray(width * height * 4); // RGBA
         
         // Find min and max values for normalization
-        let min = Infinity;
-        let max = -Infinity;
+        let logMin = Infinity;
+        let logMax = -Infinity;
         let validCount = 0;
-        
+        const shift = 1e-3;
+     
         // First pass: find valid min/max values and count valid pixels
         for (let i = 0; i < data.length; i++) {
             const value = data[i];
-            if (value !== null && value !== undefined && isFinite(value)) {
-                min = Math.min(min, value);
-                max = Math.max(max, value);
+            if (value !== null && value !== undefined && isFinite(value) && value > 0) {
+                const logValue = Math.log10(value + shift);
                 validCount++;
+                if (logValue < logMin) logMin = logValue;
+                if (logValue > logMax) logMax = logValue;
             }
         }
         
         //console.log(`DEBUG: Valid pixels: ${validCount} of ${data.length}`);
         
         // If no valid values found or all values are the same, use defaults
-        if (!isFinite(min) || !isFinite(max) || min === max) {
-            console.warn('DEBUG: Invalid min/max values, using defaults');
-            min = 0;
-            max = 1;
+        if (!isFinite(logMin) || !isFinite(logMax) || logMin === logMax) {
+            console.warn('DEBUG: Invalid or flat log scale range, using defaults');
+            logMin = 0;
+            logMax = 1;
         }
         
         //console.log(`DEBUG: Raw data stats - Min: ${min}, Max: ${max}`);
@@ -448,15 +450,22 @@ function processImageData(data, width, height) {
             // Calculate pixel RGBA values
             let pixelValue;
             
-            if (value !== null && value !== undefined && isFinite(value)) {
-                // Linear normalization
-                const normalized = (value - min) / (max - min);
-                
-                // Apply transformation
-                const transformed = Math.sqrt(Math.max(normalized, 0));
-                
+            if (value !== null && value !== undefined && isFinite(value) && value > 0) {
+
+                // Applying a log-norm scaling
+                const logValue = Math.log10(value + shift);
+                const normalized = (logValue - logMin) / (logMax - logMin);
+
+                // Now let's soften the scaling a bit with a tunable gamma
+                const gamma = 0.9;  // Try values between 0.4 and 0.9
+                const compressed = Math.pow(normalized, gamma);
+
                 // Convert to 0-255 range
-                pixelValue = Math.floor(transformed * 255);
+                pixelValue = Math.floor(compressed * 255);
+
+                // Clamp to [0, 255]
+                if (pixelValue < 0) pixelValue = 0;
+                if (pixelValue > 255) pixelValue = 255;
                 
                 // Safety check
                 if (!isFinite(pixelValue) || pixelValue < 0 || pixelValue > 255) {
