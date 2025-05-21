@@ -204,6 +204,12 @@ filter_column_name = false
 # Override the name of the filename column for FitsImageDataset and HSCDataset
 filename_column_name = false
 
+# Replace NaN in input data with a value, modes are false for no replacement or "quantile"
+nan_mode = "quantile"
+
+# When replacing NaN values with a quantile, which quantile in the non-nan tensor
+nan_quantile = 0.05
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
