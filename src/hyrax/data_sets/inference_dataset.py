@@ -53,9 +53,9 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         # Initialize the original dataset using the old config, so we have it
         # around for metadata calls
-        self._original_dataset_config = ConfigManager(
+        self._original_dataset_config = ConfigManager().read_runtime_config(
             self.results_dir / ORIGINAL_DATASET_CONFIG_FILENAME
-        ).config
+        )
 
         # Disable cache preloading on this dataset because it will only be used for its metadata
         # TODO: May want to add some sort of metadata_only optional arg to dataset constructor
