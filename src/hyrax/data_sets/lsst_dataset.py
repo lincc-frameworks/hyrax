@@ -1,4 +1,5 @@
 import functools
+from pathlib import Path
 
 from torch.utils.data import Dataset
 
@@ -17,13 +18,18 @@ class LSSTDataset(HyraxDataset, Dataset):
         """
         .. py:method:: __init__
 
+        Initialize the dataset with either a HATS catalog or astropy table.
+
+        Config can specify either:
+        - config["data_set"]["hats_catalog"]: path to HATS catalog
+        - config["data_set"]["astropy_table"]: path to any file readable by Astropy Table
+
         """
         try:
-            import lsdb
             import lsst.daf.butler as butler
         except ImportError as e:
             msg = "LSSTDataset can only be used in a Rubin Software Platform environment"
-            msg += " with access to the lsst pipeline tools and lsdb"
+            msg += " with access to the lsst pipeline tools"
             raise ImportError(msg) from e
 
         self.butler = butler.Butler(
@@ -31,25 +37,81 @@ class LSSTDataset(HyraxDataset, Dataset):
         )
         self.skymap = self.butler.get("skyMap", {"skymap": config["data_set"]["skymap"]})
 
-        # We compute the entire catalog so we have a nested frame which we can access.
-        self.catalog = lsdb.read_hats(config["data_set"]["hats_catalog"]).compute()
+        # Load catalog - either from HATS or astropy table
+        self.catalog = self._load_catalog(config["data_set"])
+
         self.sh_deg = config["data_set"]["semi_height_deg"]
         self.sw_deg = config["data_set"]["semi_width_deg"]
 
         # TODO: Metadata from the catalog
         super().__init__(config)
 
+    def _load_catalog(self, data_set_config):
+        """
+        Load the catalog from either a HATS catalog or an astropy table.
+        """
+        if "hats_catalog" in data_set_config:
+            return self._load_hats_catalog(data_set_config["hats_catalog"])
+        elif "astropy_table" in data_set_config:
+            return self._load_astropy_catalog(data_set_config["astropy_table"])
+        else:
+            raise ValueError("Must specify either 'hats_catalog' or 'astropy_table' in data_set config")
+
+    def _load_hats_catalog(self, hats_path):
+        """Load catalog from HATS format using LSDB."""
+        try:
+            import lsdb
+        except ImportError as e:
+            msg = "LSDB is required to load HATS catalogs. Install with: pip install lsdb"
+            raise ImportError(msg) from e
+
+        # We compute the entire catalog so we have a nested frame which we can access
+        return lsdb.read_hats(hats_path).compute()
+
+    def _load_astropy_catalog(self, table_path):
+        """Load catalog from astropy table format or pickled astropy table."""
+
+        import pickle
+
+        from astropy.table import Table
+
+        table_path = Path(table_path)
+
+        # Check if it's a pickle file
+        if table_path.suffix.lower() in [".pkl", ".pickle"]:
+            with open(table_path, "rb") as f:
+                table = pickle.load(f)
+            # Verify it's an astropy Table
+            if not isinstance(table, Table):
+                raise ValueError(f"Pickled file {table_path} does not contain an astropy Table")
+            return table
+        else:
+            # Load using astropy's native readers -- can be any format supported by astropy
+            return Table.read(table_path)
+
     def __len__(self):
         return len(self.catalog)
 
     def __getitem__(self, idxs):
+        from astropy.table import Table
         from nested_pandas import NestedFrame
 
-        frame = self.catalog.iloc[idxs]
-        frame = frame if isinstance(frame, NestedFrame) else NestedFrame(frame).T
-        cutouts = [self._fetch_single_cutout(row) for _, row in frame.iterrows()]
-
-        return cutouts if len(cutouts) > 1 else cutouts[0]
+        # Handle different catalog types
+        if isinstance(self.catalog, Table):
+            # Astropy table - extract rows directly
+            if isinstance(idxs, (list, tuple)):
+                rows = [self.catalog[idx] for idx in idxs]
+                cutouts = [self._fetch_single_cutout(row) for row in rows]
+                return cutouts
+            else:
+                row = self.catalog[idxs]
+                return self._fetch_single_cutout(row)
+        else:
+            # NestedFrame (HATS catalog)
+            frame = self.catalog.iloc[idxs]
+            frame = frame if isinstance(frame, NestedFrame) else NestedFrame(frame).T
+            cutouts = [self._fetch_single_cutout(row) for _, row in frame.iterrows()]
+            return cutouts if len(cutouts) > 1 else cutouts[0]
 
     # def __getitems__(self, idxs):
     #     return __getitem__(self, idxs)
