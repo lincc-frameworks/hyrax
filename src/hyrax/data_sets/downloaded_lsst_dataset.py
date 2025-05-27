@@ -1,7 +1,9 @@
 import functools
 import logging
+import threading
 from pathlib import Path
 
+import numpy as np
 import torch
 from astropy.table import Table
 from tqdm import tqdm
@@ -15,12 +17,11 @@ class DownloadedLSSTDataset(LSSTDataset):
     """
     DownloadedLSSTDataset: A dataset that inherits from LSSTDataset and
     downloads cutouts from the LSST butler and saves them as `.pt` files
-    during the first access.On subsequent accesses, it loads the cutouts 
+    during the first access.On subsequent accesses, it loads the cutouts
     directly from these files.
     """
 
     def __init__(self, config):
-
         self.download_dir = Path(config["general"]["data_dir"])
         self.download_dir.mkdir(exist_ok=True)
 
@@ -28,31 +29,77 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         # Store config for thread-local Butler creation
         self._butler_config = {
-            'repo': config["data_set"]["butler_repo"],
-            'collections': config["data_set"]["butler_collection"],
-            'skymap': config["data_set"]["skymap"]
+            "repo": config["data_set"]["butler_repo"],
+            "collections": config["data_set"]["butler_collection"],
+            "skymap": config["data_set"]["skymap"],
         }
 
-        # Determine naming strategy
+        # Manifest management
+        self._manifest_lock = threading.Lock()
+        self._updates_since_save = 0
+        self._save_interval = 1000
+
+        # Determine naming strategy and initialize manifest
         self._setup_naming_strategy()
+        self._initialize_manifest()
 
     def _setup_naming_strategy(self):
         """Setup file naming strategy based on catalog columns."""
-        catalog_columns = self.catalog.colnames if hasattr(self.catalog, 'colnames') else self.catalog.columns
+        catalog_columns = self.catalog.colnames if hasattr(self.catalog, "colnames") else self.catalog.columns
 
         self.use_object_id = False
-        if 'object_id' in catalog_columns:
+        if "object_id" in catalog_columns:
             self.use_object_id = True
-            self.object_id_column = 'object_id'
-        elif 'objectId' in catalog_columns:
+            self.object_id_column = "object_id"
+        elif "objectId" in catalog_columns:
             self.use_object_id = True
-            self.object_id_column = 'objectId'
+            self.object_id_column = "objectId"
         else:
-            self.object_id_column = 'objectId'
+            self.object_id_column = "objectId"
 
         if not self.use_object_id:
             dataset_length = len(self.catalog)
             self.padding_length = max(4, len(str(dataset_length)))
+
+    def _initialize_manifest(self):
+        """Create manifest based on catalog type with cutout tracking columns."""
+
+        if isinstance(self.catalog, Table):
+            self.catalog_type = "astropy"
+            self.manifest_path = self.download_dir / "manifest.fits"
+
+            self.manifest = Table()
+            # Copy only the data columns, not the LSST metadata that
+            # currently causes warnings during saving.
+            for col_name in self.catalog.colnames:
+                self.manifest[col_name] = self.catalog[col_name]
+        else:
+            self.catalog_type = "hats"
+            self.manifest_path = self.download_dir / "manifest.parquet"
+            self.manifest = self.catalog.copy()
+
+        self._add_manifest_columns()
+
+        # Save initial manifest
+        self._save_manifest()
+        logger.info(f"Initialized manifest at {self.manifest_path}")
+
+    def _add_manifest_columns(self):
+        """Add cutout_shape and filename columns to manifest."""
+        if self.catalog_type == "astropy":
+            n_rows = len(self.manifest)
+
+            # Create shape column as integer array (assuming 3D tensors like [3, 64, 64])
+            empty_shape = np.array([0, 0, 0], dtype=int)  # Placeholder shape
+            self.manifest["cutout_shape"] = [empty_shape] * n_rows
+
+            # Create filename column
+            self.manifest["filename"] = [""] * n_rows
+            self.manifest["filename"] = self.manifest["filename"].astype("U50")  # 50-char strings
+        else:
+            # For NestedFrame/HATS, add None columns
+            self.manifest["cutout_shape"] = [None] * len(self.manifest)
+            self.manifest["filename"] = [None] * len(self.manifest)
 
     def _get_cutout_path(self, idx):
         """Generate cutout file path for a given index."""
@@ -65,10 +112,56 @@ class DownloadedLSSTDataset(LSSTDataset):
         else:
             return self.download_dir / f"cutout_{idx:0{self.padding_length}d}.pt"
 
+    def _update_manifest_entry(self, idx, cutout_shape=None, filename="Attempted"):
+        """
+        Thread-safe manifest update with periodic saves.
+
+        Args:
+            idx: Index in the catalog
+            cutout_shape: Shape tuple of the cutout tensor, or None for failed downloads
+            filename: Basename of the saved file, or "Attempted" for failures
+        """
+        with self._manifest_lock:
+            # Update manifest entries
+            if cutout_shape is not None:
+                shape_array = np.array(list(cutout_shape), dtype=int)
+                self.manifest["cutout_shape"][idx] = shape_array
+            else:
+                # For failed downloads
+                if self.catalog_type == "astropy":
+                    self.manifest["cutout_shape"][idx] = np.array([0, 0, 0], dtype=int)
+                else:
+                    self.manifest["cutout_shape"][idx] = None
+
+            self.manifest["filename"][idx] = filename
+
+            # Increment update counter and save periodically
+            self._updates_since_save += 1
+            if self._updates_since_save >= self._save_interval:
+                self._save_manifest()
+                self._updates_since_save = 0
+                logger.debug(f"Periodic manifest save completed ({self._save_interval} updates)")
+
+    def _save_manifest(self):
+        """Save manifest in appropriate format (FITS for Astropy, Parquet for HATS)."""
+        try:
+            if self.catalog_type == "astropy":
+                self.manifest.write(self.manifest_path, overwrite=True)
+            else:
+                # For HATS catalogs, save as Parquet
+                # Convert to pandas DataFrame if needed
+                manifest_df = self.manifest.compute() if hasattr(self.manifest, "compute") else self.manifest
+                manifest_df.to_parquet(self.manifest_path)
+
+            logger.debug(f"Manifest saved to {self.manifest_path}")
+        except Exception as e:
+            logger.error(f"Failed to save manifest: {e}")
 
     @staticmethod
     @functools.lru_cache(maxsize=128)
-    def _request_patch_cached(tract_index, patch_index, butler_repo, butler_collections, skymap_name, bands_tuple):
+    def _request_patch_cached(
+        tract_index, patch_index, butler_repo, butler_collections, skymap_name, bands_tuple
+    ):
         """
         Cached patch fetching using static method.
 
@@ -80,7 +173,7 @@ class DownloadedLSSTDataset(LSSTDataset):
 
             # Create fresh Butler instance for this call
             thread_butler = butler.Butler(butler_repo, collections=butler_collections)
-            #thread_skymap = thread_butler.get("skyMap", {"skymap": skymap_name})
+            # thread_skymap = thread_butler.get("skyMap", {"skymap": skymap_name})
 
             data = []
             for band in bands_tuple:  # bands_tuple is hashable for cache key
@@ -105,10 +198,11 @@ class DownloadedLSSTDataset(LSSTDataset):
         if idx is not None:
             cutout_path = self._get_cutout_path(idx)
             if cutout_path.exists():
-                return torch.load(cutout_path, map_location='cpu', weights_only=True)
+                return torch.load(cutout_path, map_location="cpu", weights_only=True)
 
         # For main thread, use parent's method (original caching)
         import threading
+
         if threading.current_thread() is threading.main_thread():
             cutout = super()._fetch_single_cutout(row)
         else:
@@ -120,11 +214,14 @@ class DownloadedLSSTDataset(LSSTDataset):
             cutout_path = self._get_cutout_path(idx)
             torch.save(cutout, cutout_path)
 
+            # Update manifest with successful download
+            filename = cutout_path.name  # Just the basename
+            self._update_manifest_entry(idx, cutout.shape, filename)
+
         return cutout
 
     def _fetch_cutout_with_cache(self, row):
         """Generate cutout using cached patch fetching."""
-        import numpy as np
         from torch import from_numpy
 
         # Get tract and patch info (using parent's methods)
@@ -137,10 +234,10 @@ class DownloadedLSSTDataset(LSSTDataset):
         patch_images = self._request_patch_cached(
             tract_info.getId(),
             patch_info.sequential_index,
-            self._butler_config['repo'],
-            self._butler_config['collections'], 
-            self._butler_config['skymap'],
-            bands_tuple
+            self._butler_config["repo"],
+            self._butler_config["collections"],
+            self._butler_config["skymap"],
+            bands_tuple,
         )
 
         # Extract cutout from patch images
@@ -178,8 +275,10 @@ class DownloadedLSSTDataset(LSSTDataset):
             print("All cutouts already downloaded")
             return
 
-        logger.info(f"Downloading {len(indices_to_download)} cutouts using "
-                   f"{self._determine_numprocs_download()} threads.")
+        logger.info(
+            f"Downloading {len(indices_to_download)} cutouts using "
+            f"{self._determine_numprocs_download()} threads."
+        )
 
         with ThreadPoolExecutor(max_workers=self._determine_numprocs_download()) as executor:
             futures = {executor.submit(self._download_single_cutout, idx): idx for idx in indices_to_download}
@@ -192,11 +291,19 @@ class DownloadedLSSTDataset(LSSTDataset):
                     except Exception as e:
                         idx = futures[future]
                         logger.error(f"Failed to download cutout {idx}: {e}")
+                        self._update_manifest_entry(idx, None, "Attempted")
                         pbar.update(1)
 
-        # Log cache stats
+        # Final manifest save
+        with self._manifest_lock:
+            if self._updates_since_save > 0:
+                self._save_manifest()
+                self._updates_since_save = 0
+
+        # Log cache and download stats
         cache_info = self._request_patch_cached.cache_info()
         logger.info(f"Download complete. Cache stats: {cache_info}")
+        logger.info(f"Manifest saved to {self.manifest_path}")
 
     def _download_single_cutout(self, idx):
         """Helper method to download a single cutout."""
@@ -204,9 +311,20 @@ class DownloadedLSSTDataset(LSSTDataset):
         if cutout_path.exists():
             return
 
-        row = self.catalog[idx] if isinstance(self.catalog, Table) else self.catalog.iloc[idx]
-        cutout = self._fetch_cutout_with_cache(row)
-        torch.save(cutout, cutout_path)
+        try:
+            row = self.catalog[idx] if isinstance(self.catalog, Table) else self.catalog.iloc[idx]
+            cutout = self._fetch_cutout_with_cache(row)
+            torch.save(cutout, cutout_path)
+
+            # Update manifest with successful download
+            filename = cutout_path.name  # Just the basename
+            self._update_manifest_entry(idx, cutout.shape, filename)
+
+        except Exception as e:
+            logger.error(f"Failed to download cutout {idx}: {e}")
+            # Update manifest with failed attempt
+            self._update_manifest_entry(idx, None, "Attempted")
+            raise
 
     def get_cache_info(self):
         """Get cache statistics."""
@@ -216,6 +334,44 @@ class DownloadedLSSTDataset(LSSTDataset):
         """Clear the LRU cache."""
         self._request_patch_cached.cache_clear()
         logger.info("Cleared patch cache")
+
+    def get_manifest_stats(self):
+        """Convnience function to get manifest statistics.
+
+        # To use:
+        h = hyrax.Hyrax(config)
+        a = h.prepare()
+        a.download_cutouts()
+        a.get_manifest_stats()
+        """
+        with self._manifest_lock:
+            if self.catalog_type == "astropy":
+                successful = sum(
+                    1 for filename in self.manifest["filename"] if filename and filename != "Attempted"
+                )
+                failed = sum(1 for filename in self.manifest["filename"] if filename == "Attempted")
+                pending = sum(1 for filename in self.manifest["filename"] if not filename)
+            else:
+                successful = sum(
+                    1 for filename in self.manifest["filename"] if filename and filename != "Attempted"
+                )
+                failed = sum(1 for filename in self.manifest["filename"] if filename == "Attempted")
+                pending = sum(1 for filename in self.manifest["filename"] if filename is None)
+
+            return {
+                "total": len(self.manifest),
+                "successful": successful,
+                "failed": failed,
+                "pending": pending,
+                "manifest_path": str(self.manifest_path),
+            }
+
+    def save_manifest_now(self):
+        """Force immediate manifest save."""
+        with self._manifest_lock:
+            self._save_manifest()
+            self._updates_since_save = 0
+        logger.info("Manifest manually saved")
 
     @staticmethod
     def _determine_numprocs_download():
