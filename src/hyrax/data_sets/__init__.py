@@ -13,6 +13,11 @@ where `LSST Pipeline <https://pipelines.lsst.io/>`_ tools and a
 `data butler <https://pipelines.lsst.io/modules/lsst.daf.butler/index.html>`_ with the appropriate images
 are available.
 
+:doc:`DownloadedLSSTDataset <downloaded_lsst_dataset/index>` is a subclass of LSSTDataset that generates
+cutouts from the butler and saves them as ``.pt`` files on first access. On subsequent access,
+it loads the cutouts directly from these files, which can significantly speed up data loading times.
+It inherits from LSSTDataset to access the data butler and catalog functionality.
+
 :doc:`HSCDataSet <hsc_data_set/index>` Works similarly to FitsImageDataSet, but is specialized to
 `Hyper Suprime-Cam (HSC) <https://hsc-release.mtk.nao.ac.jp/doc/index.php/data/>`_ cutout images downloaded
 with the hyrax ``download`` verb. It contains additional integrity checks and is tightly integrated with
@@ -48,6 +53,7 @@ functionality to make custom datasets easier to write. See the
 # ruff: noqa: I001
 from .fits_image_dataset import FitsImageDataSet
 from .lsst_dataset import LSSTDataset
+from .downloaded_lsst_dataset import DownloadedLSSTDataset
 from .hsc_data_set import HSCDataSet
 from .hyrax_cifar_data_set import HyraxCifarDataSet, HyraxCifarIterableDataSet
 from .inference_dataset import InferenceDataSet
@@ -62,5 +68,6 @@ __all__ = [
     "InferenceDataSet",
     "HyraxDataset",
     "LSSTDataset",
+    "DownloadedLSSTDataset",
     "HyraxCifarBase",
 ]
