@@ -15,10 +15,65 @@ logger = logging.getLogger(__name__)
 
 class DownloadedLSSTDataset(LSSTDataset):
     """
-    DownloadedLSSTDataset: A dataset that inherits from LSSTDataset and
-    downloads cutouts from the LSST butler and saves them as `.pt` files
-    during the first access.On subsequent accesses, it loads the cutouts
-    directly from these files.
+    DownloadedLSSTDataset: A dataset that inherits from LSSTDataset and downloads
+    cutouts from the LSST butler, saving them as `.pt` files during first access.
+    On subsequent accesses, it loads cutouts directly from these cached files.
+
+    This class also creates a manifest files with the shape of each cutout and the
+    corresponding filename.
+
+    Public Methods:
+        download_cutouts(indices=None, sync_filesystem=True, max_workers=None, force_retry=False):
+            Download cutouts with parallel processing. Automatically resumes from
+            previous progress. Use max_workers to control thread count, force_retry
+            to re-attempt failed downloads.
+
+        get_manifest_stats():
+            Returns dict with download statistics: total, successful, failed, pending
+            counts and manifest file path.
+
+        get_download_progress():
+            Returns detailed progress metrics including completion percentage and
+            failure rates.
+
+        reset_failed_downloads():
+            Resets all failed download attempts to allow retry without force_retry flag.
+            Returns count of reset entries.
+
+        save_manifest_now():
+            Forces immediate manifest save (normally saved periodically during downloads).
+
+        get_cache_info():
+            Returns LRU cache statistics for patch fetching performance monitoring.
+
+        clear_cache():
+            Clears the patch LRU cache to free memory.
+
+    Usage Example:
+        # Initialize Hyrax
+        h = hyrax.Hyrax()
+        a = h.prepare()
+
+        # Download all cutouts (resumes automatically)
+        a.download_cutouts(max_workers=4)
+        WARNING: The LRU Caching scheme is slightly complicated, so it is recommended to
+        use the default max_workers=1 for the first download. Simply using more workers
+        may not always speed up the download process.
+
+        # Check progress
+        a.get_download_progress()
+
+        # Retry failed downloads
+        a.download_cutouts(force_retry=True)
+
+        # Access cutouts (loads from cache)
+        cutout = a[0]  # Single cutout
+        cutouts = a[0:10]  # Multiple cutouts
+
+    File Organization:
+    - Cutouts saved as: cutout_{object_id}.pt or cutout_{index:04d}.pt
+    - Manifest saved as: manifest.fits (Astropy) or manifest.parquet (HATS)
+    - All files stored in config["general"]["data_dir"]
     """
 
     def __init__(self, config):
@@ -62,27 +117,101 @@ class DownloadedLSSTDataset(LSSTDataset):
             self.padding_length = max(4, len(str(dataset_length)))
 
     def _initialize_manifest(self):
-        """Create manifest based on catalog type with cutout tracking columns."""
+        """Create or load existing manifest with cutout tracking columns."""
 
         if isinstance(self.catalog, Table):
             self.catalog_type = "astropy"
             self.manifest_path = self.download_dir / "manifest.fits"
-
-            self.manifest = Table()
-            # Copy only the data columns, not the LSST metadata that
-            # currently causes warnings during saving.
-            for col_name in self.catalog.colnames:
-                self.manifest[col_name] = self.catalog[col_name]
         else:
             self.catalog_type = "hats"
             self.manifest_path = self.download_dir / "manifest.parquet"
+
+        # Try to load existing manifest first
+        if self.manifest_path.exists():
+            logger.info(f"Loading existing manifest from {self.manifest_path}")
+            try:
+                self.manifest = self._load_existing_manifest()
+
+                # Validate manifest compatibility with current catalog
+                if self._validate_manifest_compatibility():
+                    logger.info("Existing manifest is compatible with current catalog.")
+                    return
+                else:
+                    logger.warning("Manifest incompatible with current catalog, creating new one")
+                    # Continue to create new manifest
+            except Exception as e:
+                logger.warning(f"Failed to load existing manifest: {e}, creating new one")
+                # Continue to create new manifest
+
+        # Create new manifest
+        logger.info("Creating new manifest")
+        if self.catalog_type == "astropy":
+            self.manifest = Table()
+            # Copy only the data columns
+            for col_name in self.catalog.colnames:
+                self.manifest[col_name] = self.catalog[col_name]
+        else:
             self.manifest = self.catalog.copy()
 
         self._add_manifest_columns()
-
-        # Save initial manifest
         self._save_manifest()
-        logger.info(f"Initialized manifest at {self.manifest_path}")
+        logger.info(f"Initialized new manifest at {self.manifest_path}")
+
+    def _load_existing_manifest(self):
+        """Load existing manifest file."""
+        if self.catalog_type == "astropy":
+            return Table.read(self.manifest_path)
+        else:
+            import pandas as pd
+
+            df = pd.read_parquet(self.manifest_path)
+            # Convert back to original catalog type if needed
+            return df
+
+    def _validate_manifest_compatibility(self):
+        """Check if existing manifest is compatible with current catalog."""
+        try:
+            # Check if lengths match
+            if len(self.manifest) != len(self.catalog):
+                logger.warning(
+                    f"Manifest length ({len(self.manifest)}) != catalog\
+                        length ({len(self.catalog)})"
+                )
+                return False
+
+            # Check if required columns exist
+            required_cols = ["cutout_shape", "filename"]
+            if self.catalog_type == "astropy":
+                manifest_cols = self.manifest.colnames
+            else:
+                manifest_cols = self.manifest.columns
+
+            for col in required_cols:
+                if col not in manifest_cols:
+                    logger.warning(f"Required column '{col}' missing from manifest")
+                    return False
+
+            # Check if key identifying columns match (basic validation)
+            if self.use_object_id and self.object_id_column in manifest_cols:
+                # Compare a few object IDs to ensure consistency
+                sample_size = min(10, len(self.catalog))
+                for i in range(sample_size):
+                    if self.catalog_type == "astropy":
+                        cat_id = self.catalog[i][self.object_id_column]
+                        man_id = self.manifest[i][self.object_id_column]
+                    else:
+                        cat_id = self.catalog.iloc[i][self.object_id_column]
+                        man_id = self.manifest.iloc[i][self.object_id_column]
+
+                    if cat_id != man_id:
+                        logger.warning(f"Object ID mismatch at index {i}: {cat_id} != {man_id}")
+                        return False
+
+            return True
+
+        except Exception as e:
+            logger.error(f"Error validating manifest compatibility: {e}")
+            return False
 
     def _add_manifest_columns(self):
         """Add cutout_shape and filename columns to manifest."""
@@ -157,6 +286,41 @@ class DownloadedLSSTDataset(LSSTDataset):
         except Exception as e:
             logger.error(f"Failed to save manifest: {e}")
 
+    def _sync_manifest_with_filesystem(self):
+        """Sync manifest with actual downloaded files on disk."""
+        logger.info("Syncing manifest with filesystem...")
+        synced_count = 0
+
+        for idx in range(len(self.manifest)):
+            cutout_path = self._get_cutout_path(idx)
+
+            # Get current manifest state
+            if self.catalog_type == "astropy":
+                current_filename = self.manifest["filename"][idx]
+            else:
+                current_filename = self.manifest.iloc[idx]["filename"]
+
+            if cutout_path.exists():
+                # File exists on disk
+                if not current_filename or current_filename == "Attempted":
+                    # Manifest doesn't reflect the file exists, update it
+                    try:
+                        cutout = torch.load(cutout_path, map_location="cpu", weights_only=True)
+                        self._update_manifest_entry(idx, cutout.shape, cutout_path.name)
+                        synced_count += 1
+                    except Exception as e:
+                        logger.warning(f"Could not load existing cutout {cutout_path}: {e}")
+            else:
+                # File doesn't exist on disk
+                if current_filename and current_filename != "Attempted":
+                    # Manifest says file exists but it doesn't, reset entry
+                    self._update_manifest_entry(idx, None, "")
+                    synced_count += 1
+
+        if synced_count > 0:
+            logger.info(f"Synced {synced_count} manifest entries with filesystem")
+            self.save_manifest_now()
+
     @staticmethod
     @functools.lru_cache(maxsize=128)
     def _request_patch_cached(
@@ -173,7 +337,6 @@ class DownloadedLSSTDataset(LSSTDataset):
 
             # Create fresh Butler instance for this call
             thread_butler = butler.Butler(butler_repo, collections=butler_collections)
-            # thread_skymap = thread_butler.get("skyMap", {"skymap": skymap_name})
 
             data = []
             for band in bands_tuple:  # bands_tuple is hashable for cache key
@@ -262,25 +425,57 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         return cutouts
 
-    def download_cutouts(self, indices=None):
-        """Download cutouts using multiple threads with caching."""
+    def download_cutouts(self, indices=None, sync_filesystem=True, max_workers=None, force_retry=False):
+        """Download cutouts using multiple threads with caching.
+
+        Args:
+            indices: List of indices to download, or None for all
+            sync_filesystem: Whether to sync manifest with existing files on disk
+            max_workers: Maximum number of worker threads, or None to use default
+            force_retry: Whether to retry previously failed downloads
+        """
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
         if indices is None:
             indices = range(len(self))
 
-        indices_to_download = [idx for idx in indices if not self._get_cutout_path(idx).exists()]
+        # Optionally sync manifest with filesystem before downloading
+        if sync_filesystem:
+            self._sync_manifest_with_filesystem()
+
+        # Determine which cutouts need downloading
+        indices_to_download = []
+        for idx in indices:
+            cutout_path = self._get_cutout_path(idx)
+
+            # Check if file exists on disk
+            if cutout_path.exists():
+                continue
+
+            # Check manifest status
+            if self.catalog_type == "astropy":
+                filename = self.manifest["filename"][idx]
+            else:
+                filename = self.manifest.iloc[idx]["filename"]
+
+            # Skip if already attempted and failed (unless force_retry is True)
+            if filename == "Attempted" and not force_retry:
+                logger.debug(f"Skipping previously failed download for index {idx}")
+                continue
+
+            indices_to_download.append(idx)
 
         if not indices_to_download:
-            print("All cutouts already downloaded")
+            logger.info("All cutouts already downloaded")
             return
 
-        logger.info(
-            f"Downloading {len(indices_to_download)} cutouts using "
-            f"{self._determine_numprocs_download()} threads."
-        )
+        # Determine number of workers
+        if max_workers is None:
+            max_workers = self._determine_numprocs_download()
 
-        with ThreadPoolExecutor(max_workers=self._determine_numprocs_download()) as executor:
+        logger.info(f"Downloading {len(indices_to_download)} cutouts using {max_workers} threads.")
+
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
             futures = {executor.submit(self._download_single_cutout, idx): idx for idx in indices_to_download}
 
             with tqdm(total=len(indices_to_download), desc="Downloading cutouts") as pbar:
@@ -376,4 +571,46 @@ class DownloadedLSSTDataset(LSSTDataset):
     @staticmethod
     def _determine_numprocs_download():
         """Determine number of threads for downloading."""
+        # TODO:This is a placeholder for actual logic to determine number of threads.
         return 1
+
+    def reset_failed_downloads(self):
+        """Reset failed download attempts to allow retry."""
+        reset_count = 0
+
+        for idx in range(len(self.manifest)):
+            if self.catalog_type == "astropy":
+                filename = self.manifest["filename"][idx]
+            else:
+                filename = self.manifest.iloc[idx]["filename"]
+
+            if filename == "Attempted":
+                self._update_manifest_entry(idx, None, "")
+                reset_count += 1
+
+        if reset_count > 0:
+            logger.info(f"Reset {reset_count} failed download attempts")
+            self.save_manifest_now()
+
+        return reset_count
+
+    def get_download_progress(self):
+        """Get detailed download progress information."""
+        stats = self.get_manifest_stats()
+
+        # Calculate additional metrics
+        total = stats["total"]
+        successful = stats["successful"]
+        failed = stats["failed"]
+        pending = stats["pending"]
+
+        progress_percent = (successful / total * 100) if total > 0 else 0
+        failure_rate = (failed / (successful + failed) * 100) if (successful + failed) > 0 else 0
+
+        return {
+            **stats,
+            "progress_percent": round(progress_percent, 2),
+            "failure_rate": round(failure_rate, 2),
+            "completed": successful + failed,
+            "remaining": pending,
+        }
