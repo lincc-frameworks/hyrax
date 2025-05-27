@@ -274,7 +274,14 @@ def create_splits(data_set: Dataset, config: ConfigDict):
 
 
 def _handle_nans(batch, config):
+    from torch import any, isnan
+
     if config["data_set"]["nan_mode"] is False:
+        if any(isnan(batch)):
+            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
+            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile', or writing a to_tensor()"
+            msg += "function for your model. Search hyrax readthedocs for 'to_tensor' to get started. "
+            logger.warning(msg)
         return batch
 
     if config["data_set"]["nan_mode"] == "quantile":

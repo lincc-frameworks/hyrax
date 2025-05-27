@@ -78,6 +78,7 @@ def test_nan_handling(loopback_hyrax_nan):
     Test that default nan handling removes nans
     """
     h, dataset = loopback_hyrax_nan
+    h.config["data_set"]["nan_mode"] = "quantile"
 
     inference_results = h.infer()
 

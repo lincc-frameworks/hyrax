@@ -150,6 +150,30 @@ it's ``x`` input. See the example below, which stacks the g, r, and i fluxes int
 Note that ``to_tensor`` must be defined with ``@staticmethod`` as in the example. The function does not have
 access to the model's data members through the typical ``self`` argument in python.
 
+Another possible use of ``to_tensor`` is to remove or otherwise adjust the input data of your model in ways 
+that are not easily done with a ``torch.transform``. Below is an example ``to_tensor`` function which removes 
+NaN values from input data, replacing them with the value zero. 
+
+.. code-block:: python
+
+    from hyrax.models import hyrax_model
+
+    @hyrax_model
+    class MyModel:
+
+        @staticmethod
+        def to_tensor(batch_dict):
+            """
+            Accepts a batch of tensors which may contain NaN values. Replaces those values with zero.
+            """
+            from torch import any, isnan, nan_to_num
+            if any(isnan(batch)):
+                batch = nan_to_num(batch, 0.0)
+            return batch
+
+Some NaN handling is available automatically in hyrax, via ``config['data_set']['nan_mode']``, but if a 
+customized strategy is desired, the approach above may be preferable.
+
 .. _custom-dataset-instructions:
 
 Defining a dataset class
