@@ -273,7 +273,62 @@ def create_splits(data_set: Dataset, config: ConfigDict):
     return split_inds
 
 
-def create_engine(funcname: str, device: torch.device, model: torch.nn.Module) -> Engine:
+def _handle_nans(batch, config):
+    from torch import any, isnan
+
+    if config["data_set"]["nan_mode"] is False:
+        if any(isnan(batch)):
+            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
+            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile', or writing a to_tensor()"
+            msg += "function for your model. Search hyrax readthedocs for 'to_tensor' to get started. "
+            logger.warning(msg)
+        return batch
+
+    if config["data_set"]["nan_mode"] == "quantile":
+        quantile = config["data_set"]["nan_quantile"]
+        if quantile < 0.0 or quantile > 1.0:
+            raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
+        return _handle_nan_quantile(batch, quantile)
+    else:
+        msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
+        msg += "The only supported mode is 'quantile' "
+        raise NotImplementedError(msg)
+
+
+def _handle_nan_quantile(batch, quantile):
+    from torch import any, isnan
+
+    if any(isnan(batch)):
+        flat_batch = torch.reshape(batch, (batch.shape[0], -1))
+        batch_quantile = torch.nanquantile(flat_batch, q=quantile, dim=-1)
+        for i, val in enumerate(batch_quantile):
+            batch[i] = torch.nan_to_num(batch[i], val)
+
+    return batch
+
+
+def _inner_loop(func, to_tensor, device, config, engine, batch):
+    """This wraps a model-specific function (func) to move data to the appropriate device."""
+    # If we have a dict of lists, we need to decode the dict
+    # This will give us either a tensor of the whole batch or a tuple
+    if isinstance(batch, dict):
+        batch = to_tensor(batch)
+
+    batch = _handle_nans(batch, config)
+
+    # Send the batch to the device
+    batch = batch.to(device) if isinstance(batch, torch.Tensor) else tuple(i.to(device) for i in batch)
+    return func(batch)
+
+
+def _create_process_func(funcname, device, model, config):
+    inner_step = extract_model_method(model, funcname)
+    to_tensor = extract_model_method(model, "to_tensor")
+    inner_loop = functools.partial(_inner_loop, inner_step, to_tensor, device, config)
+    return inner_loop
+
+
+def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, config: ConfigDict) -> Engine:
     """Unified creation of the pytorch engine object for either an evaluator or trainer.
 
     This function will automatically unwrap a distributed model to find the necessary function, and construct
@@ -289,26 +344,10 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module) -
         The device the engine will run the model on
     model : torch.nn.Module
         The Model the engine will be using
+    config : ConfigDict
+        The runtime config in use
     """
-
-    # This wraps a model-specific function (func) to move data to the appropriate device.
-    def _inner_loop(func, to_tensor, device, engine, batch):
-        # If we have a dict of lists, we need to decode the dict
-        # This will give us either a tensor of the whole batch or a tuple
-        if isinstance(batch, dict):
-            batch = to_tensor(batch)
-
-        # Send the batch to the device
-        batch = batch.to(device) if isinstance(batch, torch.Tensor) else tuple(i.to(device) for i in batch)
-        return func(batch)
-
-    def _create_process_func(funcname, device, model):
-        inner_step = extract_model_method(model, funcname)
-        to_tensor = extract_model_method(model, "to_tensor")
-        inner_loop = functools.partial(_inner_loop, inner_step, to_tensor, device)
-        return inner_loop
-
-    return Engine(_create_process_func(funcname, device, model))
+    return Engine(_create_process_func(funcname, device, model, config))
 
 
 def extract_model_method(model, method_name):
@@ -333,7 +372,7 @@ def extract_model_method(model, method_name):
 
 
 def create_evaluator(
-    model: torch.nn.Module, save_function: Callable[[torch.Tensor, torch.Tensor], Any]
+    model: torch.nn.Module, save_function: Callable[[torch.Tensor, torch.Tensor], Any], config: ConfigDict
 ) -> Engine:
     """Creates an evaluator engine
     Primary purpose of this function is to attach the appropriate handlers to an evaluator engine
@@ -347,6 +386,9 @@ def create_evaluator(
         A function which will receive Engine.state.output at the end of each iteration. The intent
         is for the results of evaluation to be saved.
 
+    config : ConfigDict
+        The runtime config in use
+
     Returns
     -------
     pytorch-ignite.Engine
@@ -355,7 +397,7 @@ def create_evaluator(
     device = idist.device()
     model.eval()
     model = idist.auto_model(model)
-    evaluator = create_engine("forward", device, model)
+    evaluator = create_engine("forward", device, model, config)
 
     @evaluator.on(Events.STARTED)
     def log_eval_start(evaluator):
@@ -415,7 +457,7 @@ def create_validator(
     device = idist.device()
     model = idist.auto_model(model)
 
-    validator = create_engine("train_step", device, model)
+    validator = create_engine("train_step", device, model, config)
     fixup_engine(validator)
 
     @validator.on(Events.STARTED)
@@ -472,7 +514,7 @@ def create_trainer(
     device = idist.device()
     model.train()
     model = idist.auto_model(model)
-    trainer = create_engine("train_step", device, model)
+    trainer = create_engine("train_step", device, model, config)
     fixup_engine(trainer)
 
     optimizer = extract_model_method(model, "optimizer")
