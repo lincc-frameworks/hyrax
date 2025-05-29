@@ -261,3 +261,18 @@ class QdrantDB(VectorDB):
             result_dict[i] = [intermediate_results[i]["ids"][j] for j in sorted_indicies][:k]
 
         return result_dict
+
+    def get_by_id(self, ids: list[Union[str, int]]) -> dict[Union[str, int], list[float]]:
+        """Retrieve the vectors associated with a list of ids.
+
+        Parameters
+        ----------
+        ids : list[Union[str, int]]
+            The ids of the vectors to retrieve.
+
+        Returns
+        -------
+        dict[Union[str, int], list[float]]
+            Dictionary with the ids as the keys and the vectors as the values.
+        """
+        pass

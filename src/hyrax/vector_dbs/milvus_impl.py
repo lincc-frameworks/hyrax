@@ -3,9 +3,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from typing import Union
 
-import chromadb
 import numpy as np
-from chromadb.api.types import IncludeEnum
 from pymilvus import MilvusClient
 
 from hyrax.vector_dbs.vector_db_interface import VectorDB
@@ -34,8 +32,9 @@ def _query_for_nn(results_dir: str, shard_name: str, vectors: list[np.ndarray], 
         The results of the nearest neighbor search for the given vectors in the
         given shard.
     """
-    chromadb_client = chromadb.PersistentClient(path=str(results_dir))
-    collection = chromadb_client.get_collection(name=shard_name)
+    database_file_name = Path(results_dir) / "milvus.db"
+    milvusdb_client = MilvusClient(str(database_file_name))
+    collection = milvusdb_client.get_collection(name=shard_name)
     return collection.query(query_embeddings=vectors, n_results=k)
 
 
@@ -57,9 +56,10 @@ def _query_for_id(results_dir: str, shard_name: str, id: str):
     dict
         The results of the id query for the given id in the given shard.
     """
-    chromadb_client = chromadb.PersistentClient(path=str(results_dir))
-    collection = chromadb_client.get_collection(name=shard_name)
-    return collection.get(id, include=[IncludeEnum.embeddings])
+    database_file_name = Path(results_dir) / "milvus.db"
+    milvusdb_client = MilvusClient(str(database_file_name))
+    collection = milvusdb_client.get_collection(name=shard_name)
+    return collection.get(id=id, output_fields=["vector"])
 
 
 class MilvusDB(VectorDB):
@@ -76,6 +76,8 @@ class MilvusDB(VectorDB):
         # The approximate maximum size of a shard before a new one is created
         self.shard_size_limit = 65_536
 
+        self.min_shards_for_parallelization = MIN_SHARDS_FOR_PARALLELIZATION
+
     def connect(self):
         """Create a database connection"""
         results_dir = self.context["results_dir"]
@@ -90,11 +92,13 @@ class MilvusDB(VectorDB):
         if self.milvusdb_client is None:
             self.connect()
 
+        self.shard_index = len(self.milvusdb_client.list_collections())
+
         # Create a chromadb shard (a.k.a. "collection")
         self.collection = f"shard_{self.shard_index}"
         self.milvusdb_client.create_collection(
             collection_name=self.collection,
-            dimension=64,
+            dimension=3,
             metric_type="L2",
         )
 
@@ -114,14 +118,18 @@ class MilvusDB(VectorDB):
         # increment counter, if exceeds shard limit, create a new collection
         self.shard_size += len(ids)
         if self.shard_size > self.shard_size_limit:
-            self.shard_index += 1
             self.shard_size = len(ids)
             print("Creating new shard")
             self.create()
 
+        try:
+            int_ids = [int(id) for id in ids]
+        except ValueError:
+            raise ValueError("All ids must be convertible to int")
+
         self.milvusdb_client.insert(
             collection_name=self.collection,
-            data=[{"id": int(id), "vector": vector} for id, vector in zip(ids, vectors)],
+            data=[{"id": id, "vector": vector} for id, vector in zip(int_ids, vectors)],
         )
 
     def search_by_id(self, id: Union[str | int], k: int = 1) -> dict[int, list[Union[str | int]]]:
@@ -267,3 +275,47 @@ class MilvusDB(VectorDB):
             result_dict[i] = [intermediate_results[i]["ids"][j] for j in sorted_indicies][:k]
 
         return result_dict
+
+    def get_by_id(self, ids: list[Union[str, int]]) -> dict[Union[str, int], list[float]]:
+        """Retrieve the vectors associated with a list of ids.
+
+        Parameters
+        ----------
+        ids : list[Union[str, int]]
+            The ids of the vectors to retrieve.
+
+        Returns
+        -------
+        dict[Union[str, int], list[float]]
+            Dictionary with the ids as the keys and the vectors as the values.
+        """
+        # create the database connection
+        if self.milvusdb_client is None:
+            self.connect()
+
+        shards = self.milvusdb_client.list_collections()
+        vectors = {}
+
+        if len(shards) > self.min_shards_for_parallelization:
+            import multiprocessing
+
+            multiprocessing.set_start_method("spawn", force=True)
+            with ProcessPoolExecutor() as executor:
+                futures = {
+                    executor.submit(_query_for_id, self.context["results_dir"], shard, ids): shard
+                    for shard in shards
+                }
+                for future in as_completed(futures):
+                    results = future.result()
+                    for indx, result_id in enumerate(results["ids"]):
+                        vectors[result_id] = results["embeddings"][indx]
+
+        else:
+            for shard in shards:
+                collection = self.milvusdb_client.get_collection(shard.name)
+                results = collection.get(ids, include=["embeddings"])
+
+                for indx, result_id in enumerate(results["ids"]):
+                    vectors[result_id] = results["embeddings"][indx]
+
+        return vectors
