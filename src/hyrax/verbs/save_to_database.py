@@ -140,6 +140,9 @@ class SaveToDatabase(Verb):
 
             # Retrieve the vectors from the batch file using the ids. We use the
             # ids here so that we only have to open one file to get the vectors.
-            vectors = inference_data_set._load_from_batch_file(batch, ids)
+            inference_data = inference_data_set._load_from_batch_file(batch, ids)
 
-            vector_db.insert(ids=list(vectors["id"]), vectors=list(vectors["tensor"]))
+            # Flatten the vectors and turn them into a list of np.arrays.
+            vectors = list(inference_data["tensor"].reshape(len(inference_data["tensor"]), -1))
+
+            vector_db.insert(ids=list(inference_data["id"]), vectors=vectors)

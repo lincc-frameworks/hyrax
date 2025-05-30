@@ -276,6 +276,10 @@ def create_splits(data_set: Dataset, config: ConfigDict):
 def _handle_nans(batch, config):
     from torch import any, isnan
 
+    # If `batch` is a tuple, assume the first element is a tensor.
+    if isinstance(batch, tuple):
+        batch = batch[0]
+
     if config["data_set"]["nan_mode"] is False:
         if any(isnan(batch)):
             msg = "Input data contains NaN values. This may mean your model output is all NaNs."
