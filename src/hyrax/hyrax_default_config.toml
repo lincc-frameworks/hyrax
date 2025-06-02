@@ -195,7 +195,7 @@ use_cache = true
 # Warning: Only suitable for situations where the entire dataset fits in system memory
 preload_cache = true
 
-# Override the name of the object_id column for FitsImageDataset and HSCDataset
+# Override the name of the object_id column for FitsImageDataset, HSCDataset and DownloadedLSSTDataset
 object_id_column_name = false
 
 # Override the name of the filter column for FitsImageDataset and HSCDataset
