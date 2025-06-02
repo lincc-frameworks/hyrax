@@ -46,13 +46,11 @@ class RandomDataset(HyraxDataset, Dataset):
     def __init__(self, config):
         size = config["data_set"]["size"]
         dim_1_length = config["data_set"]["dimension_1_length"]
-
-        dim_2_length = (
-            config["data_set"]["dimension_2_length"] if config["data_set"]["dimension_2_length"] else 0
-        )
-
+        dim_2_length = config["data_set"]["dimension_2_length"]
         seed = config["data_set"]["seed"]
         rng = np.random.default_rng(seed)
+
+        print(f"Initialized dataset with dim 1: {dim_1_length}, dim 2: {dim_2_length}")
 
         if dim_2_length > 0:
             self.data = rng.random((size, dim_1_length, dim_2_length), np.float32)
