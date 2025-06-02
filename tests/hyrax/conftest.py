@@ -48,7 +48,7 @@ class RandomDataset(HyraxDataset, Dataset):
         dim_1_length = config["data_set"]["dimension_1_length"]
 
         dim_2_length = (
-            config["data_set"]["dimension_2_length"] if config["data_set"]["dimenstion_2_length"] else 0
+            config["data_set"]["dimension_2_length"] if config["data_set"]["dimension_2_length"] else 0
         )
 
         seed = config["data_set"]["seed"]
