@@ -41,8 +41,22 @@ class RandomNaNDataset(HyraxDataset, Dataset):
             yield str(id_item)
 
 
-@pytest.fixture(scope="function")
-def loopback_hyrax_nan(tmp_path_factory):
+class RandomNaNTupleDataset(RandomNaNDataset):
+    """Subclass of RandomNaNDataset that returns a dictionary. This exercises
+    the nan handling logic when working with a supervised dataset."""
+
+    def __getitem__(self, idx):
+        value = from_numpy(self.data[idx])
+        label = 1
+        return {
+            "object_id": idx,
+            "image": value,
+            "label": label,
+        }
+
+
+@pytest.fixture(scope="function", params=["RandomNaNDataset", "RandomNaNTupleDataset"])
+def loopback_hyrax_nan(tmp_path_factory, request):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model
     and a simple dataset yielding random numbers
@@ -56,7 +70,7 @@ def loopback_hyrax_nan(tmp_path_factory):
     h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
-    h.config["data_set"]["name"] = "RandomNaNDataset"
+    h.config["data_set"]["name"] = request.param
     h.config["data_set"]["size"] = 20
     h.config["data_set"]["seed"] = 0
 
@@ -82,7 +96,10 @@ def test_nan_handling(loopback_hyrax_nan):
 
     inference_results = h.infer()
 
-    original_nans = tensor([any(isnan(item)) for item in dataset])
+    if isinstance(dataset[0], dict):
+        original_nans = tensor([any(isnan(item["image"])) for item in dataset])
+    else:
+        original_nans = tensor([any(isnan(item)) for item in dataset])
     assert any(original_nans)
 
     for result in inference_results:
@@ -98,7 +115,10 @@ def test_nan_handling_off(loopback_hyrax_nan):
     h.config["data_set"]["nan_mode"] = False
     inference_results = h.infer()
 
-    original_nans = tensor([any(isnan(item)) for item in dataset])
+    if isinstance(dataset[0], dict):
+        original_nans = tensor([any(isnan(item["image"])) for item in dataset])
+    else:
+        original_nans = tensor([any(isnan(item)) for item in dataset])
     assert any(original_nans)
 
     result_nans = tensor([any(isnan(item)) for item in inference_results])

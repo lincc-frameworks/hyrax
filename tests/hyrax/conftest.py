@@ -45,9 +45,19 @@ class RandomDataset(HyraxDataset, Dataset):
 
     def __init__(self, config):
         size = config["data_set"]["size"]
+        dim_1_length = config["data_set"]["dimension_1_length"]
+
+        dim_2_length = (
+            config["data_set"]["dimension_2_length"] if config["data_set"]["dimenstion_2_length"] else 0
+        )
+
         seed = config["data_set"]["seed"]
         rng = np.random.default_rng(seed)
-        self.data = rng.random((size, 2), np.float32)
+
+        if dim_2_length > 0:
+            self.data = rng.random((size, dim_1_length, dim_2_length), np.float32)
+        else:
+            self.data = rng.random((size, dim_1_length), np.float32)
 
         # Start our IDs at a random integer between 0 and 100
         id_start = rng.integers(100)
@@ -93,6 +103,8 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["data_set"]["name"] = request.param
     h.config["data_set"]["size"] = 20
     h.config["data_set"]["seed"] = 0
+    h.config["data_set"]["dimension_1_length"] = 2
+    h.config["data_set"]["dimension_2_length"] = 3
 
     h.config["data_set"]["validate_size"] = 0.2
     h.config["data_set"]["test_size"] = 0.2
