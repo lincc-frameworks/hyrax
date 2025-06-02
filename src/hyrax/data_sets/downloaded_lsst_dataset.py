@@ -80,6 +80,9 @@ class DownloadedLSSTDataset(LSSTDataset):
         self.download_dir = Path(config["general"]["data_dir"])
         self.download_dir.mkdir(exist_ok=True)
 
+        self.config = config
+
+        # Initialize parent class with config
         super().__init__(config)
 
         # Store config for thread-local Butler creation
@@ -103,7 +106,10 @@ class DownloadedLSSTDataset(LSSTDataset):
         catalog_columns = self.catalog.colnames if hasattr(self.catalog, "colnames") else self.catalog.columns
 
         self.use_object_id = False
-        if "object_id" in catalog_columns:
+        if self.config["data_set"]["object_id_column_name"]:
+            self.use_object_id = True
+            self.object_id_column = self.config["data_set"]["object_id_column_name"]
+        elif "object_id" in catalog_columns:
             self.use_object_id = True
             self.object_id_column = "object_id"
         elif "objectId" in catalog_columns:
