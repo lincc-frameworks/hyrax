@@ -52,10 +52,11 @@ class RandomDataset(HyraxDataset, Dataset):
 
         print(f"Initialized dataset with dim 1: {dim_1_length}, dim 2: {dim_2_length}")
 
-        if dim_2_length > 0:
-            self.data = rng.random((size, dim_1_length, dim_2_length), np.float32)
-        else:
-            self.data = rng.random((size, dim_1_length), np.float32)
+        self.data = rng.random((size, 2, 3), np.float32)
+        # if dim_2_length > 0:
+        #     self.data = rng.random((size, dim_1_length, dim_2_length), np.float32)
+        # else:
+        #     self.data = rng.random((size, dim_1_length), np.float32)
 
         # Start our IDs at a random integer between 0 and 100
         id_start = rng.integers(100)
