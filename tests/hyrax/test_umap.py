@@ -44,6 +44,9 @@ def test_umap_order(loopback_inferred_hyrax):
     umap_result_ids = list(umap_results.ids())
     original_dataset_ids = list(dataset.ids())
 
+    dim_1_length = h.config["data_set"]["dimension_1_length"]
+    dim_2_length = h.config["data_set"]["dimension_2_length"]
+
     for idx, result_id in enumerate(umap_result_ids):
         dataset_idx = None
         for i, orig_id in enumerate(original_dataset_ids):
@@ -53,6 +56,8 @@ def test_umap_order(loopback_inferred_hyrax):
         else:
             raise AssertionError("Failed to find a corresponding ID")
 
+        umap_result = umap_results[idx].cpu().numpy().reshape(dim_1_length, dim_2_length)
+
         print(f"orig idx: {dataset_idx}, umap idx: {idx}")
-        print(f"orig data: {dataset[dataset_idx]}, umap data: {umap_results[idx]}")
-        assert all(np.isclose(dataset[dataset_idx], umap_results[idx]))
+        print(f"orig data: {dataset[dataset_idx]}, umap data: {umap_result}")
+        assert np.all(np.isclose(dataset[dataset_idx], umap_result))
