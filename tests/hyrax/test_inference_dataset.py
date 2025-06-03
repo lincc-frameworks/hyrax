@@ -1,42 +1,8 @@
 import numpy as np
 import pytest
-from astropy.table import Table
-from torch import from_numpy
-from torch.utils.data import Dataset
 
 import hyrax
-from hyrax.data_sets import HyraxDataset
 from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
-
-
-class RandomDataset(HyraxDataset, Dataset):
-    """Dataset yielding pairs of random numbers. Requires a seed to emulate
-    static data on the filesystem between instantiations"""
-
-    def __init__(self, config):
-        size = config["data_set"]["size"]
-        seed = config["data_set"]["seed"]
-        rng = np.random.default_rng(seed)
-        self.data = rng.random((size, 2), np.float32)
-
-        # Start our IDs at a random integer between 0 and 100
-        id_start = rng.integers(100)
-        self.id_list = list(range(id_start, id_start + size))
-
-        metadata_table = Table({"object_id": np.array(list(self.ids()))})
-
-        super().__init__(config, metadata_table)
-
-    def __getitem__(self, idx):
-        return from_numpy(self.data[idx])
-
-    def __len__(self):
-        return len(self.data)
-
-    def ids(self):
-        """Yield IDs for the dataset"""
-        for id_item in self.id_list:
-            yield str(id_item)
 
 
 @pytest.fixture(scope="session", params=[1, 2, 3, 4, 5])
@@ -105,7 +71,7 @@ def test_order(inference_dataset):
     # Check all data is the correct data for that ID
     for result_i in range(20):
         for orig_i in range(20):
-            if all(orig[orig_i].numpy() == result[result_i].numpy()):
+            if np.all(orig[orig_i].numpy() == result[result_i].numpy()):
                 try:
                     assert orig_ids[orig_i] == result_ids[result_i]
                     assert orig_meta_ids[orig_i] == result_meta_ids[result_i]

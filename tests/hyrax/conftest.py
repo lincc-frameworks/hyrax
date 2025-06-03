@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 import torch.nn as nn
+from astropy.table import Table
 from torch import from_numpy
 from torch.utils.data import Dataset, IterableDataset
 
@@ -45,24 +46,32 @@ class RandomDataset(HyraxDataset, Dataset):
 
     def __init__(self, config):
         size = config["data_set"]["size"]
-        dim_1_length = config["data_set"]["dimension_1_length"]
-        dim_2_length = config["data_set"]["dimension_2_length"]
+
+        dim_1_length = 2
+        if "dimension_1_length" in config["data_set"]:
+            dim_1_length = config["data_set"]["dimension_1_length"]
+
+        dim_2_length = 0
+        if "dimension_2_length" in config["data_set"]:
+            dim_2_length = config["data_set"]["dimension_2_length"]
+
         seed = config["data_set"]["seed"]
         rng = np.random.default_rng(seed)
 
         print(f"Initialized dataset with dim 1: {dim_1_length}, dim 2: {dim_2_length}")
 
-        self.data = rng.random((size, 2, 3), np.float32)
-        # if dim_2_length > 0:
-        #     self.data = rng.random((size, dim_1_length, dim_2_length), np.float32)
-        # else:
-        #     self.data = rng.random((size, dim_1_length), np.float32)
+        if dim_2_length > 0:
+            self.data = rng.random((size, dim_1_length, dim_2_length), np.float32)
+        else:
+            self.data = rng.random((size, dim_1_length), np.float32)
 
         # Start our IDs at a random integer between 0 and 100
         id_start = rng.integers(100)
         self.id_list = list(range(id_start, id_start + size))
 
-        super().__init__(config)
+        metadata_table = Table({"object_id": np.array(list(self.ids()))})
+
+        super().__init__(config, metadata_table)
 
     def __getitem__(self, idx):
         return from_numpy(self.data[idx])
