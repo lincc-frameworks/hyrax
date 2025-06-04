@@ -5,6 +5,7 @@ from torch.utils.data import Dataset
 
 import hyrax
 from hyrax.data_sets import HyraxDataset
+from hyrax.pytorch_ignite import _handle_nans
 
 
 class RandomNaNDataset(HyraxDataset, Dataset):
@@ -123,3 +124,32 @@ def test_nan_handling_off(loopback_hyrax_nan):
 
     result_nans = tensor([any(isnan(item)) for item in inference_results])
     assert any(result_nans)
+
+
+def test_non_handling_off_returns_input(loopback_hyrax_nan):
+    """Ensure that when nan_mode is False, that the original values passed to
+    _handle_nans are returned unchanged."""
+
+    def to_tensor(data_dict):
+        if "image" in data_dict and "label" in data_dict:
+            image = data_dict["image"]
+            label = data_dict["label"]
+            return (image, label)
+
+    h, dataset = loopback_hyrax_nan
+    h.config["data_set"]["nan_mode"] = False
+
+    sample_data = dataset[0]
+
+    # If the sample data is a dictionary, convert it to a tuple
+    if isinstance(sample_data, dict):
+        sample_data = to_tensor(sample_data)
+
+    output = _handle_nans(sample_data, h.config)
+
+    # If the sample was a tuple, check all the elements
+    if isinstance(sample_data, tuple):
+        assert all(output[0] == sample_data[0])
+        assert output[1] == sample_data[1]
+    else:
+        assert all(output == sample_data)
