@@ -273,12 +273,32 @@ def create_splits(data_set: Dataset, config: ConfigDict):
     return split_inds
 
 
+@functools.singledispatch
 def _handle_nans(batch, config):
-    from torch import any, isnan
+    """The default _handle_nan function. Will print a warning and return `batch`."""
+    logger.warning(
+        f"Encountered an unhandled batch type, {type(batch)}, while\
+                   attempting to handle NaN values in the data."
+    )
+    return batch
 
-    # If `batch` is a tuple, assume the first element is a tensor.
-    if isinstance(batch, tuple):
-        batch = batch[0]
+
+@_handle_nans.register(torch.Tensor)
+def _handle_nans_tensor(batch, config):
+    """The implementation of _handle_nans when expecting `batch` to be a tensor."""
+    return _handle_nans_logic(batch, config)
+
+
+@_handle_nans.register(tuple)
+def _handle_nans_tuple(batch, config):
+    """This is the tuple-specific implementation of _handle_nans. The first element
+    of the tuple is expected to hold the data that needs nan-cleaning."""
+    nan_handled = _handle_nans_logic(batch[0], config)
+    return (nan_handled, batch[1])
+
+
+def _handle_nans_logic(batch, config):
+    from torch import any, isnan
 
     if config["data_set"]["nan_mode"] is False:
         if any(isnan(batch)):

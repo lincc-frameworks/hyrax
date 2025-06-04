@@ -33,6 +33,8 @@ class LoopbackModel(nn.Module):
 
     def forward(self, x):
         """We simply return our input"""
+        if isinstance(x, tuple):
+            x, label = x
         return x
 
     def train_step(self, batch):
