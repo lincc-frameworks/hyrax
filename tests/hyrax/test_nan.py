@@ -126,7 +126,7 @@ def test_nan_handling_off(loopback_hyrax_nan):
     assert any(result_nans)
 
 
-def test_non_handling_off_returns_input(loopback_hyrax_nan):
+def test_nan_handling_off_returns_input(loopback_hyrax_nan):
     """Ensure that when nan_mode is False, that the original values passed to
     _handle_nans are returned unchanged."""
 
