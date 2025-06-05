@@ -1,6 +1,7 @@
 import numpy as np
 import pytest
 
+from hyrax import Hyrax
 from hyrax.vector_dbs.chromadb_impl import ChromaDB
 
 
@@ -19,7 +20,8 @@ def random_vector_generator(batch_size=1):
 @pytest.fixture()
 def chromadb_instance(tmp_path):
     """Create a ChromaDB instance for testing"""
-    chromadb_instance = ChromaDB({}, {"results_dir": tmp_path})
+    h = Hyrax()
+    chromadb_instance = ChromaDB(h.config, {"results_dir": tmp_path})
     chromadb_instance.connect()
     chromadb_instance.create()
     return chromadb_instance
@@ -27,7 +29,8 @@ def chromadb_instance(tmp_path):
 
 def test_connect(tmp_path):
     """Test that we can create a connections to the database"""
-    chromadb_instance = ChromaDB({}, {"results_dir": tmp_path})
+    h = Hyrax()
+    chromadb_instance = ChromaDB(h.config, {"results_dir": tmp_path})
     chromadb_instance.connect()
 
     assert chromadb_instance.chromadb_client is not None

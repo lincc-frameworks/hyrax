@@ -240,6 +240,17 @@ vector_db_dir = false
 # inference results.
 infer_results_dir = false
 
+
+["vector_db.chromadb"]
+# The approximate maximum size of a shard before creating a new one. A smaller
+# value will decrease insert times while increasing search times.
+shard_size_limit = 65536
+
+# Inserting vectors with a total number of elements >= this value will log a warning
+# message. ChromaDB performance degrades when working vectors of this size or larger.
+vector_size_warning = 10000
+
+
 [results]
 # Path to inference results to use for visualization and lookups. Uses latest inference run if none provided.
 inference_dir = false
