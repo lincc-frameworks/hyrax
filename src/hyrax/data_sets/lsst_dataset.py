@@ -11,8 +11,7 @@ class LSSTDataset(HyraxDataset, Dataset):
     via the butler. Must be run in an RSP.
     """
 
-    # BANDS = ["u", "g", "r", "i", "z", "y"]
-    BANDS = ["g", "r", "i"]
+    BANDS = ["u", "g", "r", "i", "z", "y"]
 
     def __init__(self, config):
         """
@@ -31,6 +30,19 @@ class LSSTDataset(HyraxDataset, Dataset):
             msg = "LSSTDataset can only be used in a Rubin Software Platform environment"
             msg += " with access to the lsst pipeline tools"
             raise ImportError(msg) from e
+
+        # Set filters from config if provided, otherwise use class default
+        if "filters" in config["data_set"] and config["data_set"]["filters"]:
+            # Validate filters
+            valid_filters = ["u", "g", "r", "i", "z", "y"]
+            for band in config["data_set"]["filters"]:
+                if band not in valid_filters:
+                    raise ValueError(
+                        f"Invalid filter {band} for Rubin-LSST.\
+                                        Valid bands are: {valid_filters}"
+                    )
+
+            LSSTDataset.BANDS = config["data_set"]["filters"]
 
         self.butler = butler.Butler(
             config["data_set"]["butler_repo"], collections=config["data_set"]["butler_collection"]
