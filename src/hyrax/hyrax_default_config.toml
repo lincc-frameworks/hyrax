@@ -246,8 +246,8 @@ infer_results_dir = false
 # value will decrease insert times while increasing search times.
 shard_size_limit = 65536
 
-# Inserting vectors with a total number of elements >= this value will log a warning
-# message. ChromaDB performance degrades when working vectors of this size or larger.
+# Inserting vectors with more than this many elements logs a warning message. ChromaDB
+# performance degrades with vectors of this size. Set to "false" to disable warning.
 vector_size_warning = 10000
 
 

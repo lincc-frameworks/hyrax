@@ -6,12 +6,12 @@ from hyrax.vector_dbs.chromadb_impl import ChromaDB
 
 
 @pytest.fixture()
-def random_vector_generator(batch_size=1):
+def random_vector_generator(batch_size=1, vector_size=3):
     """Create random vectors"""
 
-    def _generator(batch_size=1):
+    def _generator(batch_size=1, vector_size=3):
         while True:
-            batch = [np.random.rand(3) for _ in range(batch_size)]
+            batch = [np.random.rand(vector_size) for _ in range(batch_size)]
             yield batch
 
     return _generator
@@ -55,7 +55,7 @@ def test_insert(chromadb_instance):
     assert collection.count() == 2
 
 
-def test_insert_creates_new_shards(chromadb_instance, random_vector_generator):
+def test_insert_creates_new_shards(caplog, chromadb_instance, random_vector_generator):
     """Ensure that we can insert IDs and vectors into the database, and that new
     shards are created when the shard size limit is reached"""
 
@@ -70,13 +70,53 @@ def test_insert_creates_new_shards(chromadb_instance, random_vector_generator):
     vectors = [t.flatten() for t in next(vector_generator)]
 
     for i in range(num_batches):
-        chromadb_instance.insert(
-            ids=ids[batch_size * i : batch_size * (i + 1)],
-            vectors=vectors[batch_size * i : batch_size * (i + 1)],
-        )
+        with caplog.at_level("WARNING"):
+            chromadb_instance.insert(
+                ids=ids[batch_size * i : batch_size * (i + 1)],
+                vectors=vectors[batch_size * i : batch_size * (i + 1)],
+            )
+        assert "poor performance" not in caplog.text
 
     collections = chromadb_instance.chromadb_client.list_collections()
     assert len(collections) == 5
+
+
+def test_insert_raises_warning(caplog, chromadb_instance, random_vector_generator):
+    """Ensure that inserting a single large vector logs a warning"""
+    batch_size = 1
+    vector_size = 10_000
+
+    vector_generator = random_vector_generator(batch_size, vector_size=vector_size)
+    ids = [str(i) for i in range(batch_size)]
+    vectors = [t.flatten() for t in next(vector_generator)]
+
+    with caplog.at_level("WARNING"):
+        chromadb_instance.insert(ids=ids, vectors=vectors)
+
+    assert "poor performance" in caplog.text
+
+
+def test_insert_does_not_raise_warning(caplog, tmp_path, random_vector_generator):
+    """Ensure that inserting a single large vector does not log a warning
+    when the config vector_size_warning is set to `False`."""
+
+    h = Hyrax()
+    h.config["vector_db.chromadb"]["vector_size_warning"] = False
+    chromadb_instance = ChromaDB(h.config, {"results_dir": tmp_path})
+    chromadb_instance.connect()
+    chromadb_instance.create()
+
+    batch_size = 1
+    vector_size = 10_000
+
+    vector_generator = random_vector_generator(batch_size, vector_size=vector_size)
+    ids = [str(i) for i in range(batch_size)]
+    vectors = [t.flatten() for t in next(vector_generator)]
+
+    with caplog.at_level("WARNING"):
+        chromadb_instance.insert(ids=ids, vectors=vectors)
+
+    assert "poor performance" not in caplog.text
 
 
 def test_search_by_id(chromadb_instance):
