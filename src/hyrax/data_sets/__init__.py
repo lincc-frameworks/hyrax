@@ -1,6 +1,6 @@
 """
 Hyrax has several built-in datasets that you can use for astronomical data. For many uses, these datasets
-can be configured out-of-the box for a given  project.
+can be configured out-of-the box for a given project.
 
 :doc:`FitsImageDataSet <fits_image_dataset/index>` is a generic container for fits image cutout data
 indexed by a user-provided catalog file. It attempts to cover common usage paradigms such as multiple images
@@ -30,6 +30,13 @@ separate package.
 dataset if it is not present. These datasets are useful for testing hyrax and occasionally individual models,
 but they are not astronomical datasets.
 
+:doc:`HyraxRandomDataset <hyrax_random_data_set/index>` and
+:doc:`HyraxRandomIterableDataset <hyrax_random_data_set/index>` are utility datasets that
+generate random data with a specific shape.
+These datasets make it easy to test new models with simple random data.
+They are highly configurable such that it's possible to simulate input data for models that
+are under development.
+
 Each of these datasets can be used a starting point for a Custom Dataset by inheriting your custom dataset
 from e.g. `FitsImageDataSet`, or you can make an entirely custom dataset following the
 :ref:`custom dataset instructions <custom-dataset-instructions>` and/or
@@ -56,6 +63,7 @@ from .lsst_dataset import LSSTDataset
 from .downloaded_lsst_dataset import DownloadedLSSTDataset
 from .hsc_data_set import HSCDataSet
 from .hyrax_cifar_data_set import HyraxCifarDataSet, HyraxCifarIterableDataSet
+from .hyrax_random_data_set import HyraxRandomDataset, HyraxRandomIterableDataset
 from .inference_dataset import InferenceDataSet
 from .data_set_registry import HyraxDataset
 from .hyrax_cifar_data_set import HyraxCifarBase
@@ -70,4 +78,6 @@ __all__ = [
     "LSSTDataset",
     "DownloadedLSSTDataset",
     "HyraxCifarBase",
+    "HyraxRandomDataset",
+    "HyraxRandomIterableDataset",
 ]
