@@ -1,3 +1,4 @@
+import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Optional, Union
 
@@ -7,6 +8,8 @@ import numpy as np
 from hyrax.vector_dbs.vector_db_interface import VectorDB
 
 MIN_SHARDS_FOR_PARALLELIZATION = 50
+
+logger = logging.getLogger()
 
 
 def _query_for_nn(results_dir: str, shard_name: str, vectors: list[np.ndarray], k: int):
@@ -74,7 +77,10 @@ class ChromaDB(VectorDB):
         self.shard_size = 0  # The number of vectors in the current shard
 
         # The approximate maximum size of a shard before a new one is created
-        self.shard_size_limit = 65_536
+        self.shard_size_limit = self.config["vector_db.chromadb"]["shard_size_limit"]
+
+        # If set, inserting a vector with number of elements >= this logs a warning.
+        self.vector_size_limit = self.config["vector_db.chromadb"]["vector_size_warning"]
 
         # Min number of shards before using multiprocess to parallelize the search
         self.min_shards_for_parallelization = MIN_SHARDS_FOR_PARALLELIZATION
@@ -133,6 +139,13 @@ class ChromaDB(VectorDB):
         if len(ids) == 0:
             # no new vectors to insert
             return
+
+        if self.vector_size_limit and len(vectors[0]) >= self.vector_size_limit:
+            logger.warning(
+                f"Attempting to insert vectors with length: {len(vectors[0])}.\
+                           Chroma DB often has poor performance when working with vectors\
+                           larger than {self.config['vector_db.chromadb']['vector_size_warning']}"
+            )
 
         # increment counter, if exceeds shard limit, create a new collection
         self.shard_size += len(ids)
