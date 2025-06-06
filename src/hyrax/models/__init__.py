@@ -6,12 +6,14 @@ from .hsc_dcae import HSCDCAE
 from .hsc_dcae_v2 import HSCDCAEv2
 from .hyrax_autoencoder import HyraxAutoencoder
 from .hyrax_cnn import HyraxCNN
+from .hyrax_loopback import HyraxLoopback
 from .model_registry import hyrax_model
 
 __all__ = [
     "hyrax_model",
-    "HyraxCNN",
     "HyraxAutoencoder",
+    "HyraxCNN",
+    "HyraxLoopback",
     "HSCAutoencoder",
     "HSCDCAE",
     "HSCDCAEv2",

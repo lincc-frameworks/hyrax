@@ -211,6 +211,23 @@ nan_mode = false
 # When replacing NaN values with a quantile, which quantile in the non-nan tensor should be used.
 nan_quantile = 0.05
 
+
+["data_set.random_dataset"]
+# Total number of samples produced by the random dataset
+size = 100
+
+# The dimensions of the numpy arrays that will be produced for each sample represented
+# as a list where each element is the size of dimension.
+shape = [2,5,5]
+
+# Seed to use for random number generation
+seed = 42
+
+# If a list is provided, the data will have randomly labeled with values from the list
+# If set to false, no labels will be included with the data.
+provided_labels = [0, 1, 2]
+
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
