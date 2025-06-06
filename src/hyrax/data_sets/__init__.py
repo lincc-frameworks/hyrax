@@ -30,8 +30,8 @@ separate package.
 dataset if it is not present. These datasets are useful for testing hyrax and occasionally individual models,
 but they are not astronomical datasets.
 
-:doc:`HyraxRandomDataset <hyrax_random_data_set/index>` and
-:doc:`HyraxRandomIterableDataset <hyrax_random_data_set/index>` are utility datasets that
+:doc:`HyraxRandomDataset <random/hyrax_random_dataset/index>` and
+:doc:`HyraxRandomIterableDataset <random/hyrax_random_dataset/index>` are utility datasets that
 generate random data with a specific shape.
 These datasets make it easy to test new models with simple random data.
 They are highly configurable such that it's possible to simulate input data for models that
@@ -63,7 +63,11 @@ from .lsst_dataset import LSSTDataset
 from .downloaded_lsst_dataset import DownloadedLSSTDataset
 from .hsc_data_set import HSCDataSet
 from .hyrax_cifar_data_set import HyraxCifarDataSet, HyraxCifarIterableDataSet
-from .hyrax_random_data_set import HyraxRandomDataset, HyraxRandomIterableDataset
+from .random.hyrax_random_dataset import (
+    HyraxRandomDataset,
+    HyraxRandomIterableDataset,
+    HyraxRandomDatasetBase,
+)
 from .inference_dataset import InferenceDataSet
 from .data_set_registry import HyraxDataset
 from .hyrax_cifar_data_set import HyraxCifarBase
@@ -80,4 +84,5 @@ __all__ = [
     "HyraxCifarBase",
     "HyraxRandomDataset",
     "HyraxRandomIterableDataset",
+    "HyraxRandomDatasetBase",
 ]
