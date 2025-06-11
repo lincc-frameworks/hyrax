@@ -53,7 +53,10 @@ Once the model is trained, we can immediately use it for inference.
         .. code-block:: python
 
            # Infer on the CiFAR test dataset
-           h.infer()
+           results = h.infer()
+
+           # Access inference results directly in your notebook.
+           results[0]
 
     .. group-tab:: CLI
 
@@ -64,7 +67,8 @@ Once the model is trained, we can immediately use it for inference.
 Hyrax will automatically use the most recently trained model to infer on the CiFAR test dataset.
 
 The results of inference will be 64 element floating point vectors saved as .npy
-files in a timestamped directory under the default ``./results/`` directory.
+files in a timestamped directory under the default ``./results/`` directory, and available in your 
+notebook via the returned object.
 
 To visualize the results, we should created an embedded lower dimensional space.
 
@@ -75,7 +79,10 @@ To visualize the results, we should created an embedded lower dimensional space.
         .. code-block:: python
 
            # Create a 2D UMAP representation of the 64 element vectors
-           h.umap()
+           results = h.umap()
+
+           # Access umapped data points directly in your notebook.
+           results[0]
 
     .. group-tab:: CLI
 
@@ -84,7 +91,9 @@ To visualize the results, we should created an embedded lower dimensional space.
            >> hyrax umap
 
 The `UMAP <https://umap-learn.readthedocs.io/en/latest/>`_ algorithm is used to
-create a 2D representation of the 64 element vectors.
+create a 2D representation of the 64 element vectors. These are saved in the same tree as the inference 
+results, and are similarly available in your notebook via the returned object.
+
 The results of using UMAP can then be examined with an interactive visualization
 withing a Jupyter notebook.
 
