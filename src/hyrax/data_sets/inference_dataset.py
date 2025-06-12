@@ -27,6 +27,36 @@ class InferenceDataSet(HyraxDataset, Dataset):
         results_dir: Optional[Union[Path, str]] = None,
         verb: Optional[str] = None,
     ):
+        """Initialize an InferenceDataSet object.
+
+        As a user of this code, you should almost never create this class, Instances of this class are
+        returned by the umap and infer verbs. Prefer those over creating your own.
+
+        If you do end up creating your own class, you will need a hyrax config, and to know some things
+        about where the result you are interested in is stored.
+
+        Parameters
+        ----------
+        config : dict
+            The hyrax config dictionary
+        results_dir : Optional[Union[Path, str]], optional
+            The results subdirectory of the inference or umap results you want to access, by default None.
+            If no results subdirectory is provided, this function will attempt the following in order:
+
+            #. Use the directory specified in ``config['results']['inference_dir']`` if set and the directory
+               exists
+            #. Look in the results configured in ``config['general']['results_dir']`` (``./results/``
+               by default), then use the most recent results directory corresponding to the verb specified.
+
+        verb : Optional[str], optional
+            The name of the verb that generated the results, only important when the most recent results
+            are being fetched. If no verb is provided, "infer" will be assumed.
+
+        Raises
+        ------
+        RuntimeError
+            When the provided results directory is corrupt, or cannot be found.
+        """
         from hyrax.config_utils import ConfigManager
         from hyrax.pytorch_ignite import setup_dataset
 
@@ -69,21 +99,19 @@ class InferenceDataSet(HyraxDataset, Dataset):
     def _shape(self):
         """The shape of the dataset (Discovered from files)
 
-        Note: our __getitem__() needs self.shape() to work. We cannot use HraxDataset.shape()
-        because that shape uses __getitem__(), so we must define this for ourselves
-
         Returns
         -------
         Tuple
             Tuple with the shape of an individual element of the dataset
         """
+        # Note: our __getitem__() needs self.shape() to work. We cannot use HraxDataset.shape()
+        # because that shape uses __getitem__(), so we must define this for ourselves
         return self.shape_element["tensor"].shape
 
     def ids(self) -> Generator[str]:
-        """IDs of this dataset
+        """IDs of this dataset. Will return a string generator with IDs.
 
-        Note: Not using HyraxDataset.ids() here because we need to return the ids of whatever
-        dataset was used for inference, not the sequential index HyraxDataset.ids() gives.
+        These IDs are the IDs of the dataset used originally to generate this dataset.
 
         Returns
         -------
@@ -95,9 +123,26 @@ class InferenceDataSet(HyraxDataset, Dataset):
         Generator[str]
             Yields the string ids of this dataset
         """
+        # Note: Not using HyraxDataset.ids() here because we need to return the ids of whatever
+        # dataset was used for inference, not the sequential index HyraxDataset.ids() gives.
         return (str(id) for id in self.batch_index["id"])
 
     def __getitem__(self, idx: Union[int, np.ndarray]):
+        """Implements the ``[]`` operator
+
+        Parameters
+        ----------
+        idx : Union[int, np.ndarray]
+            Either an index or a numpy array of indexes.
+            These are NOT the ID values of the dataset, but rather a zero-based index starting
+            at the beginning of the inference dataset.
+
+        Returns
+        -------
+        torch.tensor
+            Either the tensor corresponding to a single result, or a tensor with a multiplicity of
+            results if multiple indexes were passed.
+        """
         from torch import from_numpy
 
         try:
@@ -137,6 +182,13 @@ class InferenceDataSet(HyraxDataset, Dataset):
         return from_numpy(all_tensors)
 
     def __len__(self) -> int:
+        """Returns the length of the dataset.
+
+        Returns
+        -------
+        int
+            Length of the dataset.
+        """
         return self.length
 
     @property
@@ -157,13 +209,12 @@ class InferenceDataSet(HyraxDataset, Dataset):
     def metadata_fields(self) -> list[str]:
         """Get the metadata fields associted with the original dataset used to generate this one
 
-        We must override this and pass to the original dataset.
-
         Returns
         -------
         list[str]
             List of valid field names for metadata queries
         """
+        # We must override this and pass to the original dataset.
         return self.original_dataset.metadata_fields()  # type: ignore[no-any-return,attr-defined]
 
     def metadata(self, idxs: npt.ArrayLike, fields: list[str]) -> npt.ArrayLike:
