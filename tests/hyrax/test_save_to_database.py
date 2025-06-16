@@ -10,8 +10,8 @@ def test_save_to_database(loopback_inferred_hyrax):
     original_dataset_ids = list(dataset.ids())
 
     h.config["vector_db"]["name"] = "chromadb"
-    dim_1_length = h.config["data_set"]["dimension_1_length"]
-    dim_2_length = h.config["data_set"]["dimension_2_length"]
+    original_shape = h.config["data_set.random_dataset"]["shape"]
+
     # Populate the vector database with the results of inference
     vdb_path = h.config["general"]["results_dir"]
     h.save_to_database(output_dir=vdb_path)
@@ -23,6 +23,6 @@ def test_save_to_database(loopback_inferred_hyrax):
     for indx, id in enumerate(inference_result_ids):
         assert id == original_dataset_ids[indx]
         result = db_connection.get_by_id(id)
-        saved_value = result[id].reshape(dim_1_length, dim_2_length)
-        original_value = dataset[indx]
-        assert np.all(saved_value == original_value.numpy())
+        saved_value = result[id].reshape(original_shape)
+        original_value = dataset[indx]["image"]
+        assert np.all(np.isclose(saved_value, original_value.numpy()))

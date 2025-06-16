@@ -227,6 +227,13 @@ seed = 42
 # If set to false, no labels will be included with the data.
 provided_labels = [0, 1, 2]
 
+# Set this to a positive integer to randomly replace some values with an "invalid" value.
+number_invalid_values = 0
+
+# The value to use for invalid values in the data. Must be one of the following:
+# "nan", "inf", "-inf", "none" or a float value.
+invalid_value_type = "nan"
+
 
 [data_loader]
 # The number of data points to load at once.

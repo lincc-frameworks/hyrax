@@ -1,6 +1,10 @@
+import logging
+
 import torch.nn as nn
 
 from .model_registry import hyrax_model
+
+logger = logging.getLogger()
 
 
 @hyrax_model
@@ -16,7 +20,8 @@ class HyraxLoopback(nn.Module):
         self.config = config
 
         def load(self, weight_file):
-            """Load Weights, we have no weights so we do nothing"""
+            """Boilerplate function to load weights. However, this model has no
+            weights so we do nothing."""
             pass
 
         # We override this way rather than defining a method because
@@ -32,4 +37,5 @@ class HyraxLoopback(nn.Module):
 
     def train_step(self, batch):
         """Training is a noop"""
+        logger.debug(f"Batch length: {len(batch)}")
         return {"loss": 0.0}

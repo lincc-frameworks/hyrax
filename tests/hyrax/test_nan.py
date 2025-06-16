@@ -1,45 +1,21 @@
 import numpy as np
 import pytest
 from torch import any, from_numpy, isnan, tensor
-from torch.utils.data import Dataset
 
 import hyrax
-from hyrax.data_sets import HyraxDataset
+from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
 from hyrax.pytorch_ignite import _handle_nans
 
 
-class RandomNaNDataset(HyraxDataset, Dataset):
+class RandomNaNDataset(HyraxRandomDataset):
     """Dataset yielding pairs of random numbers. Requires a seed to emulate
     static data on the filesystem between instantiations"""
 
     def __init__(self, config):
-        size = config["data_set"]["size"]
-        seed = config["data_set"]["seed"]
-        rng = np.random.default_rng(seed)
-        self.data = rng.random((size, 20), np.float32)
-
-        num_nans = 40
-        nan_index_i = rng.integers(0, size, num_nans)
-        nan_index_j = rng.integers(0, 20, num_nans)
-        for i, j in zip(nan_index_i, nan_index_j):
-            self.data[i][j] = np.nan
-
-        # Start our IDs at a random integer between 0 and 100
-        id_start = rng.integers(100)
-        self.id_list = list(range(id_start, id_start + size))
-
         super().__init__(config)
 
     def __getitem__(self, idx):
         return from_numpy(self.data[idx])
-
-    def __len__(self):
-        return len(self.data)
-
-    def ids(self):
-        """Yield IDs for the dataset"""
-        for id_item in self.id_list:
-            yield str(id_item)
 
 
 class RandomNaNTupleDataset(RandomNaNDataset):
@@ -56,7 +32,7 @@ class RandomNaNTupleDataset(RandomNaNDataset):
         }
 
 
-@pytest.fixture(scope="function", params=["RandomNaNDataset", "RandomNaNTupleDataset"])
+@pytest.fixture(scope="function", params=["RandomNaNDataset", "HyraxRandomIterableDataset"])
 def loopback_hyrax_nan(tmp_path_factory, request):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model
@@ -65,15 +41,18 @@ def loopback_hyrax_nan(tmp_path_factory, request):
     results_dir = tmp_path_factory.mktemp("loopback_hyrax_nan")
 
     h = hyrax.Hyrax()
-    h.config["model"]["name"] = "LoopbackModel"
+    h.config["model"]["name"] = "HyraxLoopback"
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 5
     h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
     h.config["data_set"]["name"] = request.param
-    h.config["data_set"]["size"] = 20
-    h.config["data_set"]["seed"] = 0
+    h.config["data_set.random_dataset"]["size"] = 20
+    h.config["data_set.random_dataset"]["seed"] = 0
+    h.config["data_set.random_dataset"]["shape"] = [2, 3]
+    h.config["data_set.random_dataset"]["number_invalid_values"] = 40
+    h.config["data_set.random_dataset"]["invalid_value_type"] = "nan"
 
     h.config["data_set"]["validate_size"] = 0.2
     h.config["data_set"]["test_size"] = 0.2
@@ -149,7 +128,7 @@ def test_nan_handling_off_returns_input(loopback_hyrax_nan):
 
     # If the sample was a tuple, check all the elements
     if isinstance(sample_data, tuple):
-        assert all(output[0] == sample_data[0])
+        assert np.all(np.isclose(output[0], sample_data[0], equal_nan=True))
         assert output[1] == sample_data[1]
     else:
-        assert all(output == sample_data)
+        assert np.all(np.isclose(output, sample_data, equal_nan=True))
