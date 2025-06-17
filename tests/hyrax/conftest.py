@@ -81,9 +81,6 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["data_set.random_dataset"]["seed"] = 0
     h.config["data_set.random_dataset"]["shape"] = [2, 3]
 
-    # h.config["data_set"]["dimension_1_length"] = 2
-    # h.config["data_set"]["dimension_2_length"] = 3
-
     h.config["data_set"]["validate_size"] = 0.2
     h.config["data_set"]["test_size"] = 0.2
     h.config["data_set"]["train_size"] = 0.6

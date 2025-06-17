@@ -18,21 +18,7 @@ class RandomNaNDataset(HyraxRandomDataset):
         return from_numpy(self.data[idx])
 
 
-class RandomNaNTupleDataset(RandomNaNDataset):
-    """Subclass of RandomNaNDataset that returns a dictionary. This exercises
-    the nan handling logic when working with a supervised dataset."""
-
-    def __getitem__(self, idx):
-        value = from_numpy(self.data[idx])
-        label = 1
-        return {
-            "object_id": idx,
-            "image": value,
-            "label": label,
-        }
-
-
-@pytest.fixture(scope="function", params=["RandomNaNDataset", "HyraxRandomIterableDataset"])
+@pytest.fixture(scope="function", params=["RandomNaNDataset", "HyraxRandomDataset"])
 def loopback_hyrax_nan(tmp_path_factory, request):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model
