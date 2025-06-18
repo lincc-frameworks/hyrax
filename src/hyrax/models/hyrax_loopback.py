@@ -15,8 +15,8 @@ class HyraxLoopback(nn.Module):
         from functools import partial
 
         super().__init__()
-        # This is created so the optimizer can find at least one weight
-        self.unused_module = nn.Conv2d(1, 1, kernel_size=1, stride=0, padding=0)
+        # The optimizer needs at least one weight, so we add a dummy module here
+        self.unused_module = nn.Linear(1, 1)
         self.config = config
 
         def load(self, weight_file):
@@ -32,7 +32,8 @@ class HyraxLoopback(nn.Module):
     def forward(self, x):
         """We simply return our input"""
         if isinstance(x, tuple):
-            x, label = x
+            # if x is a tuple, extract the first element (it should be a tensor)
+            x, _ = x
         return x
 
     def train_step(self, batch):
