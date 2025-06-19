@@ -11,13 +11,45 @@ INVALID_VALUES = {
     "-inf": -np.inf,
     "none": None,
 }
+"""Mapping of string representation of invalid values to numpy representations."""
 
 
 class HyraxRandomDatasetBase:
-    """Semi-private class that acts as the base class for `HyraxRandomDataset`
-    and `HyraxRandomIterableDataset`."""
+    """
+    This is the base class for the random datasets provided by Hyrax.
+
+    .. warning::
+
+        Direct use of ``HyraxRandomDatasetBase`` is not advised. When working
+        with Hyrax, prefer to use ``HyraxRandomDataset`` or ``HyraxRandomIterableDataset``.
+    """
+
+    data: np.ndarray
+    """The random data samples produced by the dataset."""
+    id_list: list
+    """A list of sequential numeric IDs for each data sample."""
+    provided_labels: list
+    """A list of labels randomly selected from the provided list of possible labels."""
 
     def __init__(self, config):
+        """
+        .. py:method:: __init__(config)
+
+        Initialize the dataset using the parameters defined in the configuration.
+
+        All parameters are controlled by the following keys under
+        the ``["data_set.random_dataset"]`` table in the configuration:
+
+        - ``size``: The number of random data samples to produce.
+        - ``shape``: The shape of each random data sample as a tuple (e.g. (3, 29, 29) = 3
+          layers of 2D data, each layer is 29x29 elements).
+        - ``seed``: The random seed to use for reproducibility.
+        - ``provided_labels``: A list of possible labels to randomly select from.
+          If this is provided, the dataset will randomly select a label for each data sample.
+        - ``number_invalid_values``: The number of invalid values to insert into the data.
+        - ``invalid_value_type``: The type of invalid value to insert into the data.
+          Valid values are "nan", "inf", "-inf", "none", or a float value.
+        """
         # The total number of random data samples produced
         data_size = config["data_set.random_dataset"]["size"]
         if not isinstance(data_size, int):
@@ -94,10 +126,31 @@ class HyraxRandomDatasetBase:
 
 
 class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
-    """A map-style dataset yielding random numpy arrays."""
+    """This dataset is stand-in for a map-style dataset.
+    It will produce random numpy arrays along with sequential numeric ids and,
+    optionally, labels randomly selected from the provided list of possible labels.
+    """
 
-    def __getitem__(self, idx):
-        """Return a torch.Tensor object at the index"""
+    def __getitem__(self, idx: int) -> dict:
+        """Get a data sample by index. The returned dictionary will contain the
+        following keys:
+
+        - ``index``: The index of the data sample.
+        - ``object_id``: The ID of the data sample.
+        - ``image``: The data sample as a numpy array.
+        - ``label``: The label of the data sample (if provided).
+
+        Parameters
+        ----------
+        idx : int
+            The index of the data sample to retrieve.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the data sample and its metadata.
+
+        """
 
         ret = {
             "index": idx,
@@ -111,22 +164,43 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         return ret
 
     def __len__(self):
-        """Get the total number of samples in this dataset"""
+        """Get the total number of samples in this dataset. This should be return
+        the same value as the `size` parameter in the configuration."""
         return len(self.data)
 
     def ids(self):
-        """Yield IDs for the dataset"""
+        """This function yields IDs for the dataset. It can be used as an iterable
+        in a loop, or converted to a list by wrapping the function call in ``list(...)``."""
         for id_item in self.id_list:
             yield str(id_item)
 
 
 class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableDataset):
-    """An iterable version of RandomDataset.
+    """This dataset is stand-in for a iterable-style, or streaming, dataset.
+    It will produce random numpy arrays and, optionally, labels randomly
+    selected from the provided list of possible labels.
 
-    Note: while ids will be generated automatically, calling the `ids` method of
-    this class will simply return the index of the data."""
+    .. note::
+
+        While ids will be generated automatically for this dataset, calling the
+        ``ids`` method of this dataset will return the index instead of the id.
+    """
 
     def __iter__(self):
+        """Yield the next data sample. The returned dictionary will contain the
+        following keys:
+
+        - ``index``: The index of the data sample.
+        - ``object_id``: The value will be the same as ``index`` for this dataset.
+        - ``image``: The data sample as a numpy array.
+        - ``label``: The label of the data sample (if provided).
+
+        Returns
+        -------
+        dict
+            A dictionary containing a data sample and its metadata.
+
+        """
         for idx, image in enumerate(self.data):
             ret = {
                 "index": idx,
