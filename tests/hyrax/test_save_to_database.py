@@ -6,12 +6,16 @@ def test_save_to_database(loopback_inferred_hyrax):
     that we can match ids to input vectors for all values."""
 
     h, dataset, inference_results = loopback_inferred_hyrax
-    inference_result_ids = list(inference_results.ids())
-    original_dataset_ids = list(dataset.ids())
+    inference_result_ids = np.array(list(inference_results.ids()))
+    original_dataset_ids = np.array(list(dataset.ids()))
+
+    # If the dataset is iterable, convert it to a list for easier indexing
+    if dataset.is_iterable():
+        dataset = list(dataset)
 
     h.config["vector_db"]["name"] = "chromadb"
-    dim_1_length = h.config["data_set"]["dimension_1_length"]
-    dim_2_length = h.config["data_set"]["dimension_2_length"]
+    original_shape = h.config["data_set.random_dataset"]["shape"]
+
     # Populate the vector database with the results of inference
     vdb_path = h.config["general"]["results_dir"]
     h.save_to_database(output_dir=vdb_path)
@@ -20,9 +24,13 @@ def test_save_to_database(loopback_inferred_hyrax):
     db_connection = h.database_connection(database_dir=vdb_path)
 
     # Verify that every inserted vector id matches the original vector
-    for indx, id in enumerate(inference_result_ids):
-        assert id == original_dataset_ids[indx]
+    for id in inference_result_ids:
+        # Since the ordering of inference results is not guaranteed to match the
+        # original dataset, we need to find the index of the original dataset id
+        # that corresponds to the inference result id.
+        assert id in original_dataset_ids, f"Inference ID, {id} not found in original dataset IDs."
+        orig_indx = np.where(original_dataset_ids == id)[0][0]
         result = db_connection.get_by_id(id)
-        saved_value = result[id].reshape(dim_1_length, dim_2_length)
-        original_value = dataset[indx]
-        assert np.all(saved_value == original_value.numpy())
+        saved_value = result[id].reshape(original_shape)
+        original_value = dataset[orig_indx]["image"]
+        assert np.all(np.isclose(saved_value, original_value.numpy()))

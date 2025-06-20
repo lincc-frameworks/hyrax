@@ -16,6 +16,9 @@ def test_infer_order(loopback_hyrax, split, shuffle):
     inference_result_ids = list(inference_results.ids())
     original_dataset_ids = list(dataset.ids())
 
+    if dataset.is_iterable():
+        dataset = list(dataset)
+
     for idx, result_id in enumerate(inference_result_ids):
         dataset_idx = None
         for i, orig_id in enumerate(original_dataset_ids):
@@ -27,4 +30,4 @@ def test_infer_order(loopback_hyrax, split, shuffle):
 
         print(f"orig idx: {dataset_idx}, infer idx: {idx}")
         print(f"orig data: {dataset[dataset_idx]}, infer data: {inference_results[idx]}")
-        assert np.all(np.isclose(dataset[dataset_idx], inference_results[idx]))
+        assert np.all(np.isclose(dataset[dataset_idx]["image"], inference_results[idx]))

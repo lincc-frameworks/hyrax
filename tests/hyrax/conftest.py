@@ -1,45 +1,11 @@
 import numpy as np
 import pytest
-import torch.nn as nn
 from astropy.table import Table
 from torch import from_numpy
 from torch.utils.data import Dataset, IterableDataset
 
 import hyrax
 from hyrax.data_sets import HyraxDataset
-from hyrax.models import hyrax_model
-
-
-@hyrax_model
-class LoopbackModel(nn.Module):
-    """Simple model for testing which returns its own input"""
-
-    def __init__(self, config, shape):
-        from functools import partial
-
-        super().__init__()
-        # This is created so the optimizier can find at least one weight
-        self.unused_module = nn.Conv2d(1, 1, kernel_size=1, stride=0, padding=0)
-        self.config = config
-
-        def load(self, weight_file):
-            """Load Weights, we have no weights so we do nothing"""
-            pass
-
-        # We override this way rather than defining a method because
-        # Torch has some __init__ related cleverness which stomps our
-        # load definition when performed in the usual fashion.
-        self.load = partial(load, self)
-
-    def forward(self, x):
-        """We simply return our input"""
-        if isinstance(x, tuple):
-            x, label = x
-        return x
-
-    def train_step(self, batch):
-        """Training is a noop"""
-        return {"loss": 0.0}
 
 
 class RandomDataset(HyraxDataset, Dataset):
@@ -95,7 +61,7 @@ class RandomIterableDataset(RandomDataset, IterableDataset):
             yield from_numpy(item)
 
 
-@pytest.fixture(scope="function", params=["RandomDataset", "RandomIterableDataset"])
+@pytest.fixture(scope="function", params=["HyraxRandomDataset", "HyraxRandomIterableDataset"])
 def loopback_hyrax(tmp_path_factory, request):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model
@@ -104,17 +70,16 @@ def loopback_hyrax(tmp_path_factory, request):
     results_dir = tmp_path_factory.mktemp(f"loopback_hyrax_{request.param}")
 
     h = hyrax.Hyrax()
-    h.config["model"]["name"] = "LoopbackModel"
+    h.config["model"]["name"] = "HyraxLoopback"
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 5
     h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
     h.config["data_set"]["name"] = request.param
-    h.config["data_set"]["size"] = 20
-    h.config["data_set"]["seed"] = 0
-    h.config["data_set"]["dimension_1_length"] = 2
-    h.config["data_set"]["dimension_2_length"] = 3
+    h.config["data_set.random_dataset"]["size"] = 20
+    h.config["data_set.random_dataset"]["seed"] = 0
+    h.config["data_set.random_dataset"]["shape"] = [2, 3]
 
     h.config["data_set"]["validate_size"] = 0.2
     h.config["data_set"]["test_size"] = 0.2
