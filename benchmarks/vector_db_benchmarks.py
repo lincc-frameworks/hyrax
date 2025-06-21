@@ -41,12 +41,12 @@ class VectorDBBenchmarks:
         """Clean up the temporary directory used to store inference results."""
         self.tmp_dir.cleanup()
 
-    def time_load_vector_db(self):
+    def time_load_vector_db(self, vector_length, vector_db_implementation):
         """Timing benchmark for loading a vector database."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             self.h.save_to_database(output_dir=Path(tmp_dir))
 
-    def mem_load_vector_db(self):
+    def mem_load_vector_db(self, vector_length, vector_db_implementation):
         """Memory benchmark for loading a vector database."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             self.h.save_to_database(output_dir=Path(tmp_dir))
