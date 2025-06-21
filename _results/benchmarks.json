@@ -194,5 +194,57 @@
         "version": "c3ea3d131fe20f6e7d7b727c7b7f0b76b1502499687ec0b17a4924e50925f09b",
         "warmup_time": -1
     },
+    "vector_db_benchmarks.VectorDBBenchmarks.peakmem_load_vector_db": {
+        "code": "class VectorDBBenchmarks:\n    def peakmem_load_vector_db(self, vector_length, vector_db_implementation):\n        \"\"\"Memory benchmark for loading a vector database.\"\"\"\n        with tempfile.TemporaryDirectory() as tmp_dir:\n            self.h.save_to_database(output_dir=Path(tmp_dir))\n\n    def setup(self, vector_length, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set.random_dataset\"][\"size\"] = 2048\n        self.h.config[\"data_set.random_dataset\"][\"seed\"] = 0\n        self.h.config[\"data_set.random_dataset\"][\"shape\"] = [vector_length]\n    \n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n    \n        self.h.infer()",
+        "name": "vector_db_benchmarks.VectorDBBenchmarks.peakmem_load_vector_db",
+        "param_names": [
+            "vector_length",
+            "vector_db_implementation"
+        ],
+        "params": [
+            [
+                "64",
+                "256",
+                "2048",
+                "16384"
+            ],
+            [
+                "'chromadb'"
+            ]
+        ],
+        "timeout": 120,
+        "type": "peakmemory",
+        "unit": "bytes",
+        "version": "2b45698df27f8be2e4c8c8af31343b97a1f17f2b1f3f542484fffd363b0a352f"
+    },
+    "vector_db_benchmarks.VectorDBBenchmarks.time_load_vector_db": {
+        "code": "class VectorDBBenchmarks:\n    def time_load_vector_db(self, vector_length, vector_db_implementation):\n        \"\"\"Timing benchmark for loading a vector database.\"\"\"\n        with tempfile.TemporaryDirectory() as tmp_dir:\n            self.h.save_to_database(output_dir=Path(tmp_dir))\n\n    def setup(self, vector_length, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set.random_dataset\"][\"size\"] = 2048\n        self.h.config[\"data_set.random_dataset\"][\"seed\"] = 0\n        self.h.config[\"data_set.random_dataset\"][\"shape\"] = [vector_length]\n    \n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n    \n        self.h.infer()",
+        "min_run_count": 2,
+        "name": "vector_db_benchmarks.VectorDBBenchmarks.time_load_vector_db",
+        "number": 0,
+        "param_names": [
+            "vector_length",
+            "vector_db_implementation"
+        ],
+        "params": [
+            [
+                "64",
+                "256",
+                "2048",
+                "16384"
+            ],
+            [
+                "'chromadb'"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 120,
+        "type": "time",
+        "unit": "seconds",
+        "version": "97788395de35fad2598a0805ea009cd54b1b96ab423bad2683725ff102937c10",
+        "warmup_time": -1
+    },
     "version": 2
 }
