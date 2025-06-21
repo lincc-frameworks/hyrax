@@ -7,10 +7,14 @@ from hyrax import Hyrax
 class VectorDBBenchmarks:
     """Benchmarks for Hyrax vector database operations."""
 
+    timeout = 120  # max seconds per benchmark before timing out
+
     # Parameters for the benchmarks: vector lengths and vector database implementations
     params = ([64, 256, 2048, 16_384], ["chromadb"])
     param_names = ["vector_length", "vector_db_implementation"]
 
+    # Ideally this would be a `setup_cache` method, but `setup_cache` cannot be
+    # parameterized by ASV. So instead we repeatedly call `setup` before each benchmark
     def setup(self, vector_length, vector_db_implementation):
         """Set up for vector database benchmarks. Create a temporary directory,
         configure Hyrax with a loopback model, and generate a random dataset, run
@@ -24,7 +28,7 @@ class VectorDBBenchmarks:
         self.h.config["model"]["name"] = "HyraxLoopback"
 
         # Default inference batch size is 512, so this should result in 4 batch files
-        self.h.config["data_set.random_dataset"]["size"] = 4096
+        self.h.config["data_set.random_dataset"]["size"] = 2048
         self.h.config["data_set.random_dataset"]["seed"] = 0
         self.h.config["data_set.random_dataset"]["shape"] = [vector_length]
 
@@ -46,7 +50,7 @@ class VectorDBBenchmarks:
         with tempfile.TemporaryDirectory() as tmp_dir:
             self.h.save_to_database(output_dir=Path(tmp_dir))
 
-    def mem_load_vector_db(self, vector_length, vector_db_implementation):
+    def peakmem_load_vector_db(self, vector_length, vector_db_implementation):
         """Memory benchmark for loading a vector database."""
         with tempfile.TemporaryDirectory() as tmp_dir:
             self.h.save_to_database(output_dir=Path(tmp_dir))
