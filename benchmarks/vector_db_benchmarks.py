@@ -111,10 +111,10 @@ class VectorDBSearchBenchmarks:
         self.tmp_input_dir.cleanup()
         self.tmp_output_dir.cleanup()
 
-    def time_search_by_id_many_shards(self, shard_size_limit, vector_db_implementation):
+    def time_search_by_vector_many_shards(self, shard_size_limit, vector_db_implementation):
         """Benchmark timing to perform a search by ID on a dataset with many shards."""
         self.db.search_by_vector(self.data_sample, k=1)
 
-    def peakmem_search_by_id_many_shards(self, shard_size_limit, vector_db_implementation):
-        """Benchamrk memory to perform a search by ID on a dataset with many shards."""
+    def peakmem_search_by_vector_many_shards(self, shard_size_limit, vector_db_implementation):
+        """Benchmark memory to perform a search by ID on a dataset with many shards."""
         self.db.search_by_vector(self.data_sample, k=1)
