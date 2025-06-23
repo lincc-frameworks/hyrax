@@ -53,17 +53,25 @@ def time_lookup_help():
 
 def time_umap_help():
     """
-    time how long it takes to do verb-specific help for lookup
+    time how long it takes to do verb-specific help for umap
     """
     result = subprocess.run(["hyrax", "umap", "--help"])
     assert result.returncode == 0
 
 
-def time_index_help():
+def time_save_to_database_help():
     """
-    time how long it takes to do verb-specific help for lookup
+    time how long it takes to do verb-specific help for save_to_database
     """
-    result = subprocess.run(["hyrax", "index", "--help"])
+    result = subprocess.run(["hyrax", "save_to_database", "--help"])
+    assert result.returncode == 0
+
+
+def time_database_connection_help():
+    """
+    time how long it takes to do verb-specific help for database_connection
+    """
+    result = subprocess.run(["hyrax", "database_connection", "--help"])
     assert result.returncode == 0
 
 
