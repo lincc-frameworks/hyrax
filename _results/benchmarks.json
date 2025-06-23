@@ -1,4 +1,19 @@
 {
+    "benchmarks.time_database_connection_help": {
+        "code": "def time_database_connection_help():\n    \"\"\"\n    time how long it takes to do verb-specific help for database_connection\n    \"\"\"\n    result = subprocess.run([\"hyrax\", \"database_connection\", \"--help\"])\n    assert result.returncode == 0",
+        "min_run_count": 2,
+        "name": "benchmarks.time_database_connection_help",
+        "number": 0,
+        "param_names": [],
+        "params": [],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "type": "time",
+        "unit": "seconds",
+        "version": "074d71554db1f54017ecc860ba5cde2e99fa2d1303d7a726dd672b55e6553c6d",
+        "warmup_time": -1
+    },
     "benchmarks.time_download_help": {
         "code": "def time_download_help():\n    \"\"\"\n    time how long it takes to do verb-specific help for download\n    \"\"\"\n    result = subprocess.run([\"hyrax\", \"download\", \"--help\"])\n    assert result.returncode == 0",
         "min_run_count": 2,
@@ -42,21 +57,6 @@
         "type": "time",
         "unit": "seconds",
         "version": "6a64ee071d3191fd146072ef269ea2f274ab7d7e90f8b4958584aa5636e6d64c",
-        "warmup_time": -1
-    },
-    "benchmarks.time_index_help": {
-        "code": "def time_index_help():\n    \"\"\"\n    time how long it takes to do verb-specific help for lookup\n    \"\"\"\n    result = subprocess.run([\"hyrax\", \"index\", \"--help\"])\n    assert result.returncode == 0",
-        "min_run_count": 2,
-        "name": "benchmarks.time_index_help",
-        "number": 0,
-        "param_names": [],
-        "params": [],
-        "repeat": 0,
-        "rounds": 2,
-        "sample_time": 0.01,
-        "type": "time",
-        "unit": "seconds",
-        "version": "0dd4849c29dfce701f11af7f36ef3a52976baee8addcf6f4142e590a93ebfa14",
         "warmup_time": -1
     },
     "benchmarks.time_infer_help": {
@@ -149,6 +149,21 @@
         "version": "75c72b4d902276b452aa080d05007fde289454004542bd926c0a1bac4190eb0d",
         "warmup_time": -1
     },
+    "benchmarks.time_save_to_database_help": {
+        "code": "def time_save_to_database_help():\n    \"\"\"\n    time how long it takes to do verb-specific help for save_to_database\n    \"\"\"\n    result = subprocess.run([\"hyrax\", \"save_to_database\", \"--help\"])\n    assert result.returncode == 0",
+        "min_run_count": 2,
+        "name": "benchmarks.time_save_to_database_help",
+        "number": 0,
+        "param_names": [],
+        "params": [],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "type": "time",
+        "unit": "seconds",
+        "version": "a64a33bc999da1f4ae4d41b65038c9e29bb55b1fab9ec95f04c1b3b1d2c1f21d",
+        "warmup_time": -1
+    },
     "benchmarks.time_train_help": {
         "code": "def time_train_help():\n    \"\"\"\n    time how long it takes to do verb-specific help for train\n    \"\"\"\n    result = subprocess.run([\"hyrax\", \"train\", \"--help\"])\n    assert result.returncode == 0",
         "min_run_count": 2,
@@ -165,7 +180,7 @@
         "warmup_time": -1
     },
     "benchmarks.time_umap_help": {
-        "code": "def time_umap_help():\n    \"\"\"\n    time how long it takes to do verb-specific help for lookup\n    \"\"\"\n    result = subprocess.run([\"hyrax\", \"umap\", \"--help\"])\n    assert result.returncode == 0",
+        "code": "def time_umap_help():\n    \"\"\"\n    time how long it takes to do verb-specific help for umap\n    \"\"\"\n    result = subprocess.run([\"hyrax\", \"umap\", \"--help\"])\n    assert result.returncode == 0",
         "min_run_count": 2,
         "name": "benchmarks.time_umap_help",
         "number": 0,
@@ -176,7 +191,7 @@
         "sample_time": 0.01,
         "type": "time",
         "unit": "seconds",
-        "version": "e104d8a7750be9db25ef9f8138d283a6d790eba5895352f8de286d70a6c3f036",
+        "version": "e76c6a5f58d7e66a935f286d9afecfff64edd2df937f33f74fbbc9a433f08e58",
         "warmup_time": -1
     },
     "benchmarks.time_visualize_help": {
@@ -194,9 +209,9 @@
         "version": "c3ea3d131fe20f6e7d7b727c7b7f0b76b1502499687ec0b17a4924e50925f09b",
         "warmup_time": -1
     },
-    "vector_db_benchmarks.VectorDBBenchmarks.peakmem_load_vector_db": {
-        "code": "class VectorDBBenchmarks:\n    def peakmem_load_vector_db(self, vector_length, vector_db_implementation):\n        \"\"\"Memory benchmark for loading a vector database.\"\"\"\n        with tempfile.TemporaryDirectory() as tmp_dir:\n            self.h.save_to_database(output_dir=Path(tmp_dir))\n\n    def setup(self, vector_length, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set.random_dataset\"][\"size\"] = 2048\n        self.h.config[\"data_set.random_dataset\"][\"seed\"] = 0\n        self.h.config[\"data_set.random_dataset\"][\"shape\"] = [vector_length]\n    \n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n    \n        self.h.infer()",
-        "name": "vector_db_benchmarks.VectorDBBenchmarks.peakmem_load_vector_db",
+    "vector_db_benchmarks.VectorDBInsertBenchmarks.peakmem_load_vector_db": {
+        "code": "class VectorDBInsertBenchmarks:\n    def peakmem_load_vector_db(self, vector_length, vector_db_implementation):\n        \"\"\"Memory benchmark for loading a vector database.\"\"\"\n        with tempfile.TemporaryDirectory() as tmp_dir:\n            self.h.save_to_database(output_dir=Path(tmp_dir))\n\n    def setup(self, vector_length, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set.random_dataset\"][\"size\"] = 2048\n        self.h.config[\"data_set.random_dataset\"][\"seed\"] = 0\n        self.h.config[\"data_set.random_dataset\"][\"shape\"] = [vector_length]\n    \n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n    \n        self.h.infer()",
+        "name": "vector_db_benchmarks.VectorDBInsertBenchmarks.peakmem_load_vector_db",
         "param_names": [
             "vector_length",
             "vector_db_implementation"
@@ -215,12 +230,12 @@
         "timeout": 120,
         "type": "peakmemory",
         "unit": "bytes",
-        "version": "2b45698df27f8be2e4c8c8af31343b97a1f17f2b1f3f542484fffd363b0a352f"
+        "version": "0b1d6ca6e79b4fb063aab9e8bfefefecb653772204c7bad0f808726d318bbbef"
     },
-    "vector_db_benchmarks.VectorDBBenchmarks.time_load_vector_db": {
-        "code": "class VectorDBBenchmarks:\n    def time_load_vector_db(self, vector_length, vector_db_implementation):\n        \"\"\"Timing benchmark for loading a vector database.\"\"\"\n        with tempfile.TemporaryDirectory() as tmp_dir:\n            self.h.save_to_database(output_dir=Path(tmp_dir))\n\n    def setup(self, vector_length, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set.random_dataset\"][\"size\"] = 2048\n        self.h.config[\"data_set.random_dataset\"][\"seed\"] = 0\n        self.h.config[\"data_set.random_dataset\"][\"shape\"] = [vector_length]\n    \n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n    \n        self.h.infer()",
+    "vector_db_benchmarks.VectorDBInsertBenchmarks.time_load_vector_db": {
+        "code": "class VectorDBInsertBenchmarks:\n    def time_load_vector_db(self, vector_length, vector_db_implementation):\n        \"\"\"Timing benchmark for loading a vector database.\"\"\"\n        with tempfile.TemporaryDirectory() as tmp_dir:\n            self.h.save_to_database(output_dir=Path(tmp_dir))\n\n    def setup(self, vector_length, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set.random_dataset\"][\"size\"] = 2048\n        self.h.config[\"data_set.random_dataset\"][\"seed\"] = 0\n        self.h.config[\"data_set.random_dataset\"][\"shape\"] = [vector_length]\n    \n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n    \n        self.h.infer()",
         "min_run_count": 2,
-        "name": "vector_db_benchmarks.VectorDBBenchmarks.time_load_vector_db",
+        "name": "vector_db_benchmarks.VectorDBInsertBenchmarks.time_load_vector_db",
         "number": 0,
         "param_names": [
             "vector_length",
@@ -243,7 +258,55 @@
         "timeout": 120,
         "type": "time",
         "unit": "seconds",
-        "version": "97788395de35fad2598a0805ea009cd54b1b96ab423bad2683725ff102937c10",
+        "version": "c9f401c564e6f65e88447d41eb2323da7c51bbea61023c35e930ecd11e8fd267",
+        "warmup_time": -1
+    },
+    "vector_db_benchmarks.VectorDBSearchBenchmarks.peakmem_search_by_vector_many_shards": {
+        "code": "class VectorDBSearchBenchmarks:\n    def peakmem_search_by_vector_many_shards(self, shard_size_limit, vector_db_implementation):\n        \"\"\"Benchmark memory to perform a search by ID on a dataset with many shards.\"\"\"\n        self.db.search_by_vector(self.data_sample, k=1)\n\n    def setup(self, shard_size_limit, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_input_dir = tempfile.TemporaryDirectory()\n        self.tmp_output_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_input_dir.name)\n        self.output_dir = Path(self.tmp_output_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n        self.h.config[\"data_loader\"][\"batch_size\"] = 4096\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set.random_dataset\"][\"size\"] = 4096\n        self.h.config[\"data_set.random_dataset\"][\"seed\"] = 0\n        self.h.config[\"data_set.random_dataset\"][\"shape\"] = [1024]\n    \n        # Create a fake weights file and then run inference on the random dataset\n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.infer()\n    \n        # Get the list of dataset ids\n        self.ds = self.h.prepare()\n        self.data_sample = self.ds[4001][\"image\"].numpy()\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n        self.h.config[\"vector_db.chromadb\"][\"shard_size_limit\"] = shard_size_limit\n    \n        # Save inference results to vector database and create a db connection\n        self.h.save_to_database(output_dir=Path(self.output_dir))\n        self.db = self.h.database_connection(self.output_dir)",
+        "name": "vector_db_benchmarks.VectorDBSearchBenchmarks.peakmem_search_by_vector_many_shards",
+        "param_names": [
+            "shard_size_limit",
+            "vector_db_implementation"
+        ],
+        "params": [
+            [
+                "64",
+                "128"
+            ],
+            [
+                "'chromadb'"
+            ]
+        ],
+        "timeout": 120,
+        "type": "peakmemory",
+        "unit": "bytes",
+        "version": "66a5aa85abfdbf31fb7a2918e8bce3ac453a6d5a96c43256c3561e1089b35649"
+    },
+    "vector_db_benchmarks.VectorDBSearchBenchmarks.time_search_by_vector_many_shards": {
+        "code": "class VectorDBSearchBenchmarks:\n    def time_search_by_vector_many_shards(self, shard_size_limit, vector_db_implementation):\n        \"\"\"Benchmark timing to perform a search by ID on a dataset with many shards.\"\"\"\n        self.db.search_by_vector(self.data_sample, k=1)\n\n    def setup(self, shard_size_limit, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_input_dir = tempfile.TemporaryDirectory()\n        self.tmp_output_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_input_dir.name)\n        self.output_dir = Path(self.tmp_output_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n        self.h.config[\"data_loader\"][\"batch_size\"] = 4096\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set.random_dataset\"][\"size\"] = 4096\n        self.h.config[\"data_set.random_dataset\"][\"seed\"] = 0\n        self.h.config[\"data_set.random_dataset\"][\"shape\"] = [1024]\n    \n        # Create a fake weights file and then run inference on the random dataset\n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.infer()\n    \n        # Get the list of dataset ids\n        self.ds = self.h.prepare()\n        self.data_sample = self.ds[4001][\"image\"].numpy()\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n        self.h.config[\"vector_db.chromadb\"][\"shard_size_limit\"] = shard_size_limit\n    \n        # Save inference results to vector database and create a db connection\n        self.h.save_to_database(output_dir=Path(self.output_dir))\n        self.db = self.h.database_connection(self.output_dir)",
+        "min_run_count": 2,
+        "name": "vector_db_benchmarks.VectorDBSearchBenchmarks.time_search_by_vector_many_shards",
+        "number": 0,
+        "param_names": [
+            "shard_size_limit",
+            "vector_db_implementation"
+        ],
+        "params": [
+            [
+                "64",
+                "128"
+            ],
+            [
+                "'chromadb'"
+            ]
+        ],
+        "repeat": 0,
+        "rounds": 2,
+        "sample_time": 0.01,
+        "timeout": 120,
+        "type": "time",
+        "unit": "seconds",
+        "version": "5be5a09fbcbc4d52f94f526f51ad9b4618b9408d96c706321f2f140f3d99e0d1",
         "warmup_time": -1
     },
     "version": 2
