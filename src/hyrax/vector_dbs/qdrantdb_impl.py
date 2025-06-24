@@ -12,6 +12,7 @@ class QdrantDB(VectorDB):
     def __init__(self, config, context):
         super().__init__(config, context)
         self.client = None
+        self.collection_size = 0
 
     def connect(self):
         """Connect to the Qdrant database and return an instance of the client."""
@@ -38,21 +39,25 @@ class QdrantDB(VectorDB):
         # https://qdrant.tech/documentation/guides/distributed_deployment/#choosing-the-right-number-of-shards
         self.collection_name = f"shard_{0}"
         if not self.client.collection_exists(self.collection_name):
-            self.collection = self.client.create_collection(
+            created_collection = self.client.create_collection(
                 collection_name=self.collection_name,
                 vectors_config=models.VectorParams(
                     #! This stinks - we should just check the size of the data
                     #! when we call `save_to_database` and then set this automatically
                     #! as a parameter in self.context["blah"] or something.
                     size=self.config["vector_db.qdrant"]["vector_size"],
-                    distance=models.Distance.COSINE,
+                    distance=models.Distance.DOT,
+                    on_disk=True,
                 ),
                 shard_number=12,
             )
 
+        if not created_collection:
+            raise RuntimeError(f"Failed to create collection {self.collection_name} in Qdrant.")
+
         self.collection_size = self.client.count(collection_name=self.collection_name, exact=True)
 
-        return self.collection
+        return self.collection_name
 
     def insert(self, ids: list[Union[str, int]], vectors: list[np.ndarray]):
         """Insert data into the Qdrant database."""
@@ -61,6 +66,14 @@ class QdrantDB(VectorDB):
 
         #! Insert a check here to make sure that the vectors are the same
         #! length as what is specified for the collection!!!
+
+        #! Insert a check here to make sure that the ids are UUIDs _or_ integers!!!
+        #! We need to find a way to make string input convert to UUID
+        """
+        if not isinstance(ids[0], int):
+            import uuid
+            uuids = [str(uuid.uuid5(i)) for i in ids]
+        """
 
         # Insert data into the collection
         self.client.upsert(
@@ -72,29 +85,27 @@ class QdrantDB(VectorDB):
         )
 
         # Update the collection size after insertion
-        self.collection_size = self.client.count(collection_name=self.collection.name, exact=True)
+        self.collection_size = self.client.count(collection_name=self.collection_name, exact=True).count
         return self.collection_size
 
     def search_by_id(self, id: Union[str, int], k: int = 1) -> dict[int, list[Union[str, int]]]:
-        """Search for the k nearest neighbors of a given id."""
+        """Search for the k nearest neighbors of a given id. It appears that Qdrant
+        will exclude the id itself from the results. Thus we first retrieve the
+        vector for the given id, and then use that vector to find the k nearest
+        neighbors."""
         if self.client is None:
             self.connect()
 
-        # Get the vector for the given id
-        point = self.client.get_point(collection_name=self.collection_name, point_id=id)
+        # Retrieve the vector for the given id
+        query_vector = self.get_by_id(id)
 
-        if not point:
-            return {}
-
-        # Search for the k nearest neighbors
-        search_result = self.client.search(
-            collection_name=self.collection_name,
-            query_vector=point.vector,
-            limit=k,
+        # Find the k nearest neighbors using the vector
+        query_results = self.client.query_points(
+            collection_name=self.collection_name, query=models.NearestQuery(nearest=query_vector[id]), limit=k
         )
 
         # Return the ids of the k nearest neighbors
-        return {0: [hit.id for hit in search_result]}
+        return {id: [p.id for p in query_results.points]}
 
     def search_by_vector(
         self, vectors: Union[np.ndarray, list[np.ndarray]], k: int = 1
@@ -122,12 +133,13 @@ class QdrantDB(VectorDB):
         if self.client is None:
             self.connect()
 
-        # Get the points for the given ids
-        search_queries = [models.QueryRequest(query=id, limit=1, with_vector=True) for id in ids]
+        if not isinstance(ids, list):
+            ids = [ids]
 
-        points = self.client.query_batch_points(
+        points = self.client.retrieve(
             collection_name=self.collection_name,
-            requests=search_queries,
+            ids=ids,
+            with_vectors=True,
         )
 
         # Return the vectors for the given ids
