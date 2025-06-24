@@ -275,6 +275,12 @@ shard_size_limit = 65536
 vector_size_warning = 10000
 
 
+["vector_db.qdrant"]
+# The number of elements in the vectors that will be stored in the vector database.
+# This must be the same as the size of the vectors produced by the model.
+vector_size = 64
+
+
 [results]
 # Path to inference results to use for visualization and lookups. Uses latest inference run if none provided.
 inference_dir = false
