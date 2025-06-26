@@ -128,7 +128,7 @@ class DownloadedLSSTDataset(LSSTDataset):
             self.padding_length = max(4, len(str(dataset_length)))
 
     def _initialize_manifest(self):
-        """Create or load existing manifest with cutout tracking columns."""
+        """Create new manifest or load/merge with existing manifest."""
 
         if isinstance(self.catalog, Table):
             self.catalog_type = "astropy"
@@ -139,22 +139,39 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         # Try to load existing manifest first
         if self.manifest_path.exists():
-            logger.info(f"Loading existing manifest from {self.manifest_path}")
+            logger.info(f"Found existing manifest at {self.manifest_path}")
             try:
-                self.manifest = self._load_existing_manifest()
+                existing_manifest = self._load_existing_manifest()
 
-                # Validate manifest compatibility with current catalog
-                if self._validate_manifest_compatibility():
-                    logger.info("Existing manifest is compatible with current catalog.")
-                    return
-                else:
-                    logger.warning("Manifest incompatible with current catalog, creating new one")
-                    # Continue to create new manifest
+                # Perform manifest merge
+                self.manifest, merge_stats = self._merge_manifests(existing_manifest)
+
+                # Log merge results
+                logger.info(
+                    f"Manifest merge completed: {merge_stats['preserved']} preserved, "
+                    f"{merge_stats['added']} added"
+                )
+
+                # Warn about new objects that need downloading
+                if merge_stats["added"] > 0:
+                    logger.warning(
+                        f"{merge_stats['added']} new objects were added to the manifest "
+                        f"but are not yet downloaded. Consider running download_cutouts() to "
+                        f"download these missing objects."
+                    )
+
+                # Save the merged manifest
+                self._save_manifest()
+                return
+
             except Exception as e:
-                logger.warning(f"Failed to load existing manifest: {e}, creating new one")
-                # Continue to create new manifest
+                logger.error(f"Failed to load/merge existing manifest: {e}")
+                logger.error(
+                    "Cannot proceed with incompatible manifest. Specify new data directory to continue."
+                )
+                raise
 
-        # Create new manifest
+        # Create new manifest (no existing manifest found)
         logger.info("Creating new manifest")
         if self.catalog_type == "astropy":
             self.manifest = Table()
@@ -179,50 +196,87 @@ class DownloadedLSSTDataset(LSSTDataset):
             # Convert back to original catalog type if needed
             return df
 
-    def _validate_manifest_compatibility(self):
-        """Check if existing manifest is compatible with current catalog."""
-        try:
-            # Check if lengths match
-            if len(self.manifest) != len(self.catalog):
-                logger.warning(
-                    f"Manifest length ({len(self.manifest)}) != catalog\
-                        length ({len(self.catalog)})"
-                )
-                return False
+    def _merge_manifests(self, existing_manifest):
+        """Merge existing manifest with current catalog based on object_id."""
 
-            # Check if required columns exist
-            required_cols = ["cutout_shape", "filename", "downloaded_bands"]
+        # Verify object_id merging is possible
+        if not self.use_object_id:
+            raise ValueError("Cannot merge manifests without object_id")
+
+        # Check required columns exist in existing manifest
+        existing_cols = (
+            existing_manifest.colnames if self.catalog_type == "astropy" else existing_manifest.columns
+        )
+        required_cols = ["cutout_shape", "filename", "downloaded_bands"]
+
+        for col in required_cols:
+            if col not in existing_cols:
+                raise ValueError(f"Existing manifest missing required column: {col}")
+
+        # Create object_id lookup from existing manifest
+        existing_lookup = {}
+        for i in range(len(existing_manifest)):
             if self.catalog_type == "astropy":
-                manifest_cols = self.manifest.colnames
+                obj_id = existing_manifest[i][self.object_id_column]
             else:
-                manifest_cols = self.manifest.columns
+                obj_id = existing_manifest.iloc[i][self.object_id_column]
+            existing_lookup[obj_id] = i
 
-            for col in required_cols:
-                if col not in manifest_cols:
-                    logger.warning(f"Required column '{col}' missing from manifest")
-                    return False
+        # Build new manifest starting with current catalog
+        if self.catalog_type == "astropy":
+            new_manifest = Table()
+            for col_name in self.catalog.colnames:
+                new_manifest[col_name] = self.catalog[col_name]
+        else:
+            new_manifest = self.catalog.copy()
 
-            # Check if key identifying columns match (basic validation)
-            if self.use_object_id and self.object_id_column in manifest_cols:
-                # Compare a few object IDs to ensure consistency
-                sample_size = min(10, len(self.catalog))
-                for i in range(sample_size):
-                    if self.catalog_type == "astropy":
-                        cat_id = self.catalog[i][self.object_id_column]
-                        man_id = self.manifest[i][self.object_id_column]
-                    else:
-                        cat_id = self.catalog.iloc[i][self.object_id_column]
-                        man_id = self.manifest.iloc[i][self.object_id_column]
+        # Add manifest columns
+        if self.catalog_type == "astropy":
+            n_rows = len(new_manifest)
+            empty_shape = np.array([0, 0, 0], dtype=int)
+            new_manifest["cutout_shape"] = [empty_shape] * n_rows
+            new_manifest["filename"] = [""] * n_rows
+            new_manifest["filename"] = new_manifest["filename"].astype("U50")
+            new_manifest["downloaded_bands"] = [""] * n_rows
+            new_manifest["downloaded_bands"] = new_manifest["downloaded_bands"].astype("U20")
+        else:
+            new_manifest["cutout_shape"] = [None] * len(new_manifest)
+            new_manifest["filename"] = [None] * len(new_manifest)
+            new_manifest["downloaded_bands"] = [None] * len(new_manifest)
 
-                    if cat_id != man_id:
-                        logger.warning(f"Object ID mismatch at index {i}: {cat_id} != {man_id}")
-                        return False
+        # Merge download status from existing manifest
+        preserved_count = 0
+        added_count = 0
 
-            return True
+        for i in range(len(new_manifest)):
+            if self.catalog_type == "astropy":
+                obj_id = new_manifest[i][self.object_id_column]
+            else:
+                obj_id = new_manifest.iloc[i][self.object_id_column]
 
-        except Exception as e:
-            logger.error(f"Error validating manifest compatibility: {e}")
-            return False
+            if obj_id in existing_lookup:
+                # Preserve existing download status
+                existing_idx = existing_lookup[obj_id]
+
+                if self.catalog_type == "astropy":
+                    new_manifest["cutout_shape"][i] = existing_manifest["cutout_shape"][existing_idx]
+                    new_manifest["filename"][i] = existing_manifest["filename"][existing_idx]
+                    new_manifest["downloaded_bands"][i] = existing_manifest["downloaded_bands"][existing_idx]
+                else:
+                    new_manifest.loc[i, "cutout_shape"] = existing_manifest.iloc[existing_idx]["cutout_shape"]
+                    new_manifest.loc[i, "filename"] = existing_manifest.iloc[existing_idx]["filename"]
+                    new_manifest.loc[i, "downloaded_bands"] = existing_manifest.iloc[existing_idx][
+                        "downloaded_bands"
+                    ]
+
+                preserved_count += 1
+            else:
+                # New object - download status already initialized to empty
+                added_count += 1
+
+        merge_stats = {"preserved": preserved_count, "added": added_count}
+
+        return new_manifest, merge_stats
 
     def _add_manifest_columns(self):
         """Add cutout_shape, filename, and downloaded_bands columns to manifest."""
@@ -259,7 +313,7 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def _update_manifest_entry(self, idx, cutout_shape=None, filename="Attempted", downloaded_bands=None):
         """
-        Thread-safe manifest update with periodic saves.
+        Thread-safe manifest update with periodic saves.git sta
 
         Args:
             idx: Index in the catalog
