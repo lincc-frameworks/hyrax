@@ -48,6 +48,7 @@ dependencies = [
     "plotly", # Used in 3d visualization
     "psutil", # Used for memory monitoring
     "tqdm", # Used to show progress bars
+    "qdrant-client", # Vector database for similarity search
 ]
 
 [project.scripts]
