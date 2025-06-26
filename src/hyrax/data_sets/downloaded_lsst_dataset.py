@@ -98,11 +98,11 @@ class DownloadedLSSTDataset(LSSTDataset):
         self._updates_since_save = 0
         self._save_interval = 1000
 
-        # Determine naming strategy and initialize manifest
+        # Determine naming strategy and initialize manifest (includes band filtering validation)
         self._setup_naming_strategy()
         self._initialize_manifest()
 
-        # Add tracking for band failure statistics
+        # Add tracking for band failure statistics (use current BANDS which may be filtered)
         self._band_failure_stats = {band: 0 for band in self.BANDS}
         self._band_failure_lock = threading.Lock()
 
@@ -128,7 +128,7 @@ class DownloadedLSSTDataset(LSSTDataset):
             self.padding_length = max(4, len(str(dataset_length)))
 
     def _initialize_manifest(self):
-        """Create new manifest or load/merge with existing manifest."""
+        """Create new manifest or load/merge with existing manifest, with band filtering validation."""
 
         if isinstance(self.catalog, Table):
             self.catalog_type = "astropy"
@@ -137,11 +137,42 @@ class DownloadedLSSTDataset(LSSTDataset):
             self.catalog_type = "hats"
             self.manifest_path = self.download_dir / "manifest.parquet"
 
+        # Initialize band filtering flags
+        self._is_filtering_bands = False
+        self._original_bands = None
+        self._filtered_bands = None
+        self._band_indices = None
+
         # Try to load existing manifest first
         if self.manifest_path.exists():
             logger.info(f"Found existing manifest at {self.manifest_path}")
             try:
                 existing_manifest = self._load_existing_manifest()
+
+                # Check for band filtering opportunity
+                available_bands_set, original_band_order = self._get_available_bands_from_manifest(
+                    existing_manifest
+                )
+
+                if available_bands_set is not None and original_band_order is not None:
+                    requested_bands = set(self.BANDS)
+
+                    # Only setup filtering if requested bands are a PROPER SUBSET
+                    if requested_bands < available_bands_set:  # Proper subset (not equal)
+                        logger.info(
+                            f"Requested bands {sorted(list(requested_bands))} are a subset of "
+                            f"available {sorted(list(available_bands_set))}"
+                        )
+                        self._setup_band_filtering(requested_bands, original_band_order)
+                    elif requested_bands == available_bands_set:
+                        logger.info("Requested bands match available bands exactly, no filtering needed")
+                    else:
+                        missing_bands = requested_bands - available_bands_set
+                        raise ValueError(
+                            f"Requested bands {sorted(list(missing_bands))} are not available in downloads. "
+                            f"Available bands: {sorted(list(available_bands_set))}. "
+                            f"Please set up a new data directory or download missing bands first."
+                        )
 
                 # Perform manifest merge
                 self.manifest, merge_stats = self._merge_manifests(existing_manifest)
@@ -300,6 +331,68 @@ class DownloadedLSSTDataset(LSSTDataset):
             self.manifest["filename"] = [None] * len(self.manifest)
             self.manifest["downloaded_bands"] = [None] * len(self.manifest)
 
+    def _get_available_bands_from_manifest(self, manifest):
+        """Get available bands by checking first 10 successful downloads for consistency."""
+        if len(manifest) == 0:
+            return None, None
+
+        successful_entries = []
+
+        # Find first 10 successful downloads
+        for i in range(len(manifest)):
+            if len(successful_entries) >= 10:
+                break
+
+            if self.catalog_type == "astropy":
+                filename = manifest["filename"][i]
+                downloaded_bands_str = manifest["downloaded_bands"][i]
+            else:
+                filename = manifest.iloc[i]["filename"]
+                downloaded_bands_str = manifest.iloc[i]["downloaded_bands"]
+
+            # Only consider successful downloads
+            if (
+                filename
+                and filename != "Attempted"
+                and downloaded_bands_str
+                and str(downloaded_bands_str).strip()
+            ):
+                bands = [b.strip() for b in str(downloaded_bands_str).split(",") if b.strip()]
+                if bands:  # Non-empty band list
+                    successful_entries.append(bands)
+
+        if not successful_entries:
+            return None, None
+
+        # Check that all successful entries have identical band lists
+        first_bands = successful_entries[0]
+        for i, bands in enumerate(successful_entries[1:], 1):
+            if bands != first_bands:
+                raise ValueError(
+                    f"Inconsistent band ordering in manifest. Entry 0 has {first_bands}, "
+                    f"but entry {i} has {bands}. Cannot determine consistent band structure."
+                )
+
+        return set(first_bands), first_bands
+
+    def _setup_band_filtering(self, requested_bands, original_band_order):
+        """Setup band filtering to extract only requested bands from cached cutouts."""
+        # Store filtering info
+        self._original_bands = original_band_order
+        self._filtered_bands = [band for band in original_band_order if band in requested_bands]
+        self._is_filtering_bands = True
+
+        # Create mapping from filtered bands to original tensor indices
+        self._band_indices = []
+        for band in self._filtered_bands:
+            self._band_indices.append(self._original_bands.index(band))
+
+        # Override the BANDS property to reflect filtered bands
+        self.BANDS = tuple(self._filtered_bands)
+
+        logger.info(f"Band filtering setup: {self._original_bands} -> {self._filtered_bands}")
+        logger.info(f"Tensor indices to extract: {self._band_indices}")
+
     def _get_cutout_path(self, idx):
         """Generate cutout file path for a given index."""
         if self.use_object_id:
@@ -384,7 +477,10 @@ class DownloadedLSSTDataset(LSSTDataset):
                     # Manifest doesn't reflect the file exists, update it
                     try:
                         cutout = torch.load(cutout_path, map_location="cpu", weights_only=True)
-                        self._update_manifest_entry(idx, cutout.shape, cutout_path.name, list(self.BANDS))
+                        bands_for_existing = (
+                            list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
+                        )
+                        self._update_manifest_entry(idx, cutout.shape, cutout_path.name, bands_for_existing)
                         synced_count += 1
                     except Exception as e:
                         logger.warning(f"Could not load existing cutout {cutout_path}: {e}")
@@ -446,25 +542,42 @@ class DownloadedLSSTDataset(LSSTDataset):
             raise
 
     def _fetch_single_cutout(self, row, idx=None):
-        """Fetch cutout, using saved cutout if available."""
+        """Fetch cutout, using saved cutout if available, with optional band filtering."""
         if idx is not None:
             cutout_path = self._get_cutout_path(idx)
             if cutout_path.exists():
-                # For cached cutouts, return just the tensor
-                return torch.load(cutout_path, map_location="cpu", weights_only=True)
+                # Load cached cutout
+                cutout = torch.load(cutout_path, map_location="cpu", weights_only=True)
+
+                # Apply band filtering if needed
+                if self._is_filtering_bands and self._band_indices is not None:
+                    cutout = cutout[self._band_indices]
+                    logger.debug(f"Applied band filtering to cached cutout {idx}: {cutout.shape}")
+
+                return cutout
 
         # For main thread, use parent's method (original caching)
         import threading
 
         if threading.current_thread() is threading.main_thread():
             cutout = super()._fetch_single_cutout(row)
-            downloaded_bands = list(self.BANDS)  # Assume all bands successful with parent method
+            # When using parent method, assume all original bands were successful
+            downloaded_bands = list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
         else:
             # For worker threads, use our cached method
-            # Unpack both cutout and downloaded_bands
             cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
 
-        # Save cutout if idx provided
+        # Apply band filtering to new downloads if needed
+        original_cutout_shape = cutout.shape
+        if self._is_filtering_bands and self._band_indices is not None:
+            cutout = cutout[self._band_indices]
+            # Update downloaded_bands to reflect only the filtered bands that were actually present
+            downloaded_bands = [
+                self._original_bands[i] for i in self._band_indices if i < len(self._original_bands)
+            ]
+            logger.debug(f"Applied band filtering to new cutout: {original_cutout_shape} -> {cutout.shape}")
+
+        # Save cutout if idx provided (save the filtered version)
         if idx is not None:
             cutout_path = self._get_cutout_path(idx)
             torch.save(cutout, cutout_path)
@@ -489,7 +602,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         box_i = self._parse_box(patch_info, row)
 
         # Use cached patch fetching - convert bands list to tuple for hashability
-        bands_tuple = tuple(self.BANDS)
+        bands_tuple = tuple(self._original_bands) if self._is_filtering_bands else tuple(self.BANDS)
 
         # Get patch data and failed bands info
         patch_images, failed_bands = self._request_patch_cached(
@@ -505,7 +618,8 @@ class DownloadedLSSTDataset(LSSTDataset):
         cutout_data = []
         downloaded_bands = []  # Track successfully downloaded bands in order
 
-        for _i, (band, image) in enumerate(zip(self.BANDS, patch_images)):
+        bands_to_process = self._original_bands if self._is_filtering_bands else self.BANDS
+        for _i, (band, image) in enumerate(zip(bands_to_process, patch_images)):
             if image is not None:
                 # Successfully retrieved band
                 cutout_data.append(image[box_i].getArray())
@@ -663,6 +777,9 @@ class DownloadedLSSTDataset(LSSTDataset):
                 )
                 failed = sum(1 for filename in self.manifest["filename"] if filename == "Attempted")
                 pending = sum(1 for filename in self.manifest["filename"] if not filename)
+                expected_band_count = (
+                    len(self._original_bands) if self._is_filtering_bands else len(self.BANDS)
+                )
 
                 # Add statistics about partial downloads (cutouts with missing bands)
                 partial_downloads = sum(
@@ -673,7 +790,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                     if filename
                     and filename != "Attempted"
                     and downloaded_bands
-                    and len(downloaded_bands.split(",")) < len(self.BANDS)
+                    and len(downloaded_bands.split(",")) < expected_band_count
                 )
             else:
                 successful = sum(
@@ -681,6 +798,9 @@ class DownloadedLSSTDataset(LSSTDataset):
                 )
                 failed = sum(1 for filename in self.manifest["filename"] if filename == "Attempted")
                 pending = sum(1 for filename in self.manifest["filename"] if filename is None)
+                expected_band_count = (
+                    len(self._original_bands) if self._is_filtering_bands else len(self.BANDS)
+                )
 
                 partial_downloads = sum(
                     1
@@ -690,7 +810,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                     if filename
                     and filename != "Attempted"
                     and downloaded_bands
-                    and len(str(downloaded_bands).split(",")) < len(self.BANDS)
+                    and len(str(downloaded_bands).split(",")) < expected_band_count
                 )
 
             # Collect band failure statistics
@@ -706,6 +826,25 @@ class DownloadedLSSTDataset(LSSTDataset):
                 "band_failure_counts": band_stats,
                 "manifest_path": str(self.manifest_path),
             }
+
+    def get_band_filtering_info(self):
+        """Get information about current band filtering configuration."""
+        if not self._is_filtering_bands:
+            return {
+                "is_filtering": False,
+                "requested_bands": list(self.BANDS),
+                "original_bands": None,
+                "filtered_bands": None,
+                "band_indices": None,
+            }
+
+        return {
+            "is_filtering": True,
+            "requested_bands": list(self.BANDS),
+            "original_bands": self._original_bands,
+            "filtered_bands": self._filtered_bands,
+            "band_indices": self._band_indices,
+        }
 
     def save_manifest_now(self):
         """Force immediate manifest save."""
@@ -763,12 +902,16 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def get_download_summary(self):
         """
-        Get detailed download and band analysis.
+        Get detailed download and band analysis, accounting for band filtering.
         """
         stats = self.get_manifest_stats()
 
+        # Determine which bands to analyze based on filtering
+        bands_to_analyze = self._filtered_bands if self._is_filtering_bands else list(self.BANDS)
+        all_possible_bands = self._original_bands if self._is_filtering_bands else list(self.BANDS)
+
         # Analyze downloaded bands per cutout
-        band_success_analysis = {band: 0 for band in self.BANDS}
+        band_success_analysis = {band: 0 for band in bands_to_analyze}
         complete_downloads = 0
 
         if self.catalog_type == "astropy":
@@ -780,24 +923,32 @@ class DownloadedLSSTDataset(LSSTDataset):
             if downloaded_bands_str and str(downloaded_bands_str).strip():
                 downloaded_bands = [b.strip() for b in str(downloaded_bands_str).split(",") if b.strip()]
 
+                # Filter to only bands we're interested in
+                relevant_bands = [band for band in downloaded_bands if band in bands_to_analyze]
+
                 # Count successful downloads per band
-                for band in downloaded_bands:
+                for band in relevant_bands:
                     if band in band_success_analysis:
                         band_success_analysis[band] += 1
 
-                # Count complete downloads (all bands present)
-                if len(downloaded_bands) == len(self.BANDS):
+                # Count complete downloads (all requested bands present)
+                if len(relevant_bands) == len(bands_to_analyze):
                     complete_downloads += 1
+
+        filtering_info = "No filtering applied"
+        if self._is_filtering_bands:
+            filtering_info = f"Filtering {all_possible_bands} -> {bands_to_analyze}"
 
         return {
             "total_cutouts": stats["total"],
-            "complete_downloads": complete_downloads,  # All bands present
-            "partial_downloads": stats["partial_downloads"],  # Some bands missing
+            "complete_downloads": complete_downloads,  # All requested bands present
+            "partial_downloads": stats["partial_downloads"],  # Some requested bands missing
             "failed_downloads": stats["failed"],  # All bands failed
             "pending_downloads": stats["pending"],
-            "band_success_counts": band_success_analysis,  # How many cutouts have each band
+            "band_success_counts": band_success_analysis,  # How many cutouts have each requested band
             "band_failure_counts": stats["band_failure_counts"],  # How many times each band failed
-            "expected_bands": list(self.BANDS),
+            "expected_bands": bands_to_analyze,
+            "band_filtering_info": filtering_info,
             "percentage_complete": round(complete_downloads / stats["total"] * 100, 2)
             if stats["total"] > 0
             else 0,
