@@ -1,3 +1,4 @@
+import uuid
 from typing import Union
 
 import numpy as np
@@ -13,6 +14,10 @@ class QdrantDB(VectorDB):
         super().__init__(config, context)
         self.client = None
         self.collection_size = 0
+
+    def _convert_id_to_uuid(self, id: Union[str, int]) -> str:
+        """Convert an id to a UUID string using the OID namespace."""
+        return uuid.uuid5(uuid.NAMESPACE_OID, str(id)).urn
 
     def connect(self):
         """Connect to the Qdrant database and return an instance of the client."""
@@ -46,10 +51,10 @@ class QdrantDB(VectorDB):
                     #! when we call `save_to_database` and then set this automatically
                     #! as a parameter in self.context["blah"] or something.
                     size=self.config["vector_db.qdrant"]["vector_size"],
-                    distance=models.Distance.DOT,
+                    distance=models.Distance.EUCLID,
                     on_disk=True,
                 ),
-                shard_number=12,
+                shard_number=12,  #! Perhaps this should be dynamic based on available CPUs?
             )
 
         if not created_collection:
@@ -60,27 +65,29 @@ class QdrantDB(VectorDB):
         return self.collection_name
 
     def insert(self, ids: list[Union[str, int]], vectors: list[np.ndarray]):
-        """Insert data into the Qdrant database."""
+        """Insert a batch of vectors into the Qdrant database.
+
+        Parameters
+        ----------
+        ids : list[Union[str, int]]
+            The ids to associate with the vectors
+        vectors : list[np.ndarray]
+            The vectors to insert into the database
+        """
         if self.client is None:
             self.connect()
 
         #! Insert a check here to make sure that the vectors are the same
         #! length as what is specified for the collection!!!
 
-        #! Insert a check here to make sure that the ids are UUIDs _or_ integers!!!
-        #! We need to find a way to make string input convert to UUID
-        """
-        if not isinstance(ids[0], int):
-            import uuid
-            uuids = [str(uuid.uuid5(i)) for i in ids]
-        """
-
+        uuids = [self._convert_id_to_uuid(i) for i in ids]
         # Insert data into the collection
         self.client.upsert(
             collection_name=self.collection_name,
             points=models.Batch(
-                ids=ids,
+                ids=uuids,
                 vectors=vectors,
+                payloads=[{"id": id} for id in ids],
             ),
         )
 
@@ -89,28 +96,56 @@ class QdrantDB(VectorDB):
         return self.collection_size
 
     def search_by_id(self, id: Union[str, int], k: int = 1) -> dict[int, list[Union[str, int]]]:
-        """Search for the k nearest neighbors of a given id. It appears that Qdrant
-        will exclude the id itself from the results. Thus we first retrieve the
-        vector for the given id, and then use that vector to find the k nearest
-        neighbors."""
+        """Get the ids of the k nearest neighbors for a given id in the database.
+
+        Qdrant will exclude the id itself from the results, thus we first
+        retrieve the vector for a given id, and then use that vector to find the
+        k nearest neighbors.
+
+        Parameters
+        ----------
+        id : Union[str, int]
+            The id of the vector in the database for which we want to find the
+            k nearest neighbors
+        k : int, optional
+            The number of nearest neighbors to return, by default 1, return only
+            the closest neighbor
+
+        Returns
+        -------
+        dict[int, list[Union[str, int]]]
+            Dictionary with input vector id as the key and the ids of the k
+            nearest neighbors as the value.
+        """
         if self.client is None:
             self.connect()
 
         # Retrieve the vector for the given id
         query_vector = self.get_by_id(id)
 
-        # Find the k nearest neighbors using the vector
-        query_results = self.client.query_points(
-            collection_name=self.collection_name, query=models.NearestQuery(nearest=query_vector[id]), limit=k
-        )
-
-        # Return the ids of the k nearest neighbors
-        return {id: [p.id for p in query_results.points]}
+        # Find the k nearest neighbors for that vector
+        res = {id: self._query_by_vector(query_vector[id], k)}
+        return res
 
     def search_by_vector(
         self, vectors: Union[np.ndarray, list[np.ndarray]], k: int = 1
     ) -> dict[int, list[Union[str, int]]]:
-        """Search for the k nearest neighbors of a given vector."""
+        """Get the ids of the k nearest neighbors for a given vector.
+
+        Parameters
+        ----------
+        vectors : Union[np.array, list[np.ndarray]]
+            The one or more vectors to use when searching for nearest neighbors
+        k : int, optional
+            The number of nearest neighbors to return, by default 1, return only
+            the closest neighbor
+
+        Returns
+        -------
+        dict[int, list[Union[str, int]]]
+            Dictionary with input vector index as the key and the ids of the
+            k nearest neighbors as the value.
+        """
         if self.client is None:
             self.connect()
 
@@ -118,29 +153,49 @@ class QdrantDB(VectorDB):
         if isinstance(vectors, np.ndarray):
             vectors = [vectors]
 
-        # Search for the k nearest neighbors
-        search_result = self.client.search(
+        # Find the k nearest neighbors for the provided vector
+        res = {i: self._query_by_vector(v, k) for i, v in enumerate(vectors)}
+        return res
+
+    def _query_by_vector(self, vector: np.ndarray, k: int = 1) -> list[str]:
+        """Query the Qdrant database for the k nearest neighbors of a given vector."""
+
+        query_results = self.client.query_points(
             collection_name=self.collection_name,
-            query_vector=vectors[0],
+            query=models.NearestQuery(nearest=vector),
+            search_params=models.SearchParams(),
             limit=k,
         )
 
-        # Return the ids of the k nearest neighbors
-        return {0: [hit.id for hit in search_result]}
+        return [point.payload["id"] for point in query_results.points]
 
     def get_by_id(self, ids: list[Union[str, int]]) -> dict[Union[str, int], list[float]]:
-        """Get the vectors for a list of ids."""
+        """Retrieve the vectors associated with a list of ids.
+
+        Parameters
+        ----------
+        ids : list[Union[str, int]]
+            The ids of the vectors to retrieve.
+
+        Returns
+        -------
+        dict[Union[str, int], list[float]]
+            Dictionary with the ids as the keys and the vectors as the values.
+        """
         if self.client is None:
             self.connect()
 
         if not isinstance(ids, list):
             ids = [ids]
 
+        uuids = [self._convert_id_to_uuid(i) for i in ids]
+
         points = self.client.retrieve(
             collection_name=self.collection_name,
-            ids=ids,
+            ids=uuids,
             with_vectors=True,
+            with_payload=True,
         )
 
         # Return the vectors for the given ids
-        return {point.id: point.vector for point in points}
+        return {point.payload["id"]: point.vector for point in points}

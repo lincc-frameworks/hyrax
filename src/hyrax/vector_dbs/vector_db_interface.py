@@ -64,7 +64,7 @@ class VectorDB(ABC):
         -------
         dict[int, list[Union[str, int]]]
             Dictionary with input vector index as the key and the ids of the k
-            nearest neighbors as the value.s
+            nearest neighbors as the value.
         """
         pass
 

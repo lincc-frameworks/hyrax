@@ -34,7 +34,6 @@ def test_connect(tmp_path):
     qdrant_instance = QdrantDB(h.config, {"results_dir": tmp_path})
     qdrant_instance.connect()
 
-    #! It would be nice if this was qdrant.client.heartbeat() or something
     assert qdrant_instance.client is not None
 
 
@@ -64,29 +63,29 @@ def test_insert(qdrant_instance, random_vector_generator):
 def test_search_by_id(qdrant_instance):
     """Test search_by_id retrieves nearest neighbor ids"""
 
-    ids = [1, 2]
+    ids = ["id1", "id2"]
     vectors = [np.array([1, 2, 3]), np.array([4, 5, 6])]
     qdrant_instance.insert(ids, vectors)
 
     # Search by single vector should return the id1 and id2 in that order
-    result = qdrant_instance.search_by_id(1, k=2)
-    assert len(result[1]) == 2
-    assert np.all(result[1] == [1, 2])
+    result = qdrant_instance.search_by_id("id1", k=2)
+    assert len(result["id1"]) == 2
+    assert np.all(result["id1"] == ["id1", "id2"])
 
-    # # Search should return all ids when k is larger than the number of ids
-    # result = qdrant_instance.search_by_id("id1", k=5)
-    # assert len(result["id1"]) == 2
-    # assert np.all(result["id1"] == ["id1", "id2"])
+    # Search should return all ids when k is larger than the number of ids
+    result = qdrant_instance.search_by_id("id1", k=5)
+    assert len(result["id1"]) == 2
+    assert np.all(result["id1"] == ["id1", "id2"])
 
-    # # Search should return 1 id when k is 1
-    # result = qdrant_instance.search_by_id("id1", k=1)
-    # assert len(result["id1"]) == 1
-    # assert np.all(result["id1"] == ["id1"])
+    # Search should return 1 id when k is 1
+    result = qdrant_instance.search_by_id("id1", k=1)
+    assert len(result["id1"]) == 1
+    assert np.all(result["id1"] == ["id1"])
 
-    # # Search by another vector should return the id2 and id1 in that order
-    # result = qdrant_instance.search_by_id("id2", k=2)
-    # assert len(result["id2"]) == 2
-    # assert np.all(result["id2"] == ["id2", "id1"])
+    # Search by another vector should return the id2 and id1 in that order
+    result = qdrant_instance.search_by_id("id2", k=2)
+    assert len(result["id2"]) == 2
+    assert np.all(result["id2"] == ["id2", "id1"])
 
 
 def test_search_by_vector(qdrant_instance):
@@ -120,54 +119,6 @@ def test_search_by_vector(qdrant_instance):
     assert np.all(result[1] == ["id1", "id2"])
 
 
-def test_search_by_vector_not_list(qdrant_instance):
-    """Test search_by_vector retrieves nearest neighbor ids when a single vector
-    is provided. i.e. not a list of vectors."""
-
-    ids = ["id1", "id2"]
-    vectors = [np.array([1, 2, 3]), np.array([4, 5, 6])]
-    qdrant_instance.insert(ids, vectors)
-
-    # Search by a single vector should return the id2 and id1 in that order
-    result = qdrant_instance.search_by_vector(np.array([4, 5, 6]), k=2)
-    assert len(result[0]) == 2
-    assert np.all(result[0] == ["id2", "id1"])
-
-    # Search by a non-np.array vector should return the id2 and id1 in that order
-    result = qdrant_instance.search_by_vector([4, 5, 6], k=2)
-    assert len(result[0]) == 2
-    assert np.all(result[0] == ["id2", "id1"])
-
-
-# def test_search_by_vector_many_shards(chromadb_instance, random_vector_generator):
-#     """Test search_by_vector retrieves nearest neighbor ids when there are many shards"""
-
-#     chromadb_instance.shard_size_limit = 5
-#     chromadb_instance.min_shards_for_parallelization = 3
-
-#     batch_size = 2
-#     num_batches = 10
-
-#     vector_generator = random_vector_generator(batch_size * num_batches)
-#     ids = [str(i) for i in range(batch_size * num_batches)]
-#     vectors = [t.flatten() for t in next(vector_generator)]
-
-#     for i in range(num_batches):
-#         chromadb_instance.insert(
-#             ids=ids[batch_size * i : batch_size * (i + 1)],
-#             vectors=vectors[batch_size * i : batch_size * (i + 1)],
-#         )
-
-#     ids = ["id1", "id2"]
-#     vectors = [np.array([1, 2, 3]), np.array([4, 5, 6])]
-#     chromadb_instance.insert(ids, vectors)
-
-#     # Search should return 1 id when k is 1
-#     result = chromadb_instance.search_by_vector([np.array([1, 2, 3])], k=1)
-#     assert len(result[0]) == 1
-#     assert np.all(result[0] == ["id1"])
-
-
 def test_get_by_id(qdrant_instance):
     """Test get_by_id retrieves embeddings"""
 
@@ -182,34 +133,3 @@ def test_get_by_id(qdrant_instance):
     assert len(result) == 2
     assert np.all(result["id1"] == [1, 2, 3])
     assert np.all(result["id2"] == [4, 5, 6])
-
-
-# def test_get_by_id_many_shards(chromadb_instance, random_vector_generator):
-#     """Test get_by_id retrieves embeddings from multiple shards"""
-
-#     chromadb_instance.shard_size_limit = 5
-#     chromadb_instance.min_shards_for_parallelization = 3
-
-#     batch_size = 2
-#     num_batches = 10
-
-#     vector_generator = random_vector_generator(batch_size * num_batches)
-#     ids = [str(i) for i in range(batch_size * num_batches)]
-#     vectors = [t.flatten() for t in next(vector_generator)]
-
-#     for i in range(num_batches):
-#         chromadb_instance.insert(
-#             ids=ids[batch_size * i : batch_size * (i + 1)],
-#             vectors=vectors[batch_size * i : batch_size * (i + 1)],
-#         )
-
-#     ids = ["id1", "id2"]
-#     vectors = [np.array([1, 2, 3]), np.array([4, 5, 6])]
-#     chromadb_instance.insert(ids, vectors)
-
-#     result = chromadb_instance.get_by_id("id1")
-#     assert np.all(result["id1"] == [1, 2, 3])
-
-#     for indx, id in enumerate(ids):
-#         result = chromadb_instance.get_by_id(id)
-#         assert np.all(result[id] == vectors[indx])
