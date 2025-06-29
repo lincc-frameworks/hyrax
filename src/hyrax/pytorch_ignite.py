@@ -303,8 +303,9 @@ def _handle_nans_logic(batch, config):
     if config["data_set"]["nan_mode"] is False:
         if any(isnan(batch)):
             msg = "Input data contains NaN values. This may mean your model output is all NaNs."
-            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile', or writing a to_tensor()"
-            msg += "function for your model. Search hyrax readthedocs for 'to_tensor' to get started. "
+            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
+            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
+            msg += "to get started."
             logger.warning(msg)
         return batch
 
@@ -313,9 +314,11 @@ def _handle_nans_logic(batch, config):
         if quantile < 0.0 or quantile > 1.0:
             raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
         return _handle_nan_quantile(batch, quantile)
+    elif config["data_set"]["nan_mode"] == "zero":
+        return _handle_nan_zero(batch)
     else:
         msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
-        msg += "The only supported mode is 'quantile' "
+        msg += "The supported modes are 'quantile' and 'zero'."
         raise NotImplementedError(msg)
 
 
@@ -327,6 +330,15 @@ def _handle_nan_quantile(batch, quantile):
         batch_quantile = torch.nanquantile(flat_batch, q=quantile, dim=-1)
         for i, val in enumerate(batch_quantile):
             batch[i] = torch.nan_to_num(batch[i], val)
+
+    return batch
+
+
+def _handle_nan_zero(batch):
+    from torch import any, isnan
+
+    if any(isnan(batch)):
+        batch = torch.nan_to_num(batch, nan=0.0)
 
     return batch
 

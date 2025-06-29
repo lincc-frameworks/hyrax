@@ -150,8 +150,10 @@ name = "HyraxCifarDataSet"
 # smallest image size in [general].data_dir and uses it.
 crop_to = false
 
-# Specific to `hsc_data_set`. Limit to only particular filters from the data set.
-# When `false`, use all filters. Options: ["HSC-G", "HSC-R", "HSC-I", "HSC-Z", "HSC-Y"]
+# Used by HSCDataSet, LSSTDataset, and DownloadedLSSTDataset. 
+# Limit to only particular filters. When `false`, use all filters. 
+# Options: ["HSC-G", "HSC-R", "HSC-I", "HSC-Z", "HSC-Y"] for HSC
+# Options: ["u", "g", "r", "i", "z" , "y"] for LSST
 filters = false
 
 # Path to a fits file that specifies object IDs to use from the data stored in

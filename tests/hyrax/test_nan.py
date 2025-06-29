@@ -72,6 +72,25 @@ def test_nan_handling(loopback_hyrax_nan):
         assert not any(isnan(result))
 
 
+def test_nan_handling_zero_values(loopback_hyrax_nan):
+    """
+    Test that zero nan handling removes nans
+    """
+    h, dataset = loopback_hyrax_nan
+    h.config["data_set"]["nan_mode"] = "zero"
+
+    inference_results = h.infer()
+
+    if isinstance(dataset[0], dict):
+        original_nans = tensor([any(isnan(item["image"])) for item in dataset])
+    else:
+        original_nans = tensor([any(isnan(item)) for item in dataset])
+    assert any(original_nans)
+
+    for result in inference_results:
+        assert not any(isnan(result))
+
+
 def test_nan_handling_off(loopback_hyrax_nan):
     """
     Test that when nan handling is off nans appear in output
