@@ -225,6 +225,7 @@ class ImageDCAE(nn.Module):
     @staticmethod
     def to_tensor(data_dict):
         """Convert structured data to tensor format."""
+        data_dict = data_dict["data"]
         if "image" in data_dict:
             return data_dict["image"]
         else:

@@ -28,11 +28,11 @@ class DownloadedLSSTDataset(LSSTDataset):
             previous progress. Use max_workers to control thread count, force_retry
             to re-attempt failed downloads.
 
-        get_manifest_stats():
+        manifest_stats():
             Returns dict with download statistics: total, successful, failed, pending
             counts and manifest file path.
 
-        get_download_progress():
+        download_progress():
             Returns detailed progress metrics including completion percentage and
             failure rates.
 
@@ -43,7 +43,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         save_manifest_now():
             Forces immediate manifest save (normally saved periodically during downloads).
 
-        get_cache_info():
+        cache_info():
             Returns LRU cache statistics for patch fetching performance monitoring.
 
         clear_cache():
@@ -61,7 +61,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         may not always speed up the download process.
 
         # Check progress
-        a.get_download_progress()
+        a.download_progress()
 
         # Retry failed downloads
         a.download_cutouts(force_retry=True)
@@ -84,7 +84,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         self._config = config
 
         # Initialize parent class with config
-        super().__init__(config)
+        super().__init__(config, data_location=data_location)
 
         try:
             import lsst.daf.butler as _butler  # noqa: F401
@@ -109,6 +109,21 @@ class DownloadedLSSTDataset(LSSTDataset):
         # Add tracking for band failure statistics (use current BANDS which may be filtered)
         self._band_failure_stats = {band: 0 for band in self.BANDS}
         self._band_failure_lock = threading.Lock()
+
+    def get_objectId(self, idx):
+        """Get object ID for a given index based on naming strategy."""
+        if self.use_object_id:
+            if isinstance(self.catalog, Table):
+                return str(self.catalog[idx][self.object_id_column])
+            else:
+                return str(self.catalog.iloc[idx][self.object_id_column])
+        else:
+            return str(idx)
+        
+    def ids(self):
+        """Generator yielding object IDs for the entire dataset."""
+        for idx in range(len(self.catalog)):
+            yield self.get_objectId(idx)
 
     def _setup_naming_strategy(self):
         """Setup file naming strategy based on catalog columns."""
@@ -800,7 +815,7 @@ class DownloadedLSSTDataset(LSSTDataset):
             self._update_manifest_entry(idx, None, "Attempted", [])
             raise
 
-    def get_cache_info(self):
+    def cache_info(self):
         """Get cache statistics."""
         return self._request_patch_cached.cache_info()
 
@@ -809,7 +824,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         self._request_patch_cached.cache_clear()
         logger.info("Cleared patch cache")
 
-    def get_manifest_stats(self):
+    def manifest_stats(self):
         """Get manifest statistics including downloaded bands information."""
         with self._manifest_lock:
             if self.catalog_type == "astropy":
@@ -868,7 +883,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                 "manifest_path": str(self.manifest_path),
             }
 
-    def get_band_filtering_info(self):
+    def band_filtering_info(self):
         """Get information about current band filtering configuration."""
         if not self._is_filtering_bands:
             return {
@@ -920,9 +935,9 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         return reset_count
 
-    def get_download_progress(self):
+    def download_progress(self):
         """Get detailed download progress information."""
-        stats = self.get_manifest_stats()
+        stats = self.manifest_stats()
 
         # Calculate additional metrics
         total = stats["total"]
@@ -941,11 +956,11 @@ class DownloadedLSSTDataset(LSSTDataset):
             "remaining": pending,
         }
 
-    def get_download_summary(self):
+    def download_summary(self):
         """
         Get detailed download and band analysis, accounting for band filtering.
         """
-        stats = self.get_manifest_stats()
+        stats = self.manifest_stats()
 
         # Determine which bands to analyze based on filtering
         bands_to_analyze = self._filtered_bands if self._is_filtering_bands else list(self.BANDS)
