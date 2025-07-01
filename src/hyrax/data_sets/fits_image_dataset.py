@@ -55,10 +55,8 @@ from your original catalog file. FitsImageDataSet will only attempt to load imag
 
 import logging
 import time
-from collections.abc import Generator, Iterable
-from concurrent.futures import Executor
+from collections.abc import Generator
 from pathlib import Path
-from threading import Thread
 from typing import Optional, Union
 
 import numpy as np
@@ -68,13 +66,14 @@ from torch.utils.data import Dataset
 from hyrax.config_utils import ConfigDict
 
 from .data_set_registry import HyraxDataset, HyraxImageDataset
+from .tensor_cache_mixin import TensorCacheMixin
 
 logger = logging.getLogger(__name__)
 
 files_dict = dict[str, dict[str, str]]
 
 
-class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
+class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Dataset):
     """
     Dataset for Fits Images, typically cutouts.
     """
@@ -97,9 +96,6 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         """
 
         self._config = config
-
-        self.use_cache = config["data_set"]["use_cache"]
-
         self.set_function_transform()
 
         self.object_id_column_name = (
@@ -126,16 +122,8 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
         self._before_preload()
 
-        if config["data_set"]["preload_cache"] and self.use_cache:
-            self.preload_thread = Thread(
-                name=f"{self.__class__.__name__}-preload-tensor-cache",
-                daemon=True,
-                # Note we are passing only the function and self explicitly to the thread
-                # This ensures the current object is in shared thread memory.
-                target=self._preload_tensor_cache.__func__,  # type: ignore[attr-defined]
-                args=(self,),
-            )
-            self.preload_thread.start()
+        # Initialize tensor caching from mixin
+        self._init_tensor_cache(config)
 
     def _init_from_path(self, path: Union[Path, str]):
         """__init__ helper. Initialize an HSC data set from a path. This involves several filesystem scan
@@ -147,7 +135,6 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             Path or string specifying the directory path that is the root of all filenames in the
             catalog table
         """
-        from torch import Tensor
 
         self.path = path
 
@@ -170,10 +157,6 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         self.num_filters = len(first_filter_dict)
 
         self._set_crop_transform()
-
-        self.tensors: dict[str, Tensor] = {}
-        self.tensorboard_start_ns = time.monotonic_ns()
-        self.tensorboardx_logger = None
 
         logger.info(f"FitsImageDataSet has {len(self)} objects")
 
@@ -464,127 +447,6 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         """
         return Path(self.path) / Path(filename)
 
-    @staticmethod
-    def _determine_numprocs_preload():
-        # This is hardcoded to a reasonable value for hyak
-        # TODO: Unify this function and _determine_numprocs(). Ideally we would have
-        # either a multiprocessing.Pool or concurrent.futures.Executor interface taking
-        # an i/o bound callable which returns a number of bytes read. This reusable
-        # component would titrate the number of worker threads/processes to achieve a
-        # maximal throughput as measured by returns from the callable vs wall-clock time.
-        return 50
-
-    def _preload_tensor_cache(self):
-        """
-        When preloading the tensor cache is configured, this is called on a separate thread by __init__()
-        to perform a preload of every tensor in the dataset.
-        """
-        from concurrent.futures import ThreadPoolExecutor
-
-        logger.info("Preloading FitsImageDataSet cache...")
-
-        with ThreadPoolExecutor(max_workers=FitsImageDataSet._determine_numprocs_preload()) as executor:
-            tensors = self._lazy_map_executor(executor, self.ids(log_every=1_000_000))
-
-            start_time = time.monotonic_ns()
-            for idx, (id, tensor) in enumerate(zip(self.ids(), tensors)):
-                self.tensors[id] = tensor
-
-                # Output timing every 1k tensors
-                if idx % 1_000 == 0 and idx != 0:
-                    self._log_duration_tensorboard("preload_1k_obj_s", start_time)
-                    start_time = time.monotonic_ns()
-
-    def _lazy_map_executor(self, executor: Executor, ids: Iterable[str]):
-        """This is a version of concurrent.futures.Executor map() which lazily evaluates the iterator passed
-        We do this because we do not want all of the tensors to remain in memory during pre-loading. We would
-        prefer a smaller set of in-flight tensors.
-
-        The total number of in progress jobs is set at FitsImageDataSet._determine_numprocs().
-
-        The total number of tensors is slightly greater than that owing to out-of-order execution.
-
-        This approach was copied from:
-        https://gist.github.com/CallumJHays/0841c5fdb7b2774d2a0b9b8233689761
-
-        Parameters
-        ----------
-        executor : concurrent.futures.Executor
-            An executour for running our futures
-        work_fn : Callable[[str], torch.Tensor]
-            The function that makes tensors out of object_ids
-        ids : Iterable[str]
-            An iterable list of object IDs.
-
-        Yields
-        ------
-        Iterator[torch.Tensor]
-            An iterator over torch tensors, lazily loaded by running the work_fn as needed.
-        """
-        from concurrent.futures import FIRST_COMPLETED, Future, wait
-
-        from torch import Tensor
-
-        max_futures = FitsImageDataSet._determine_numprocs_preload()
-        queue: list[Future[Tensor]] = []
-        in_progress: set[Future[Tensor]] = set()
-        ids_iter = iter(ids)
-
-        try:
-            while True:
-                for _ in range(max_futures - len(in_progress)):
-                    id = next(ids_iter)
-                    future = executor.submit(self._read_object_id.__func__, self, id)  # type: ignore[attr-defined]
-                    queue.append(future)
-                    in_progress.add(future)
-
-                _, in_progress = wait(in_progress, return_when=FIRST_COMPLETED)
-
-                while queue and queue[0].done():
-                    yield queue.pop(0).result()
-
-        except StopIteration:
-            wait(queue)
-            for future in queue:
-                try:
-                    result = future.result()
-                except Exception as e:
-                    raise e
-                else:
-                    yield result
-
-    def _log_duration_tensorboard(self, name: str, start_time: int):
-        """Log a duration to tensorboardX. NOOP if no tensorboard logger configured
-
-        The time logged is a floating point number of seconds derived from integer
-        monotonic nanosecond measurements. time.monotonic_ns() is used for the current time
-
-        The step number for the scalar series is an integer number of microseonds.
-
-        Parameters
-        ----------
-        name : str
-            The name of the scalar to log to tensorboard
-        start_time : int
-            integer number of nanoseconds. Should be from time.monotonic_ns() when the duration started
-
-        """
-        now = time.monotonic_ns()
-        name = f"{self.__class__.__name__}/" + name
-        if self.tensorboardx_logger:
-            since_tensorboard_start_us = (start_time - self.tensorboard_start_ns) / 1.0e3
-
-            duration_s = (now - start_time) / 1.0e9
-            self.tensorboardx_logger.add_scalar(name, duration_s, since_tensorboard_start_us)
-
-    def _check_object_id_to_tensor_cache(self, object_id: str):
-        return self.tensors.get(object_id, None)
-
-    def _populate_object_id_to_tensor_cache(self, object_id: str):
-        data_torch = self._read_object_id(object_id)
-        self.tensors[object_id] = data_torch
-        return data_torch
-
     def _read_object_id(self, object_id: str):
         from astropy.io import fits
 
@@ -627,6 +489,10 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
     # Do we want to memoize them on first __getitem__ call?
     #
     # For now we just do it the naive way
+    def _load_tensor_for_cache(self, object_id: str):
+        """Implementation of TensorCacheMixin abstract method."""
+        return self._read_object_id(object_id)
+
     def _object_id_to_tensor(self, object_id: str):
         """Converts an object_id to a pytorch tensor with dimenstions (self.num_filters, self.cutout_shape[0],
         self.cutout_shape[1]). This is done by reading the file and slicing away any excess pixels at the
@@ -645,16 +511,4 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         torch.Tensor
             A tensor with dimension (self.num_filters, self.cutout_shape[0], self.cutout_shape[1])
         """
-        start_time = time.monotonic_ns()
-
-        if self.use_cache is False:
-            return self._read_object_id(object_id)
-
-        data_torch = self._check_object_id_to_tensor_cache(object_id)
-        if data_torch is not None:
-            self._log_duration_tensorboard("cache_hit_s", start_time)
-            return data_torch
-
-        data_torch = self._populate_object_id_to_tensor_cache(object_id)
-        self._log_duration_tensorboard("cache_miss_s", start_time)
-        return data_torch
+        return self._object_id_to_tensor_cached(object_id)

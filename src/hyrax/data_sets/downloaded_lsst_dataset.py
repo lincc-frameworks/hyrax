@@ -9,11 +9,12 @@ from astropy.table import Table
 from tqdm import tqdm
 
 from .lsst_dataset import LSSTDataset
+from .tensor_cache_mixin import TensorCacheMixin
 
 logger = logging.getLogger(__name__)
 
 
-class DownloadedLSSTDataset(LSSTDataset):
+class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
     """
     DownloadedLSSTDataset: A dataset that inherits from LSSTDataset and downloads
     cutouts from the LSST butler, saving them as `.pt` files during first access.
@@ -114,6 +115,9 @@ class DownloadedLSSTDataset(LSSTDataset):
         self._manifest_filter_object_ids = None
         self._catalog_to_manifest_index_map = None
         self._manifest_to_catalog_index_map = None
+
+        # Initialize tensor caching from mixin
+        self._init_tensor_cache(config)
 
     def _setup_naming_strategy(self):
         """Setup file naming strategy based on catalog columns."""
@@ -641,13 +645,23 @@ class DownloadedLSSTDataset(LSSTDataset):
         if idx is not None:
             cutout_path = self._get_cutout_path(idx)
             if cutout_path.exists():
-                # Load cached cutout
-                cutout = torch.load(cutout_path, map_location="cpu", weights_only=True)
+                # Use tensor caching for already downloaded cutouts
+                if self.use_object_id:
+                    if isinstance(self.catalog, Table):
+                        object_id = str(self.catalog[idx][self.object_id_column])
+                    else:
+                        object_id = str(self.catalog.iloc[idx][self.object_id_column])
 
-                # Apply band filtering if needed
-                if self._is_filtering_bands and self._band_indices is not None:
-                    cutout = cutout[self._band_indices]
-                    logger.debug(f"Applied band filtering to cached cutout {idx}: {cutout.shape}")
+                    # Use cached tensor loading from mixin
+                    cutout = self._object_id_to_tensor_cached(object_id)
+                else:
+                    # Fallback for non-object-id based datasets
+                    cutout = torch.load(cutout_path, map_location="cpu", weights_only=True)
+
+                    # Apply band filtering if needed
+                    if self._is_filtering_bands and self._band_indices is not None:
+                        cutout = cutout[self._band_indices]
+                        logger.debug(f"Applied band filtering to cached cutout {idx}: {cutout.shape}")
 
                 return self.apply_transform(cutout)
 
@@ -746,6 +760,73 @@ class DownloadedLSSTDataset(LSSTDataset):
         # Return cutout and downloaded bands info for manifest tracking
         return data_torch, downloaded_bands
 
+    def _load_tensor_for_cache(self, object_id: str):
+        """Implementation of TensorCacheMixin abstract method."""
+        # Find the catalog index for this object_id
+        catalog_idx = None
+
+        if isinstance(self.catalog, Table):
+            for i in range(len(self.catalog)):
+                if str(self.catalog[i][self.object_id_column]) == object_id:
+                    catalog_idx = i
+                    break
+        else:
+            # pandas/hats catalog
+            mask = self.catalog[self.object_id_column] == object_id
+            matching_indices = self.catalog.index[mask].tolist()
+            if matching_indices:
+                catalog_idx = matching_indices[0]
+
+        if catalog_idx is None:
+            raise ValueError(f"Object ID {object_id} not found in catalog")
+
+        cutout_path = self._get_cutout_path(catalog_idx)
+        if cutout_path.exists():
+            # Load cached cutout
+            cutout = torch.load(cutout_path, map_location="cpu", weights_only=True)
+
+            # Apply band filtering if needed
+            if self._is_filtering_bands and self._band_indices is not None:
+                cutout = cutout[self._band_indices]
+
+            return cutout
+        else:
+            # Cutout not downloaded yet, cannot load for cache
+            raise FileNotFoundError(f"Cutout file {cutout_path} not found. Download cutouts first.")
+
+    def ids(self, log_every=None):
+        """Iterator over all object IDs, required by TensorCacheMixin."""
+        log = log_every is not None and isinstance(log_every, int)
+
+        if not self.use_object_id:
+            # For datasets without object_id, use index-based IDs
+            for index in range(len(self.catalog)):
+                if log and index != 0 and index % log_every == 0:
+                    logger.info(f"Processed {index} objects")
+                yield str(index)
+            else:
+                if log and len(self.catalog) > 0:
+                    logger.info(f"Processed {len(self.catalog) - 1} objects")
+        else:
+            # For datasets with object_id, iterate over object IDs
+            if isinstance(self.catalog, Table):
+                for index, row in enumerate(self.catalog):
+                    if log and index != 0 and index % log_every == 0:
+                        logger.info(f"Processed {index} objects")
+                    yield str(row[self.object_id_column])
+                else:
+                    if log and len(self.catalog) > 0:
+                        logger.info(f"Processed {len(self.catalog) - 1} objects")
+            else:
+                # pandas/hats catalog
+                for index, (_, row) in enumerate(self.catalog.iterrows()):
+                    if log and index != 0 and index % log_every == 0:
+                        logger.info(f"Processed {index} objects")
+                    yield str(row[self.object_id_column])
+                else:
+                    if log and len(self.catalog) > 0:
+                        logger.info(f"Processed {len(self.catalog) - 1} objects")
+
     def __len__(self):
         """Return length of current catalog, not the full manifest."""
         return len(self.catalog)
@@ -763,7 +844,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         raise ValueError(f"Catalog index {catalog_idx} not found in mapping")
 
     def __getitem__(self, idxs):
-        """Modified to pass index for saving cutouts."""
+        """Note that this pass index for saving cutouts."""
         # Handle single index
         if isinstance(idxs, int):
             row = self.catalog[idxs] if isinstance(self.catalog, Table) else self.catalog.iloc[idxs]
