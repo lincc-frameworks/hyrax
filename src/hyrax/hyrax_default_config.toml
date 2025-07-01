@@ -213,6 +213,16 @@ nan_mode = false
 # When replacing NaN values with a quantile, which quantile in the non-nan tensor should be used.
 nan_quantile = 0.05
 
+# The astropy table to use as a catalog in LSSTDataSet and friends
+astropy_table = false
+
+# Semi width in degrees of cutouts made from the butler (17 arcsec)
+semi_width_deg = 0.00472
+
+# Semi height in degrees of cutouts made from the butler (17 arcsec)
+semi_height_deg = 0.00472
+
+
 
 ["data_set.random_dataset"]
 # Total number of samples produced by the random dataset
