@@ -77,8 +77,6 @@ class DownloadedLSSTDataset(LSSTDataset):
     """
 
     def __init__(self, config):
-        import importlib.util
-
         self.download_dir = Path(config["general"]["data_dir"])
         self.download_dir.mkdir(exist_ok=True)
 
@@ -88,15 +86,16 @@ class DownloadedLSSTDataset(LSSTDataset):
         # Initialize parent class with config
         super().__init__(config)
 
-        self._butler_config = (
-            None
-            if importlib.util.find_spec("lsst.daf.butler") is None
-            else {
+        try:
+            import lsst.daf.butler as _butler  # noqa: F401
+
+            self._butler_config = {
                 "repo": config["data_set"]["butler_repo"],
                 "collections": config["data_set"]["butler_collection"],
                 "skymap": config["data_set"]["skymap"],
             }
-        )
+        except ImportError:
+            self._butler_config = None
 
         # Manifest management
         self._manifest_lock = threading.Lock()
