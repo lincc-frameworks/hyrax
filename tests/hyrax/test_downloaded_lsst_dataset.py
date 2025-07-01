@@ -132,6 +132,8 @@ def test_subset_catalog_preserves_manifest_and_loads_correct_cutouts():
                 "butler_collection": "fake_collection",
                 "skymap": "fake_skymap",
                 "object_id_column_name": "objectId",
+                "use_cache": False,
+                "preload_cache": False,
             },
         }
 
@@ -252,6 +254,8 @@ def test_subset_catalog_with_band_filtering():
                 "skymap": "fake_skymap",
                 "object_id_column_name": "objectId",
                 "bands": ["g", "i"],  # Filter to only g and i bands (indices 0 and 2)
+                "use_cache": False,
+                "preload_cache": False,
             },
         }
 
