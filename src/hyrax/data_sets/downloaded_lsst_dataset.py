@@ -113,6 +113,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         # Initialize filtering state
         self._manifest_filter_object_ids = None
         self._catalog_to_manifest_index_map = None
+        self._manifest_to_catalog_index_map = None
 
     def _setup_naming_strategy(self):
         """Setup file naming strategy based on catalog columns."""
@@ -356,6 +357,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         if self._manifest_filter_object_ids is None:
             # No filtering needed
             self._catalog_to_manifest_index_map = None
+            self._manifest_to_catalog_index_map = None
             return
 
         # Create object_id to manifest index lookup
@@ -367,8 +369,9 @@ class DownloadedLSSTDataset(LSSTDataset):
                 obj_id = manifest.iloc[manifest_idx][self.object_id_column]
             manifest_lookup[obj_id] = manifest_idx
 
-        # Build catalog index to manifest index mapping
+        # Build catalog index to manifest index mapping and reverse mapping
         self._catalog_to_manifest_index_map = {}
+        self._manifest_to_catalog_index_map = {}
         for catalog_idx in range(len(self.catalog)):
             if isinstance(self.catalog, Table):
                 catalog_obj_id = self.catalog[catalog_idx][self.object_id_column]
@@ -376,7 +379,9 @@ class DownloadedLSSTDataset(LSSTDataset):
                 catalog_obj_id = self.catalog.iloc[catalog_idx][self.object_id_column]
 
             if catalog_obj_id in manifest_lookup:
-                self._catalog_to_manifest_index_map[catalog_idx] = manifest_lookup[catalog_obj_id]
+                manifest_idx = manifest_lookup[catalog_obj_id]
+                self._catalog_to_manifest_index_map[catalog_idx] = manifest_idx
+                self._manifest_to_catalog_index_map[manifest_idx] = catalog_idx
             else:
                 raise ValueError(f"Object ID {catalog_obj_id} from catalog not found in manifest")
 
@@ -409,8 +414,9 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         successful_entries = []
 
-        # Find first 10 successful downloads
-        for i in range(len(manifest) - 12, len(manifest)):
+        # Find first 10 successful downloads (check last up to 12 entries, but handle small manifests)
+        start_idx = max(0, len(manifest) - 12)
+        for i in range(start_idx, len(manifest)):
             if len(successful_entries) >= 10:
                 break
 
@@ -477,10 +483,10 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def _update_manifest_entry(self, idx, cutout_shape=None, filename="Attempted", downloaded_bands=None):
         """
-        Thread-safe manifest update with periodic saves.git sta
+        Thread-safe manifest update with periodic saves.
 
         Args:
-            idx: Index in the catalog
+            idx: Index in the manifest
             cutout_shape: Shape tuple of the cutout tensor, or None for failed downloads
             filename: Basename of the saved file, or "Attempted" only when ALL bands fail
             downloaded_bands: List of band names successfully downloaded in tensor order
@@ -533,14 +539,30 @@ class DownloadedLSSTDataset(LSSTDataset):
         logger.info("Syncing manifest with filesystem...")
         synced_count = 0
 
-        for idx in range(len(self.manifest)):
-            cutout_path = self._get_cutout_path(idx)
+        # When filtering is active, we need to map manifest indices to catalog indices
+        for manifest_idx in range(len(self.manifest)):
+            # Find the corresponding catalog index for this manifest entry
+            catalog_idx = None
+            if self._manifest_to_catalog_index_map is not None:
+                # Filtering is active - use reverse mapping for O(1) lookup
+                catalog_idx = self._manifest_to_catalog_index_map.get(manifest_idx)
+                # If no catalog index maps to this manifest index, skip (object not in current catalog)
+                if catalog_idx is None:
+                    continue
+            else:
+                # No filtering - direct mapping
+                catalog_idx = manifest_idx
+                # Ensure catalog index is within bounds
+                if catalog_idx >= len(self.catalog):
+                    continue
+
+            cutout_path = self._get_cutout_path(catalog_idx)
 
             # Get current manifest state
             if self.catalog_type == "astropy":
-                current_filename = self.manifest["filename"][idx]
+                current_filename = self.manifest["filename"][manifest_idx]
             else:
-                current_filename = self.manifest.iloc[idx]["filename"]
+                current_filename = self.manifest.iloc[manifest_idx]["filename"]
 
             if cutout_path.exists():
                 # File exists on disk
@@ -551,7 +573,9 @@ class DownloadedLSSTDataset(LSSTDataset):
                         bands_for_existing = (
                             list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
                         )
-                        self._update_manifest_entry(idx, cutout.shape, cutout_path.name, bands_for_existing)
+                        self._update_manifest_entry(
+                            manifest_idx, cutout.shape, cutout_path.name, bands_for_existing
+                        )
                         synced_count += 1
                     except Exception as e:
                         logger.warning(f"Could not load existing cutout {cutout_path}: {e}")
@@ -559,7 +583,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                 # File doesn't exist on disk
                 if current_filename and current_filename != "Attempted":
                     # Manifest says file exists but it doesn't, reset entry
-                    self._update_manifest_entry(idx, None, "", [])
+                    self._update_manifest_entry(manifest_idx, None, "", [])
                     synced_count += 1
 
         if synced_count > 0:
@@ -612,7 +636,7 @@ class DownloadedLSSTDataset(LSSTDataset):
             logger.error(f"Failed to fetch patch {tract_index}-{patch_index}: {e}")
             raise
 
-    def _fetch_single_cutout(self, row, idx=None):
+    def _fetch_single_cutout(self, row, idx=None, manifest_idx=None):
         """Fetch cutout, using saved cutout if available, with optional band filtering."""
         if idx is not None:
             cutout_path = self._get_cutout_path(idx)
@@ -624,45 +648,52 @@ class DownloadedLSSTDataset(LSSTDataset):
                 if self._is_filtering_bands and self._band_indices is not None:
                     cutout = cutout[self._band_indices]
                     logger.debug(f"Applied band filtering to cached cutout {idx}: {cutout.shape}")
+
+                return self.apply_transform(cutout)
+
+        # For main thread, use parent's method (original caching)
+        import threading
+
+        if threading.current_thread() is threading.main_thread():
+            cutout = super()._fetch_single_cutout(row)
+            # When using parent method, assume all original bands were successful
+            downloaded_bands = list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
         else:
-            # For main thread, use parent's method (original caching)
-            import threading
+            # For worker threads, use our cached method
+            cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
 
-            if threading.current_thread() is threading.main_thread():
-                cutout = super()._fetch_single_cutout(row)
-                # When using parent method, assume all original bands were successful
-                downloaded_bands = (
-                    list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
-                )
+        # Apply band filtering to new downloads if needed
+        original_cutout_shape = cutout.shape
+        if self._is_filtering_bands and self._band_indices is not None:
+            cutout = cutout[self._band_indices]
+            # Update downloaded_bands to reflect only the filtered bands that were actually present
+            downloaded_bands = []
+            for i in self._band_indices:
+                if i >= len(self._original_bands):
+                    raise ValueError(
+                        f"Band index {i} is out of bounds for\
+                                original_bands (length {len(self._original_bands)}). "
+                        f"This indicates a bug in band filtering setup."
+                    )
+                downloaded_bands.append(self._original_bands[i])
+            logger.debug(f"Applied band filtering to new cutout: {original_cutout_shape} -> {cutout.shape}")
+
+        # Save cutout if idx provided (save the filtered version)
+        if idx is not None:
+            cutout_path = self._get_cutout_path(idx)
+            torch.save(cutout, cutout_path)
+
+            # Use manifest_idx for updating manifest, fallback to idx if not provided
+            update_idx = manifest_idx if manifest_idx is not None else idx
+
+            # Determine if this is a complete failure (all bands failed)
+            if len(downloaded_bands) == 0:
+                # All bands failed - mark as "Attempted"
+                self._update_manifest_entry(update_idx, None, "Attempted", downloaded_bands)
             else:
-                # For worker threads, use our cached method
-                cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
-
-            # Apply band filtering to new downloads if needed
-            original_cutout_shape = cutout.shape
-            if self._is_filtering_bands and self._band_indices is not None:
-                cutout = cutout[self._band_indices]
-                # Update downloaded_bands to reflect only the filtered bands that were actually present
-                downloaded_bands = [
-                    self._original_bands[i] for i in self._band_indices if i < len(self._original_bands)
-                ]
-                logger.debug(
-                    f"Applied band filtering to new cutout: {original_cutout_shape} -> {cutout.shape}"
-                )
-
-            # Save cutout if idx provided (save the filtered version)
-            if idx is not None:
-                cutout_path = self._get_cutout_path(idx)
-                torch.save(cutout, cutout_path)
-
-                # Determine if this is a complete failure (all bands failed)
-                if len(downloaded_bands) == 0:
-                    # All bands failed - mark as "Attempted"
-                    self._update_manifest_entry(idx, None, "Attempted", downloaded_bands)
-                else:
-                    # At least some bands succeeded - save with proper filename
-                    filename = cutout_path.name
-                    self._update_manifest_entry(idx, cutout.shape, filename, downloaded_bands)
+                # At least some bands succeeded - save with proper filename
+                filename = cutout_path.name
+                self._update_manifest_entry(update_idx, cutout.shape, filename, downloaded_bands)
 
         return self.apply_transform(cutout)
 
@@ -737,14 +768,14 @@ class DownloadedLSSTDataset(LSSTDataset):
         if isinstance(idxs, int):
             row = self.catalog[idxs] if isinstance(self.catalog, Table) else self.catalog.iloc[idxs]
             manifest_idx = self._get_manifest_index_for_catalog_index(idxs)
-            return self._fetch_single_cutout(row, idx=manifest_idx)
+            return self._fetch_single_cutout(row, idx=idxs, manifest_idx=manifest_idx)
 
         # Handle multiple indices
         cutouts = []
         for idx in idxs:
             row = self.catalog[idx] if isinstance(self.catalog, Table) else self.catalog.iloc[idx]
             manifest_idx = self._get_manifest_index_for_catalog_index(idx)
-            cutouts.append(self._fetch_single_cutout(row, idx=manifest_idx))
+            cutouts.append(self._fetch_single_cutout(row, idx=idx, manifest_idx=manifest_idx))
 
         return cutouts
 
@@ -770,7 +801,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         indices_to_download = []
         for catalog_idx in indices:
             manifest_idx = self._get_manifest_index_for_catalog_index(catalog_idx)
-            cutout_path = self._get_cutout_path(manifest_idx)
+            cutout_path = self._get_cutout_path(catalog_idx)
 
             # Check if file exists on disk
             if cutout_path.exists():
@@ -838,7 +869,7 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def _download_single_cutout(self, catalog_idx, manifest_idx):
         """Helper method to download a single cutout."""
-        cutout_path = self._get_cutout_path(manifest_idx)
+        cutout_path = self._get_cutout_path(catalog_idx)
         if cutout_path.exists():
             return
 
