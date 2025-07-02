@@ -60,6 +60,17 @@ def test_insert(qdrant_instance, random_vector_generator):
     assert total_count.count == batch_size * num_batches
 
 
+def test_insert_wrong_size_raises(qdrant_instance):
+    """Ensure that inserting vectors of the wrong size raises an error. Expected
+    size for this test is 3, as set in the fixture."""
+
+    ids = ["id1", "id2"]
+    vectors = [np.array([1, 2]), np.array([3, 4, 5])]  # Different sizes
+
+    with pytest.raises(ValueError):
+        qdrant_instance.insert(ids, vectors)
+
+
 def test_search_by_id(qdrant_instance):
     """Test search_by_id retrieves nearest neighbor ids"""
 

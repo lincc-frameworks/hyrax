@@ -1,3 +1,4 @@
+import os
 import uuid
 from typing import Union
 
@@ -39,10 +40,10 @@ class QdrantDB(VectorDB):
 
         # Note: Qdrant has an internal definition of "shard" that is different than
         # what is currently used by Hyrax (specifically ChromaDB). Here we set
-        # shard_number to 12 based on documentation for when you "anticipate a
-        # lot of growth".
+        # shard_number to CPU core count * 2. Qdrant docs advocate starting with 12:
         # https://qdrant.tech/documentation/guides/distributed_deployment/#choosing-the-right-number-of-shards
-        self.collection_name = f"shard_{0}"
+        self.collection_name = f"shard_{self.collection_index}"
+        created_collection = None
         if not self.client.collection_exists(self.collection_name):
             created_collection = self.client.create_collection(
                 collection_name=self.collection_name,
@@ -54,7 +55,7 @@ class QdrantDB(VectorDB):
                     distance=models.Distance.EUCLID,
                     on_disk=True,
                 ),
-                shard_number=12,  #! Perhaps this should be dynamic based on available CPUs?
+                shard_number=os.cpu_count() * 2,
             )
 
         if not created_collection:
@@ -77,8 +78,12 @@ class QdrantDB(VectorDB):
         if self.client is None:
             self.connect()
 
-        #! Insert a check here to make sure that the vectors are the same
-        #! length as what is specified for the collection!!!
+        expected_size = self.config["vector_db.qdrant"]["vector_size"]
+        for idx, vector in enumerate(vectors):
+            if len(vector) != expected_size:
+                raise ValueError(
+                    f"Vector at index {idx} has size {len(vector)}, but expected size is {expected_size}."
+                )
 
         uuids = [self._convert_id_to_uuid(i) for i in ids]
         # Insert data into the collection
