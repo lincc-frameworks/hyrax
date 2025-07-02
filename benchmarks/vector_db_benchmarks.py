@@ -10,7 +10,7 @@ class VectorDBInsertBenchmarks:
     timeout = 120  # max seconds per benchmark before timing out
 
     # Parameters for the benchmarks: vector lengths and vector database implementations
-    params = ([64, 256, 2048, 16_384], ["chromadb"])
+    params = ([64, 256, 2048, 16_384], ["chromadb", "qdrant"])
     param_names = ["vector_length", "vector_db_implementation"]
 
     # Ideally this would be a `setup_cache` method, but `setup_cache` cannot be
@@ -31,6 +31,9 @@ class VectorDBInsertBenchmarks:
         self.h.config["data_set.random_dataset"]["size"] = 2048
         self.h.config["data_set.random_dataset"]["seed"] = 0
         self.h.config["data_set.random_dataset"]["shape"] = [vector_length]
+
+        # Qdrant requires the vector size in order to create its collections
+        self.h.config["vector_db.qdrant"]["vector_size"] = vector_length
 
         weights_file = self.input_dir / "fakeweights"
         with open(weights_file, "a"):
@@ -64,7 +67,7 @@ class VectorDBSearchBenchmarks:
     # Parameters for the benchmarks: shard size limits and vector database implementations
     # The smaller shard size limit will result in parallelized searches, while the
     # larger shard size limit will trigger a sequential search across shards.
-    params = ([64, 128], ["chromadb"])
+    params = ([64, 128], ["chromadb", "qdrant"])
     param_names = ["shard_size_limit", "vector_db_implementation"]
 
     def setup(self, shard_size_limit, vector_db_implementation):
@@ -101,6 +104,8 @@ class VectorDBSearchBenchmarks:
 
         self.h.config["vector_db"]["name"] = vector_db_implementation
         self.h.config["vector_db.chromadb"]["shard_size_limit"] = shard_size_limit
+        # Qdrant requires the vector size in order to create its collections
+        self.h.config["vector_db.qdrant"]["vector_size"] = 4096
 
         # Save inference results to vector database and create a db connection
         self.h.save_to_database(output_dir=Path(self.output_dir))
