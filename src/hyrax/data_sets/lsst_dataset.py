@@ -64,7 +64,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         self.set_crop_transform()
 
         # TODO: Metadata from the catalog
-        super().__init__(config)
+        super().__init__(config, metadata_table=self.catalog)
 
     def _load_catalog(self, data_set_config):
         """

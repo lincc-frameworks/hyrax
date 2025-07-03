@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy.typing as npt
+import torch
 from matplotlib.colors import LogNorm
 
 from .verb_registry import Verb, hyrax_verb
@@ -66,10 +67,20 @@ class Visualize(Verb):
 
         from hyrax.data_sets.inference_dataset import InferenceDataSet
 
-        fields = ["object_id"]
+        if self.config["data_set"]["object_id_column_name"]:
+            self.object_id_column_name = self.config["data_set"]["object_id_column_name"]
+        else:
+            self.object_id_column_name = "object_id"
+
+        fields = [self.object_id_column_name]
+
         fields += self.config["visualize"]["fields"]
+
         if self.config["visualize"]["display_images"]:
-            fields += ["filename"]
+            if self.config["data_set"]["filename_column_name"]:
+                fields += [self.config["dataset"]["filename_column_name"]]
+            else:
+                fields += ["filename"]
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")
@@ -80,12 +91,12 @@ class Visualize(Verb):
                 logger.warning(f"Field {field} is unavailable for this dataset")
                 fields.remove(field)
 
-        if "object_id" not in fields:
+        if self.object_id_column_name not in fields:
             msg = "Umap dataset must support object_id field"
             raise RuntimeError(msg)
 
         self.data_fields = fields.copy()
-        self.data_fields.remove("object_id")
+        self.data_fields.remove(self.object_id_column_name)
 
         self.tree = KDTree(self.umap_results)
 
@@ -388,7 +399,7 @@ class Visualize(Verb):
         from holoviews import Table
 
         # Basic table with x/y pairs
-        key_dims = ["object_id"]
+        key_dims = [self.object_id_column_name]
         value_dims = ["x", "y"] + self.data_fields
 
         if not len(self.points_id):
@@ -457,11 +468,11 @@ class Visualize(Verb):
             logger.error("No points selected")
 
         df = pd.DataFrame(self.points, columns=["x", "y"])
-        df["object_id"] = self.points_id
+        df[self.object_id_column_name] = self.points_id
         meta = self.umap_results.metadata(self.points_idx, self.data_fields)
         meta_df = pd.DataFrame(meta, columns=self.data_fields)
 
-        cols = ["object_id", "x", "y"] + self.data_fields
+        cols = [self.object_id_column_name, "x", "y"] + self.data_fields
         result = pd.concat([df.reset_index(drop=True), meta_df.reset_index(drop=True)], axis=1)
         return result.reindex(columns=cols)
 
@@ -520,10 +531,10 @@ class Visualize(Verb):
             sampled_ids = [id_map[idx] for idx in chosen_idx]
 
             # Get metadata - WARNING: this is sorted by index!
-            meta = self.umap_results.metadata(chosen_idx, ["object_id", "filename"])
+            meta = self.umap_results.metadata(chosen_idx, [self.object_id_column_name, "filename"])
 
             # Create a dictionary to map indices to metadata
-            meta_idx_map = dict(zip(sorted(chosen_idx), range(len(meta["object_id"]))))
+            meta_idx_map = dict(zip(sorted(chosen_idx), range(len(meta[self.object_id_column_name]))))
 
             # Reorder metadata to match the original selection order
             ordered_object_ids = []
@@ -531,7 +542,7 @@ class Visualize(Verb):
 
             for idx in chosen_idx:
                 meta_position = meta_idx_map[idx]
-                ordered_object_ids.append(meta["object_id"][meta_position])
+                ordered_object_ids.append(meta[self.object_id_column_name][meta_position])
                 ordered_filenames.append(meta["filename"][meta_position])
 
             filenames = [f.decode("utf-8") for f in ordered_filenames]
@@ -549,7 +560,21 @@ class Visualize(Verb):
                     cutout_path = Path(filenames[i])
                     if not cutout_path.is_absolute():
                         cutout_path = base_dir / cutout_path
-                    arr = fits.getdata(cutout_path)
+
+                    if cutout_path.suffix.lower() == ".fits":
+                        arr = fits.getdata(cutout_path)
+                    elif cutout_path.suffix.lower() == ".pt":
+                        tensor = torch.load(cutout_path, map_location="cpu", weights_only=True)
+                        ## TO-DO: CHANGE VIA CONFIG TO GET PROPER BAND
+                        ## WE ARE JUST GETTING THE 4th FILTER WHIHCH
+                        ## SHOULD BE i-band FOR A COMPLETE FILTER SET.
+                        arr = tensor[3].numpy()
+                    else:
+                        raise ValueError(
+                            f"Unsupported file format: {cutout_path.suffix}. Currently\
+                                           the visualize module only supports FITS and PyTorch files"
+                        )
+
                     if crop_to:
                         arr = crop_center(arr, crop_to)
 
@@ -565,7 +590,7 @@ class Visualize(Verb):
                     title = f"{sampled_ids[i]}"
 
                 except Exception as e:
-                    logger.warning(f"Could not load FITS file: {e}")
+                    logger.warning(f"Could not load file: {e}")
                     with open("./hyrax_visualize.log", "a") as f:
                         f.write(f"Could not load FITS file: {e}\n")
                     arr = np.full((64, 64), 1.0)
