@@ -80,7 +80,13 @@ class Visualize(Verb):
 
         from hyrax.data_sets.inference_dataset import InferenceDataSet
 
-        fields = ["object_id"]
+        if self.config["data_set"]["object_id_column_name"]:
+            self.object_id_column_name = self.config["data_set"]["object_id_column_name"]
+        else:
+            self.object_id_column_name = "object_id"
+
+        fields = [self.object_id_column_name]
+
         fields += self.config["visualize"]["fields"]
         self.cmap = self.config["visualize"]["cmap"]
 
@@ -109,12 +115,12 @@ class Visualize(Verb):
                 logger.warning(f"Field {field} is unavailable for this dataset")
                 fields.remove(field)
 
-        if "object_id" not in fields:
+        if self.object_id_column_name not in fields:
             msg = "Umap dataset must support object_id field"
             raise RuntimeError(msg)
 
         self.data_fields = fields.copy()
-        self.data_fields.remove("object_id")
+        self.data_fields.remove(self.object_id_column_name)
 
         self.tree = KDTree(self.umap_results)
 
@@ -509,7 +515,7 @@ class Visualize(Verb):
         from holoviews import Table
 
         # Basic table with x/y pairs
-        key_dims = ["object_id"]
+        key_dims = [self.object_id_column_name]
         value_dims = ["x", "y"] + self.data_fields
 
         if not len(self.points_id):
@@ -578,11 +584,11 @@ class Visualize(Verb):
             logger.error("No points selected")
 
         df = pd.DataFrame(self.points, columns=["x", "y"])
-        df["object_id"] = self.points_id
+        df[self.object_id_column_name] = self.points_id
         meta = self.umap_results.metadata(self.points_idx, self.data_fields)
         meta_df = pd.DataFrame(meta, columns=self.data_fields)
 
-        cols = ["object_id", "x", "y"] + self.data_fields
+        cols = [self.object_id_column_name, "x", "y"] + self.data_fields
         result = pd.concat([df.reset_index(drop=True), meta_df.reset_index(drop=True)], axis=1)
         return result.reindex(columns=cols)
 
@@ -649,16 +655,22 @@ class Visualize(Verb):
             # Get sampled ids correspoinding to the idxs
             sampled_ids = [id_map[idx] for idx in chosen_idx]
 
-            # Get metadata - this is in the same order as chosen_idx
-            meta = self.umap_results.metadata(
-                chosen_idx, [self.object_id_column_name, self.filename_column_name]
-            )
+            # Get metadata - WARNING: this is sorted by index!
+            meta = self.umap_results.metadata(chosen_idx, [self.object_id_column_name, self.filename_column_name])
 
-            # Extract metadata directly
-            # DEBUG: object_ids = meta[self.object_id_column_name]
-            raw_filenames = meta[self.filename_column_name]
+            # Create a dictionary to map indices to metadata
+            meta_idx_map = dict(zip(sorted(chosen_idx), range(len(meta[self.object_id_column_name]))))
 
-            filenames = [f.decode("utf-8") for f in raw_filenames]
+            # Reorder metadata to match the original selection order
+            ordered_object_ids = []
+            ordered_filenames = []
+
+            for idx in chosen_idx:
+                meta_position = meta_idx_map[idx]
+                ordered_object_ids.append(meta[self.object_id_column_name][meta_position])
+                ordered_filenames.append(meta[self.filename_column_name][meta_position])
+
+            filenames = [f.decode("utf-8") for f in ordered_filenames]
 
         else:
             sampled_ids = []
@@ -698,6 +710,10 @@ class Visualize(Verb):
                                 rgb_arrays.append(tensor[band_idx].numpy())
                             # Stack along new axis to create (H, W, 3) RGB array
                             arr = np.stack(rgb_arrays, axis=-1)
+                            ## TO-DO: CHANGE VIA CONFIG TO GET PROPER BAND
+                            ## WE ARE JUST GETTING THE 4th FILTER WHIHCH
+                            ## SHOULD BE i-band FOR A COMPLETE FILTER SET.
+                            #arr = tensor[3].numpy()
                     else:
                         raise ValueError(
                             f"Unsupported file format: {cutout_path.suffix}. Currently\
@@ -733,7 +749,7 @@ class Visualize(Verb):
                     title = f"{sampled_ids[i]}"
 
                 except Exception as e:
-                    logger.warning(f"Could not load FITS file: {e}")
+                    logger.warning(f"Could not load file: {e}")
                     with open("./hyrax_visualize.log", "a") as f:
                         f.write(f"Could not load FITS file: {e}\n")
                     arr = placeholder_arr
