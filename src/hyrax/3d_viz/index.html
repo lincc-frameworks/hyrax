@@ -114,7 +114,15 @@
         </div>
         
         <div id="colormap-settings-panel" class="hidden">
-            <div class="colormap-settings-header">Select Colormap</div>
+            <div class="colormap-settings-header-row">
+                <div class="colormap-settings-header">Select Colormap</div>
+                <button id="colormap-settings-close" class="close-button" aria-label="Close colormap settings">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
             <select id="colormapSelect">
                 <option value="modifiedVirdis">Modified Viridis</option>
                 <option value="viridis">Viridis</option>
@@ -123,6 +131,21 @@
                 <option value="purpleYellow">Purple-Yellow</option>
                 <option value="coolWarm">Cool-Warm</option>
             </select>
+            
+            <div class="colorbar-range-controls">
+                <div class="range-control-header">Color Range</div>
+                <div class="range-control-row">
+                    <label for="colorbar-min-slider">Min:</label>
+                    <input type="range" id="colorbar-min-slider" class="range-slider" min="0" max="100" value="0" step="0.1">
+                    <span id="colorbar-min-display" class="range-value">0</span>
+                </div>
+                <div class="range-control-row">
+                    <label for="colorbar-max-slider">Max:</label>
+                    <input type="range" id="colorbar-max-slider" class="range-slider" min="0" max="100" value="100" step="0.1">
+                    <span id="colorbar-max-display" class="range-value">100</span>
+                </div>
+                <button id="reset-colorbar-range" class="range-reset-btn">Reset Range</button>
+            </div>
         </div>
         
         <div id="colorbar-gradient"></div>
