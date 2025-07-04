@@ -6,7 +6,13 @@
 const IMAGE_CONFIG = {
     BATCH_SIZE: 6,          // Number of images to load at once
     MAX_IMAGES: 150,        // Maximum images to load in total
-    FITS_EXTENSION: '.fits' // File extension for FITS images
+    FITS_EXTENSION: '.fits', // File extension for FITS images
+    TENSOR_EXTENSION: '.pt', // File extension for PyTorch tensors
+    SUPPORTED_EXTENSIONS: ['.fits', '.pt'], // All supported file types
+    
+    // GLOBAL SETTING: Set this to 'fits' or 'tensor' to specify file type
+    // Change this based on your data: 'fits' for .fits files, 'tensor' for .pt files
+    DEFAULT_FILE_TYPE: 'tensor'  // Set to 'fits' or 'tensor'
 };
 
 // Image viewer state
@@ -172,13 +178,38 @@ function mapIdsToFilenames(selectedIds, points) {
         const id = point.id;
         let filename = point[imageViewerState.fileNameColumn];
         
-        // If the filename doesn't have the .fits extension, add it
-        if (!filename.endsWith(IMAGE_CONFIG.FITS_EXTENSION)) {
-            filename = `${filename}${IMAGE_CONFIG.FITS_EXTENSION}`;
+        // Check if filename already has a supported extension
+        const hasExtension = IMAGE_CONFIG.SUPPORTED_EXTENSIONS.some(ext => 
+            filename.endsWith(ext)
+        );
+        
+        // If no extension, use the global setting to determine file type
+        if (!hasExtension) {
+            if (IMAGE_CONFIG.DEFAULT_FILE_TYPE === 'tensor') {
+                // For tensor files, assume cutout_ID.pt format
+                filename = `cutout_${filename}${IMAGE_CONFIG.TENSOR_EXTENSION}`;
+            } else {
+                // For FITS files, use the original format
+                filename = `${filename}${IMAGE_CONFIG.FITS_EXTENSION}`;
+            }
         }
         
         imageViewerState.filenameMap[id] = filename;
     });
+}
+
+/**
+ * Determine file type from filename extension
+ * @param {string} filename - The filename to check
+ * @returns {string} - File type ('fits', 'tensor', or 'unknown')
+ */
+function getFileType(filename) {
+    if (filename.endsWith(IMAGE_CONFIG.FITS_EXTENSION)) {
+        return 'fits';
+    } else if (filename.endsWith(IMAGE_CONFIG.TENSOR_EXTENSION)) {
+        return 'tensor';
+    }
+    return 'unknown';
 }
 
 /**
@@ -212,8 +243,22 @@ function loadImageBatch(startIndex, count) {
         createImagePlaceholder(id);
     });
     
-    // Load each image in the batch
-    const loadPromises = batchIds.map(id => loadFITSImage(id));
+    // Load each image in the batch - route based on file type
+    const loadPromises = batchIds.map(id => {
+        const filename = imageViewerState.filenameMap[id];
+        const fileType = getFileType(filename);
+        
+        console.log(`DEBUG: Loading ${fileType} file for ID ${id}: ${filename}`);
+        
+        if (fileType === 'tensor') {
+            return loadTensorImage(id);
+        } else if (fileType === 'fits') {
+            return loadFITSImage(id);
+        } else {
+            console.warn(`DEBUG: Unknown file type for ${filename}, defaulting to FITS`);
+            return loadFITSImage(id);
+        }
+    });
     
     // Update state when all images in the batch are loaded
     Promise.allSettled(loadPromises).then(() => {
@@ -262,6 +307,65 @@ function createImagePlaceholder(id) {
     
     // Add to display area
     imageElements.displayArea.appendChild(placeholder);
+}
+
+/**
+ * Load a tensor image for a given point ID
+ * @param {string|number} id - Point ID  
+ * @returns {Promise} - Promise that resolves when the image is loaded
+ */
+function loadTensorImage(id) {
+    return new Promise((resolve, reject) => {
+        const filename = imageViewerState.filenameMap[id];
+        
+        if (!filename) {
+            handleImageError(id, 'Missing filename');
+            resolve();
+            return;
+        }
+        
+        // Construct the tensor conversion URL
+        const filepath = imageViewerState.cutoutsDir.endsWith('/') 
+            ? `${imageViewerState.cutoutsDir}${filename}`  
+            : `${imageViewerState.cutoutsDir}/${filename}`;
+        
+        const tensorUrl = `/convert_tensor/${encodeURIComponent(filepath)}`;
+        
+        console.log(`DEBUG: Loading tensor file from: ${tensorUrl}`);
+        
+        // Set a timeout for this image
+        const timeoutId = setTimeout(() => {
+            console.error(`DEBUG: Timeout loading tensor ${id}`);
+            handleImageError(id, 'Timeout loading tensor');
+            resolve();
+        }, 30000); // 30 second timeout
+        
+        // Fetch the converted tensor data
+        fetch(tensorUrl)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(tensorData => {
+                clearTimeout(timeoutId);
+                console.log('DEBUG: Successfully received tensor data');
+                // Process the tensor data
+                return processTensorData(tensorData);
+            })
+            .then(imageData => {
+                // Display the processed image
+                displayProcessedImage(id, imageData);
+                resolve();
+            })
+            .catch(error => {
+                clearTimeout(timeoutId);
+                console.error(`Error loading tensor for ID ${id}:`, error);
+                handleImageError(id, error.message);
+                resolve(); // Resolve anyway to continue with batch
+            });
+    });
 }
 
 /**
@@ -322,6 +426,45 @@ function loadFITSImage(id) {
                 handleImageError(id, error.message);
                 resolve(); // Resolve anyway to continue with batch
             });
+    });
+}
+
+/**
+ * Process tensor data received from server into image data
+ * @param {Object} tensorData - Tensor data from server
+ * @returns {Object} - Processed image data
+ */
+function processTensorData(tensorData) {
+    return new Promise((resolve, reject) => {
+        try {
+            console.log(`DEBUG: Processing tensor data: ${tensorData.width}x${tensorData.height}`);
+            
+            const width = tensorData.width;
+            const height = tensorData.height;
+            const data2D = tensorData.data; // This is a 2D array from the server
+            
+            // Flatten the 2D array to 1D for processing
+            const flatData = [];
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    flatData.push(data2D[y][x]);
+                }
+            }
+            
+            // Process the image data using the same logic as FITS
+            const processedData = processImageData(flatData, width, height);
+            console.log('DEBUG: Tensor data processed successfully');
+            
+            resolve({
+                width,
+                height,
+                data: processedData
+            });
+            
+        } catch (error) {
+            console.error('DEBUG: Error processing tensor data:', error);
+            reject(error);
+        }
     });
 }
 
