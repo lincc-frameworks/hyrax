@@ -184,6 +184,10 @@ class ConfigManager:
     the runtime configuration.
     """
 
+    # True when we are called from a test, so we maintain isolation from any
+    # user config that may be in the cwd of the running test process
+    _called_from_test = False
+
     """
     Hardcoded set of config keys which definitionally contain paths, and we resolve to global paths
     during initialization in ConfigManager._resolve_config_paths().
@@ -425,7 +429,11 @@ class ConfigManager:
             runtime_config_filepath = Path(runtime_config_filepath)
 
         # If a named config exists in cwd, and no config specified on cmdline, use cwd.
-        if runtime_config_filepath is None and DEFAULT_USER_CONFIG_FILEPATH.exists():
+        if (
+            runtime_config_filepath is None
+            and DEFAULT_USER_CONFIG_FILEPATH.exists()
+            and not ConfigManager._called_from_test
+        ):
             runtime_config_filepath = DEFAULT_USER_CONFIG_FILEPATH
 
         if runtime_config_filepath is None:
