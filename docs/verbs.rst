@@ -11,6 +11,10 @@ Train a model. The specific model to train and the data used for training is
 specified in the configuration file or by updating the default configurations
 after creating an instance of the Hyrax object.
 
+When called from a notebook or python, ``train()`` returns a trained pytorch 
+model which you can :doc:`immediately evaluate, inspect, or export<pre_executed/export_model>`. Batch evaluations of datasets 
+are enabled using the ``infer`` verb, see below.
+
 .. tabs::
 
     .. group-tab:: Notebook
@@ -23,7 +27,7 @@ after creating an instance of the Hyrax object.
            h = Hyrax()
 
            # Train the model specified in the configuration file
-           h.train()
+           model = h.train()
 
     .. group-tab:: CLI
 

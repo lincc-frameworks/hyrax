@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 @hyrax_verb
 class Train(Verb):
-    """Inference verb"""
+    """Train verb"""
 
     cli_name = "train"
     add_parser_kwargs = {}
@@ -33,13 +33,17 @@ class Train(Verb):
         pass
 
     def run_cli(self, args=None):
-        """CLI stub for Infer verb"""
+        """CLI stub for Train verb"""
         logger.info("train run from CLI.")
 
         self.run()
 
     def run(self):
-        """Run the training process for a given model and data loader."""
+        """
+        Run the training process for the configured model and data loader.
+        Returns the trained model.
+
+        """
 
         config = self.config
 
