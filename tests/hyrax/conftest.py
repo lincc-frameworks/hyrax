@@ -1,3 +1,6 @@
+import logging
+import sys
+
 import numpy as np
 import pytest
 from astropy.table import Table
@@ -5,7 +8,32 @@ from torch import from_numpy
 from torch.utils.data import Dataset, IterableDataset
 
 import hyrax
+import hyrax.data_sets
 from hyrax.data_sets import HyraxDataset
+
+logger = logging.getLogger(__name__)
+
+
+def pytest_configure(config):
+    """
+    Global test configuration. We:
+    1) Disable ConfigManager from slurping up files from the working directory to enable test reproducibility
+       across different developer machines and CI.
+
+    2) Set an unlimited number of open files per process on OSX. OSX's default per-process file limit is 256
+       Because we use temporary files during many of our tests, it's easy to go over this limit.
+    """
+    hyrax.config_utils.ConfigManager._called_from_test = True
+
+    if sys.platform == "darwin":
+        import resource
+
+        try:
+            resource.setrlimit(resource.RLIMIT_NOFILE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
+        except ValueError as e:
+            msg = "Attempted to raise open file limit, and failed. Tests may not work.\n"
+            msg += f"See error below when trying to raise open file limit: \n {e}"
+            raise RuntimeError(msg) from e
 
 
 class RandomDataset(HyraxDataset, Dataset):

@@ -157,14 +157,6 @@ class Hyrax:
         heights = [int(dim[1]) for dim in manifest["dim"]]
         return widths, heights
 
-    def train(self, **kwargs):
-        """
-        See Hyrax.train.run()
-        """
-        from .train import run
-
-        return run(config=self.config, **kwargs)
-
     def download(self, **kwargs):
         """
         See Hyrax.download.run()
