@@ -3,7 +3,7 @@
 # ruff: noqa: I001
 from .hsc_autoencoder import HSCAutoencoder
 from .hsc_dcae import HSCDCAE
-from .hsc_dcae_v2 import HSCDCAEv2
+from .image_dcae import ImageDCAE
 from .hyrax_autoencoder import HyraxAutoencoder
 from .hyrax_cnn import HyraxCNN
 from .hyrax_loopback import HyraxLoopback
@@ -16,5 +16,5 @@ __all__ = [
     "HyraxLoopback",
     "HSCAutoencoder",
     "HSCDCAE",
-    "HSCDCAEv2",
+    "ImageDCAE",
 ]
