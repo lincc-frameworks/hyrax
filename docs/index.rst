@@ -15,7 +15,7 @@ and then install Hyrax using ``pip``.
 
 .. code-block:: console
 
-   >> conda create env -n hyrax python=3.12
+   >> conda create -n hyrax python=3.12
    >> conda activate hyrax
    >> pip install hyrax
 
