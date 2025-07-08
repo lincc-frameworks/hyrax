@@ -1,15 +1,35 @@
-Welcome to Hyrax's documentation!
-=================================
+.. Welcome to Hyrax's documentation!
+.. =================================
 
-Hyrax - A framework for machine learning in astronomy
------------------------------------------------------
-Hyrax is a powerful and extensible machine learning framework that automates data
-acquisition, scales seamlessly from laptops to HPC, and ensures reproducibility 
-— freeing astronomers to focus on discovery instead of infrastructure.
+.. HYRAX: A Framework for Scalable Machine Learning and Unsupervised Discovery in Astronomy
+.. ---------------------------------------------------------------------------------------------
 
+.. figure:: _static/hyrax_header.png
+   :align: center
+   :alt: Hyrax Logo
+   :width: 80%
+
+----
+
+Hyrax is a powerful, flexible, and extensible framework designed to support the entire cycle of machine learning (ML)
+projects in astronomy -- from data acquisition, model training, inference to latent-space exploration / visualization
+and much more. Hyrax scales seamlessly from laptops all the way to HPC clusters. 
+
+The figure below captures Hyrax's design principle: we provide
+all the tools, infrastructure, and software that are necessary for an ML-project in astronomy,
+so that astronomers can simply focus on choosing/writing the ML model code. 
+
+.. figure:: _static/hyrax_design.png
+   :align: center
+   :alt: Hyrax Design Philosophy
+   :width: 80%
+
+----
 
 Getting Started
 ==================
+.. TO-DO: Change this to a demo on Rubin DP1 data or HSC. 
+
 To get started, we recommend creating a virtual environment (e.g., venv or conda)
 and then install Hyrax using ``pip``.
 
@@ -19,7 +39,17 @@ and then install Hyrax using ``pip``.
    >> conda activate hyrax
    >> pip install hyrax
 
-With Hyrax installed in your environment, you can train a built in autoencoder right away.
+Note that if you are trying to develop Hyrax, you should alternatively clone the repository and follow the instructions in the
+`Developer Guide <dev_guide>`_.
+
+Once you have Hyrax installed, you can start using it right away! The following example shows how to:-
+
+* train a built-in autoencoder
+* infer on a dataset
+* create a searchable and relational vector database of inference results
+* interactively visualize the latent space of the trained model
+
+To train a model in Hyrax, we have to use the `train` verb.
 
 .. tabs::
 
@@ -33,7 +63,7 @@ With Hyrax installed in your environment, you can train a built in autoencoder r
            h = Hyrax()
 
            # Train the default autoencoder model
-           h.train()
+           model = h.train()
 
     .. group-tab:: CLI
 
@@ -41,10 +71,10 @@ With Hyrax installed in your environment, you can train a built in autoencoder r
 
            >> hyrax train
 
-Without any additional specification, the model is trained using the
+Without any additional specification, the HyraxAutoencoder model is trained on the
 `CiFAR dataset <https://www.cs.toronto.edu/~kriz/cifar.html>`_.
 
-Once the model is trained, we can immediately use it for inference.
+Once the model is trained, we can use the trained model for inference.
 
 .. tabs::
 
@@ -108,10 +138,27 @@ withing a Jupyter notebook.
 
    An example UMAP visualization of the CiFAR dataset in a Jupyter notebook.
 
+----
+
 This example shows how Hyrax can be used to quickly train, infer, and visualize
-data.
-To dive deeper, start with the :doc:`Configuration <configuration>`
-section to learn how to configure Hyrax for your specific use case.
+data. Next, we recommend checking out the following sections of the documentation:
+
+* `Verbs <verbs>`_ - Description of the various\"verbs\" that Hyrax supports, such as `train`, `infer` etc. 
+* `Configuration <configuration>`_ - How Hyrax can be configured to work with different datasets, models, etc.
+* `Example Notebooks <notebooks>`_ - Example notebooks covering a wide variety of tasks.
+
+----
+
+For a deeper understanding of Hyrax, you can further explore the following resources:
+
+* `About Hyrax <about>`_ - Overview of Hyrax's design principles and goals.
+* `Builtin Datasets <builtin_datasets>`_ - Different datasets that come pre-built within Hyrax. 
+* `Custom Datasets and Models <external_libraries>`_ - How to create your own dataset class and model within Hyrax. 
+* `Data Set Splits <data_set_splits>`_ - Deep dive into how Hyrax handles data set splits.
+* `Model Comparison <model_comparison>`_ - Tools available in Hyrax for model tracking and comparison.
+* `Developer Guide <dev_guide>`_ - How to install Hyrax from source with additional developer tools.
+* `API Reference <autoapi/index>`_ - Detailed API reference for Hyrax.
+
 
 
 .. toctree::
