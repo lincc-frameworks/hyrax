@@ -124,6 +124,10 @@ class HyraxRandomDatasetBase:
 
         super().__init__(config, metadata_table)
 
+    def get_image(self, idx: int) -> np.ndarray:
+        """Get the image at the given index as a NumPy array."""
+        return self.data[idx]
+
 
 class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
     """This dataset is stand-in for a map-style dataset.

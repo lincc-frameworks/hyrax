@@ -11,7 +11,6 @@ from hyrax.pytorch_ignite import (
     create_trainer,
     create_validator,
     dist_data_loader,
-    setup_dataset,
     setup_model,
 )
 
@@ -55,11 +54,10 @@ class Train(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         # Instantiate the model and dataset
-        data_set = setup_dataset(config, tensorboardx_logger)
-        model = setup_model(config, data_set)
+        model, dataset = setup_model(config)
 
         # Create a data loader for the training set (and validation split if configured)
-        data_loaders = dist_data_loader(data_set, config, ["train", "validate"])
+        data_loaders = dist_data_loader(dataset, config, ["train", "validate"])
         train_data_loader, _ = data_loaders["train"]
         validation_data_loader, _ = data_loaders.get("validate", (None, None))
 

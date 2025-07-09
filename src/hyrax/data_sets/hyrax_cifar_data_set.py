@@ -30,6 +30,24 @@ class HyraxCifarBase:
         )
         super().__init__(config, metadata_table)
 
+    def get_image(self, idx):
+        """Get the image at the given index as a NumPy array."""
+        image, _ = self.cifar[idx]
+        return image.numpy()
+
+    def get_label(self, idx):
+        """Get the label at the given index."""
+        _, label = self.cifar[idx]
+        return label
+
+    def get_index(self, idx):
+        """Get the index of the item."""
+        return idx
+
+    def get_object_id(self, idx):
+        """Get the object ID for the item."""
+        return idx
+
 
 class HyraxCifarDataSet(HyraxCifarBase, HyraxDataset, Dataset):
     """Map style CIFAR 10 dataset for Hyrax
@@ -45,11 +63,10 @@ class HyraxCifarDataSet(HyraxCifarBase, HyraxDataset, Dataset):
         return len(self.cifar)
 
     def __getitem__(self, idx):
-        image, label = self.cifar[idx]
         return {
-            "object_id": idx,
-            "image": image,
-            "label": label,
+            "object_id": self.get_object_id(idx),
+            "image": self.get_image(idx),
+            "label": self.get_label(idx),
         }
 
 
@@ -64,9 +81,9 @@ class HyraxCifarIterableDataSet(HyraxCifarBase, HyraxDataset, IterableDataset):
     """
 
     def __iter__(self):
-        for idx, (image, label) in enumerate(self.cifar):
+        for idx in range(len(self.cifar)):
             yield {
-                "object_id": idx,
-                "image": image,
-                "label": label,
+                "object_id": self.get_object_id(idx),
+                "image": self.get_image(idx),
+                "label": self.get_label(idx),
             }

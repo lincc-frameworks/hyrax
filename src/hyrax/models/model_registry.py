@@ -92,42 +92,8 @@ def hyrax_model(cls):
 
     original_init = cls.__init__
 
-    def wrapped_init(self, dataset, *args, **kwargs):
-        # Model constructors need a shape, but only a model can tell how to take a
-        # data dict and extract the tensor. We fixup the call here so original_init
-        # is passed a valid shape.
-        #
-        # TODO: We may want to stop passing 'shape' to model __init__(). This will
-        # come at the cost of allowing models to dynamically size their layers/architecture
-        # given shape information. The typical solution to this limitation seems to be a
-        # static-size model crop/resize transforms defined with the model and executed
-        # during data loading by the driver code.
-
-        # Get a sample item of data
-        if dataset.is_map():
-            sample = dataset[0]
-        elif dataset.is_iterable():
-            sample = next(iter(dataset))
-        else:
-            msg = f"{dataset.__class__.__name} must define __getitem__ or __iter__."
-            return NotImplementedError(msg)
-
-        # Perform conversion to tensor(s) if necessary
-        if isinstance(sample, dict):
-            sample = self.__class__.to_tensor(sample)
-
-        # If its a tuple or list extract first element because it is (data, label)
-        if isinstance(sample, (tuple, list)):
-            sample = sample[0]
-
-        if not isinstance(sample, Tensor):
-            msg = "{self.__class__.__name__}.to_tensor() is not returning a tensor when run with "
-            msg += "data from {dataset.__class__.__name__}."
-            raise RuntimeError(msg)
-
-        kwargs.update({"shape": sample.shape})
-
-        original_init(self, *args, **kwargs)
+    def wrapped_init(self, config, *args, **kwargs):
+        original_init(self, config, *args, **kwargs)
         self.criterion = self._criterion()
         self.optimizer = self._optimizer()
 

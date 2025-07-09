@@ -22,6 +22,7 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.config_utils import ConfigDict
+from hyrax.data_sets.data_provider import DataProvider
 from hyrax.data_sets.data_set_registry import HyraxDataset, fetch_data_set_class
 from hyrax.models.model_registry import fetch_model_class
 
@@ -75,15 +76,13 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
     return data_set
 
 
-def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
+def setup_model(config: ConfigDict) -> torch.nn.Module:
     """Create a model object based on the configuration.
 
     Parameters
     ----------
     config : ConfigDict
         The entire runtime configuration
-    dataset : Dataset
-        Only used to determine the input shape of the data
 
     Returns
     -------
@@ -93,9 +92,11 @@ def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    model = model_cls(config=config, dataset=dataset)  # type: ignore[attr-defined]
+    data_provider = DataProvider(model_cls.data, config)
+    data_provider.prepare_datasets()
+    model = model_cls(config=config, data_sample=data_provider[0])  # type: ignore[attr-defined]
 
-    return model
+    return model, data_provider
 
 
 def dist_data_loader(

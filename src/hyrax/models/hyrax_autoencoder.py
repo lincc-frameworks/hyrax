@@ -1,6 +1,8 @@
 # ruff: noqa: D101, D102
+import logging
 
-
+import numpy as np
+import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
@@ -9,6 +11,8 @@ from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
+
+logger = logging.getLogger(__name__)
 
 
 @hyrax_model
@@ -22,11 +26,26 @@ class HyraxAutoencoder(nn.Module):
     The train function has been converted into train_step for use with pytorch-ignite.
     """
 
-    def __init__(self, config, shape=(5, 250, 250)):
+    data = {
+        "HyraxCifarDataSet": {
+            "image": None,
+            "label": None,
+            "object_id": 1,
+        },
+        "HyraxRandomDataset": {
+            "image": None,
+        },
+    }
+
+    def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config
 
         # TODO config-ize or get from data loader somehow
+        logger.warning(f"Initializing HyraxAutoencoder with data sample: {data_sample}")
+        shape = self.to_tensor(data_sample)[0].shape
+        logger.warning(f"Found shape: {shape} in data sample, using this to initialize model.")
+
         self.num_input_channels, self.image_width, self.image_height = shape
 
         self.c_hid = self.config["model"]["base_channel_size"]
@@ -147,12 +166,23 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        if "image" in data_dict and "label" in data_dict:
-            image = data_dict["image"]
-            label = data_dict["label"]
-            return (image, label)
-        else:
-            raise RuntimeError("Data dict did not contain both image and label keys.")
+        cifar_data = data_dict.get("HyraxCifarDataSet", {})
+        random_data = data_dict.get("HyraxRandomDataset", {})
+
+        if "label" in cifar_data:
+            label = cifar_data["label"]
+
+        if "image" in cifar_data and "image" in random_data:
+            cifar_image = cifar_data["image"]
+            random_image = random_data["image"]
+            stack_dim = 0 if cifar_image.ndim == 3 else 1
+            image = torch.from_numpy(np.concatenate([cifar_image, random_image], axis=stack_dim))
+        elif "image" in cifar_data:
+            image = cifar_data["image"]
+        elif "image" in random_data:
+            image = torch.from_numpy(random_data["image"])
+
+        return (image, label)
 
     def _optimizer(self):
         return optim.Adam(self.parameters(), lr=1e-3)
