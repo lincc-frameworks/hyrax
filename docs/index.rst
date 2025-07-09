@@ -7,7 +7,7 @@
 .. figure:: _static/hyrax_header.png
    :align: center
    :alt: Hyrax Logo
-   :width: 80%
+   :width: 90%
 
 ----
 
