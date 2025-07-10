@@ -55,6 +55,7 @@ def test_insert(chromadb_instance):
     assert collection.count() == 2
 
 
+@pytest.mark.slow
 def test_insert_creates_new_shards(caplog, chromadb_instance, random_vector_generator):
     """Ensure that we can insert IDs and vectors into the database, and that new
     shards are created when the shard size limit is reached"""
@@ -147,6 +148,7 @@ def test_search_by_id(chromadb_instance):
     assert np.all(result["id2"] == ["id2", "id1"])
 
 
+@pytest.mark.slow
 def test_search_by_id_many_shards(chromadb_instance, random_vector_generator):
     """Test search_by_id retrieves nearest neighbor ids when there are many shards"""
 
@@ -226,6 +228,7 @@ def test_search_by_vector_not_list(chromadb_instance):
     assert np.all(result[0] == ["id2", "id1"])
 
 
+@pytest.mark.slow
 def test_search_by_vector_many_shards(chromadb_instance, random_vector_generator):
     """Test search_by_vector retrieves nearest neighbor ids when there are many shards"""
 
@@ -271,6 +274,7 @@ def test_get_by_id(chromadb_instance):
     assert np.all(result["id2"] == [4, 5, 6])
 
 
+@pytest.mark.slow
 def test_get_by_id_many_shards(chromadb_instance, random_vector_generator):
     """Test get_by_id retrieves embeddings from multiple shards"""
 
