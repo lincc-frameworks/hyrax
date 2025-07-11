@@ -88,7 +88,7 @@ class ImageDCAE(nn.Module):
         self.activation = nn.GELU()  # Better gradients than ReLU
 
         # Configure final activation
-        final_layer = config["model"].get("HSCDCAE_final_layer", "identity")
+        final_layer = config["model"].get("final_layer", "identity")
         if final_layer == "sigmoid":
             self.final_activation = nn.Sigmoid()
         elif final_layer == "tanh":
