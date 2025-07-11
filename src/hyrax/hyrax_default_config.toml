@@ -79,6 +79,8 @@ mask = false
 
 
 [model]
+# NOTE: All parameters are NOT used by all models. Check the model code before training.
+
 # The name of the model to use. Option are a built-in model class name or import path
 # to an external model. e.g. "HyraxAutoencoder", "user_pkg.model.ExternalModel"
 name = "HyraxAutoencoder"
@@ -86,9 +88,11 @@ name = "HyraxAutoencoder"
 # The number of output channels from the first layer.
 base_channel_size = 32
 
-# The length of the latent space vector.
+# The length of the latent space vector. 
 latent_dim = 64
-HSCDCAE_final_layer = "tanh"
+
+# The activation function of the final layer.
+final_layer = "tanh"
 
 
 [criterion]
@@ -99,6 +103,9 @@ name = "torch.nn.CrossEntropyLoss"
 [optimizer]
 # The name of the built-in optimizer to use or the import path to an external optimizer
 name = "torch.optim.SGD"
+
+# Whether to "sum" or "mean" loss across channels. Only used by HyraxAutoencoderV2
+band_loss_reduction = "mean"
 
 
 ["torch.optim.SGD"]
