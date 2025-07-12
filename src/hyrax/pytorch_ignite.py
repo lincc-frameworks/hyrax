@@ -515,8 +515,9 @@ def create_validator(
 
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
-        tensorboardx_logger.add_scalar("training/validation/loss", validator.state.output["loss"], step)
-        mlflow.log_metrics({"validation/loss": validator.state.output["loss"]}, step=step)
+        for m in trainer.state.output.keys():
+            tensorboardx_logger.add_scalar(f"training/validation/{m}", validator.state.output[m], step)
+            mlflow.log_metrics({f"validation/{m}": validator.state.output[m]}, step=step)
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
@@ -589,9 +590,6 @@ def create_trainer(
         prev_checkpoint = torch.load(config["train"]["resume"], map_location=device)
         Checkpoint.load_objects(to_load=to_save, checkpoint=prev_checkpoint)
 
-    # results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-    # mlflow_logger = MLflowLogger("file://" + str(results_root_dir / "mlflow"))
-
     @trainer.on(Events.STARTED)
     def log_training_start(trainer):
         logger.info(f"Training model on device: {device}")
@@ -603,8 +601,9 @@ def create_trainer(
     @trainer.on(Events.ITERATION_COMPLETED(every=10))
     def log_training_loss_tensorboard(trainer):
         step = trainer.state.get_event_attrib_value(Events.ITERATION_COMPLETED)
-        tensorboardx_logger.add_scalar("training/training/loss", trainer.state.output["loss"], step)
-        mlflow.log_metrics({"training/loss": trainer.state.output["loss"]}, step=step)
+        for m in trainer.state.output.keys():
+            tensorboardx_logger.add_scalar(f"training/training/{m}", trainer.state.output[m], step)
+            mlflow.log_metrics({f"training/{m}": trainer.state.output[m]}, step=step)
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss(trainer):
