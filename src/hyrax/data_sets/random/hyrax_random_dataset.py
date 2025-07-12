@@ -31,7 +31,11 @@ class HyraxRandomDatasetBase:
     provided_labels: list
     """A list of labels randomly selected from the provided list of possible labels."""
 
-    def __init__(self, config):
+    # ? Adding data_directory here for symmetry. It's obviously not used by this dataset
+    # ? but if we want to allow people to use RandomDataset as a placeholder and
+    # ? then immediately drop in a dataset that they actually want to use, it will
+    # ? be important to make the signatures consistent across the datasets.
+    def __init__(self, config, data_directory):
         """
         .. py:method:: __init__(config)
 
@@ -123,6 +127,8 @@ class HyraxRandomDatasetBase:
         metadata_table = Table({"object_id": np.array(list(self.ids()))})
 
         super().__init__(config, metadata_table)
+
+        self.data_directory = data_directory
 
     def get_image(self, idx: int) -> np.ndarray:
         """Get the image at the given index as a NumPy array."""

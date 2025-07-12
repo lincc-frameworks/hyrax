@@ -27,13 +27,16 @@ class HyraxAutoencoder(nn.Module):
     """
 
     data = {
-        "HyraxCifarDataSet": {
-            "image": None,
-            "label": None,
-            "object_id": 1,
+        "cifar_1": {
+            "dataset_class": "HyraxCifarDataSet",
+            "data_directory": "path/to/dataset",
+            "fields": ["image", "label", "object_id"],
+            "primary_id_field": "object_id",
         },
-        "HyraxRandomDataset": {
-            "image": None,
+        "rando": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_directory": "/fake/dir",
+            "fields": ["image"],
         },
     }
 
@@ -41,7 +44,6 @@ class HyraxAutoencoder(nn.Module):
         super().__init__()
         self.config = config
 
-        # TODO config-ize or get from data loader somehow
         logger.warning(f"Initializing HyraxAutoencoder with data sample: {data_sample}")
         shape = self.to_tensor(data_sample)[0].shape
         logger.warning(f"Found shape: {shape} in data sample, using this to initialize model.")
@@ -166,8 +168,8 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        cifar_data = data_dict.get("HyraxCifarDataSet", {})
-        random_data = data_dict.get("HyraxRandomDataset", {})
+        cifar_data = data_dict.get("cifar_0", {})
+        random_data = data_dict.get("rando", {})
 
         if "label" in cifar_data:
             label = cifar_data["label"]

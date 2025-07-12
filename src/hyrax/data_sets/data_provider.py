@@ -15,6 +15,13 @@ class DataProvider(Dataset):
     multiple datasets, each of which can have different fields requested.
     """
 
+    #! Running into a bit of a roadblock - hopefully a byproduct of being tired
+    #! The issue at hand is how to tell ``DataProvider`` what configuration to
+    #! pay attention to.
+    # If this is being used by training or inference, then it makes sense to pay
+    # attention to the data_request sent from the model. However, if this is being
+    # used to revive a dataset for UMAP or visualization, then it should probably
+    # pay attention to the configuration file, and reload from there.
     def __init__(self, data_request: dict, config: dict):
         """Initialize the DataProvider with the given data query and a hyrax
         config.
@@ -29,6 +36,14 @@ class DataProvider(Dataset):
         self.data_request = data_request
         self.config = config
         self.prepped_datasets = {}
+        self.all_metadata_fields = {}
+
+        #! A naive stopgap, probably not quite what we need long term. There's
+        #! probably a better way to organize the configs here.
+        # ? Perhaps an opportunity to break apart the ``[data_set]`` toml table?
+        for idx, friendly_name in enumerate(self.data_request):
+            self.config[f"dataset_{idx}"] = self.data_request[friendly_name]
+            self.config[f"dataset_{idx}"]["friendly_name"] = friendly_name
 
     def is_iterable(self):
         """??? Boilerplate code needed for now, maybe not forever ???"""
@@ -41,20 +56,29 @@ class DataProvider(Dataset):
     def prepare_datasets(self):
         """Instantiate each of the requested datasets based on the `data` dictionary,
         and store the instances in the `prepped_datasets` dictionary."""
-        for ds in self.data_request:
-            if ds not in DATA_SET_REGISTRY:
+        for friendly_name in self.data_request:
+            dataset_definition = self.data_request.get(friendly_name)
+            ds_cls = dataset_definition.get("dataset_class")
+            if ds_cls not in DATA_SET_REGISTRY:
                 logger.error(
-                    f"Unable to locate dataset, '{ds}' in the registered datasets:\
+                    f"Unable to locate dataset, '{ds_cls}' in the registered datasets:\
                         {list(DATA_SET_REGISTRY.keys())}."
                 )
             else:
-                self.prepped_datasets[ds] = DATA_SET_REGISTRY[ds](self.config)
+                data_directory = dataset_definition.get("data_directory")
+                ds_instance = DATA_SET_REGISTRY[ds_cls](self.config, data_directory)
+                self.prepped_datasets[friendly_name] = ds_instance
 
-            #! ??? Questionable choice here - if object_id is requested and it's
-            #! value is truthy, it's magical, and we'll set the object_id at the
-            #! top level of the returned data dictionary.
-            if "object_id" in self.data_request[ds] and self.data_request[ds]["object_id"]:
-                self.primary_dataset = ds
+                #! This feels weird - not sure what the right approach is, might
+                #! depend on how we move ahead with metadata for visualization.
+                if ds_instance._metadata_table:
+                    self.all_metadata_fields[friendly_name] = list(ds_instance._metadata_table.colnames)
+                else:
+                    self.all_metadata_fields[friendly_name] = []
+
+            if "primary_id_field" in dataset_definition:
+                self.primary_dataset = friendly_name
+                self.primary_dataset_id_field = dataset_definition["primary_id_field"]
 
     def validate_request(self):
         """Convenience method to ensure that each requested dataset exists and that
@@ -82,14 +106,20 @@ class DataProvider(Dataset):
         return self.resolve_data(idx)
 
     def __len__(self):
-        """Returns the length of the dataset based on the first prepared dataset."""
+        """Returns the length of the dataset. If the primary dataset is defined
+        it will return that, if not, it will default to the first dataset in the
+        list of prepped_dataset.keys()."""
         keys = list(self.prepped_datasets.keys())
-        return len(self.prepped_datasets[keys[0]])
+        k = self.primary_dataset if self.primary_dataset else keys[0]
+        return len(self.prepped_datasets[k])
 
     def ids(self):
-        """Returns the IDs of the first prepared dataset."""
+        """Returns the IDs of the dataset. If the primary dataset is defined
+        it will return those ids, if not, it will return the ids of the first
+        dataset in the list of prepped_dataset.keys()."""
         keys = list(self.prepped_datasets.keys())
-        return self.prepped_datasets[keys[0]].ids()
+        k = self.primary_dataset if self.primary_dataset else keys[0]
+        return self.prepped_datasets[k].ids()
 
     def resolve_data(self, idx):
         """This does the work of requesting the data from the prepared datasets.
@@ -105,12 +135,29 @@ class DataProvider(Dataset):
             A dictionary containing the requested data from the prepared datasets.
         """
         returned_data = {}
-        for ds, fields in self.data_request.items():
-            returned_data[ds] = {}
-            for field in fields:
-                resolved_data = getattr(self.prepped_datasets[ds], f"get_{field}")(idx)
-                returned_data[ds][field] = resolved_data
+        for friendly_name in self.data_request:
+            returned_data[friendly_name] = {}
+            dataset_definition = self.data_request.get(friendly_name)
+            for field in dataset_definition.get("fields"):
+                resolved_data = getattr(self.prepped_datasets[friendly_name], f"get_{field}")(idx)
+                returned_data[friendly_name][field] = resolved_data
         if self.primary_dataset:
-            # If we have a primary dataset, we set the object_id at the top level
-            returned_data["object_id"] = returned_data[self.primary_dataset]["object_id"]
+            returned_data["object_id"] = returned_data[self.primary_dataset][self.primary_dataset_id_field]
+
         return returned_data
+
+    #! Same comment here, as in the prepare_datasets method. Not sure if this is
+    #! the right approach.
+    def metadata_fields(self) -> list[str]:
+        """Returns a list of metadata fields supported by this object
+
+        Returns
+        -------
+        list[str]
+            The column names of the metadata table passed. Empty string if no metadata was provided at
+            during construction of the HyraxDataset (or derived class).
+        """
+        all_fields = []
+        for _, v in self.all_metadata_fields:
+            all_fields.extend(v)
+        return all_fields

@@ -57,7 +57,7 @@ class Infer(Verb):
         # Create a tensorboardX logger
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
-        model, dataset = setup_model(config)
+        model, dataset = setup_model(config, tensorboardx_logger)
         if dataset.is_map():
             logger.info(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 

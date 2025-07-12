@@ -54,7 +54,7 @@ class Train(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         # Instantiate the model and dataset
-        model, dataset = setup_model(config)
+        model, dataset = setup_model(config, tensorboardx_logger)
 
         # Create a data loader for the training set (and validation split if configured)
         data_loaders = dist_data_loader(dataset, config, ["train", "validate"])

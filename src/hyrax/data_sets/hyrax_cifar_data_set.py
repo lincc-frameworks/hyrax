@@ -1,5 +1,6 @@
 # ruff: noqa: D101, D102
 import logging
+from pathlib import Path
 
 import numpy as np
 from torch.utils.data import Dataset, IterableDataset
@@ -14,17 +15,19 @@ logger = logging.getLogger(__name__)
 class HyraxCifarBase:
     """Base class for Hyrax Cifar datasets"""
 
-    def __init__(self, config: ConfigDict):
+    # ? Passing in a data_directory here so that we can disambiguate if when there
+    # ? are multiple instances of the dataset requested by the model.
+    def __init__(self, config: ConfigDict, data_directory: Path = None):
         import torchvision.transforms as transforms
         from astropy.table import Table
         from torchvision.datasets import CIFAR10
 
+        self.data_directory = data_directory if data_directory else config["general"]["data_dir"]
+
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         )
-        self.cifar = CIFAR10(
-            root=config["general"]["data_dir"], train=True, download=True, transform=transform
-        )
+        self.cifar = CIFAR10(root=self.data_directory, train=True, download=True, transform=transform)
         metadata_table = Table(
             {"label": np.array([self.cifar[index][1] for index in range(len(self.cifar))])}
         )
