@@ -22,7 +22,7 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.config_utils import ConfigDict
-from hyrax.data_sets.data_set_registry import HyraxDataset, fetch_data_set_class
+from hyrax.data_sets.data_provider import DataProvider
 from hyrax.models.model_registry import fetch_model_class
 
 logger = logging.getLogger(__name__)
@@ -50,6 +50,15 @@ class SubsetSequentialSampler(Sampler[int]):
         return len(self.indices)
 
 
+def _setup_dataset(data_request, config, tensorboardx_logger):
+    data_provider = DataProvider(data_request, config)
+    data_provider.prepare_datasets()
+    for friendly_name in data_provider.prepped_datasets:
+        data_provider.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
+
+    return data_provider
+
+
 def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
     """Create a dataset object based on the configuration.
 
@@ -67,23 +76,21 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
     """
 
     # Fetch data loader class specified in config and create an instance of it
-    data_set_cls = fetch_data_set_class(config)
-    data_set: HyraxDataset = data_set_cls(config)  # type: ignore[call-arg]
-
-    data_set.tensorboardx_logger = tensorboardx_logger
-
-    return data_set
+    # Fetch the model class defined in the config, and use it's ``data`` attribute
+    # to initialize the ``DataProvider`` instance.
+    model_cls = fetch_model_class(config)
+    return _setup_dataset(model_cls.data, config, tensorboardx_logger)
 
 
-def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
+def setup_model(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None) -> torch.nn.Module:
     """Create a model object based on the configuration.
 
     Parameters
     ----------
     config : ConfigDict
         The entire runtime configuration
-    dataset : Dataset
-        Only used to determine the input shape of the data
+    tensorboardx_logger : SummaryWriter, optional
+        If Tensorboard is in use, the tensorboard logger so the dataset can log things
 
     Returns
     -------
@@ -93,9 +100,10 @@ def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    model = model_cls(config=config, dataset=dataset)  # type: ignore[attr-defined]
+    data_provider = _setup_dataset(model_cls.data, config, tensorboardx_logger)
+    model = model_cls(config=config, data_sample=data_provider[0])  # type: ignore[attr-defined]
 
-    return model
+    return model, data_provider
 
 
 def dist_data_loader(
