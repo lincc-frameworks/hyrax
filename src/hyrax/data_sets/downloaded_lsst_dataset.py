@@ -86,12 +86,16 @@ class DownloadedLSSTDataset(LSSTDataset):
         # Initialize parent class with config
         super().__init__(config)
 
-        # Store config for thread-local Butler creation
-        self._butler_config = {
-            "repo": config["data_set"]["butler_repo"],
-            "collections": config["data_set"]["butler_collection"],
-            "skymap": config["data_set"]["skymap"],
-        }
+        try:
+            import lsst.daf.butler as _butler  # noqa: F401
+
+            self._butler_config = {
+                "repo": config["data_set"]["butler_repo"],
+                "collections": config["data_set"]["butler_collection"],
+                "skymap": config["data_set"]["skymap"],
+            }
+        except ImportError:
+            self._butler_config = None
 
         # Manifest management
         self._manifest_lock = threading.Lock()
@@ -144,7 +148,28 @@ class DownloadedLSSTDataset(LSSTDataset):
         self._band_indices = None
 
         # Try to load existing manifest first
-        if self.manifest_path.exists():
+        if not self.manifest_path.exists():
+            if self._butler_config is None:
+                msg = "Cannot find any data source. There is no existing manifest, and there is no "
+                msg += "butler available. Please try to run this on an RSP where a butler is available or "
+                msg += "ensure a proper manifest and cutouts are available in "
+                msg += f"{self.config['general']['data_dir']}"
+                raise RuntimeError(msg)
+
+            # Create new manifest (no existing manifest found)
+            logger.info("Creating new manifest")
+            if self.catalog_type == "astropy":
+                self.manifest = Table()
+                # Copy only the data columns
+                for col_name in self.catalog.colnames:
+                    self.manifest[col_name] = self.catalog[col_name]
+            else:
+                self.manifest = self.catalog.copy()
+
+            self._add_manifest_columns()
+            self._save_manifest()
+            logger.info(f"Initialized new manifest at {self.manifest_path}")
+        else:
             logger.info(f"Found existing manifest at {self.manifest_path}")
             try:
                 existing_manifest = self._load_existing_manifest()
@@ -193,7 +218,6 @@ class DownloadedLSSTDataset(LSSTDataset):
 
                 # Save the merged manifest
                 self._save_manifest()
-                return
 
             except Exception as e:
                 logger.error(f"Failed to load/merge existing manifest: {e}")
@@ -201,20 +225,6 @@ class DownloadedLSSTDataset(LSSTDataset):
                     "Cannot proceed with incompatible manifest. Specify new data directory to continue."
                 )
                 raise
-
-        # Create new manifest (no existing manifest found)
-        logger.info("Creating new manifest")
-        if self.catalog_type == "astropy":
-            self.manifest = Table()
-            # Copy only the data columns
-            for col_name in self.catalog.colnames:
-                self.manifest[col_name] = self.catalog[col_name]
-        else:
-            self.manifest = self.catalog.copy()
-
-        self._add_manifest_columns()
-        self._save_manifest()
-        logger.info(f"Initialized new manifest at {self.manifest_path}")
 
     def _load_existing_manifest(self):
         """Load existing manifest file."""
@@ -553,45 +563,47 @@ class DownloadedLSSTDataset(LSSTDataset):
                 if self._is_filtering_bands and self._band_indices is not None:
                     cutout = cutout[self._band_indices]
                     logger.debug(f"Applied band filtering to cached cutout {idx}: {cutout.shape}")
-
-                return cutout
-
-        # For main thread, use parent's method (original caching)
-        import threading
-
-        if threading.current_thread() is threading.main_thread():
-            cutout = super()._fetch_single_cutout(row)
-            # When using parent method, assume all original bands were successful
-            downloaded_bands = list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
         else:
-            # For worker threads, use our cached method
-            cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
+            # For main thread, use parent's method (original caching)
+            import threading
 
-        # Apply band filtering to new downloads if needed
-        original_cutout_shape = cutout.shape
-        if self._is_filtering_bands and self._band_indices is not None:
-            cutout = cutout[self._band_indices]
-            # Update downloaded_bands to reflect only the filtered bands that were actually present
-            downloaded_bands = [
-                self._original_bands[i] for i in self._band_indices if i < len(self._original_bands)
-            ]
-            logger.debug(f"Applied band filtering to new cutout: {original_cutout_shape} -> {cutout.shape}")
-
-        # Save cutout if idx provided (save the filtered version)
-        if idx is not None:
-            cutout_path = self._get_cutout_path(idx)
-            torch.save(cutout, cutout_path)
-
-            # Determine if this is a complete failure (all bands failed)
-            if len(downloaded_bands) == 0:
-                # All bands failed - mark as "Attempted"
-                self._update_manifest_entry(idx, None, "Attempted", downloaded_bands)
+            if threading.current_thread() is threading.main_thread():
+                cutout = super()._fetch_single_cutout(row)
+                # When using parent method, assume all original bands were successful
+                downloaded_bands = (
+                    list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
+                )
             else:
-                # At least some bands succeeded - save with proper filename
-                filename = cutout_path.name
-                self._update_manifest_entry(idx, cutout.shape, filename, downloaded_bands)
+                # For worker threads, use our cached method
+                cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
 
-        return cutout
+            # Apply band filtering to new downloads if needed
+            original_cutout_shape = cutout.shape
+            if self._is_filtering_bands and self._band_indices is not None:
+                cutout = cutout[self._band_indices]
+                # Update downloaded_bands to reflect only the filtered bands that were actually present
+                downloaded_bands = [
+                    self._original_bands[i] for i in self._band_indices if i < len(self._original_bands)
+                ]
+                logger.debug(
+                    f"Applied band filtering to new cutout: {original_cutout_shape} -> {cutout.shape}"
+                )
+
+            # Save cutout if idx provided (save the filtered version)
+            if idx is not None:
+                cutout_path = self._get_cutout_path(idx)
+                torch.save(cutout, cutout_path)
+
+                # Determine if this is a complete failure (all bands failed)
+                if len(downloaded_bands) == 0:
+                    # All bands failed - mark as "Attempted"
+                    self._update_manifest_entry(idx, None, "Attempted", downloaded_bands)
+                else:
+                    # At least some bands succeeded - save with proper filename
+                    filename = cutout_path.name
+                    self._update_manifest_entry(idx, cutout.shape, filename, downloaded_bands)
+
+        return self.apply_transform(cutout)
 
     def _fetch_cutout_with_cache(self, row):
         """Generate cutout using cached patch fetching with NaN filling for failed bands."""

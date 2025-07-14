@@ -1,12 +1,15 @@
 import functools
+import logging
 from pathlib import Path
 
 from torch.utils.data import Dataset
 
-from .data_set_registry import HyraxDataset
+from .data_set_registry import HyraxDataset, HyraxImageDataset
+
+logger = logging.getLogger(__name__)
 
 
-class LSSTDataset(HyraxDataset, Dataset):
+class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
     """LSSTDataset: A dataset to access deep_coadd images from lsst pipelines
     via the butler. Must be run in an RSP.
     """
@@ -26,10 +29,17 @@ class LSSTDataset(HyraxDataset, Dataset):
         """
         try:
             import lsst.daf.butler as butler
-        except ImportError as e:
-            msg = "LSSTDataset can only be used in a Rubin Software Platform environment"
-            msg += " with access to the lsst pipeline tools"
-            raise ImportError(msg) from e
+
+            self.butler = butler.Butler(
+                config["data_set"]["butler_repo"], collections=config["data_set"]["butler_collection"]
+            )
+            self.skymap = self.butler.get("skyMap", {"skymap": config["data_set"]["skymap"]})
+        except ImportError:
+            msg = "Did not detect a Butler. You may need to run on the RSP"
+            msg += ""
+            logger.info(msg)
+            self.butler = None
+            self.skymap = None
 
         # Set filters from config if provided, otherwise use class default
         if "filters" in config["data_set"] and config["data_set"]["filters"]:
@@ -44,16 +54,14 @@ class LSSTDataset(HyraxDataset, Dataset):
 
             LSSTDataset.BANDS = config["data_set"]["filters"]
 
-        self.butler = butler.Butler(
-            config["data_set"]["butler_repo"], collections=config["data_set"]["butler_collection"]
-        )
-        self.skymap = self.butler.get("skyMap", {"skymap": config["data_set"]["skymap"]})
-
         # Load catalog - either from HATS or astropy table
         self.catalog = self._load_catalog(config["data_set"])
 
         self.sh_deg = config["data_set"]["semi_height_deg"]
         self.sw_deg = config["data_set"]["semi_width_deg"]
+
+        self.set_function_transform()
+        self.set_crop_transform()
 
         # TODO: Metadata from the catalog
         super().__init__(config)
@@ -243,4 +251,4 @@ class LSSTDataset(HyraxDataset, Dataset):
         data_np = np.array(data)
         data_torch = from_numpy(data_np.astype(np.float32))
 
-        return data_torch
+        return self.apply_transform(data_torch)
