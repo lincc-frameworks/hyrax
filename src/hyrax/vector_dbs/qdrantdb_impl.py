@@ -51,7 +51,7 @@ class QdrantDB(VectorDB):
                     #! This stinks - we should just check the size of the data
                     #! when we call `save_to_database` and then set this automatically
                     #! as a parameter in self.context["blah"] or something.
-                    size=self.config["vector_db.qdrant"]["vector_size"],
+                    size=self.config["vector_db"]["qdrant"]["vector_size"],
                     distance=models.Distance.EUCLID,
                     on_disk=True,
                 ),
