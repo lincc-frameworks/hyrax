@@ -124,9 +124,7 @@ class HyraxAutoencoderV2(nn.Module):
         return x
 
     def forward(self, batch):
-        # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
-        x = batch[0] if isinstance(batch, tuple) else batch
-        return self._eval_encoder(x)
+        return self._eval_encoder(batch)
 
     def train_step(self, batch):
         """This function contains the logic for a single training step. i.e. the
@@ -142,9 +140,7 @@ class HyraxAutoencoderV2(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
-        x = batch[0] if isinstance(batch, tuple) else batch
-
+        x = batch
         z = self._eval_encoder(x)
         x_hat = self._eval_decoder(z)
 
@@ -188,9 +184,7 @@ class HyraxAutoencoderV2(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        if "image" in data_dict and "label" in data_dict:
-            image = data_dict["image"]
-            label = data_dict["label"]
-            return (image, label)
+        if "image" in data_dict:
+            return data_dict["image"]
         else:
-            raise RuntimeError("Data dict did not contain both image and label keys.")
+            raise RuntimeError("Data dict did not contain image key.")

@@ -160,9 +160,6 @@ class ImageDCAE(nn.Module):
 
     def forward(self, x):
         """Forward pass - returns latent representation for anomaly detection."""
-        # Dropping labels if present
-        x = x[0] if isinstance(x, tuple) else x
-
         # Store original spatial dimensions for decoding
         self.original_size = x.shape[2:]
 
@@ -200,8 +197,7 @@ class ImageDCAE(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        # Dropping labels if present
-        data = batch[0] if isinstance(batch, tuple) else batch
+        data = batch
         self.optimizer.zero_grad()
 
         # Store original spatial dimensions for decoding
