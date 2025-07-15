@@ -436,11 +436,11 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         log = log_every is not None and isinstance(log_every, int)
         for index, object_id in enumerate(self.files):
             if log and index != 0 and index % log_every == 0:
-                logger.info(f"Processed {index+1} objects")
+                logger.info(f"Processed {index + 1} objects")
             yield str(object_id)
         else:
             if log:
-                logger.info(f"Processed {index+1} objects")
+                logger.info(f"Processed {index + 1} objects")
 
     def _all_files(self):
         """
