@@ -267,8 +267,8 @@ class DownloadedLSSTDataset(LSSTDataset):
         """Merge existing manifest with current catalog based on object_id."""
 
         # Verify object_id merging is possible
-        if not self.use_object_id:
-            raise ValueError("Cannot merge manifests without object_id")
+        #if not self.use_object_id:
+        #    raise ValueError("Cannot merge manifests without object_id")
 
         # Check required columns exist in existing manifest
         existing_cols = existing_manifest.colnames
@@ -283,11 +283,11 @@ class DownloadedLSSTDataset(LSSTDataset):
         existing_object_ids = set(existing_manifest[self.object_id_column])
 
         # Check if current catalog is a subset of existing manifest
-        new_object_ids = self.current_object_ids - existing_object_ids
+        new_object_ids = current_object_ids - existing_object_ids
         if len(new_object_ids) == 0:
             # All objects exist in manifest - just filter for current operations
             logger.info(
-                f"Current catalog ({len(self.current_object_ids)} objects)\
+                f"Current catalog ({len(current_object_ids)} objects)\
                             is a subset of existing manifest "
                 f"({len(existing_object_ids)} objects). Using existing manifest\
                             with filtering for operations."
@@ -295,6 +295,7 @@ class DownloadedLSSTDataset(LSSTDataset):
 
             # Keep the FULL existing manifest but store filtering info for operations
             self._manifest_filter_object_ids = current_object_ids
+            merged_manifest = existing_manifest
             
         else:
             # Current catalog contains new objects - add them to existing manifest
@@ -425,11 +426,11 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def _get_cutout_path(self, idx):
         """Generate cutout file path for a given index."""
-        if self.use_object_id:
-            object_id = self.catalog[idx][self.object_id_column]
-            return self.download_dir / f"cutout_{object_id}.pt"
-        else:
-            return self.download_dir / f"cutout_{idx:0{self.padding_length}d}.pt"
+        #if self.use_object_id:
+        object_id = self.catalog[idx][self.object_id_column]
+        return self.download_dir / f"cutout_{object_id}.pt"
+        #else:
+        #    return self.download_dir / f"cutout_{idx:0{self.padding_length}d}.pt"
 
     def _update_manifest_entry(self, idx, cutout_shape=None, filename="Attempted", downloaded_bands=None):
         """
