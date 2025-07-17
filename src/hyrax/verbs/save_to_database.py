@@ -111,7 +111,7 @@ class SaveToDatabase(Verb):
         if not vector_db_path.is_dir():
             raise RuntimeError(f"Database directory {str(vector_db_path)} does not exist.")
 
-        logger.info(f"Saving VectorDB at {vector_db_dir}")
+        logger.info(f"Saving vector database at {vector_db_dir}")
 
         # Create an instance of the vector database to insert into
         vector_db = vector_db_factory(config, context={"results_dir": str(vector_db_path)})
