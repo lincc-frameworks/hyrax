@@ -60,11 +60,11 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         self.sh_deg = config["data_set"]["semi_height_deg"]
         self.sw_deg = config["data_set"]["semi_width_deg"]
 
-        self.set_function_transform()
-        self.set_crop_transform()
-
         # TODO: Metadata from the catalog
         super().__init__(config, self.catalog)
+        
+        self.set_function_transform()
+        self.set_crop_transform()
 
     def _load_catalog(self, data_set_config):
         """
