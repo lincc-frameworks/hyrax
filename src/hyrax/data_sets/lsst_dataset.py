@@ -64,7 +64,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         self.set_crop_transform()
 
         # TODO: Metadata from the catalog
-        super().__init__(config)
+        super().__init__(config, self.catalog)
 
     def _load_catalog(self, data_set_config):
         """
@@ -79,6 +79,8 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
     def _load_hats_catalog(self, hats_path):
         """Load catalog from HATS format using LSDB."""
+        from astropy.table import Table
+
         try:
             import lsdb
         except ImportError as e:
@@ -86,7 +88,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             raise ImportError(msg) from e
 
         # We compute the entire catalog so we have a nested frame which we can access
-        return lsdb.read_hats(hats_path).compute()
+        return Table.from_pandas(lsdb.read_hats(hats_path).compute())
 
     def _load_astropy_catalog(self, table_path):
         """Load catalog from astropy table format or pickled astropy table."""
@@ -126,25 +128,15 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             Single cutout tensor or list of cutout tensors.
         """
 
-        from astropy.table import Table
-        from nested_pandas import NestedFrame
-
-        # Handle different catalog types
-        if isinstance(self.catalog, Table):
-            # Astropy table - extract rows directly
-            if isinstance(idxs, (list, tuple)):
-                rows = [self.catalog[idx] for idx in idxs]
-                cutouts = [self._fetch_single_cutout(row) for row in rows]
-                return cutouts
-            else:
-                row = self.catalog[idxs]
-                return self._fetch_single_cutout(row)
+        # Astropy table - extract rows directly
+        if isinstance(idxs, (list, tuple)):
+            rows = [self.catalog[idx] for idx in idxs]
+            cutouts = [self._fetch_single_cutout(row) for row in rows]
+            return cutouts
         else:
-            # NestedFrame (HATS catalog)
-            frame = self.catalog.iloc[idxs]
-            frame = frame if isinstance(frame, NestedFrame) else NestedFrame(frame).T
-            cutouts = [self._fetch_single_cutout(row) for _, row in frame.iterrows()]
-            return cutouts if len(cutouts) > 1 else cutouts[0]
+            row = self.catalog[idxs]
+            return self._fetch_single_cutout(row)
+
 
     def __getitem__(self, idxs):
         """Get default data fields for the this dataset.
