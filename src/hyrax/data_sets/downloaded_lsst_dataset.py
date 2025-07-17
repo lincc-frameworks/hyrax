@@ -76,15 +76,20 @@ class DownloadedLSSTDataset(LSSTDataset):
     - All files stored in config["general"]["data_dir"]
     """
 
+    object_id_autodetect_names = ["object_id", "objectId"]
+
     def __init__(self, config):
         self.download_dir = Path(config["general"]["data_dir"])
         self.download_dir.mkdir(exist_ok=True)
 
-        # Preventing name collision with parent class config
-        self._config = config
-
         # Initialize parent class with config
+        # Our parent here is LSSTDataset, which handles all metadata by reading in the
+        # Passed catalog directly. It also owns the self.catalog member we rely on
         super().__init__(config)
+
+        # Examine LSSTDataset's catalog for the object ids we need throughout to manage in-progress downloads.
+        self._detect_object_id_column_name()
+        self.catalog_object_ids = set(self.catalog[self.object_id_column])
 
         try:
             import lsst.daf.butler as _butler  # noqa: F401
@@ -102,52 +107,76 @@ class DownloadedLSSTDataset(LSSTDataset):
         self._updates_since_save = 0
         self._save_interval = 1000
 
-        # Determine naming strategy and initialize manifest (includes band filtering validation)
-        self._setup_naming_strategy()
+        # Initialize manifest (includes band filtering validation)
         self._initialize_manifest()
 
         # Add tracking for band failure statistics (use current BANDS which may be filtered)
         self._band_failure_stats = {band: 0 for band in self.BANDS}
         self._band_failure_lock = threading.Lock()
 
-    def _setup_naming_strategy(self):
+        # Initialize filtering state
+        self._manifest_filter_object_ids = None
+        self._catalog_to_manifest_index_map = None
+        self._manifest_to_catalog_index_map = None
+        self._build_catalog_to_manifest_index_map()
+
+
+    def _detect_object_id_column_name(self):
         """Setup file naming strategy based on catalog columns."""
         catalog_columns = self.catalog.colnames if hasattr(self.catalog, "colnames") else self.catalog.columns
 
-        self.use_object_id = False
-        if self._config["data_set"]["object_id_column_name"]:
-            self.use_object_id = True
-            self.object_id_column = self._config["data_set"]["object_id_column_name"]
-        elif "object_id" in catalog_columns:
-            self.use_object_id = True
-            self.object_id_column = "object_id"
-        elif "objectId" in catalog_columns:
-            self.use_object_id = True
-            self.object_id_column = "objectId"
-        else:
-            self.object_id_column = "objectId"
 
-        if not self.use_object_id:
-            dataset_length = len(self.catalog)
-            self.padding_length = max(4, len(str(dataset_length)))
+        if self.config["data_set"]["object_id_column_name"]:
+            # Use configured object ID column
+            self.object_id_column = self.config["data_set"]["object_id_column_name"]
+        else:
+            # Autodetect ID column
+
+            for object_id_name in DownloadedLSSTDataset.object_id_autodetect_names:
+                if object_id_name in catalog_columns:
+                    self.object_id_column = object_id_name
+                    break
+            else:
+                msg = "Must provide an Object ID column in your catalog. This ID must be unique and is used to\n"
+                msg += "track in-progress downloads. It need not be a Rubin generated objectId, but could be.\n"
+                msg += "You can configure the name of your object ID column with \n"
+                msg += "config['data_set']['object_id_column_name']. \n"
+                msg += "If nothing is configured, a column named 'object_id' or 'objectId' will be used\n"
+                msg += "automatically if present in your catalog.\n"
+                raise RuntimeError(msg)
+
+        # xcxc todo check and remove this since self.use_object_id is no more
+        # if not self.use_object_id:
+        #     dataset_length = len(self.catalog)
+        #     self.padding_length = max(4, len(str(dataset_length)))
 
     def _initialize_manifest(self):
-        """Create new manifest or load/merge with existing manifest, with band filtering validation."""
+        """Create new manifest or load/merge with existing manifest, with band filtering validation.
+        
+        The manifest is always an astropy Table with at least the following columns:
+        cutout_shape: np.array of dimensions e.g. [3,150,150]
+        filename: string containing the fits filename containing the tensor for the object
+        downloaded_bands: string containing a comma separated list of the bands downloaded. 
+                          Order is expected to be consistent between rows.
 
-        if isinstance(self.catalog, Table):
-            self.catalog_type = "astropy"
-            self.manifest_path = self.download_dir / "manifest.fits"
-        else:
-            self.catalog_type = "hats"
-            self.manifest_path = self.download_dir / "manifest.parquet"
+        When this astropy table is loaded into memory, multiple sources are consulted.
+        - The Manifest on the filesystem, which contains the source of truth for what
+          files have been downloaded. If this is not found, it is created.
+        - The bands given in the catalog passed in 
 
+        """
+        if not isinstance(self.catalog, Table):
+            raise NotImplementedError("LSSTDataset self.catalog should always be an astropy table.")
+        
+        self.manifest_path = self.download_dir / "manifest.fits"
+         
         # Initialize band filtering flags
         self._is_filtering_bands = False
         self._original_bands = None
         self._filtered_bands = None
         self._band_indices = None
 
-        # Try to load existing manifest first
+        # Create a manifest if none exists
         if not self.manifest_path.exists():
             if self._butler_config is None:
                 msg = "Cannot find any data source. There is no existing manifest, and there is no "
@@ -158,15 +187,19 @@ class DownloadedLSSTDataset(LSSTDataset):
 
             # Create new manifest (no existing manifest found)
             logger.info("Creating new manifest")
-            if self.catalog_type == "astropy":
-                self.manifest = Table()
-                # Copy only the data columns
-                for col_name in self.catalog.colnames:
-                    self.manifest[col_name] = self.catalog[col_name]
-            else:
-                self.manifest = self.catalog.copy()
 
-            self._add_manifest_columns()
+            self.manifest = Table()
+
+            # Copy only the data columns
+            #xcxc this is copying over all the astro data from LSSTDataset's catalog
+            # We probably don't need that, and its going to make merge ops less performant if we
+            # ever have to copy the catalog, which we will...
+            #
+            # xcxc disable for now....
+            #for col_name in self.catalog.colnames:
+            #    self.manifest[col_name] = self.catalog[col_name]
+
+            self._add_manifest_columns_to_table(self.manifest)
             self._save_manifest()
             logger.info(f"Initialized new manifest at {self.manifest_path}")
         else:
@@ -228,118 +261,109 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def _load_existing_manifest(self):
         """Load existing manifest file."""
-        if self.catalog_type == "astropy":
-            return Table.read(self.manifest_path)
-        else:
-            import pandas as pd
-
-            df = pd.read_parquet(self.manifest_path)
-            # Convert back to original catalog type if needed
-            return df
+        return Table.read(self.manifest_path)
 
     def _merge_manifests(self, existing_manifest):
         """Merge existing manifest with current catalog based on object_id."""
 
         # Verify object_id merging is possible
-        if not self.use_object_id:
-            raise ValueError("Cannot merge manifests without object_id")
+        #if not self.use_object_id:
+        #    raise ValueError("Cannot merge manifests without object_id")
 
         # Check required columns exist in existing manifest
-        existing_cols = (
-            existing_manifest.colnames if self.catalog_type == "astropy" else existing_manifest.columns
-        )
+        existing_cols = existing_manifest.colnames
         required_cols = ["cutout_shape", "filename", "downloaded_bands"]
 
         for col in required_cols:
             if col not in existing_cols:
                 raise ValueError(f"Existing manifest missing required column: {col}")
 
-        # Create object_id lookup from existing manifest
-        existing_lookup = {}
-        for i in range(len(existing_manifest)):
-            if self.catalog_type == "astropy":
-                obj_id = existing_manifest[i][self.object_id_column]
-            else:
-                obj_id = existing_manifest.iloc[i][self.object_id_column]
-            existing_lookup[obj_id] = i
+        # Create object_id sets for comparison
+        current_object_ids = set(self.catalog[self.object_id_column])
+        existing_object_ids = set(existing_manifest[self.object_id_column])
 
-        # Build new manifest starting with current catalog
-        if self.catalog_type == "astropy":
-            new_manifest = Table()
-            for col_name in self.catalog.colnames:
-                new_manifest[col_name] = self.catalog[col_name]
+        # Check if current catalog is a subset of existing manifest
+        new_object_ids = current_object_ids - existing_object_ids
+        if len(new_object_ids) == 0:
+            # All objects exist in manifest - just filter for current operations
+            logger.info(
+                f"Current catalog ({len(current_object_ids)} objects)\
+                            is a subset of existing manifest "
+                f"({len(existing_object_ids)} objects). Using existing manifest\
+                            with filtering for operations."
+            )
+
+            # Keep the FULL existing manifest but store filtering info for operations
+            self._manifest_filter_object_ids = current_object_ids
+            merged_manifest = existing_manifest
+            
         else:
-            new_manifest = self.catalog.copy()
+            # Current catalog contains new objects - add them to existing manifest
+            logger.info(
+                f"Current catalog contains {len(new_object_ids)} new objects. "
+                f"Adding to existing manifest while preserving all {len(existing_object_ids)}\
+                                                existing objects."
+            )
+            from astropy.table import vstack
 
-        # Add manifest columns
-        if self.catalog_type == "astropy":
-            n_rows = len(new_manifest)
-            empty_shape = np.array([0, 0, 0], dtype=int)
-            new_manifest["cutout_shape"] = [empty_shape] * n_rows
-            new_manifest["filename"] = [""] * n_rows
-            new_manifest["filename"] = new_manifest["filename"].astype("U50")
-            new_manifest["downloaded_bands"] = [""] * n_rows
-            new_manifest["downloaded_bands"] = new_manifest["downloaded_bands"].astype("U20")
-        else:
-            new_manifest["cutout_shape"] = [None] * len(new_manifest)
-            new_manifest["filename"] = [None] * len(new_manifest)
-            new_manifest["downloaded_bands"] = [None] * len(new_manifest)
+            # Populate object ids into new manifest rows
+            new_rows = Table()
+            new_rows[self.object_id_column] = new_object_ids
 
-        # Merge download status from existing manifest
-        preserved_count = 0
-        added_count = 0
+            # Add other manifest columns to new manifest rows
+            self._add_manifest_columns_to_table(new_rows)
 
-        for i in range(len(new_manifest)):
-            if self.catalog_type == "astropy":
-                obj_id = new_manifest[i][self.object_id_column]
+            # Stack the new manifest entries below the existing ones.
+            merged_manifest = vstack([existing_manifest, new_rows])
+
+        merge_stats = {
+            "preserved": len(existing_object_ids),
+            "added": len(new_object_ids),
+            "total_in_manifest": len(merged_manifest),
+        }
+        return merged_manifest, merge_stats
+
+    def _build_catalog_to_manifest_index_map(self):
+        """Build efficient mapping from catalog indices to manifest indices."""
+        # Create object_id to manifest index lookup
+        manifest_lookup = {}
+        for manifest_idx in range(len(self.manifest)):
+            obj_id = self.manifest[manifest_idx][self.object_id_column]
+            manifest_lookup[obj_id] = manifest_idx
+
+        # Build catalog index to manifest index mapping and reverse mapping
+        self._catalog_to_manifest_index_map = {}
+        self._manifest_to_catalog_index_map = {}
+        for catalog_idx in range(len(self.catalog)):
+            catalog_obj_id = self.catalog[catalog_idx][self.object_id_column]
+
+            if catalog_obj_id in manifest_lookup:
+                manifest_idx = manifest_lookup[catalog_obj_id]
+                self._catalog_to_manifest_index_map[catalog_idx] = manifest_idx
+                self._manifest_to_catalog_index_map[manifest_idx] = catalog_idx
             else:
-                obj_id = new_manifest.iloc[i][self.object_id_column]
+                raise ValueError(f"Object ID {catalog_obj_id} from catalog not found in manifest")
 
-            if obj_id in existing_lookup:
-                # Preserve existing download status
-                existing_idx = existing_lookup[obj_id]
-
-                if self.catalog_type == "astropy":
-                    new_manifest["cutout_shape"][i] = existing_manifest["cutout_shape"][existing_idx]
-                    new_manifest["filename"][i] = existing_manifest["filename"][existing_idx]
-                    new_manifest["downloaded_bands"][i] = existing_manifest["downloaded_bands"][existing_idx]
-                else:
-                    new_manifest.loc[i, "cutout_shape"] = existing_manifest.iloc[existing_idx]["cutout_shape"]
-                    new_manifest.loc[i, "filename"] = existing_manifest.iloc[existing_idx]["filename"]
-                    new_manifest.loc[i, "downloaded_bands"] = existing_manifest.iloc[existing_idx][
-                        "downloaded_bands"
-                    ]
-
-                preserved_count += 1
-            else:
-                # New object - download status already initialized to empty
-                added_count += 1
-
-        merge_stats = {"preserved": preserved_count, "added": added_count}
-
-        return new_manifest, merge_stats
-
-    def _add_manifest_columns(self):
+    def _add_manifest_columns_to_table(self, table):
         """Add cutout_shape, filename, and downloaded_bands columns to manifest."""
-        if self.catalog_type == "astropy":
-            n_rows = len(self.manifest)
+        n_rows = len(table)
 
-            # Create shape column as integer array (assuming 3D tensors like [3, 64, 64])
-            empty_shape = np.array([0, 0, 0], dtype=int)  # Placeholder shape
-            self.manifest["cutout_shape"] = [empty_shape] * n_rows
+        # Create the object_id column as an int64
+        # xcxc what should value be?
+        table[self.object_id_column] = [np.int64(-1)] * n_rows
 
-            # Create filename column
-            self.manifest["filename"] = [""] * n_rows
-            self.manifest["filename"] = self.manifest["filename"].astype("U50")  # 50-char strings
+        # Create shape column as integer array (assuming 3D tensors like [3, 64, 64])
+        empty_shape = np.array([0, 0, 0], dtype=int)  # Placeholder shape
+        table["cutout_shape"] = [empty_shape] * n_rows
 
-            # Add downloaded_bands column to track successful bands in tensor order
-            self.manifest["downloaded_bands"] = [""] * n_rows
-            self.manifest["downloaded_bands"] = self.manifest["downloaded_bands"].astype("U20")  # e.g., "g,r"
-        else:
-            # For NestedFrame/HATS, add None columns
-            self.manifest["cutout_shape"] = [None] * len(self.manifest)
-            self.manifest["filename"] = [None] * len(self.manifest)
-            self.manifest["downloaded_bands"] = [None] * len(self.manifest)
+        # Create filename column
+        table["filename"] = [""] * n_rows
+        # xcxc why 50 chars? I think we should know the number of characters we need exactly by this point...
+        table["filename"] = table["filename"].astype("U50")  # 50-char strings
+
+        # Add downloaded_bands column to track successful bands in tensor order
+        table["downloaded_bands"] = [""] * n_rows
+        table["downloaded_bands"] = table["downloaded_bands"].astype("U20")  # e.g., "g,r"
 
     def _get_available_bands_from_manifest(self, manifest):
         """Get available bands by checking first 10 successful downloads for consistency."""
@@ -348,17 +372,14 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         successful_entries = []
 
-        # Find first 10 successful downloads
-        for i in range(len(manifest)):
+        # Find first 10 successful downloads (check last up to 12 entries, but handle small manifests)
+        start_idx = max(0, len(manifest) - 12)
+        for i in range(start_idx, len(manifest)):
             if len(successful_entries) >= 10:
                 break
 
-            if self.catalog_type == "astropy":
-                filename = manifest["filename"][i]
-                downloaded_bands_str = manifest["downloaded_bands"][i]
-            else:
-                filename = manifest.iloc[i]["filename"]
-                downloaded_bands_str = manifest.iloc[i]["downloaded_bands"]
+            filename = manifest["filename"][i]
+            downloaded_bands_str = manifest["downloaded_bands"][i]
 
             # Only consider successful downloads
             if (
@@ -378,7 +399,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         first_bands = successful_entries[0]
         for i, bands in enumerate(successful_entries[1:], 1):
             if bands != first_bands:
-                raise ValueError(
+                raise RuntimeError(
                     f"Inconsistent band ordering in manifest. Entry 0 has {first_bands}, "
                     f"but entry {i} has {bands}. Cannot determine consistent band structure."
                 )
@@ -405,21 +426,18 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def _get_cutout_path(self, idx):
         """Generate cutout file path for a given index."""
-        if self.use_object_id:
-            if isinstance(self.catalog, Table):
-                object_id = self.catalog[idx][self.object_id_column]
-            else:
-                object_id = self.catalog.iloc[idx][self.object_id_column]
-            return self.download_dir / f"cutout_{object_id}.pt"
-        else:
-            return self.download_dir / f"cutout_{idx:0{self.padding_length}d}.pt"
+        #if self.use_object_id:
+        object_id = self.catalog[idx][self.object_id_column]
+        return self.download_dir / f"cutout_{object_id}.pt"
+        #else:
+        #    return self.download_dir / f"cutout_{idx:0{self.padding_length}d}.pt"
 
     def _update_manifest_entry(self, idx, cutout_shape=None, filename="Attempted", downloaded_bands=None):
         """
-        Thread-safe manifest update with periodic saves.git sta
+        Thread-safe manifest update with periodic saves.
 
         Args:
-            idx: Index in the catalog
+            idx: Index in the manifest
             cutout_shape: Shape tuple of the cutout tensor, or None for failed downloads
             filename: Basename of the saved file, or "Attempted" only when ALL bands fail
             downloaded_bands: List of band names successfully downloaded in tensor order
@@ -431,10 +449,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                 self.manifest["cutout_shape"][idx] = shape_array
             else:
                 # For completely failed downloads
-                if self.catalog_type == "astropy":
-                    self.manifest["cutout_shape"][idx] = np.array([0, 0, 0], dtype=int)
-                else:
-                    self.manifest["cutout_shape"][idx] = None
+                self.manifest["cutout_shape"][idx] = np.array([0, 0, 0], dtype=int)
 
             self.manifest["filename"][idx] = filename
 
@@ -455,14 +470,7 @@ class DownloadedLSSTDataset(LSSTDataset):
     def _save_manifest(self):
         """Save manifest in appropriate format (FITS for Astropy, Parquet for HATS)."""
         try:
-            if self.catalog_type == "astropy":
-                self.manifest.write(self.manifest_path, overwrite=True)
-            else:
-                # For HATS catalogs, save as Parquet
-                # Convert to pandas DataFrame if needed
-                manifest_df = self.manifest.compute() if hasattr(self.manifest, "compute") else self.manifest
-                manifest_df.to_parquet(self.manifest_path)
-
+            self.manifest.write(self.manifest_path, overwrite=True)
             logger.debug(f"Manifest saved to {self.manifest_path}")
         except Exception as e:
             logger.error(f"Failed to save manifest: {e}")
@@ -472,14 +480,27 @@ class DownloadedLSSTDataset(LSSTDataset):
         logger.info("Syncing manifest with filesystem...")
         synced_count = 0
 
-        for idx in range(len(self.manifest)):
-            cutout_path = self._get_cutout_path(idx)
+        # When filtering is active, we need to map manifest indices to catalog indices
+        for manifest_idx in range(len(self.manifest)):
+            # Find the corresponding catalog index for this manifest entry
+            catalog_idx = None
+            if self._manifest_to_catalog_index_map is not None:
+                # Filtering is active - use reverse mapping for O(1) lookup
+                catalog_idx = self._manifest_to_catalog_index_map.get(manifest_idx)
+                # If no catalog index maps to this manifest index, skip (object not in current catalog)
+                if catalog_idx is None:
+                    continue
+            else:
+                # No filtering - direct mapping
+                catalog_idx = manifest_idx
+                # Ensure catalog index is within bounds
+                if catalog_idx >= len(self.catalog):
+                    continue
+
+            cutout_path = self._get_cutout_path(catalog_idx)
 
             # Get current manifest state
-            if self.catalog_type == "astropy":
-                current_filename = self.manifest["filename"][idx]
-            else:
-                current_filename = self.manifest.iloc[idx]["filename"]
+            current_filename = self.manifest["filename"][manifest_idx]
 
             if cutout_path.exists():
                 # File exists on disk
@@ -490,7 +511,9 @@ class DownloadedLSSTDataset(LSSTDataset):
                         bands_for_existing = (
                             list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
                         )
-                        self._update_manifest_entry(idx, cutout.shape, cutout_path.name, bands_for_existing)
+                        self._update_manifest_entry(
+                            manifest_idx, cutout.shape, cutout_path.name, bands_for_existing
+                        )
                         synced_count += 1
                     except Exception as e:
                         logger.warning(f"Could not load existing cutout {cutout_path}: {e}")
@@ -498,13 +521,14 @@ class DownloadedLSSTDataset(LSSTDataset):
                 # File doesn't exist on disk
                 if current_filename and current_filename != "Attempted":
                     # Manifest says file exists but it doesn't, reset entry
-                    self._update_manifest_entry(idx, None, "", [])
+                    self._update_manifest_entry(manifest_idx, None, "", [])
                     synced_count += 1
 
         if synced_count > 0:
             logger.info(f"Synced {synced_count} manifest entries with filesystem")
             self.save_manifest_now()
 
+    # TODO xcxc Could pull out butler downloader (and attendant multithreading) as a mixin?
     @staticmethod
     @functools.lru_cache(maxsize=128)
     def _request_patch_cached(
@@ -551,9 +575,12 @@ class DownloadedLSSTDataset(LSSTDataset):
             logger.error(f"Failed to fetch patch {tract_index}-{patch_index}: {e}")
             raise
 
-    def _fetch_single_cutout(self, row, idx=None):
+    def _fetch_single_cutout(self, row, idx=None, manifest_idx=None):
         """Fetch cutout, using saved cutout if available, with optional band filtering."""
         if idx is not None:
+            # xcxc there's a race here where the cutout is mid-download and doesn't exist in the manifest yet
+            # but we are still trying to access it, and the file exists. THis codepath needs to consult the 
+            # manifest and consider synchronization.
             cutout_path = self._get_cutout_path(idx)
             if cutout_path.exists():
                 # Load cached cutout
@@ -563,45 +590,52 @@ class DownloadedLSSTDataset(LSSTDataset):
                 if self._is_filtering_bands and self._band_indices is not None:
                     cutout = cutout[self._band_indices]
                     logger.debug(f"Applied band filtering to cached cutout {idx}: {cutout.shape}")
+
+                return self.apply_transform(cutout)
+
+        # For main thread, use parent's method (original caching)
+        import threading
+
+        if threading.current_thread() is threading.main_thread():
+            cutout = super()._fetch_single_cutout(row)
+            # When using parent method, assume all original bands were successful
+            downloaded_bands = list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
         else:
-            # For main thread, use parent's method (original caching)
-            import threading
+            # For worker threads, use our cached method
+            cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
 
-            if threading.current_thread() is threading.main_thread():
-                cutout = super()._fetch_single_cutout(row)
-                # When using parent method, assume all original bands were successful
-                downloaded_bands = (
-                    list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
-                )
+        # Apply band filtering to new downloads if needed
+        original_cutout_shape = cutout.shape
+        if self._is_filtering_bands and self._band_indices is not None:
+            cutout = cutout[self._band_indices]
+            # Update downloaded_bands to reflect only the filtered bands that were actually present
+            downloaded_bands = []
+            for i in self._band_indices:
+                if i >= len(self._original_bands):
+                    raise ValueError(
+                        f"Band index {i} is out of bounds for\
+                                original_bands (length {len(self._original_bands)}). "
+                        f"This indicates a bug in band filtering setup."
+                    )
+                downloaded_bands.append(self._original_bands[i])
+            logger.debug(f"Applied band filtering to new cutout: {original_cutout_shape} -> {cutout.shape}")
+
+        # Save cutout if idx provided (save the filtered version)
+        if idx is not None:
+            cutout_path = self._get_cutout_path(idx)
+            torch.save(cutout, cutout_path)
+
+            # Use manifest_idx for updating manifest, fallback to idx if not provided
+            update_idx = manifest_idx if manifest_idx is not None else idx
+
+            # Determine if this is a complete failure (all bands failed)
+            if len(downloaded_bands) == 0:
+                # All bands failed - mark as "Attempted"
+                self._update_manifest_entry(update_idx, None, "Attempted", downloaded_bands)
             else:
-                # For worker threads, use our cached method
-                cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
-
-            # Apply band filtering to new downloads if needed
-            original_cutout_shape = cutout.shape
-            if self._is_filtering_bands and self._band_indices is not None:
-                cutout = cutout[self._band_indices]
-                # Update downloaded_bands to reflect only the filtered bands that were actually present
-                downloaded_bands = [
-                    self._original_bands[i] for i in self._band_indices if i < len(self._original_bands)
-                ]
-                logger.debug(
-                    f"Applied band filtering to new cutout: {original_cutout_shape} -> {cutout.shape}"
-                )
-
-            # Save cutout if idx provided (save the filtered version)
-            if idx is not None:
-                cutout_path = self._get_cutout_path(idx)
-                torch.save(cutout, cutout_path)
-
-                # Determine if this is a complete failure (all bands failed)
-                if len(downloaded_bands) == 0:
-                    # All bands failed - mark as "Attempted"
-                    self._update_manifest_entry(idx, None, "Attempted", downloaded_bands)
-                else:
-                    # At least some bands succeeded - save with proper filename
-                    filename = cutout_path.name
-                    self._update_manifest_entry(idx, cutout.shape, filename, downloaded_bands)
+                # At least some bands succeeded - save with proper filename
+                filename = cutout_path.name
+                self._update_manifest_entry(update_idx, cutout.shape, filename, downloaded_bands)
 
         return self.apply_transform(cutout)
 
@@ -654,18 +688,38 @@ class DownloadedLSSTDataset(LSSTDataset):
         # Return cutout and downloaded bands info for manifest tracking
         return data_torch, downloaded_bands
 
+    def __len__(self):
+        """Return length of current catalog, not the full manifest."""
+        return len(self.catalog)
+
+    def _get_manifest_index_for_catalog_index(self, catalog_idx):
+        """Map catalog index to manifest index when filtering is active."""
+        if self._catalog_to_manifest_index_map is None:
+            # No filtering - direct mapping
+            return catalog_idx
+
+        # Use pre-built mapping for efficiency
+        if catalog_idx in self._catalog_to_manifest_index_map:
+            return self._catalog_to_manifest_index_map[catalog_idx]
+
+        raise ValueError(f"Catalog index {catalog_idx} not found in mapping")
+
+    # xcxc Could remove in lieu of LSSTDataset __getitem__ if butler gets are
+    # a mixin
     def __getitem__(self, idxs):
         """Modified to pass index for saving cutouts."""
         # Handle single index
         if isinstance(idxs, int):
-            row = self.catalog[idxs] if isinstance(self.catalog, Table) else self.catalog.iloc[idxs]
-            return self._fetch_single_cutout(row, idx=idxs)
+            row = self.catalog[idxs]
+            manifest_idx = self._get_manifest_index_for_catalog_index(idxs)
+            return self._fetch_single_cutout(row, idx=idxs, manifest_idx=manifest_idx)
 
         # Handle multiple indices
         cutouts = []
         for idx in idxs:
-            row = self.catalog[idx] if isinstance(self.catalog, Table) else self.catalog.iloc[idx]
-            cutouts.append(self._fetch_single_cutout(row, idx=idx))
+            row = self.catalog[idx]
+            manifest_idx = self._get_manifest_index_for_catalog_index(idx)
+            cutouts.append(self._fetch_single_cutout(row, idx=idx, manifest_idx=manifest_idx))
 
         return cutouts
 
@@ -689,25 +743,26 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         # Determine which cutouts need downloading
         indices_to_download = []
-        for idx in indices:
-            cutout_path = self._get_cutout_path(idx)
+        for catalog_idx in indices:
+            manifest_idx = self._get_manifest_index_for_catalog_index(catalog_idx)
+            cutout_path = self._get_cutout_path(catalog_idx)
 
             # Check if file exists on disk
             if cutout_path.exists():
                 continue
 
             # Check manifest status
-            if self.catalog_type == "astropy":
-                filename = self.manifest["filename"][idx]
-            else:
-                filename = self.manifest.iloc[idx]["filename"]
+            filename = self.manifest["filename"][manifest_idx]
 
             # Skip if already attempted and failed (unless force_retry is True)
             if filename == "Attempted" and not force_retry:
-                logger.debug(f"Skipping previously failed download for index {idx}")
+                logger.debug(
+                    f"Skipping previously failed download for catalog\
+                            index {catalog_idx} (manifest index {manifest_idx})"
+                )
                 continue
 
-            indices_to_download.append(idx)
+            indices_to_download.append((catalog_idx, manifest_idx))
 
         if not indices_to_download:
             logger.info("All cutouts already downloaded")
@@ -720,7 +775,13 @@ class DownloadedLSSTDataset(LSSTDataset):
         logger.info(f"Downloading {len(indices_to_download)} cutouts using {max_workers} threads.")
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = {executor.submit(self._download_single_cutout, idx): idx for idx in indices_to_download}
+            futures = {
+                executor.submit(self._download_single_cutout, catalog_idx, manifest_idx): (
+                    catalog_idx,
+                    manifest_idx,
+                )
+                for catalog_idx, manifest_idx in indices_to_download
+            }
 
             with tqdm(total=len(indices_to_download), desc="Downloading cutouts") as pbar:
                 for future in as_completed(futures):
@@ -728,9 +789,12 @@ class DownloadedLSSTDataset(LSSTDataset):
                         future.result()
                         pbar.update(1)
                     except Exception as e:
-                        idx = futures[future]
-                        logger.error(f"Failed to download cutout {idx}: {e}")
-                        self._update_manifest_entry(idx, None, "Attempted", [])
+                        catalog_idx, manifest_idx = futures[future]
+                        logger.error(
+                            f"Failed to download cutout\
+                                    catalog_idx={catalog_idx}, manifest_idx={manifest_idx}: {e}"
+                        )
+                        self._update_manifest_entry(manifest_idx, None, "Attempted", [])
                         pbar.update(1)
 
         # Final manifest save
@@ -744,31 +808,37 @@ class DownloadedLSSTDataset(LSSTDataset):
         logger.info(f"Download complete. Cache stats: {cache_info}")
         logger.info(f"Manifest saved to {self.manifest_path}")
 
-    def _download_single_cutout(self, idx):
+    def _download_single_cutout(self, catalog_idx, manifest_idx):
         """Helper method to download a single cutout."""
-        cutout_path = self._get_cutout_path(idx)
+        cutout_path = self._get_cutout_path(catalog_idx)
         if cutout_path.exists():
             return
 
         try:
-            row = self.catalog[idx] if isinstance(self.catalog, Table) else self.catalog.iloc[idx]
+            row = self.catalog[catalog_idx]
             cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
 
             #  Only save cutout and mark as successful if at least one band worked
             if len(downloaded_bands) == 0:
                 # All bands failed - don't save file, mark as "Attempted"
-                self._update_manifest_entry(idx, None, "Attempted", downloaded_bands)
-                raise RuntimeError(f"All bands failed for cutout {idx}")
+                self._update_manifest_entry(manifest_idx, None, "Attempted", downloaded_bands)
+                raise RuntimeError(
+                    f"All bands failed for cutout\
+                        catalog_idx={catalog_idx}, manifest_idx={manifest_idx}"
+                )
             else:
                 # At least some bands succeeded - save the cutout
                 torch.save(cutout, cutout_path)
                 filename = cutout_path.name
-                self._update_manifest_entry(idx, cutout.shape, filename, downloaded_bands)
+                self._update_manifest_entry(manifest_idx, cutout.shape, filename, downloaded_bands)
 
         except Exception as e:
-            logger.error(f"Failed to download cutout {idx}: {e}")
+            logger.error(
+                f"Failed to download cutout\
+                    catalog_idx={catalog_idx}, manifest_idx={manifest_idx}: {e}"
+            )
             # Update manifest with failed attempt (all bands failed)
-            self._update_manifest_entry(idx, None, "Attempted", [])
+            self._update_manifest_entry(manifest_idx, None, "Attempted", [])
             raise
 
     def get_cache_info(self):
@@ -783,47 +853,26 @@ class DownloadedLSSTDataset(LSSTDataset):
     def get_manifest_stats(self):
         """Get manifest statistics including downloaded bands information."""
         with self._manifest_lock:
-            if self.catalog_type == "astropy":
-                successful = sum(
-                    1 for filename in self.manifest["filename"] if filename and filename != "Attempted"
-                )
-                failed = sum(1 for filename in self.manifest["filename"] if filename == "Attempted")
-                pending = sum(1 for filename in self.manifest["filename"] if not filename)
-                expected_band_count = (
-                    len(self._original_bands) if self._is_filtering_bands else len(self.BANDS)
-                )
+            successful = sum(
+                1 for filename in self.manifest["filename"] if filename and filename != "Attempted"
+            )
+            failed = sum(1 for filename in self.manifest["filename"] if filename == "Attempted")
+            pending = sum(1 for filename in self.manifest["filename"] if not filename)
+            expected_band_count = (
+                len(self._original_bands) if self._is_filtering_bands else len(self.BANDS)
+            )
 
-                # Add statistics about partial downloads (cutouts with missing bands)
-                partial_downloads = sum(
-                    1
-                    for i, (filename, downloaded_bands) in enumerate(
-                        zip(self.manifest["filename"], self.manifest["downloaded_bands"])
-                    )
-                    if filename
-                    and filename != "Attempted"
-                    and downloaded_bands
-                    and len(downloaded_bands.split(",")) < expected_band_count
+            # Add statistics about partial downloads (cutouts with missing bands)
+            partial_downloads = sum(
+                1
+                for i, (filename, downloaded_bands) in enumerate(
+                    zip(self.manifest["filename"], self.manifest["downloaded_bands"])
                 )
-            else:
-                successful = sum(
-                    1 for filename in self.manifest["filename"] if filename and filename != "Attempted"
-                )
-                failed = sum(1 for filename in self.manifest["filename"] if filename == "Attempted")
-                pending = sum(1 for filename in self.manifest["filename"] if filename is None)
-                expected_band_count = (
-                    len(self._original_bands) if self._is_filtering_bands else len(self.BANDS)
-                )
-
-                partial_downloads = sum(
-                    1
-                    for i, (filename, downloaded_bands) in enumerate(
-                        zip(self.manifest["filename"], self.manifest["downloaded_bands"])
-                    )
-                    if filename
-                    and filename != "Attempted"
-                    and downloaded_bands
-                    and len(str(downloaded_bands).split(",")) < expected_band_count
-                )
+                if filename
+                and filename != "Attempted"
+                and downloaded_bands
+                and len(downloaded_bands.split(",")) < expected_band_count
+            )
 
             # Collect band failure statistics
             with self._band_failure_lock:
@@ -876,10 +925,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         reset_count = 0
 
         for idx in range(len(self.manifest)):
-            if self.catalog_type == "astropy":
-                filename = self.manifest["filename"][idx]
-            else:
-                filename = self.manifest.iloc[idx]["filename"]
+            filename = self.manifest["filename"][idx]
 
             if filename == "Attempted":
                 self._update_manifest_entry(idx, None, "")
@@ -926,10 +972,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         band_success_analysis = {band: 0 for band in bands_to_analyze}
         complete_downloads = 0
 
-        if self.catalog_type == "astropy":
-            downloaded_bands_entries = self.manifest["downloaded_bands"]
-        else:
-            downloaded_bands_entries = self.manifest["downloaded_bands"]
+        downloaded_bands_entries = self.manifest["downloaded_bands"]
 
         for downloaded_bands_str in downloaded_bands_entries:
             if downloaded_bands_str and str(downloaded_bands_str).strip():
