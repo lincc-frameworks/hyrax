@@ -141,7 +141,7 @@ def test_subset_catalog_preserves_manifest_and_loads_correct_cutouts():
         # Mock the parent class initialization and problematic methods during init
         with (
             mock.patch("hyrax.data_sets.downloaded_lsst_dataset.LSSTDataset.__init__"),
-            mock.patch.object(DownloadedLSSTDataset, "_setup_naming_strategy"),
+            #mock.patch.object(DownloadedLSSTDataset, "_setup_naming_strategy"),
             mock.patch.object(DownloadedLSSTDataset, "_initialize_manifest"),
         ):
             # Create DownloadedLSSTDataset with mocked initialization
@@ -261,7 +261,7 @@ def test_subset_catalog_with_band_filtering():
         # Mock the parent class initialization and problematic methods during init
         with (
             mock.patch("hyrax.data_sets.downloaded_lsst_dataset.LSSTDataset.__init__"),
-            mock.patch.object(DownloadedLSSTDataset, "_setup_naming_strategy"),
+            #mock.patch.object(DownloadedLSSTDataset, "_setup_naming_strategy"),
             mock.patch.object(DownloadedLSSTDataset, "_initialize_manifest"),
         ):
             # Create DownloadedLSSTDataset with mocked initialization
