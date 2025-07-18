@@ -26,20 +26,6 @@ class HyraxAutoencoder(nn.Module):
     The train function has been converted into train_step for use with pytorch-ignite.
     """
 
-    data = {
-        "cifar_1": {
-            "dataset_class": "HyraxCifarDataSet",
-            "data_directory": "path/to/dataset",
-            "fields": ["image", "label", "object_id"],
-            "primary_id_field": "object_id",
-        },
-        "rando": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_directory": "/fake/dir",
-            "fields": ["image"],
-        },
-    }
-
     def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config

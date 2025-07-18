@@ -50,8 +50,8 @@ class SubsetSequentialSampler(Sampler[int]):
         return len(self.indices)
 
 
-def _setup_dataset(data_request, config, tensorboardx_logger):
-    data_provider = DataProvider(data_request, config)
+def _setup_dataset(config, tensorboardx_logger):
+    data_provider = DataProvider(config)
     data_provider.prepare_datasets()
     for friendly_name in data_provider.prepped_datasets:
         data_provider.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
@@ -78,8 +78,7 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
     # Fetch data loader class specified in config and create an instance of it
     # Fetch the model class defined in the config, and use it's ``data`` attribute
     # to initialize the ``DataProvider`` instance.
-    model_cls = fetch_model_class(config)
-    return _setup_dataset(model_cls.data, config, tensorboardx_logger)
+    return _setup_dataset(config, tensorboardx_logger)
 
 
 def setup_model(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None) -> torch.nn.Module:
@@ -100,7 +99,7 @@ def setup_model(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter]
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    data_provider = _setup_dataset(model_cls.data, config, tensorboardx_logger)
+    data_provider = _setup_dataset(config, tensorboardx_logger)
     model = model_cls(config=config, data_sample=data_provider[0])  # type: ignore[attr-defined]
 
     return model, data_provider

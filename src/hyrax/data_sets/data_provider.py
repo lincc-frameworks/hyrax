@@ -15,14 +15,7 @@ class DataProvider(Dataset):
     multiple datasets, each of which can have different fields requested.
     """
 
-    #! Running into a bit of a roadblock - hopefully a byproduct of being tired
-    #! The issue at hand is how to tell ``DataProvider`` what configuration to
-    #! pay attention to.
-    # If this is being used by training or inference, then it makes sense to pay
-    # attention to the data_request sent from the model. However, if this is being
-    # used to revive a dataset for UMAP or visualization, then it should probably
-    # pay attention to the configuration file, and reload from there.
-    def __init__(self, data_request: dict, config: dict):
+    def __init__(self, config: dict):
         """Initialize the DataProvider with the given data query and a hyrax
         config.
 
@@ -33,17 +26,38 @@ class DataProvider(Dataset):
         config : dict
             The Hyrax configuration that can is passed to each dataset instance.
         """
+        if "model_data" in config:
+            data_request = config["model_data"]
+        else:
+            # Assume that we want only one dataset, and that the `model_data` table
+            # is not present in the config. We need to assemble a data_request
+            # based on config['data_set'].
+            #! This default name, "dataset_0" seems not ideal.
+            data_request = {
+                "dataset_0": {
+                    "dataset_class": config["data_set"]["name"],
+                    "data_directory": config["general"]["data_dir"],
+                    "primary_id_field": "object_id",
+                }
+            }
+
         self.data_request = data_request
         self.config = config
         self.prepped_datasets = {}
         self.all_metadata_fields = {}
 
-        #! A naive stopgap, probably not quite what we need long term. There's
-        #! probably a better way to organize the configs here.
-        # ? Perhaps an opportunity to break apart the ``[data_set]`` toml table?
-        for idx, friendly_name in enumerate(self.data_request):
-            self.config[f"dataset_{idx}"] = self.data_request[friendly_name]
-            self.config[f"dataset_{idx}"]["friendly_name"] = friendly_name
+    def __repr__(self):
+        repr_str = ""
+        for friendly_name, data in self.data_request.items():
+            if isinstance(data, dict):
+                repr_str += f"{friendly_name}\n"
+                repr_str += f"  Dataset class: {data['dataset_class']}\n"
+                repr_str += f"  Data directory: {data['data_directory']}\n"
+                if "fields" in data:
+                    repr_str += f"  Fields: {', '.join(data.get('fields', []))}\n"
+                else:
+                    repr_str += "  Fields: *All available fields*\n"
+        return repr_str
 
     def is_iterable(self):
         """??? Boilerplate code needed for now, maybe not forever ???"""
@@ -52,6 +66,13 @@ class DataProvider(Dataset):
     def is_map(self):
         """??? Boilerplate code needed for now, maybe not forever ???"""
         return True
+
+    def metadata(self, idxs=None, fields=None):
+        """!!! Boilerplate that doesn't do what we really need it to do !!!"""
+        import numpy as np
+
+        shape = (len(idxs), len(fields))
+        return np.random.rand(*shape)
 
     def prepare_datasets(self):
         """Instantiate each of the requested datasets based on the `data` dictionary,
@@ -138,9 +159,16 @@ class DataProvider(Dataset):
         for friendly_name in self.data_request:
             returned_data[friendly_name] = {}
             dataset_definition = self.data_request.get(friendly_name)
-            for field in dataset_definition.get("fields"):
-                resolved_data = getattr(self.prepped_datasets[friendly_name], f"get_{field}")(idx)
-                returned_data[friendly_name][field] = resolved_data
+            if dataset_definition.get("fields"):
+                for field in dataset_definition.get("fields"):
+                    resolved_data = getattr(self.prepped_datasets[friendly_name], f"get_{field}")(idx)
+                    returned_data[friendly_name][field] = resolved_data
+            else:
+                # call __getitem__ on the dataset to get all data. Expect that the
+                # returned data is a dictionary with a default set of fields
+                resolved_data = self.prepped_datasets[friendly_name][idx]
+                returned_data[friendly_name] = resolved_data
+
         if self.primary_dataset:
             returned_data["object_id"] = returned_data[self.primary_dataset][self.primary_dataset_id_field]
 
@@ -158,6 +186,6 @@ class DataProvider(Dataset):
             during construction of the HyraxDataset (or derived class).
         """
         all_fields = []
-        for _, v in self.all_metadata_fields:
+        for _, v in self.all_metadata_fields.items():
             all_fields.extend(v)
         return all_fields

@@ -214,19 +214,6 @@ nan_mode = false
 nan_quantile = 0.05
 
 
-[model_data]
-[model_data.cifar_0]
-dataset_class = "HyraxCifarDataSet"
-data_directory = "./data/thing"
-fields = ["object_id", "image", "label"]
-primary_id_field = "object_id"
-
-[model_data.rando]
-dataset_class = "HyraxRandomDataset"
-data_directory = "./data/thing"
-fields = ["image"]
-
-
 ["data_set.random_dataset"]
 # Total number of samples produced by the random dataset
 size = 100
