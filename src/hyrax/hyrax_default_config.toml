@@ -274,7 +274,7 @@ vector_db_dir = false
 infer_results_dir = false
 
 
-["vector_db.chromadb"]
+[vector_db.chromadb]
 # The approximate maximum size of a shard before creating a new one. A smaller
 # value will decrease insert times while increasing search times.
 shard_size_limit = 65536
@@ -284,7 +284,7 @@ shard_size_limit = 65536
 vector_size_warning = 10000
 
 
-["vector_db.qdrant"]
+[vector_db.qdrant]
 # The number of elements in the vectors that will be stored in the vector database.
 # This must be the same as the size of the vectors produced by the model.
 vector_size = 64

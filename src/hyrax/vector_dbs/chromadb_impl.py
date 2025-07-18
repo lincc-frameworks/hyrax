@@ -77,10 +77,10 @@ class ChromaDB(VectorDB):
         self.shard_size = 0  # The number of vectors in the current shard
 
         # The approximate maximum size of a shard before a new one is created
-        self.shard_size_limit = self.config["vector_db.chromadb"]["shard_size_limit"]
+        self.shard_size_limit = self.config["vector_db"]["chromadb"]["shard_size_limit"]
 
         # If set, inserting a vector with number of elements >= this logs a warning.
-        self.vector_size_limit = self.config["vector_db.chromadb"]["vector_size_warning"]
+        self.vector_size_limit = self.config["vector_db"]["chromadb"]["vector_size_warning"]
 
         # Min number of shards before using multiprocess to parallelize the search
         self.min_shards_for_parallelization = MIN_SHARDS_FOR_PARALLELIZATION
