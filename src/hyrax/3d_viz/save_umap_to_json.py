@@ -173,8 +173,10 @@ def save_umap_json(
 
         # If columns_to_include is None, use all columns except the ID column
         if columns_to_include is None:
-            columns_to_include = [col for col in fits_table.colnames if col != id_column]
-            logger.info(f"Including all table columns: {columns_to_include}")
+            columns_to_include = [
+                col for col in fits_table.colnames if (col != id_column and len(fits_table[col].shape) <= 1)
+            ]
+            logger.info(f"Including all table columns except multidimensional columns: {columns_to_include}")
         else:
             # Verify requested columns exist in the table
             missing_columns = [col for col in columns_to_include if col not in fits_table.colnames]
