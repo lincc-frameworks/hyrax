@@ -144,7 +144,7 @@ class ChromaDB(VectorDB):
             logger.warning(
                 f"Attempting to insert vectors with length: {len(vectors[0])}.\
                            Chroma DB often has poor performance when working with vectors\
-                           larger than {self.config['vector_db.chromadb']['vector_size_warning']}"
+                           larger than {self.config['vector_db']['chromadb']['vector_size_warning']}"
             )
 
         # increment counter, if exceeds shard limit, create a new collection

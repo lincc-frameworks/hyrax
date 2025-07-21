@@ -78,7 +78,7 @@ class QdrantDB(VectorDB):
         if self.client is None:
             self.connect()
 
-        expected_size = self.config["vector_db.qdrant"]["vector_size"]
+        expected_size = self.config["vector_db"]["qdrant"]["vector_size"]
         for idx, vector in enumerate(vectors):
             if len(vector) != expected_size:
                 raise ValueError(

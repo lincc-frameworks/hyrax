@@ -32,9 +32,8 @@ class DataProvider(Dataset):
             # Assume that we want only one dataset, and that the `model_data` table
             # is not present in the config. We need to assemble a data_request
             # based on config['data_set'].
-            #! This default name, "dataset_0" seems not ideal.
             data_request = {
-                "dataset_0": {
+                "data": {
                     "dataset_class": config["data_set"]["name"],
                     "data_directory": config["general"]["data_dir"],
                     "primary_id_field": "object_id",
@@ -60,12 +59,16 @@ class DataProvider(Dataset):
         return repr_str
 
     def is_iterable(self):
-        """??? Boilerplate code needed for now, maybe not forever ???"""
-        return False
+        """Assume that that the first dataset in prepped datasets is representative
+        of all the datasets, and return whether it is an iterable style dataset."""
+        pds = self._primary_or_first_dataset()
+        return pds.is_iterable()
 
     def is_map(self):
-        """??? Boilerplate code needed for now, maybe not forever ???"""
-        return True
+        """Assume that that the first dataset in prepped datasets is representative
+        of all the datasets, and return whether it is a map style dataset."""
+        pds = self._primary_or_first_dataset()
+        return pds.is_map()
 
     def metadata(self, idxs=None, fields=None):
         """!!! Boilerplate that doesn't do what we really need it to do !!!"""
@@ -77,8 +80,7 @@ class DataProvider(Dataset):
     def prepare_datasets(self):
         """Instantiate each of the requested datasets based on the `data` dictionary,
         and store the instances in the `prepped_datasets` dictionary."""
-        for friendly_name in self.data_request:
-            dataset_definition = self.data_request.get(friendly_name)
+        for friendly_name, dataset_definition in self.data_request.items():
             ds_cls = dataset_definition.get("dataset_class")
             if ds_cls not in DATA_SET_REGISTRY:
                 logger.error(
@@ -99,7 +101,14 @@ class DataProvider(Dataset):
 
             if "primary_id_field" in dataset_definition:
                 self.primary_dataset = friendly_name
-                self.primary_dataset_id_field = dataset_definition["primary_id_field"]
+                self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
+
+        is_map = set(ds.is_map() for ds in self.prepped_datasets)
+        if len(is_map) > 1:
+            logger.warning(
+                "A mixture of map-style and iterable-style datasets were requested. "
+                "This behavior is not supported. It is highly recommended to use only one style of dataset."
+            )
 
     def validate_request(self):
         """Convenience method to ensure that each requested dataset exists and that
@@ -124,25 +133,35 @@ class DataProvider(Dataset):
 
     def __getitem__(self, idx):
         """Wrapper that allows this class to be used as a PyTorch Dataset."""
-        return self.resolve_data(idx)
+        return self.resolve_data_by_index(idx)
+
+    def __iter__(self):
+        """Wrapper that allows this class to be used as an IterableDataset."""
+        for idx in range(len(self)):
+            yield self.resolve_data_by_iterator(idx)
 
     def __len__(self):
         """Returns the length of the dataset. If the primary dataset is defined
         it will return that, if not, it will default to the first dataset in the
         list of prepped_dataset.keys()."""
-        keys = list(self.prepped_datasets.keys())
-        k = self.primary_dataset if self.primary_dataset else keys[0]
-        return len(self.prepped_datasets[k])
+        pds = self._primary_or_first_dataset()
+        if pds.is_map():
+            # If the dataset is iterable, we can use the length of the iterator
+            return len(pds)
+        else:
+            logger.error("Primary dataset is iterable, cannot determine length.")
 
     def ids(self):
         """Returns the IDs of the dataset. If the primary dataset is defined
         it will return those ids, if not, it will return the ids of the first
         dataset in the list of prepped_dataset.keys()."""
-        keys = list(self.prepped_datasets.keys())
-        k = self.primary_dataset if self.primary_dataset else keys[0]
-        return self.prepped_datasets[k].ids()
+        pds = self._primary_or_first_dataset()
+        if pds.is_map():
+            return pds.ids()
+        else:
+            logger.error("Primary dataset is iterable, cannot determine ids.")
 
-    def resolve_data(self, idx):
+    def resolve_data_by_index(self, idx):
         """This does the work of requesting the data from the prepared datasets.
 
         Parameters
@@ -170,9 +189,23 @@ class DataProvider(Dataset):
                 returned_data[friendly_name] = resolved_data
 
         if self.primary_dataset:
-            returned_data["object_id"] = returned_data[self.primary_dataset][self.primary_dataset_id_field]
+            returned_data["object_id"] = returned_data[self.primary_dataset][
+                self.primary_dataset_id_field_name
+            ]
 
         return returned_data
+
+    def resolve_data_by_iterator(self):
+        """This does the work of requesting the data from the prepared datasets
+        with the expectation that all the datasets requested are iterator-style
+        datasets.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the requested data from the prepared datasets.
+        """
+        return {}
 
     #! Same comment here, as in the prepare_datasets method. Not sure if this is
     #! the right approach.
@@ -189,3 +222,13 @@ class DataProvider(Dataset):
         for _, v in self.all_metadata_fields.items():
             all_fields.extend(v)
         return all_fields
+
+    def _primary_or_first_dataset(self):
+        """Returns the primary dataset instance if it exists, otherwise returns
+        the first dataset in the prepped_datasets."""
+        keys = list(self.prepped_datasets.keys())
+        return (
+            self.prepped_datasets[self.primary_dataset]
+            if self.primary_dataset
+            else self.prepped_datasets[keys[0]]
+        )
