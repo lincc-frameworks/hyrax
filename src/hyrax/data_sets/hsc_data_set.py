@@ -128,11 +128,9 @@ class HSCDataSet(FitsImageDataSet):
         return self.files
 
     def _set_crop_transform(self):
-        from torchvision.transforms.v2 import CenterCrop
-
         cutout_shape = self.config["data_set"]["crop_to"] if self.config["data_set"]["crop_to"] else None
         self.cutout_shape = self._check_file_dimensions() if cutout_shape is None else cutout_shape
-        return CenterCrop(size=self.cutout_shape)
+        self.set_crop_transform(self.cutout_shape)
 
     def _before_preload(self):
         self.filters_ref = (
