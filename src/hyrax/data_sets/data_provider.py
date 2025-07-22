@@ -42,9 +42,11 @@ class DataProvider(Dataset):
 
         self.data_request = data_request
         self.config = config
+
+        self.validate_request()
+
         self.prepped_datasets = {}
         self.all_metadata_fields = {}
-        self.iterators = {}  # Only used if this is a set of iterable datasets
 
     def __repr__(self):
         repr_str = ""
@@ -60,16 +62,12 @@ class DataProvider(Dataset):
         return repr_str
 
     def is_iterable(self):
-        """Assume that that the first dataset in prepped datasets is representative
-        of all the datasets, and return whether it is an iterable style dataset."""
-        pds = self._primary_or_first_dataset()
-        return pds.is_iterable()
+        """DataProvider datasets will always be map-style datasets."""
+        return False
 
     def is_map(self):
-        """Assume that that the first dataset in prepped datasets is representative
-        of all the datasets, and return whether it is a map style dataset."""
-        pds = self._primary_or_first_dataset()
-        return pds.is_map()
+        """DataProvider datasets will always be map-style datasets."""
+        return True
 
     def metadata(self, idxs=None, fields=None):
         """!!! Boilerplate that doesn't do what we really need it to do !!!"""
@@ -104,33 +102,46 @@ class DataProvider(Dataset):
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
 
-        is_map = set(ds.is_map() for _, ds in self.prepped_datasets.items())
-        if len(is_map) > 1:
-            logger.warning(
-                "A mixture of map-style and iterable-style datasets were requested. "
-                "This behavior is not supported. It is highly recommended to use only one style of dataset."
-            )
+        for ds_name, ds in self.prepped_datasets.items():
+            if ds.is_iterable():
+                logger.error(
+                    f"Dataset '{ds_name}' is an iterable-style dataset. "
+                    "This is not supported in the current implementation of DataProvider. "
+                    "Hyrax only supports 1-N map-style datasets at this time or single "
+                    "iterable-style datasets."
+                )
 
     def validate_request(self):
         """Convenience method to ensure that each requested dataset exists and that
         each field in each dataset has a `get_<field_name>` method."""
         problem_count = 0
-        for ds, fields in self.data_request.items():
-            if ds not in DATA_SET_REGISTRY:
+        for _, ds_parameters in self.data_request.items():
+            dataset_class = ds_parameters.get("dataset_class")
+            if dataset_class not in DATA_SET_REGISTRY:
                 logger.error(
-                    f"Unable to locate dataset, '{ds}' in the registered datasets:\
-                        {list(DATA_SET_REGISTRY.keys())}."
+                    f"Unable to locate dataset, '{dataset_class}' in the registered datasets:"
+                    f" {list(DATA_SET_REGISTRY.keys())}."
                 )
                 problem_count += 1
-            for field in fields:
-                if not hasattr(DATA_SET_REGISTRY[ds], f"get_{field}"):
+            if DATA_SET_REGISTRY[dataset_class].is_iterable():
+                logger.error(
+                    f"Dataset '{dataset_class}' is an iterable-style dataset. "
+                    "This is not supported in the current implementation of DataProvider. "
+                    "Hyrax only supports 1-N map-style datasets at this time or single "
+                    "iterable-style datasets."
+                )
+                problem_count += 1
+            for field in ds_parameters.get("fields", []):
+                if not hasattr(DATA_SET_REGISTRY[dataset_class], f"get_{field}"):
                     logger.error(
-                        f"No `get_{field}` method for requested field, '{field}' \
-                            was found in dataset {ds}."
+                        f"No `get_{field}` method for requested field, '{field}' "
+                        f"was found in dataset {dataset_class}."
                     )
                     problem_count += 1
 
-        logger.info(f"Finished validating request. Problems found: {problem_count}")
+        if problem_count > 0:
+            logger.error(f"Finished validating request. Problems found: {problem_count}")
+            raise RuntimeError("Data request validation failed. See logs for details.")
 
     def get_sample(self):
         """Returns a data sample. This should dispatch to either __getitem__ or
@@ -142,11 +153,7 @@ class DataProvider(Dataset):
 
     def __getitem__(self, idx):
         """Wrapper that allows this class to be used as a PyTorch Dataset."""
-        return self.resolve_data_by_index(idx)
-
-    def __iter__(self):
-        """Wrapper that allows this class to be used as an IterableDataset."""
-        return self.resolve_data_by_iterator()
+        return self.resolve_data(idx)
 
     def __len__(self):
         """Returns the length of the dataset. If the primary dataset is defined
@@ -166,7 +173,7 @@ class DataProvider(Dataset):
         pds = self._primary_or_first_dataset()
         return pds.ids() if hasattr(pds, "ids") else []
 
-    def resolve_data_by_index(self, idx):
+    def resolve_data(self, idx):
         """This does the work of requesting the data from the prepared datasets.
 
         Parameters
@@ -194,24 +201,6 @@ class DataProvider(Dataset):
                 returned_data[friendly_name] = resolved_data
 
         return returned_data
-
-    def resolve_data_by_iterator(self):
-        """This does the work of requesting the data from the prepared datasets
-        with the expectation that all the datasets requested are iterator-style
-        datasets.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the requested data from the prepared datasets.
-        """
-        returned_data = {}
-        for friendly_name, ds in self.prepped_datasets.items():
-            if friendly_name not in self.iterators:
-                self.iterators[friendly_name] = iter(ds)
-            returned_data[friendly_name] = next(self.iterators[friendly_name])
-
-        yield returned_data
 
     #! Same comment here, as in the prepare_datasets method. Not sure if this is
     #! the right approach.

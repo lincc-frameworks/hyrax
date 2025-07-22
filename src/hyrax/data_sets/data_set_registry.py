@@ -104,7 +104,8 @@ class HyraxDataset:
 
         self.tensorboardx_logger = None
 
-    def is_iterable(self):
+    @classmethod
+    def is_iterable(cls):
         """
         Returns true if underlying dataset is iterable style, supporting __iter__ vs map style
         where  __getitem__/__len__ are the preferred access methods.
@@ -116,12 +117,13 @@ class HyraxDataset:
         """
         from torch.utils.data import Dataset, IterableDataset
 
-        if isinstance(self, (Dataset, IterableDataset)):
-            return isinstance(self, IterableDataset)
+        if isinstance(cls, (Dataset, IterableDataset)):
+            return isinstance(cls, IterableDataset)
         else:
-            return hasattr(self, "__iter__")
+            return hasattr(cls, "__iter__")
 
-    def is_map(self):
+    @classmethod
+    def is_map(cls):
         """
         Returns true if underlying dataset is map style, supporting __getitem__/__len__ vs iterable
         where __iter__ is the preferred access method.
@@ -133,11 +135,11 @@ class HyraxDataset:
         """
         from torch.utils.data import Dataset, IterableDataset
 
-        if isinstance(self, (Dataset, IterableDataset)):
+        if isinstance(cls, (Dataset, IterableDataset)):
             # All torch IterableDatasets are also Datasets
-            return not isinstance(self, IterableDataset)
+            return not isinstance(cls, IterableDataset)
         else:
-            return hasattr(self, "__getitem__")
+            return hasattr(cls, "__getitem__")
 
     @property
     def config(self):
