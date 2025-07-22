@@ -1,6 +1,5 @@
 import numpy as np
 from astropy.table import Table
-from torch import from_numpy
 from torch.utils.data import Dataset, IterableDataset
 
 from hyrax.data_sets.data_set_registry import HyraxDataset
@@ -165,7 +164,7 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         ret = {
             "index": idx,
             "object_id": self.id_list[idx],
-            "image": from_numpy(self.data[idx]),
+            "image": self.data[idx],
         }
 
         if self.provided_labels:
@@ -215,7 +214,7 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
             ret = {
                 "index": idx,
                 "object_id": idx,
-                "image": from_numpy(image),
+                "image": image,
             }
 
             if self.provided_labels:

@@ -100,7 +100,7 @@ def setup_model(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter]
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
     data_provider = _setup_dataset(config, tensorboardx_logger)
-    model = model_cls(config=config, data_sample=data_provider[0])  # type: ignore[attr-defined]
+    model = model_cls(config=config, data_sample=data_provider.get_sample())  # type: ignore[attr-defined]
 
     return model, data_provider
 

@@ -44,6 +44,7 @@ class DataProvider(Dataset):
         self.config = config
         self.prepped_datasets = {}
         self.all_metadata_fields = {}
+        self.iterators = {}  # Only used if this is a set of iterable datasets
 
     def __repr__(self):
         repr_str = ""
@@ -103,7 +104,7 @@ class DataProvider(Dataset):
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
 
-        is_map = set(ds.is_map() for ds in self.prepped_datasets)
+        is_map = set(ds.is_map() for _, ds in self.prepped_datasets.items())
         if len(is_map) > 1:
             logger.warning(
                 "A mixture of map-style and iterable-style datasets were requested. "
@@ -131,14 +132,21 @@ class DataProvider(Dataset):
 
         logger.info(f"Finished validating request. Problems found: {problem_count}")
 
+    def get_sample(self):
+        """Returns a data sample. This should dispatch to either __getitem__ or
+        __next__ depending on whether the dataset is iterable or map-style."""
+        if self.is_iterable():
+            return next(iter(self))
+        else:
+            return self[0]
+
     def __getitem__(self, idx):
         """Wrapper that allows this class to be used as a PyTorch Dataset."""
         return self.resolve_data_by_index(idx)
 
     def __iter__(self):
         """Wrapper that allows this class to be used as an IterableDataset."""
-        for idx in range(len(self)):
-            yield self.resolve_data_by_iterator(idx)
+        return self.resolve_data_by_iterator()
 
     def __len__(self):
         """Returns the length of the dataset. If the primary dataset is defined
@@ -156,10 +164,7 @@ class DataProvider(Dataset):
         it will return those ids, if not, it will return the ids of the first
         dataset in the list of prepped_dataset.keys()."""
         pds = self._primary_or_first_dataset()
-        if pds.is_map():
-            return pds.ids()
-        else:
-            logger.error("Primary dataset is iterable, cannot determine ids.")
+        return pds.ids() if hasattr(pds, "ids") else []
 
     def resolve_data_by_index(self, idx):
         """This does the work of requesting the data from the prepared datasets.
@@ -188,11 +193,6 @@ class DataProvider(Dataset):
                 resolved_data = self.prepped_datasets[friendly_name][idx]
                 returned_data[friendly_name] = resolved_data
 
-        if self.primary_dataset:
-            returned_data["object_id"] = returned_data[self.primary_dataset][
-                self.primary_dataset_id_field_name
-            ]
-
         return returned_data
 
     def resolve_data_by_iterator(self):
@@ -205,7 +205,13 @@ class DataProvider(Dataset):
         dict
             A dictionary containing the requested data from the prepared datasets.
         """
-        return {}
+        returned_data = {}
+        for friendly_name, ds in self.prepped_datasets.items():
+            if friendly_name not in self.iterators:
+                self.iterators[friendly_name] = iter(ds)
+            returned_data[friendly_name] = next(self.iterators[friendly_name])
+
+        yield returned_data
 
     #! Same comment here, as in the prepare_datasets method. Not sure if this is
     #! the right approach.
