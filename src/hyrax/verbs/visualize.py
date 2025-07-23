@@ -28,7 +28,16 @@ class Visualize(Verb):
         """CLI not implemented for this verb"""
         logger.error("Running visualize from the cli is unimplemented")
 
-    def run(self, input_dir: Optional[Union[Path, str]] = None, *, return_verb: bool = False, **kwargs):
+    def run(
+        self,
+        input_dir: Optional[Union[Path, str]] = None,
+        *,
+        color_column: Optional[str] = None,
+        cmap: str = "viridis",
+        rasterize_plot: bool = True,
+        return_verb: bool = False,
+        **kwargs,
+    ):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.
 
         The plot contains two holoviews objects, a scatter plot of the latent space, and a table of objects
@@ -39,6 +48,16 @@ class Visualize(Verb):
         input_dir : Optional[Union[Path, str]], optional
             Directory holding the output from the 'umap' verb, by default None. When not provided, we use
             the most recent umap int he current results directory.
+
+        color_column : Optional[str], optional
+            Name of catalog column to use for coloring points in the scatter plot.
+
+        cmap : str, optional
+            Colormap to use for coloring points. Defaults to 'viridis'.
+
+        rasterize_plot : bool, optional
+            If True, use rasterization for performance optimization. Defaults to True.
+            Rasterization converts points to pixels for better performance with large datasets.
 
         return_verb : bool, optional
             If True, also return the underlying Visualize instance for post-hoc access
@@ -68,11 +87,14 @@ class Visualize(Verb):
 
         fields = ["object_id"]
         fields += self.config["visualize"]["fields"]
+        self.cmap = cmap
+
         if self.config["visualize"]["display_images"]:
             fields += ["filename"]
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")
+        logger.info(f"Rendering UMAP from the following directory: {self.umap_results.results_dir}")
 
         available_fields = self.umap_results.metadata_fields()
         for field in fields.copy():
@@ -89,6 +111,40 @@ class Visualize(Verb):
 
         self.tree = KDTree(self.umap_results)
 
+        # Store color column and extract color values if specified
+        self.color_column = color_column
+        self.color_values = None
+
+        if color_column is not None:
+            try:
+                # Check if column exists
+                available_fields = self.umap_results.metadata_fields()
+                if color_column not in available_fields:
+                    logger.warning(
+                        f"Column '{color_column}' not found in dataset. Available fields: {available_fields}"
+                    )
+                    self.color_column = None
+                else:
+                    # Get all indices for the dataset
+                    all_indices = list(range(len(self.umap_results)))
+
+                    # Extract metadata for the specified column
+                    metadata = self.umap_results.metadata(all_indices, [color_column])
+                    self.color_values = metadata[color_column]
+                    logger.info(f"Successfully loaded color values from column '{color_column}'")
+                    import numpy as np
+
+                    logger.debug(
+                        f"Color values range: {np.nanmin(self.color_values)} "
+                        f"to {np.nanmax(self.color_values)}"
+                    )
+                    logger.debug(f"NaN count: {np.sum(np.isnan(self.color_values))}")
+            except Exception as e:
+                logger.warning(f"Could not load column '{color_column}': {e}")
+                logger.warning("Proceeding without coloring")
+                self.color_column = None
+                self.color_values = None
+
         # Initialize holoviews with bokeh.
         extension("bokeh")
 
@@ -104,8 +160,24 @@ class Visualize(Verb):
         }
         self.plot_options.update(kwargs)
 
-        plot_dm = DynamicMap(self.visible_points, streams=[RangeXY()])
-        plot_pane = dynspread(rasterize(plot_dm).opts(**self.plot_options))
+        if self.color_column is not None:
+            # For colored plots, show all points to preserve colorbar
+            # This is a current Hack to overcome the fact that the
+            # RangeXY stream breaks the colorbar. Needs to be investigated
+            # further for permanent solution.
+            plot_dm = DynamicMap(
+                lambda: self.visible_points(
+                    x_range=[float("-inf"), float("inf")], y_range=[float("-inf"), float("inf")]
+                )
+            )
+        else:
+            plot_dm = DynamicMap(self.visible_points, streams=[RangeXY()])
+
+        if rasterize_plot:
+            # Note that reasterization will break color-bar feature
+            plot_pane = dynspread(rasterize(plot_dm).opts(**self.plot_options))
+        else:
+            plot_pane = plot_dm.opts(**self.plot_options)
 
         # Setup the table pane event handler
         self.prev_kwargs = {
@@ -203,12 +275,50 @@ class Visualize(Verb):
         hv.Points
             Points lying inside the bounding box passed
         """
+        import numpy as np
         from holoviews import Points
 
         if x_range is None or y_range is None:
             return Points([])
 
-        return Points(self.box_select_points(x_range, y_range)[0])
+        # Check if we should show all points (infinity ranges for color mode)
+        show_all_points = (
+            x_range[0] == float("-inf")
+            or x_range[1] == float("inf")
+            or y_range[0] == float("-inf")
+            or y_range[1] == float("inf")
+        )
+
+        if show_all_points:
+            # Show all points without filtering
+            points = np.array([point.numpy() for point in self.umap_results])
+            point_indices = list(range(len(self.umap_results)))
+        else:
+            # Use existing filtering logic
+            points, _, point_indices = self.box_select_points(x_range, y_range)
+
+        if self.color_values is not None and len(point_indices) > 0:
+            visible_colors = self.color_values[point_indices]
+            # Create Points object with color data (x, y, color)
+            point_data = np.column_stack([points, visible_colors])
+            pts = Points(point_data, vdims=[self.color_column])
+
+            # Apply color options directly to the Points object
+            pts = pts.opts(
+                color=self.color_column,
+                cmap=self.cmap,
+                colorbar=True,
+                colorbar_opts={
+                    "width": 18,
+                    "title": self.color_column,
+                    "title_text_font_size": "14pt",
+                    "title_text_font_style": "normal",
+                },
+            )
+
+            return pts
+        else:
+            return Points(points)
 
     def update_points(self, **kwargs) -> None:
         """
