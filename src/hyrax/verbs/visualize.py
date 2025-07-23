@@ -33,8 +33,11 @@ class Visualize(Verb):
         self,
         input_dir: Optional[Union[Path, str]] = None,
         *,
-        return_verb: bool = False,
         make_lupton_rgb_opts: Optional[dict] = None,
+        color_column: Optional[str] = None,
+        cmap: str = "viridis",
+        rasterize_plot: bool = True,
+        return_verb: bool = False,
         **kwargs,
     ):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.
@@ -48,6 +51,16 @@ class Visualize(Verb):
             Directory holding the output from the 'umap' verb, by default None. When not provided, we use
             [results][inference_dir] from config. If that's false; we the most recent umap in the current
             results directory.
+
+        color_column : Optional[str], optional
+            Name of catalog column to use for coloring points in the scatter plot.
+
+        cmap : str, optional
+            Colormap to use for coloring points. Defaults to 'viridis'.
+
+        rasterize_plot : bool, optional
+            If True, use rasterization for performance optimization. Defaults to True.
+            Rasterization converts points to pixels for better performance with large datasets.
 
         return_verb : bool, optional
             If True, also return the underlying Visualize instance for post-hoc access
