@@ -123,7 +123,13 @@ class HyraxRandomDatasetBase:
             self.labels = rng.choice(self.provided_labels, size=data_size)
 
         # Create a metadata_table that is used when visualizing data
-        metadata_table = Table({"object_id": np.array(list(range(0, data_size)))})
+        metadata_table = Table(
+            {
+                "object_id": np.array(list(range(0, data_size))),
+                "meta_field_1": np.array(list(range(data_size, 0, -1))) / 2,
+                "meta_field_2": np.array(list(range(data_size, 0, -1))) / 3,
+            },
+        )
 
         super().__init__(config, metadata_table)
 
@@ -132,6 +138,16 @@ class HyraxRandomDatasetBase:
     def get_image(self, idx: int) -> np.ndarray:
         """Get the image at the given index as a NumPy array."""
         return self.data[idx]
+
+    def get_label(self, idx: int) -> str:
+        """Get the label at the given index."""
+        if self.provided_labels:
+            return self.labels[idx]
+        return None
+
+    def get_id(self, idx: int) -> int:
+        """Get the index of the item."""
+        return self.id_list[idx]
 
 
 class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
@@ -164,14 +180,14 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         ret = {
             "data": {
                 "index": idx,
-                "object_id": self.id_list[idx],
-                "image": self.data[idx],
+                "object_id": self.get_id(idx),
+                "image": self.get_image(idx),
             },
-            "object_id": idx,
+            "object_id": self.get_id(idx),
         }
 
         if self.provided_labels:
-            ret["data"]["label"] = self.labels[idx]
+            ret["data"]["label"] = self.get_label(idx)
 
         return ret
 
@@ -214,17 +230,17 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
             A dictionary containing a data sample and its metadata.
 
         """
-        for idx, image in enumerate(self.data):
+        for idx, _ in enumerate(self.data):
             ret = {
                 "data": {
                     "index": idx,
-                    "object_id": idx,
-                    "image": image,
+                    "object_id": self.get_id(idx),
+                    "image": self.get_image(idx),
                 },
-                "object_id": idx,
+                "object_id": self.get_id(idx),
             }
 
             if self.provided_labels:
-                ret["data"]["label"] = self.labels[idx]
+                ret["data"]["label"] = self.get_label(idx)
 
             yield ret

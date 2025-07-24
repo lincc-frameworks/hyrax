@@ -95,10 +95,15 @@ class DataProvider(Dataset):
 
     def metadata(self, idxs=None, fields=None):
         """!!! Boilerplate that doesn't do what we really need it to do !!!"""
-        import numpy as np
 
-        shape = (len(idxs), len(fields))
-        return np.random.rand(*shape)
+        # inefficient method to start with, for each field, call get_metadata
+        for field in fields:
+            # get the friendly_name of the field
+            friendly_name = field.rsplit("_", 1)[1]
+            this_metadata = self.prepped_datasets[friendly_name].metadata(idxs, field)
+
+            # append this_metadata to an array of metadata with the column name, `field`.
+        return
 
     def prepare_datasets(self):
         """Instantiate each of the requested datasets based on the `data` dictionary,
@@ -127,10 +132,12 @@ class DataProvider(Dataset):
 
                 self.prepped_datasets[friendly_name] = ds_instance
 
-                #! This feels weird - not sure what the right approach is, might
-                #! depend on how we move ahead with metadata for visualization.
+                # Get all of the column names for a dataset's metadata table and
+                # store them in the all_metadata_fields dictionary.
+                # Modify the name to be <field_name>_<friendly_name>, i.e. "RA_cifar".
                 if ds_instance._metadata_table:
-                    self.all_metadata_fields[friendly_name] = list(ds_instance._metadata_table.colnames)
+                    columns = [f"{col}_{friendly_name}" for col in ds_instance._metadata_table.colnames]
+                    self.all_metadata_fields[friendly_name] = columns
                 else:
                     self.all_metadata_fields[friendly_name] = []
 
@@ -256,6 +263,7 @@ class DataProvider(Dataset):
         all_fields = []
         for _, v in self.all_metadata_fields.items():
             all_fields.extend(v)
+        all_fields.append("object_id")  # Always include the object_id field
         return all_fields
 
     def _primary_or_first_dataset(self):
