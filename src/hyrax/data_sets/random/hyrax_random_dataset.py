@@ -123,7 +123,7 @@ class HyraxRandomDatasetBase:
             self.labels = rng.choice(self.provided_labels, size=data_size)
 
         # Create a metadata_table that is used when visualizing data
-        metadata_table = Table({"object_id": np.array(list(self.ids()))})
+        metadata_table = Table({"object_id": np.array(list(range(0, data_size)))})
 
         super().__init__(config, metadata_table)
 
@@ -162,13 +162,16 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         """
 
         ret = {
-            "index": idx,
-            "object_id": self.id_list[idx],
-            "image": self.data[idx],
+            "data": {
+                "index": idx,
+                "object_id": self.id_list[idx],
+                "image": self.data[idx],
+            },
+            "object_id": idx,
         }
 
         if self.provided_labels:
-            ret["label"] = self.labels[idx]
+            ret["data"]["label"] = self.labels[idx]
 
         return ret
 
@@ -196,13 +199,14 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
     """
 
     def __iter__(self):
-        """Yield the next data sample. The returned dictionary will contain the
-        following keys:
+        """Yield the next data sample. The returned dictionary will have the
+        following form:
 
-        - ``index``: The index of the data sample.
-        - ``object_id``: The value will be the same as ``index`` for this dataset.
-        - ``image``: The data sample as a numpy array.
-        - ``label``: The label of the data sample (if provided).
+        - ``data``: A dictionary containing the following keys:
+        -- ``index``: The index of the data sample.
+        -- ``object_id``: The value will be the same as ``index`` for this dataset.
+        -- ``image``: The data sample as a numpy array.
+        -- ``label``: The label of the data sample (if provided).
 
         Returns
         -------
@@ -212,12 +216,15 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
         """
         for idx, image in enumerate(self.data):
             ret = {
-                "index": idx,
+                "data": {
+                    "index": idx,
+                    "object_id": idx,
+                    "image": image,
+                },
                 "object_id": idx,
-                "image": image,
             }
 
             if self.provided_labels:
-                ret["label"] = self.labels[idx]
+                ret["data"]["label"] = self.labels[idx]
 
             yield ret

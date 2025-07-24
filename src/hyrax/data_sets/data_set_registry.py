@@ -99,6 +99,8 @@ class HyraxDataset:
         if self._metadata_table is not None:
             colnames = self._metadata_table.colnames
             if "object_id" not in colnames:
+                #! TODO: Determine if self.ids() will work for iterable datasets in the future.
+                #! See https://github.com/lincc-frameworks/hyrax/issues/374
                 ids = np.array(list(self.ids()))
                 self._metadata_table.add_column(ids, name="object_id")
 
@@ -117,8 +119,9 @@ class HyraxDataset:
         """
         from torch.utils.data import Dataset, IterableDataset
 
-        if isinstance(cls, (Dataset, IterableDataset)):
-            return isinstance(cls, IterableDataset)
+        if issubclass(cls, (Dataset, IterableDataset)):
+            # All torch IterableDatasets are also Datasets
+            return issubclass(cls, IterableDataset)
         else:
             return hasattr(cls, "__iter__")
 
@@ -135,9 +138,9 @@ class HyraxDataset:
         """
         from torch.utils.data import Dataset, IterableDataset
 
-        if isinstance(cls, (Dataset, IterableDataset)):
+        if issubclass(cls, (Dataset, IterableDataset)):
             # All torch IterableDatasets are also Datasets
-            return not isinstance(cls, IterableDataset)
+            return not issubclass(cls, IterableDataset)
         else:
             return hasattr(cls, "__getitem__")
 
@@ -189,6 +192,21 @@ class HyraxDataset:
                 yield (str(index))
         else:
             return NotImplementedError("You must define __len__ or __iter__ to use automatic id()")
+
+    def sample_data(self) -> dict:
+        """Get a sample from the dataset. This is a convenience function that returns
+        the first sample from the dataset, regardless of whether it is iterable
+        or map-style. Often this will be used to instantiate a model that adjusts
+        its form based on the shape of the data."""
+
+        if self.is_map():
+            return self[0]
+        elif self.is_iterable():
+            return next(iter(self))
+        else:
+            return NotImplementedError(
+                "You must define __getitem__ or __iter__ to use automatic get_sample()"
+            )
 
     def metadata_fields(self) -> list[str]:
         """Returns a list of metadata fields supported by this object

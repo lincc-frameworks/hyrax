@@ -1,8 +1,6 @@
 # ruff: noqa: D101, D102
 import logging
 
-import numpy as np
-import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
@@ -129,8 +127,7 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
-        x = batch[0] if isinstance(batch, tuple) else batch
+        x = batch
 
         z = self._eval_encoder(x)
         x_hat = self._eval_decoder(z)
@@ -154,23 +151,12 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        cifar_data = data_dict.get("cifar_0", {})
-        random_data = data_dict.get("rando", {})
+        cifar_data = data_dict.get("data", {})
 
-        if "label" in cifar_data:
-            label = cifar_data["label"]
-
-        if "image" in cifar_data and "image" in random_data:
-            cifar_image = cifar_data["image"]
-            random_image = random_data["image"]
-            stack_dim = 0 if cifar_image.ndim == 3 else 1
-            image = torch.from_numpy(np.concatenate([cifar_image, random_image], axis=stack_dim))
-        elif "image" in cifar_data:
+        if "image" in cifar_data:
             image = cifar_data["image"]
-        elif "image" in random_data:
-            image = torch.from_numpy(random_data["image"])
 
-        return (image, label)
+        return image
 
     def _optimizer(self):
         return optim.Adam(self.parameters(), lr=1e-3)

@@ -67,9 +67,12 @@ class HyraxCifarDataSet(HyraxCifarBase, HyraxDataset, Dataset):
 
     def __getitem__(self, idx):
         return {
+            "data": {
+                "object_id": self.get_object_id(idx),
+                "image": self.get_image(idx),
+                "label": self.get_label(idx),
+            },
             "object_id": self.get_object_id(idx),
-            "image": self.get_image(idx),
-            "label": self.get_label(idx),
         }
 
 
@@ -86,7 +89,10 @@ class HyraxCifarIterableDataSet(HyraxCifarBase, HyraxDataset, IterableDataset):
     def __iter__(self):
         for idx in range(len(self.cifar)):
             yield {
+                "data": {
+                    "object_id": self.get_object_id(idx),
+                    "image": self.get_image(idx),
+                    "label": self.get_label(idx),
+                },
                 "object_id": self.get_object_id(idx),
-                "image": self.get_image(idx),
-                "label": self.get_label(idx),
             }

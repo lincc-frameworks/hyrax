@@ -8,6 +8,43 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def generate_data_request_from_config(config):
+    """This function handles the backward compatibility issue of defining the requested
+    dataset in the `[data_set]` table in the config. If a `[model_data]` table
+    is not defined, we will assemble a data_request dictionary from the values
+    defined elsewhere in the configuration file.
+
+    NOTE: We should anticipate deprecating the ability to define a data_request in
+    `[data_set]`, when that happens, we should be able to remove this function.
+
+    Parameters
+    ----------
+    config : dict
+        The Hyrax configuration that can is passed to each dataset instance.
+
+    Returns
+    -------
+    dict
+        A dictionary where keys are dataset names and values are lists of fields
+    """
+
+    if "model_data" in config:
+        data_request = config["model_data"]
+    else:
+        # Assume that we want only one dataset, and that the `model_data` table
+        # is not present in the config. We need to assemble a data_request
+        # based on config['data_set'].
+        data_request = {
+            "data": {
+                "dataset_class": config["data_set"]["name"],
+                "data_directory": config["general"]["data_dir"],
+                "primary_id_field": "object_id",
+            }
+        }
+
+    return data_request
+
+
 class DataProvider(Dataset):
     """This class presents itself as a PyTorch Dataset, but acts like a GraphQL
     gateway that fetches data from multiple datasets based on the `data` dictionary
@@ -26,22 +63,9 @@ class DataProvider(Dataset):
         config : dict
             The Hyrax configuration that can is passed to each dataset instance.
         """
-        if "model_data" in config:
-            data_request = config["model_data"]
-        else:
-            # Assume that we want only one dataset, and that the `model_data` table
-            # is not present in the config. We need to assemble a data_request
-            # based on config['data_set'].
-            data_request = {
-                "data": {
-                    "dataset_class": config["data_set"]["name"],
-                    "data_directory": config["general"]["data_dir"],
-                    "primary_id_field": "object_id",
-                }
-            }
 
-        self.data_request = data_request
         self.config = config
+        self.data_request = generate_data_request_from_config(self.config)
 
         self.validate_request()
 
@@ -89,6 +113,18 @@ class DataProvider(Dataset):
             else:
                 data_directory = dataset_definition.get("data_directory")
                 ds_instance = DATA_SET_REGISTRY[ds_cls](self.config, data_directory)
+
+                # If a user creates a DataProvider instance manually, this will
+                # guard against iterable-style dataset creeping in. Under normal
+                # circumstances iterable-style dataset would be caught prior to this.
+                if ds_instance.is_iterable():
+                    logger.error(
+                        f"Dataset '{friendly_name}' is an iterable-style dataset. "
+                        "This is not supported in the current implementation of DataProvider. "
+                        "Hyrax only supports 1-N map-style datasets at this time or single "
+                        "iterable-style datasets."
+                    )
+
                 self.prepped_datasets[friendly_name] = ds_instance
 
                 #! This feels weird - not sure what the right approach is, might
@@ -101,15 +137,6 @@ class DataProvider(Dataset):
             if "primary_id_field" in dataset_definition:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
-
-        for ds_name, ds in self.prepped_datasets.items():
-            if ds.is_iterable():
-                logger.error(
-                    f"Dataset '{ds_name}' is an iterable-style dataset. "
-                    "This is not supported in the current implementation of DataProvider. "
-                    "Hyrax only supports 1-N map-style datasets at this time or single "
-                    "iterable-style datasets."
-                )
 
     def validate_request(self):
         """Convenience method to ensure that each requested dataset exists and that
@@ -131,25 +158,38 @@ class DataProvider(Dataset):
                     "iterable-style datasets."
                 )
                 problem_count += 1
-            for field in ds_parameters.get("fields", []):
-                if not hasattr(DATA_SET_REGISTRY[dataset_class], f"get_{field}"):
+            # If "fields" wasn't provided or it's empty or None, attempt to gather
+            # all available get_* methods in the dataset class.
+            if "fields" not in ds_parameters or not ds_parameters["fields"]:
+                # Gather all available fields from the dataset class
+                ds_parameters["fields"] = [
+                    method[4:]
+                    for method in dir(DATA_SET_REGISTRY[dataset_class])
+                    if method.startswith("get_")
+                ]
+                if not ds_parameters["fields"]:
                     logger.error(
-                        f"No `get_{field}` method for requested field, '{field}' "
-                        f"was found in dataset {dataset_class}."
+                        f"No fields were found in dataset {dataset_class}. "
+                        "This is likely an error in the dataset definition."
                     )
                     problem_count += 1
+            else:
+                for field in ds_parameters.get("fields", []):
+                    if not hasattr(DATA_SET_REGISTRY[dataset_class], f"get_{field}"):
+                        logger.error(
+                            f"No `get_{field}` method for requested field, '{field}' "
+                            f"was found in dataset {dataset_class}."
+                        )
+                        problem_count += 1
 
         if problem_count > 0:
             logger.error(f"Finished validating request. Problems found: {problem_count}")
             raise RuntimeError("Data request validation failed. See logs for details.")
 
-    def get_sample(self):
-        """Returns a data sample. This should dispatch to either __getitem__ or
-        __next__ depending on whether the dataset is iterable or map-style."""
-        if self.is_iterable():
-            return next(iter(self))
-        else:
-            return self[0]
+    def sample_data(self):
+        """Returns a data sample. Primarily this will be used for instantiating a
+        model so that any runtime resizing can be handled properly."""
+        return self[0]
 
     def __getitem__(self, idx):
         """Wrapper that allows this class to be used as a PyTorch Dataset."""
@@ -194,11 +234,11 @@ class DataProvider(Dataset):
                 for field in dataset_definition.get("fields"):
                     resolved_data = getattr(self.prepped_datasets[friendly_name], f"get_{field}")(idx)
                     returned_data[friendly_name][field] = resolved_data
-            else:
-                # call __getitem__ on the dataset to get all data. Expect that the
-                # returned data is a dictionary with a default set of fields
-                resolved_data = self.prepped_datasets[friendly_name][idx]
-                returned_data[friendly_name] = resolved_data
+
+        if self.primary_dataset:
+            returned_data["object_id"] = returned_data[self.primary_dataset][
+                self.primary_dataset_id_field_name
+            ]
 
         return returned_data
 
@@ -210,8 +250,8 @@ class DataProvider(Dataset):
         Returns
         -------
         list[str]
-            The column names of the metadata table passed. Empty string if no metadata was provided at
-            during construction of the HyraxDataset (or derived class).
+            The column names of the metadata table passed. Empty list if no metadata
+            was provided during construction of the DataProvider.
         """
         all_fields = []
         for _, v in self.all_metadata_fields.items():
