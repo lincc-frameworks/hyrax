@@ -1,6 +1,5 @@
 import numpy as np
 from astropy.table import Table
-from torch import from_numpy
 from torch.utils.data import Dataset, IterableDataset
 
 from hyrax.data_sets.data_set_registry import HyraxDataset
@@ -31,7 +30,11 @@ class HyraxRandomDatasetBase:
     provided_labels: list
     """A list of labels randomly selected from the provided list of possible labels."""
 
-    def __init__(self, config):
+    # ? Adding data_directory here for symmetry. It's obviously not used by this dataset
+    # ? but if we want to allow people to use RandomDataset as a placeholder and
+    # ? then immediately drop in a dataset that they actually want to use, it will
+    # ? be important to make the signatures consistent across the datasets.
+    def __init__(self, config, data_directory):
         """
         .. py:method:: __init__(config)
 
@@ -120,9 +123,31 @@ class HyraxRandomDatasetBase:
             self.labels = rng.choice(self.provided_labels, size=data_size)
 
         # Create a metadata_table that is used when visualizing data
-        metadata_table = Table({"object_id": np.array(list(self.ids()))})
+        metadata_table = Table(
+            {
+                "object_id": np.array(list(range(0, data_size))),
+                "meta_field_1": np.array(list(range(data_size, 0, -1))) / 2,
+                "meta_field_2": np.array(list(range(data_size, 0, -1))) / 3,
+            },
+        )
 
         super().__init__(config, metadata_table)
+
+        self.data_directory = data_directory
+
+    def get_image(self, idx: int) -> np.ndarray:
+        """Get the image at the given index as a NumPy array."""
+        return self.data[idx]
+
+    def get_label(self, idx: int) -> str:
+        """Get the label at the given index."""
+        if self.provided_labels:
+            return self.labels[idx]
+        return None
+
+    def get_id(self, idx: int) -> int:
+        """Get the index of the item."""
+        return self.id_list[idx]
 
 
 class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
@@ -153,13 +178,16 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         """
 
         ret = {
-            "index": idx,
-            "object_id": self.id_list[idx],
-            "image": from_numpy(self.data[idx]),
+            "data": {
+                "index": idx,
+                "object_id": self.get_id(idx),
+                "image": self.get_image(idx),
+            },
+            "object_id": self.get_id(idx),
         }
 
         if self.provided_labels:
-            ret["label"] = self.labels[idx]
+            ret["data"]["label"] = self.get_label(idx)
 
         return ret
 
@@ -187,13 +215,14 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
     """
 
     def __iter__(self):
-        """Yield the next data sample. The returned dictionary will contain the
-        following keys:
+        """Yield the next data sample. The returned dictionary will have the
+        following form:
 
-        - ``index``: The index of the data sample.
-        - ``object_id``: The value will be the same as ``index`` for this dataset.
-        - ``image``: The data sample as a numpy array.
-        - ``label``: The label of the data sample (if provided).
+        - ``data``: A dictionary containing the following keys:
+        -- ``index``: The index of the data sample.
+        -- ``object_id``: The value will be the same as ``index`` for this dataset.
+        -- ``image``: The data sample as a numpy array.
+        -- ``label``: The label of the data sample (if provided).
 
         Returns
         -------
@@ -201,14 +230,17 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
             A dictionary containing a data sample and its metadata.
 
         """
-        for idx, image in enumerate(self.data):
+        for idx, _ in enumerate(self.data):
             ret = {
-                "index": idx,
-                "object_id": idx,
-                "image": from_numpy(image),
+                "data": {
+                    "index": idx,
+                    "object_id": self.get_id(idx),
+                    "image": self.get_image(idx),
+                },
+                "object_id": self.get_id(idx),
             }
 
             if self.provided_labels:
-                ret["label"] = self.labels[idx]
+                ret["data"]["label"] = self.get_label(idx)
 
             yield ret

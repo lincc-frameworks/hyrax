@@ -1,5 +1,5 @@
 # ruff: noqa: D101, D102
-
+import logging
 
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
@@ -9,6 +9,8 @@ from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
+
+logger = logging.getLogger(__name__)
 
 
 @hyrax_model
@@ -22,11 +24,14 @@ class HyraxAutoencoder(nn.Module):
     The train function has been converted into train_step for use with pytorch-ignite.
     """
 
-    def __init__(self, config, shape=(5, 250, 250)):
+    def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config
 
-        # TODO config-ize or get from data loader somehow
+        logger.warning(f"Initializing HyraxAutoencoder with data sample: {data_sample}")
+        shape = self.to_tensor(data_sample).shape
+        logger.warning(f"Found shape: {shape} in data sample, using this to initialize model.")
+
         self.num_input_channels, self.image_width, self.image_height = shape
 
         self.c_hid = self.config["model"]["base_channel_size"]
@@ -122,8 +127,7 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
-        x = batch[0] if isinstance(batch, tuple) else batch
+        x = batch
 
         z = self._eval_encoder(x)
         x_hat = self._eval_decoder(z)
@@ -147,12 +151,12 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        if "image" in data_dict and "label" in data_dict:
-            image = data_dict["image"]
-            label = data_dict["label"]
-            return (image, label)
-        else:
-            raise RuntimeError("Data dict did not contain both image and label keys.")
+        cifar_data = data_dict.get("data", {})
+
+        if "image" in cifar_data:
+            image = cifar_data["image"]
+
+        return image
 
     def _optimizer(self):
         return optim.Adam(self.parameters(), lr=1e-3)
