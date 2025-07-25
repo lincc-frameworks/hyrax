@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 from torch.utils.data import Dataset
 
 from hyrax.data_sets.data_set_registry import DATA_SET_REGISTRY
@@ -94,16 +95,35 @@ class DataProvider(Dataset):
         return True
 
     def metadata(self, idxs=None, fields=None):
-        """!!! Boilerplate that doesn't do what we really need it to do !!!"""
+        """Fetch metadata for the requested fields and indices."""
 
-        # inefficient method to start with, for each field, call get_metadata
-        for field in fields:
-            # get the friendly_name of the field
-            friendly_name = field.rsplit("_", 1)[1]
-            this_metadata = self.prepped_datasets[friendly_name].metadata(idxs, field)
+        # Create an empty structured array to hold the merged metadata
+        returned_metadata = np.empty(0, dtype=[])
 
-            # append this_metadata to an array of metadata with the column name, `field`.
-        return
+        # For each dataset, find the fields that were requested that come from it,
+        # strip the friendly name from the field name, and then
+        # call the dataset's metadata method with the stripped field names.
+        for friendly_name, dataset in self.prepped_datasets.items():
+            fetch_fields = [
+                field.replace(f"_{friendly_name}", "")
+                for field in fields
+                if field.endswith(f"_{friendly_name}")
+            ]
+
+            if fetch_fields:
+                this_metadata = dataset.metadata(idxs, fetch_fields)
+                # rename the columns to include the friendly name
+                this_metadata.dtype.names = [f"{name}_{friendly_name}" for name in this_metadata.dtype.names]
+
+                # merge this_metadata into the returned_metadata structured array
+                if returned_metadata.size == 0:
+                    returned_metadata = this_metadata
+                else:
+                    returned_metadata = np.lib.recfunctions.merge_arrays(
+                        (returned_metadata, this_metadata), flatten=True
+                    )
+
+        return returned_metadata
 
     def prepare_datasets(self):
         """Instantiate each of the requested datasets based on the `data` dictionary,
