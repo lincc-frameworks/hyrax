@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 import numpy.typing as npt
+import torch
 from matplotlib.colors import LogNorm
 
 from .verb_registry import Verb, hyrax_verb
@@ -36,6 +37,7 @@ class Visualize(Verb):
         cmap: str = "viridis",
         rasterize_plot: bool = True,
         return_verb: bool = False,
+        make_lupton_rgb_opts: Optional[dict] = None,
         **kwargs,
     ):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.
@@ -62,6 +64,11 @@ class Visualize(Verb):
         return_verb : bool, optional
             If True, also return the underlying Visualize instance for post-hoc access
             to selection state. Defaults to False.
+
+        make_lupton_rgb_opts : dict, optional
+            Dictionary of options to pass to astropy's make_lupton_rgb function for RGB image creation.
+            Default is {"stretch": 5, "Q": 8}. Common parameters include stretch (brightness/contrast)
+            and Q (softening parameter for asinh transformation).
 
         kwargs :
             Keyword arguments are passed through as options for the plot object as
@@ -90,7 +97,10 @@ class Visualize(Verb):
         self.cmap = cmap
 
         if self.config["visualize"]["display_images"]:
-            fields += ["filename"]
+            if self.config["data_set"]["filename_column_name"]:
+                fields += [self.config["data_set"]["filename_column_name"]]
+            else:
+                fields += ["filename"]
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")
@@ -114,6 +124,17 @@ class Visualize(Verb):
         # Store color column and extract color values if specified
         self.color_column = color_column
         self.color_values = None
+
+        # Validate torch_tensor_bands configuration
+        self.torch_tensor_bands = self.config["visualize"].get("torch_tensor_bands", [3])  # Default to i-band
+        if len(self.torch_tensor_bands) not in [1, 3]:
+            raise ValueError(
+                f"torch_tensor_bands must specify either 1 band (single-band) or 3 bands (RGB). "
+                f"Got {len(self.torch_tensor_bands)} bands: {self.torch_tensor_bands}"
+            )
+
+        # Store make_lupton_rgb options with defaults
+        self.make_lupton_rgb_opts = make_lupton_rgb_opts or {"stretch": 5, "Q": 8}
 
         if color_column is not None:
             try:
@@ -142,7 +163,7 @@ class Visualize(Verb):
             except Exception as e:
                 logger.warning(f"Could not load column '{color_column}': {e}")
                 logger.warning("Proceeding without coloring")
-                self.color_column = None
+                self.color_column = False
                 self.color_values = None
 
         # Initialize holoviews with bokeh.
@@ -593,7 +614,8 @@ class Visualize(Verb):
         """
         import numpy as np
         from astropy.io import fits
-        from holoviews import Image, Layout
+        from astropy.visualization import make_lupton_rgb
+        from holoviews import RGB, Image, Layout
 
         def style_plot(plot, element):
             bokeh_plot = plot.state
@@ -602,15 +624,23 @@ class Visualize(Verb):
 
         def crop_center(arr: np.ndarray, crop_shape: tuple[int, int]) -> np.ndarray:
             crop_h, crop_w = crop_shape
-            h, w = arr.shape
+
+            if arr.ndim == 3:  # RGB case
+                h, w, c = arr.shape
+            else:  # Single-band case
+                h, w = arr.shape
 
             if crop_h > h or crop_w > w:
-                logger.warning(f"Crop size {crop_shape} exceeds image size {arr.shape}. Skipping crop.")
+                logger.warning(f"Crop size {crop_shape} exceeds image size {(h, w)}. Skipping crop.")
                 return arr
 
             top = (h - crop_h) // 2
             left = (w - crop_w) // 2
-            return arr[top : top + crop_h, left : left + crop_w]
+
+            if arr.ndim == 3:
+                return arr[top : top + crop_h, left : left + crop_w, :]
+            else:
+                return arr[top : top + crop_h, left : left + crop_w]
 
         n_images = 6
         n_rows = 2
@@ -653,23 +683,67 @@ class Visualize(Verb):
         base_dir = Path(self.umap_results.original_config["general"]["data_dir"])
         crop_to = self.umap_results.original_config["data_set"]["crop_to"]
 
+        # Defining a Fallback Image to Display in case of errors
+        # Matching Shape is important because otherwise Haloviews'
+        # DynamicMap fails silently
+        if len(self.torch_tensor_bands) == 3:
+            placeholder_arr = np.full((64, 64, 3), 1.0)
+        else:
+            placeholder_arr = np.full((64, 64), 1.0)
+
         for i in range(n_images):
             if i < len(sampled_ids):
                 try:
                     cutout_path = Path(filenames[i])
                     if not cutout_path.is_absolute():
                         cutout_path = base_dir / cutout_path
-                    arr = fits.getdata(cutout_path)
+
+                    if cutout_path.suffix.lower() == ".fits":
+                        arr = fits.getdata(cutout_path)
+                    elif cutout_path.suffix.lower() == ".pt":
+                        tensor = torch.load(cutout_path, map_location="cpu", weights_only=True)
+
+                        if len(self.torch_tensor_bands) == 1:
+                            # Single-band extraction
+                            band_idx = self.torch_tensor_bands[0]
+                            arr = tensor[band_idx].numpy()
+                        else:
+                            # RGB extraction (3 bands)
+                            rgb_arrays = []
+                            for band_idx in self.torch_tensor_bands:
+                                rgb_arrays.append(tensor[band_idx].numpy())
+                            # Stack along new axis to create (H, W, 3) RGB array
+                            arr = np.stack(rgb_arrays, axis=-1)
+                    else:
+                        raise ValueError(
+                            f"Unsupported file format: {cutout_path.suffix}. Currently\
+                                           the visualize module only supports FITS and PyTorch files"
+                        )
+
                     if crop_to:
                         arr = crop_center(arr, crop_to)
 
-                    # Ensure data is positive for log scaling
-                    min_positive = np.min(arr[arr > 0]) if np.any(arr > 0) else 1e-10
-                    arr = np.maximum(arr, min_positive)  # Replace zeros/negatives with minimum positive value
+                    # Handle normalization differently for single-band vs RGB
+                    if arr.ndim == 3:
+                        # Use astropy's Lupton RGB
+                        # arr shape is (H, W, 3) but make_lupton_rgb expects (r, g, b) as separate arrays
+                        r_band = arr[:, :, 0]
+                        g_band = arr[:, :, 1]
+                        b_band = arr[:, :, 2]
 
-                    # Apply LogNorm-like scaling
-                    norm = LogNorm(vmin=min_positive, vmax=np.max(arr))
-                    arr = norm(arr)
+                        # make_lupton_rgb applies an asinh stretch and returns values in [0, 1] range
+                        # Use configurable options for make_lupton_rgb
+                        arr = make_lupton_rgb(r_band, g_band, b_band, **self.make_lupton_rgb_opts)
+                    else:  # Single-band case
+                        # Ensure data is positive for log scaling
+                        min_positive = np.min(arr[arr > 0]) if np.any(arr > 0) else 1e-10
+                        arr = np.maximum(
+                            arr, min_positive
+                        )  # Replace zeros/negatives with minimum positive value
+
+                        # Apply LogNorm-like scaling
+                        norm = LogNorm(vmin=min_positive, vmax=np.max(arr))
+                        arr = norm(arr)
 
                     # title = f"{chosen_idx[i]}:{ordered_object_ids[i]}\n{sampled_ids[i]}"
                     title = f"{sampled_ids[i]}"
@@ -678,23 +752,29 @@ class Visualize(Verb):
                     logger.warning(f"Could not load FITS file: {e}")
                     with open("./hyrax_visualize.log", "a") as f:
                         f.write(f"Could not load FITS file: {e}\n")
-                    arr = np.full((64, 64), 1.0)
+                    arr = placeholder_arr
                     title = f"NL:{sampled_ids[i]}"
             else:
-                arr = np.full((64, 64), 1.0)
+                arr = placeholder_arr
                 title = "No Selection"
 
-            img = Image(arr).opts(
-                cmap="gray_r",
-                width=int((0.9 * total_width) / n_cols),
-                height=int((0.9 * total_width) / n_cols),
-                title=title,
-                tools=[],
-                shared_axes=False,
-                hooks=[style_plot],
-                xaxis=None,
-                yaxis=None,
-            )
+            # Configure image options based on array dimensions
+            img_opts = {
+                "width": int((0.9 * total_width) / n_cols),
+                "height": int((0.9 * total_width) / n_cols),
+                "title": title,
+                "tools": [],
+                "shared_axes": False,
+                "hooks": [style_plot],
+                "xaxis": None,
+                "yaxis": None,
+            }
+
+            if arr.ndim == 3:  # RGB case
+                img = RGB(arr).opts(**img_opts)
+            else:  # Single-band case
+                img_opts["cmap"] = "gray_r"
+                img = Image(arr).opts(**img_opts)
             imgs.append(img)
 
         return Layout(imgs).cols(n_cols)
