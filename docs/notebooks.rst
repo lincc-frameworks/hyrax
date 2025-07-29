@@ -9,4 +9,4 @@ Example notebooks
     Training to Similarity Search <pre_executed/hsc_train_to_similarity_search>
     Working with a vector database <pre_executed/vector_db_demo>
     Exporting a Model <pre_executed/export_model>
-    GraphQL-like data requests <pre_executed/graphql_test>
+    HyraxQL data requests <pre_executed/hyraxql_demo>
