@@ -38,7 +38,6 @@ class Visualize(Verb):
         cmap: str = "viridis",
         rasterize_plot: bool = True,
         return_verb: bool = False,
-        make_lupton_rgb_opts: Optional[dict] = None,
         **kwargs,
     ):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.
@@ -118,6 +117,11 @@ class Visualize(Verb):
             input_dir = (
                 self.config["results"]["inference_dir"] if self.config["results"]["inference_dir"] else None
             )
+
+        # If no input directory is specified, read from config.
+        if input_dir is None:
+            logger.info("UMAP directory not specified at runtime. Reading from config values.")
+            input_dir = self.config["results"]["inference_dir"]
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")
