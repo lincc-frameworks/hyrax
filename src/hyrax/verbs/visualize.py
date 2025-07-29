@@ -38,6 +38,7 @@ class Visualize(Verb):
         cmap: str = "viridis",
         rasterize_plot: bool = True,
         return_verb: bool = False,
+        make_lupton_rgb_opts: Optional[dict] = None,
         **kwargs,
     ):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.
