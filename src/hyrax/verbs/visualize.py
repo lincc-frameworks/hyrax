@@ -33,9 +33,6 @@ class Visualize(Verb):
         self,
         input_dir: Optional[Union[Path, str]] = None,
         *,
-        color_column: Optional[str] = None,
-        cmap: str = "viridis",
-        rasterize_plot: bool = True,
         return_verb: bool = False,
         make_lupton_rgb_opts: Optional[dict] = None,
         **kwargs,
@@ -49,17 +46,8 @@ class Visualize(Verb):
         ----------
         input_dir : Optional[Union[Path, str]], optional
             Directory holding the output from the 'umap' verb, by default None. When not provided, we use
-            the most recent umap int he current results directory.
-
-        color_column : Optional[str], optional
-            Name of catalog column to use for coloring points in the scatter plot.
-
-        cmap : str, optional
-            Colormap to use for coloring points. Defaults to 'viridis'.
-
-        rasterize_plot : bool, optional
-            If True, use rasterization for performance optimization. Defaults to True.
-            Rasterization converts points to pixels for better performance with large datasets.
+            [results][inference_dir] from config. If that's false; we the most recent umap in the current
+            results directory.
 
         return_verb : bool, optional
             If True, also return the underlying Visualize instance for post-hoc access
@@ -94,13 +82,18 @@ class Visualize(Verb):
 
         fields = ["object_id"]
         fields += self.config["visualize"]["fields"]
-        self.cmap = cmap
+        self.cmap = self.config["visualize"]["cmap"]
 
         if self.config["visualize"]["display_images"]:
             if self.config["data_set"]["filename_column_name"]:
                 fields += [self.config["data_set"]["filename_column_name"]]
             else:
                 fields += ["filename"]
+
+        # If no input directory is specified, read from config.
+        if input_dir is None:
+            logger.info("UMAP directory not specified at runtime. Reading from config values.")
+            input_dir = self.config["results"]["inference_dir"]
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")
@@ -122,7 +115,7 @@ class Visualize(Verb):
         self.tree = KDTree(self.umap_results)
 
         # Store color column and extract color values if specified
-        self.color_column = color_column
+        self.color_column = self.config["visualize"]["color_column"]
         self.color_values = None
 
         # Validate torch_tensor_bands configuration
@@ -136,23 +129,24 @@ class Visualize(Verb):
         # Store make_lupton_rgb options with defaults
         self.make_lupton_rgb_opts = make_lupton_rgb_opts or {"stretch": 5, "Q": 8}
 
-        if color_column is not None:
+        if self.color_column:
             try:
                 # Check if column exists
                 available_fields = self.umap_results.metadata_fields()
-                if color_column not in available_fields:
+                if self.color_column not in available_fields:
                     logger.warning(
-                        f"Column '{color_column}' not found in dataset. Available fields: {available_fields}"
+                        f"Column '{self.color_column}' not found in dataset."
+                        f" Available fields: {available_fields}"
                     )
-                    self.color_column = None
+                    self.color_column = False
                 else:
                     # Get all indices for the dataset
                     all_indices = list(range(len(self.umap_results)))
 
                     # Extract metadata for the specified column
-                    metadata = self.umap_results.metadata(all_indices, [color_column])
-                    self.color_values = metadata[color_column]
-                    logger.info(f"Successfully loaded color values from column '{color_column}'")
+                    metadata = self.umap_results.metadata(all_indices, [self.color_column])
+                    self.color_values = metadata[self.color_column]
+                    logger.info(f"Successfully loaded color values from column '{self.color_column}'")
                     import numpy as np
 
                     logger.debug(
@@ -161,7 +155,7 @@ class Visualize(Verb):
                     )
                     logger.debug(f"NaN count: {np.sum(np.isnan(self.color_values))}")
             except Exception as e:
-                logger.warning(f"Could not load column '{color_column}': {e}")
+                logger.warning(f"Could not load column '{self.color_column}': {e}")
                 logger.warning("Proceeding without coloring")
                 self.color_column = False
                 self.color_values = None
@@ -181,7 +175,7 @@ class Visualize(Verb):
         }
         self.plot_options.update(kwargs)
 
-        if self.color_column is not None:
+        if self.color_column:
             # For colored plots, show all points to preserve colorbar
             # This is a current Hack to overcome the fact that the
             # RangeXY stream breaks the colorbar. Needs to be investigated
@@ -194,7 +188,7 @@ class Visualize(Verb):
         else:
             plot_dm = DynamicMap(self.visible_points, streams=[RangeXY()])
 
-        if rasterize_plot:
+        if self.config["visualize"]["rasterize_plot"]:
             # Note that reasterization will break color-bar feature
             plot_pane = dynspread(rasterize(plot_dm).opts(**self.plot_options))
         else:
@@ -302,15 +296,7 @@ class Visualize(Verb):
         if x_range is None or y_range is None:
             return Points([])
 
-        # Check if we should show all points (infinity ranges for color mode)
-        show_all_points = (
-            x_range[0] == float("-inf")
-            or x_range[1] == float("inf")
-            or y_range[0] == float("-inf")
-            or y_range[1] == float("inf")
-        )
-
-        if show_all_points:
+        if np.any(np.isinf([x_range, y_range])):
             # Show all points without filtering
             points = np.array([point.numpy() for point in self.umap_results])
             point_indices = list(range(len(self.umap_results)))
@@ -336,10 +322,10 @@ class Visualize(Verb):
                     "title_text_font_style": "normal",
                 },
             )
-
-            return pts
         else:
-            return Points(points)
+            pts = Points(points)
+
+        return pts
 
     def update_points(self, **kwargs) -> None:
         """
