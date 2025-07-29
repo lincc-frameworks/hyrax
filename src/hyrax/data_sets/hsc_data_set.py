@@ -25,7 +25,7 @@ class HSCDataSet(FitsImageDataSet):
 
     _called_from_test = False
 
-    def __init__(self, config: ConfigDict):
+    def __init__(self, config: ConfigDict, data_directory=None):
         """
         .. py:method:: __init__
 
@@ -48,7 +48,7 @@ class HSCDataSet(FitsImageDataSet):
 
         self.filters_config = config["data_set"]["filters"] if config["data_set"]["filters"] else None
 
-        super().__init__(config)
+        super().__init__(config, data_directory)
 
     def _read_filter_catalog(self, filter_catalog_path: Optional[Path]):
         from astropy.table import Table

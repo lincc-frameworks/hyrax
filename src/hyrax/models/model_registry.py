@@ -100,11 +100,15 @@ def hyrax_model(cls):
     cls.__init__ = wrapped_init
 
     def default_to_tensor(data_dict):
-        if isinstance(data_dict.get("image"), Tensor):
-            if "label" in data_dict:
-                return (data_dict["image"], data_dict["label"])
+        data = data_dict.get("data")
+
+        if "image" in data and not isinstance(data["image"], Tensor):
+            data["image"] = Tensor(data["image"])
+        if isinstance(data.get("image"), Tensor):
+            if "label" in data:
+                return (data["image"], data["label"])
             else:
-                return data_dict["image"]
+                return data["image"]
         else:
             msg = "Hyrax couldn't find an image in the data dictionaries from your dataset.\n"
             msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"

@@ -90,7 +90,7 @@ class HyraxRandomDatasetBase:
 
         # Start our IDs at a random integer between 0 and 100
         id_start = rng.integers(100)
-        self.id_list = list(range(id_start, id_start + data_size))
+        self.id_list = np.array(list(range(id_start, id_start + data_size)))
 
         # Randomly insert flawed values (np.nan, np.inf, -np.inf, None, other float)
         num_invalid_values = config["data_set.random_dataset"]["number_invalid_values"]
@@ -125,7 +125,7 @@ class HyraxRandomDatasetBase:
         # Create a metadata_table that is used when visualizing data
         metadata_table = Table(
             {
-                "object_id": np.array(list(range(0, data_size))),
+                "object_id": np.array([str(id) for id in self.id_list]),
                 "meta_field_1": np.array(list(range(data_size, 0, -1))) / 2,
                 "meta_field_2": np.array(list(range(data_size, 0, -1))) / 3,
             },
@@ -145,9 +145,9 @@ class HyraxRandomDatasetBase:
             return self.labels[idx]
         return None
 
-    def get_id(self, idx: int) -> int:
+    def get_object_id(self, idx: int) -> str:
         """Get the index of the item."""
-        return self.id_list[idx]
+        return str(self.id_list[idx])
 
 
 class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
@@ -180,10 +180,10 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         ret = {
             "data": {
                 "index": idx,
-                "object_id": self.get_id(idx),
+                "object_id": self.get_object_id(idx),
                 "image": self.get_image(idx),
             },
-            "object_id": self.get_id(idx),
+            "object_id": self.get_object_id(idx),
         }
 
         if self.provided_labels:
@@ -234,10 +234,10 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
             ret = {
                 "data": {
                     "index": idx,
-                    "object_id": self.get_id(idx),
+                    "object_id": self.get_object_id(idx),
                     "image": self.get_image(idx),
                 },
-                "object_id": self.get_id(idx),
+                "object_id": self.get_object_id(idx),
             }
 
             if self.provided_labels:

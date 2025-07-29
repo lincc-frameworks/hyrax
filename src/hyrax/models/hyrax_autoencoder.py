@@ -28,9 +28,8 @@ class HyraxAutoencoder(nn.Module):
         super().__init__()
         self.config = config
 
-        logger.warning(f"Initializing HyraxAutoencoder with data sample: {data_sample}")
         shape = self.to_tensor(data_sample).shape
-        logger.warning(f"Found shape: {shape} in data sample, using this to initialize model.")
+        logger.info(f"Found shape: {shape} in data sample, using this to initialize model.")
 
         self.num_input_channels, self.image_width, self.image_height = shape
 
@@ -109,9 +108,7 @@ class HyraxAutoencoder(nn.Module):
         return x
 
     def forward(self, batch):
-        # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
-        x = batch[0] if isinstance(batch, tuple) else batch
-        return self._eval_encoder(x)
+        return self._eval_encoder(batch)
 
     def train_step(self, batch):
         """This function contains the logic for a single training step. i.e. the
@@ -127,11 +124,9 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        x = batch
-
-        z = self._eval_encoder(x)
+        z = self._eval_encoder(batch)
         x_hat = self._eval_decoder(z)
-        loss = F.mse_loss(x, x_hat, reduction="none")
+        loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
 
         self.optimizer.zero_grad()

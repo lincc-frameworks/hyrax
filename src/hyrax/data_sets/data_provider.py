@@ -73,6 +73,9 @@ class DataProvider(Dataset):
         self.prepped_datasets = {}
         self.all_metadata_fields = {}
 
+        self.primary_dataset = None
+        self.primary_dataset_id_field_name = None
+
     def __repr__(self):
         repr_str = ""
         for friendly_name, data in self.data_request.items():
@@ -112,7 +115,7 @@ class DataProvider(Dataset):
 
             if fetch_fields:
                 this_metadata = dataset.metadata(idxs, fetch_fields)
-                # rename the columns to include the friendly name
+                # Append the friendly name to the columns
                 this_metadata.dtype.names = [f"{name}_{friendly_name}" for name in this_metadata.dtype.names]
 
                 # merge this_metadata into the returned_metadata structured array
@@ -129,34 +132,34 @@ class DataProvider(Dataset):
         """Instantiate each of the requested datasets based on the `data` dictionary,
         and store the instances in the `prepped_datasets` dictionary."""
         for friendly_name, dataset_definition in self.data_request.items():
-            ds_cls = dataset_definition.get("dataset_class")
-            if ds_cls not in DATA_SET_REGISTRY:
+            dataset_class = dataset_definition.get("dataset_class")
+            if dataset_class not in DATA_SET_REGISTRY:
                 logger.error(
-                    f"Unable to locate dataset, '{ds_cls}' in the registered datasets:\
+                    f"Unable to locate dataset, '{dataset_class}' in the registered datasets:\
                         {list(DATA_SET_REGISTRY.keys())}."
                 )
             else:
                 data_directory = dataset_definition.get("data_directory")
-                ds_instance = DATA_SET_REGISTRY[ds_cls](self.config, data_directory)
+                dataset_instance = DATA_SET_REGISTRY[dataset_class](self.config, data_directory)
 
                 # If a user creates a DataProvider instance manually, this will
                 # guard against iterable-style dataset creeping in. Under normal
                 # circumstances iterable-style dataset would be caught prior to this.
-                if ds_instance.is_iterable():
+                if dataset_instance.is_iterable():
                     logger.error(
-                        f"Dataset '{friendly_name}' is an iterable-style dataset. "
+                        f"Dataset '{dataset_class}' is an iterable-style dataset. "
                         "This is not supported in the current implementation of DataProvider. "
-                        "Hyrax only supports 1-N map-style datasets at this time or single "
-                        "iterable-style datasets."
+                        "Hyrax DataProvider only supports 1-N map-style datasets at this time. "
+                        "You should instantiate an iterable-style dataset class directly."
                     )
 
-                self.prepped_datasets[friendly_name] = ds_instance
+                self.prepped_datasets[friendly_name] = dataset_instance
 
                 # Get all of the column names for a dataset's metadata table and
                 # store them in the all_metadata_fields dictionary.
                 # Modify the name to be <field_name>_<friendly_name>, i.e. "RA_cifar".
-                if ds_instance._metadata_table:
-                    columns = [f"{col}_{friendly_name}" for col in ds_instance._metadata_table.colnames]
+                if dataset_instance._metadata_table:
+                    columns = [f"{col}_{friendly_name}" for col in dataset_instance._metadata_table.colnames]
                     self.all_metadata_fields[friendly_name] = columns
                 else:
                     self.all_metadata_fields[friendly_name] = []
@@ -169,8 +172,8 @@ class DataProvider(Dataset):
         """Convenience method to ensure that each requested dataset exists and that
         each field in each dataset has a `get_<field_name>` method."""
         problem_count = 0
-        for _, ds_parameters in self.data_request.items():
-            dataset_class = ds_parameters.get("dataset_class")
+        for _, dataset_parameters in self.data_request.items():
+            dataset_class = dataset_parameters.get("dataset_class")
             if dataset_class not in DATA_SET_REGISTRY:
                 logger.error(
                     f"Unable to locate dataset, '{dataset_class}' in the registered datasets:"
@@ -181,27 +184,27 @@ class DataProvider(Dataset):
                 logger.error(
                     f"Dataset '{dataset_class}' is an iterable-style dataset. "
                     "This is not supported in the current implementation of DataProvider. "
-                    "Hyrax only supports 1-N map-style datasets at this time or single "
-                    "iterable-style datasets."
+                    "Hyrax DataProvider only supports 1-N map-style datasets at this time. "
+                    "You should instantiate an iterable-style dataset class directly."
                 )
                 problem_count += 1
             # If "fields" wasn't provided or it's empty or None, attempt to gather
             # all available get_* methods in the dataset class.
-            if "fields" not in ds_parameters or not ds_parameters["fields"]:
+            if "fields" not in dataset_parameters or not dataset_parameters["fields"]:
                 # Gather all available fields from the dataset class
-                ds_parameters["fields"] = [
+                dataset_parameters["fields"] = [
                     method[4:]
                     for method in dir(DATA_SET_REGISTRY[dataset_class])
                     if method.startswith("get_")
                 ]
-                if not ds_parameters["fields"]:
+                if not dataset_parameters["fields"]:
                     logger.error(
                         f"No fields were found in dataset {dataset_class}. "
-                        "This is likely an error in the dataset definition."
+                        "This is likely an error in the dataset class definition."
                     )
                     problem_count += 1
             else:
-                for field in ds_parameters.get("fields", []):
+                for field in dataset_parameters.get("fields", []):
                     if not hasattr(DATA_SET_REGISTRY[dataset_class], f"get_{field}"):
                         logger.error(
                             f"No `get_{field}` method for requested field, '{field}' "
@@ -226,19 +229,14 @@ class DataProvider(Dataset):
         """Returns the length of the dataset. If the primary dataset is defined
         it will return that, if not, it will default to the first dataset in the
         list of prepped_dataset.keys()."""
-        pds = self._primary_or_first_dataset()
-        if pds.is_map():
-            # If the dataset is iterable, we can use the length of the iterator
-            return len(pds)
-        else:
-            logger.error("Primary dataset is iterable, cannot determine length.")
+        return len(self._primary_or_first_dataset())
 
     def ids(self):
         """Returns the IDs of the dataset. If the primary dataset is defined
         it will return those ids, if not, it will return the ids of the first
         dataset in the list of prepped_dataset.keys()."""
-        pds = self._primary_or_first_dataset()
-        return pds.ids() if hasattr(pds, "ids") else []
+        primary_dataset = self._primary_or_first_dataset()
+        return primary_dataset.ids() if hasattr(primary_dataset, "ids") else []
 
     def resolve_data(self, idx):
         """This does the work of requesting the data from the prepared datasets.
@@ -269,9 +267,7 @@ class DataProvider(Dataset):
 
         return returned_data
 
-    #! Same comment here, as in the prepare_datasets method. Not sure if this is
-    #! the right approach.
-    def metadata_fields(self) -> list[str]:
+    def metadata_fields(self, friendly_name=None) -> list[str]:
         """Returns a list of metadata fields supported by this object
 
         Returns
@@ -281,6 +277,12 @@ class DataProvider(Dataset):
             was provided during construction of the DataProvider.
         """
         all_fields = []
+        if friendly_name:
+            return [
+                field.replace(f"_{friendly_name}", "")
+                for field in self.all_metadata_fields.get(friendly_name, [])
+            ]
+
         for _, v in self.all_metadata_fields.items():
             all_fields.extend(v)
         all_fields.append("object_id")  # Always include the object_id field

@@ -81,7 +81,7 @@ class FitsImageDataSet(HyraxDataset, Dataset):
 
     _called_from_test = False
 
-    def __init__(self, config: ConfigDict):
+    def __init__(self, config: ConfigDict, data_directory=None):
         """
         .. py:method:: __init__
 
@@ -94,6 +94,8 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         ----------
         config : ConfigDict
             Nested configuration dictionary for hyrax
+        data_directory: Optional[Union[Path, str]]
+            The directory location of the data that this dataset class will access
         """
         from torchvision.transforms.v2 import Lambda
 
@@ -370,6 +372,40 @@ class FitsImageDataSet(HyraxDataset, Dataset):
             number of objects in this data loader
         """
         return len(self.files)
+
+    def get_object_id(self, idx: int) -> str:
+        """Get the object ID at the given index
+
+        Parameters
+        ----------
+        idx : int
+            Index of the object ID to return
+
+        Returns
+        -------
+        str
+            The object ID at the given index
+        """
+        if idx >= len(self.files) or idx < 0:
+            raise IndexError("Index out of range")
+
+        return list(self.files.keys())[idx]
+
+    def get_image(self, idx: int):
+        """Get the image at the given index as a PyTorch Tensor.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the image to return
+
+        Returns
+        -------
+        torch.Tensor
+            The image at the given index as a PyTorch Tensor.
+        """
+        object_id = self.get_object_id(idx)
+        return self._object_id_to_tensor(object_id)
 
     def __getitem__(self, idx: int):
         if idx >= len(self.files) or idx < 0:

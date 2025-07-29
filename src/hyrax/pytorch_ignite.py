@@ -88,12 +88,14 @@ def _setup_dataset(config, tensorboardx_logger):
                 "1) 1-N map-style or 2) at most 1 iterable-style."
             )
 
-        # generate instance of the iterable dataset
-        for _, data_definition in data_request.items():
-            dataset_cls = DATA_SET_REGISTRY[data_definition["dataset_class"]]
-            dataset = dataset_cls(config=config, data_directory=data_definition["data_directory"])
-            dataset.tensorboardx_logger = tensorboardx_logger
-            break
+        # generate instance of the iterable dataset. Again, because the only mode of
+        # operation for iterable-style datasets that Hyrax supports is 1 iterable
+        # dataset at a time, we can just take the first (and only) item in the data_request.
+        data_definition = next(iter(data_request.values()))
+        dataset_cls = DATA_SET_REGISTRY[data_definition["dataset_class"]]
+        dataset = dataset_cls(config=config, data_directory=data_definition["data_directory"])
+        dataset.tensorboardx_logger = tensorboardx_logger
+
     else:
         dataset = DataProvider(config)
         dataset.prepare_datasets()

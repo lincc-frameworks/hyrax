@@ -102,14 +102,13 @@ class Infer(Verb):
 
             # Batch has IDs if it is dict of tensors with the needed key
             batch_has_ids = isinstance(batch, dict) and "object_id" in batch
-
             if batch_lacks_ids:
                 # This fallback is brittle to any re-ordering of data that occurs during data loading
                 batch_object_ids = [
                     object_ids[id] for id in range(write_index, write_index + len(batch_results))
                 ]
             elif batch_has_ids:
-                batch_object_ids = batch["object_id"].tolist()
+                batch_object_ids = batch["object_id"]
             elif isinstance(batch, dict):
                 msg = "Dataset dictionary should be returning object_ids to avoid ordering errors. "
                 msg += "Modify the __getitem__ or __iter__ function of your dataset to include 'object_id' "
