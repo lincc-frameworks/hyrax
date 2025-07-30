@@ -79,6 +79,8 @@ mask = false
 
 
 [model]
+# NOTE: All parameters are NOT used by all models. Check the model code before training.
+
 # The name of the model to use. Option are a built-in model class name or import path
 # to an external model. e.g. "HyraxAutoencoder", "user_pkg.model.ExternalModel"
 name = "HyraxAutoencoder"
@@ -86,14 +88,19 @@ name = "HyraxAutoencoder"
 # The number of output channels from the first layer.
 base_channel_size = 32
 
-# The length of the latent space vector.
+# The length of the latent space vector. 
 latent_dim = 64
-HSCDCAE_final_layer = "tanh"
+
+# The activation function of the final layer.
+final_layer = "tanh"
 
 
 [criterion]
 # The name of the built-in criterion to use or the import path to an external criterion
 name = "torch.nn.CrossEntropyLoss"
+
+# Whether to "sum" or "mean" loss across channels. Only used by HyraxAutoencoderV2
+band_loss_reduction = "mean"
 
 
 [optimizer]
@@ -212,6 +219,16 @@ nan_mode = false
 
 # When replacing NaN values with a quantile, which quantile in the non-nan tensor should be used.
 nan_quantile = 0.05
+
+# The astropy table to use as a catalog in LSSTDataSet and friends
+astropy_table = false
+
+# Semi width in degrees of cutouts made from the butler (17 arcsec)
+semi_width_deg = 0.00472
+
+# Semi height in degrees of cutouts made from the butler (17 arcsec)
+semi_height_deg = 0.00472
+
 
 
 ["data_set.random_dataset"]

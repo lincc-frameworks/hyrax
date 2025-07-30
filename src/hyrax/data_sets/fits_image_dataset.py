@@ -59,7 +59,7 @@ from collections.abc import Generator, Iterable
 from concurrent.futures import Executor
 from pathlib import Path
 from threading import Thread
-from typing import Any, Callable, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 import numpy.typing as npt
@@ -67,14 +67,14 @@ from torch.utils.data import Dataset
 
 from hyrax.config_utils import ConfigDict
 
-from .data_set_registry import HyraxDataset
+from .data_set_registry import HyraxDataset, HyraxImageDataset
 
 logger = logging.getLogger(__name__)
 
 files_dict = dict[str, dict[str, str]]
 
 
-class FitsImageDataSet(HyraxDataset, Dataset):
+class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
     """
     Dataset for Fits Images, typically cutouts.
     """
@@ -97,18 +97,12 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         data_directory: Optional[Union[Path, str]]
             The directory location of the data that this dataset class will access
         """
-        from torchvision.transforms.v2 import Lambda
 
         self._config = config
 
-        transform_str = config["data_set"]["transform"]
         self.use_cache = config["data_set"]["use_cache"]
 
-        if transform_str:
-            transform_func = self._get_np_function(transform_str)
-            self.transform = Lambda(lambd=transform_func)
-        else:
-            self.transform = None
+        self.set_function_transform()
 
         self.object_id_column_name = (
             config["data_set"]["object_id_column_name"]
@@ -156,7 +150,6 @@ class FitsImageDataSet(HyraxDataset, Dataset):
             catalog table
         """
         from torch import Tensor
-        from torchvision.transforms.v2 import Compose
 
         self.path = path
 
@@ -178,10 +171,7 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         first_filter_dict = next(iter(self.files.values()))
         self.num_filters = len(first_filter_dict)
 
-        crop_transform = self._set_crop_transform()
-        self.transform = (
-            Compose([crop_transform, self.transform]) if self.transform is not None else crop_transform
-        )
+        self._set_crop_transform()
 
         self.tensors: dict[str, Tensor] = {}
         self.tensorboard_start_ns = time.monotonic_ns()
@@ -197,18 +187,11 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         1) set self.cutout_shape to a tuple of ints representing the size of the cutouts that will be
         returned at some point in the init flow.
 
-        2) Return the crop transform only so it can be added to the transform stack appropriately.
+        2) Update the crop tranform using self.set_crop_transform() from the HyraxImageDataset mixin
         """
-        from torchvision.transforms.v2 import CenterCrop
 
         self.cutout_shape = self.config["data_set"]["crop_to"] if self.config["data_set"]["crop_to"] else None
-
-        if not isinstance(self.cutout_shape, list) or len(self.cutout_shape) != 2:
-            msg = "Must provide a cutout shape in config['data_set']['crop_to']."
-            msg += " Shape should be a list of integer pixel sizes e.g. [100,100]"
-            raise RuntimeError(msg)
-
-        return CenterCrop(size=self.cutout_shape)
+        self.set_crop_transform()
 
     def _read_filter_catalog(self, filter_catalog_path: Optional[Path]):
         from astropy.table import Table
@@ -284,27 +267,6 @@ class FitsImageDataSet(HyraxDataset, Dataset):
             filter_catalog[object_id][filter] = filename
 
         return filter_catalog
-
-    def _get_np_function(self, transform_str: str) -> Callable[..., Any]:
-        """
-        _get_np_function. Returns the numpy mathematical function that the
-        supplied string maps to; or raises an error if the supplied string
-        cannot be mapped to a function.
-
-        Parameters
-        ----------
-        transform_str: str
-            The string to me mapped to a numpy function
-        """
-
-        try:
-            func: Callable[..., Any] = getattr(np, transform_str)
-            if callable(func):
-                return func
-        except AttributeError as err:
-            msg = f"{transform_str} is not a valid numpy function.\n"
-            msg += "The string passed to the transform variable needs to be a numpy function"
-            raise RuntimeError(msg) from err
 
     def _before_preload(self) -> None:
         # Provided so subclasses can make edits to the class after full initialization
@@ -472,11 +434,11 @@ class FitsImageDataSet(HyraxDataset, Dataset):
         log = log_every is not None and isinstance(log_every, int)
         for index, object_id in enumerate(self.files):
             if log and index != 0 and index % log_every == 0:
-                logger.info(f"Processed {index} objects")
+                logger.info(f"Processed {index + 1} objects")
             yield str(object_id)
         else:
             if log:
-                logger.info(f"Processed {index} objects")
+                logger.info(f"Processed {index + 1} objects")
 
     def _all_files(self):
         """

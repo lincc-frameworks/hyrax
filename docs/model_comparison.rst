@@ -48,7 +48,15 @@ The MLFlow server can be run from within a notebook or from the command line.
 
         .. code-block:: bash
 
-           >> mlflow ui --port 8080 --backend-store-uri <results_dir>/mlruns
+           >> mlflow ui --port 8080 --backend-store-uri <results_dir>/mlflow
+
+        If you are running mlflow on a remote server, you will need to add the `--host` flag to the command:
+
+        .. code-block:: bash
+            
+           >> mlflow ui --port 8080 --backend-store-uri <results_dir>/mlflow --host 0.0.0.0
+
+        on the remote server, and the forward the port (8080) to your local machine using SSH.
 
 
 For more information about MLFlow see the
