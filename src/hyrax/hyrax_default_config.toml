@@ -94,6 +94,13 @@ latent_dim = 64
 # The activation function of the final layer.
 final_layer = "tanh"
 
+[model.SimCLR]
+# The dimension of projectiong head
+projection_dimension = 128
+
+# The scalar temperature parameter for its loss function, NTXentLoss
+temperature = 0.5
+
 
 [criterion]
 # The name of the built-in criterion to use or the import path to an external criterion
