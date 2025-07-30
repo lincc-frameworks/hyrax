@@ -63,7 +63,7 @@ class PositiveRescale:
 
 
 @hyrax_model
-class SimCLRModel(nn.Module):
+class SimCLR(nn.Module):
     """SimCLR model. Implementation based on Chen, 2020"""
 
     def __init__(self, config, shape):
