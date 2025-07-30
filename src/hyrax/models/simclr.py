@@ -92,12 +92,19 @@ class SimCLR(nn.Module):
         aug = T.Compose(
             [
                 T.RandomResizedCrop(size=x.shape[-1]),
-                T.RandomHorizontalFlip(0.5),
-                T.RandomApply([PositiveRescale(T.ColorJitter(0.8, 0.8, 0.8, 0.2))], p=0.8),
-                T.RandomGrayscale(p=0.2),
-                T.GaussianBlur(kernel_size=9, sigma=(0.1, 2.0)),
+                T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
+                T.RandomApply(
+                    [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
+                    p=self.config["model"]["SimCLR"]["color_jitter_probability"],
+                ),
+                T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
+                T.GaussianBlur(
+                    kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
+                    sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
+                ),
             ]
         )
+
         x1 = torch.stack([aug(img) for img in x])
         x2 = torch.stack([aug(img) for img in x])
 
