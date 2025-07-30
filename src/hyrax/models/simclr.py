@@ -70,8 +70,8 @@ class SimCLR(nn.Module):
         super().__init__()
         self.config = config
         self.shape = shape
-        proj_dim = config["model"]["proj_dim"]
-        temperature = config["model"]["temperature"]
+        proj_dim = config["model"]["SimCLR"]["projection_dimension"]
+        temperature = config["model"]["SimCLR"]["temperature"]
 
         backbone = models.resnet18(pretrained=False)
         backbone.fc = nn.Identity()

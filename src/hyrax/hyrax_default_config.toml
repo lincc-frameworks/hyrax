@@ -104,6 +104,13 @@ latent_dim = 64
 # The activation function of the final layer.
 final_layer = "tanh"
 
+[model.SimCLR]
+# The dimension of projectiong head
+projection_dimension = 128
+
+# The scalar temperature parameter for its loss function, NTXentLoss
+temperature = 0.5
+
 
 [model.HyraxCNN]
 # The number of classes to predict as the output of the model. i.e. 2 would be a
