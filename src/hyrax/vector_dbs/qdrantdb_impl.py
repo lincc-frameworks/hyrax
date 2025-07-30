@@ -51,7 +51,7 @@ class QdrantDB(VectorDB):
                     #! This stinks - we should just check the size of the data
                     #! when we call `save_to_database` and then set this automatically
                     #! as a parameter in self.context["blah"] or something.
-                    size=self.config["vector_db.qdrant"]["vector_size"],
+                    size=self.config["vector_db"]["qdrant"]["vector_size"],
                     distance=models.Distance.EUCLID,
                     on_disk=True,
                 ),
@@ -78,7 +78,7 @@ class QdrantDB(VectorDB):
         if self.client is None:
             self.connect()
 
-        expected_size = self.config["vector_db.qdrant"]["vector_size"]
+        expected_size = self.config["vector_db"]["qdrant"]["vector_size"]
         for idx, vector in enumerate(vectors):
             if len(vector) != expected_size:
                 raise ValueError(

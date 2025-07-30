@@ -92,53 +92,23 @@ def hyrax_model(cls):
 
     original_init = cls.__init__
 
-    def wrapped_init(self, dataset, *args, **kwargs):
-        # Model constructors need a shape, but only a model can tell how to take a
-        # data dict and extract the tensor. We fixup the call here so original_init
-        # is passed a valid shape.
-        #
-        # TODO: We may want to stop passing 'shape' to model __init__(). This will
-        # come at the cost of allowing models to dynamically size their layers/architecture
-        # given shape information. The typical solution to this limitation seems to be a
-        # static-size model crop/resize transforms defined with the model and executed
-        # during data loading by the driver code.
-
-        # Get a sample item of data
-        if dataset.is_map():
-            sample = dataset[0]
-        elif dataset.is_iterable():
-            sample = next(iter(dataset))
-        else:
-            msg = f"{dataset.__class__.__name} must define __getitem__ or __iter__."
-            return NotImplementedError(msg)
-
-        # Perform conversion to tensor(s) if necessary
-        if isinstance(sample, dict):
-            sample = self.__class__.to_tensor(sample)
-
-        # If its a tuple or list extract first element because it is (data, label)
-        if isinstance(sample, (tuple, list)):
-            sample = sample[0]
-
-        if not isinstance(sample, Tensor):
-            msg = "{self.__class__.__name__}.to_tensor() is not returning a tensor when run with "
-            msg += "data from {dataset.__class__.__name__}."
-            raise RuntimeError(msg)
-
-        kwargs.update({"shape": sample.shape})
-
-        original_init(self, *args, **kwargs)
+    def wrapped_init(self, config, *args, **kwargs):
+        original_init(self, config, *args, **kwargs)
         self.criterion = self._criterion()
         self.optimizer = self._optimizer()
 
     cls.__init__ = wrapped_init
 
     def default_to_tensor(data_dict):
-        if isinstance(data_dict.get("image"), Tensor):
-            if "label" in data_dict:
-                return (data_dict["image"], data_dict["label"])
+        data = data_dict.get("data")
+
+        if "image" in data and not isinstance(data["image"], Tensor):
+            data["image"] = Tensor(data["image"])
+        if isinstance(data.get("image"), Tensor):
+            if "label" in data:
+                return (data["image"], data["label"])
             else:
-                return data_dict["image"]
+                return data["image"]
         else:
             msg = "Hyrax couldn't find an image in the data dictionaries from your dataset.\n"
             msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"
@@ -163,6 +133,34 @@ def hyrax_model(cls):
     for name in required_methods:
         if not hasattr(cls, name):
             logger.error(f"Hyrax model {cls.__name__} missing required method {name}.")
+
+    def attach_dataset(friendly_name, dataset_class, data_directory, fields, primary_id_field=None):
+        if friendly_name in cls.data:
+            logger.error(
+                f"The friendly name '{friendly_name}' already exists."
+                f" If updating, first run `detach_dataset({friendly_name})`, "
+                f"then run `attach_dataset({friendly_name, ...})` again."
+            )
+        cls.data[friendly_name] = {
+            "dataset_class": dataset_class,
+            "data_directory": data_directory,
+            "fields": fields,
+        }
+
+        if primary_id_field and primary_id_field in fields:
+            cls.data[friendly_name]["primary_id_field"] = primary_id_field
+
+    cls.attach_dataset = staticmethod(attach_dataset)
+
+    def detach_dataset(friendly_name):
+        try:
+            cls.data.pop(friendly_name)
+        except KeyError:
+            logger.error(
+                f"Cannot remove '{friendly_name}' from data. These can be removed: {list(cls.data.keys())}"
+            )
+
+    cls.detach_dataset = staticmethod(detach_dataset)
 
     update_registry(MODEL_REGISTRY, cls.__name__, cls)
     return cls

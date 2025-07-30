@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import hyrax
+from hyrax.data_sets.data_provider import DataProvider
 from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
 
 
@@ -11,9 +12,10 @@ def inference_dataset(tmp_path_factory, request):
     It returns the data written"""
     h = hyrax.Hyrax()
     h.config["general"]["dev_mode"] = True
-    h.config["data_set"]["name"] = "RandomDataset"
-    h.config["data_set"]["size"] = 20
-    h.config["data_set"]["seed"] = 0
+    h.config["data_set"]["name"] = "HyraxRandomDataset"
+    h.config["data_set.random_dataset"]["size"] = 20
+    h.config["data_set.random_dataset"]["seed"] = 0
+    h.config["data_set.random_dataset"]["shape"] = [2]
     original_data_set = h.prepare()
 
     current_data_set = original_data_set
@@ -30,17 +32,28 @@ def inference_dataset(tmp_path_factory, request):
 
         data_writer.write_batch(
             np.array(data_set_ids[indexes[0:10]]),  # ids
-            np.array(current_data_set[indexes[0:10]]),  # Results
+            get_data_by_dataset_type(current_data_set, indexes[0:10]),  # Results
         )
 
         data_writer.write_batch(
             np.array(data_set_ids[indexes[10:20]]),  # ids
-            np.array(current_data_set[indexes[10:20]]),  # Results
+            get_data_by_dataset_type(current_data_set, indexes[10:20]),  # Results
         )
         data_writer.write_index()
         current_data_set = InferenceDataSet(h.config, tmp_path)
 
     return original_data_set, current_data_set
+
+
+def get_data_by_dataset_type(dataset, idx):
+    """Different behavior depending on whether the dataset is an `InferenceDataset`
+    vs. a DataProvider dataset. IF it's an InferenceDataset, we return the data
+    directly, otherwise we unpack the data from the DataProvider."""
+    output_data = dataset[idx]
+    if isinstance(dataset, DataProvider):
+        output_data = output_data["data"]["image"]
+
+    return np.array(output_data)
 
 
 def test_order(inference_dataset):
@@ -59,8 +72,8 @@ def test_order(inference_dataset):
     result_ids = list(result.ids())
 
     all_idx = list(range(20))
-    orig_meta_ids = list(orig.metadata(all_idx, ["object_id"])["object_id"])
-    result_meta_ids = list(result.metadata(all_idx, ["object_id"])["object_id"])
+    orig_meta_ids = list(orig.metadata(all_idx, ["object_id_data"])["object_id_data"])
+    result_meta_ids = list(result.metadata(all_idx, ["object_id_data"])["object_id_data"])
 
     # Check no IDs are dropped
     for id in orig_ids:
@@ -71,7 +84,7 @@ def test_order(inference_dataset):
     # Check all data is the correct data for that ID
     for result_i in range(20):
         for orig_i in range(20):
-            if np.all(orig[orig_i].numpy() == result[result_i].numpy()):
+            if np.all(orig[orig_i]["data"]["image"] == result[result_i].numpy()):
                 try:
                     assert orig_ids[orig_i] == result_ids[result_i]
                     assert orig_meta_ids[orig_i] == result_meta_ids[result_i]
