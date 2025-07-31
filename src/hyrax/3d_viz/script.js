@@ -65,17 +65,7 @@
     currentColors: [],
 
     // Currently visible columns
-    visibleColumns: [],
-
-    // Colorbar range state
-    colorbarRange: {
-        useCustomRange: false,
-        dataMin: 0,
-        dataMax: 1,
-        customMin: 0,
-        customMax: 1,
-        currentColumn: null
-    }
+    visibleColumns: [] 
  };
 
  // ======== DOM Elements Cache ========
@@ -617,115 +607,6 @@ function initColormapSettings() {
    const select = document.getElementById('colormapSelect');
    if (select) {
        select.value = activeColormap;
-   }
-   
-   // Initialize close button for colormap settings panel
-   const closeButton = document.getElementById('colormap-settings-close');
-   if (closeButton) {
-       closeButton.addEventListener('click', () => {
-           const panel = document.getElementById('colormap-settings-panel');
-           if (panel) {
-               panel.classList.add('hidden');
-           }
-       });
-   }
-   
-   // Initialize colorbar range sliders
-   initColorbarRangeSliders();
-}
-
-// Initialize colorbar range slider functionality
-function initColorbarRangeSliders() {
-   const minSlider = document.getElementById('colorbar-min-slider');
-   const maxSlider = document.getElementById('colorbar-max-slider');
-   const minDisplay = document.getElementById('colorbar-min-display');
-   const maxDisplay = document.getElementById('colorbar-max-display');
-   const resetButton = document.getElementById('reset-colorbar-range');
-   
-   if (!minSlider || !maxSlider || !minDisplay || !maxDisplay || !resetButton) {
-       console.warn('Colorbar range controls not found in DOM');
-       return;
-   }
-   
-   // Update display values and apply range
-   function updateSliderDisplay() {
-       const minPercent = parseFloat(minSlider.value);
-       const maxPercent = parseFloat(maxSlider.value);
-       
-       // Ensure min <= max
-       if (minPercent >= maxPercent) {
-           if (minSlider === document.activeElement) {
-               maxSlider.value = Math.min(100, minPercent + 0.1);
-           } else {
-               minSlider.value = Math.max(0, maxPercent - 0.1);
-           }
-       }
-       
-       // Calculate actual values based on data range
-       const range = state.colorbarRange.dataMax - state.colorbarRange.dataMin;
-       const actualMin = state.colorbarRange.dataMin + (parseFloat(minSlider.value) / 100) * range;
-       const actualMax = state.colorbarRange.dataMin + (parseFloat(maxSlider.value) / 100) * range;
-       
-       // Update displays
-       minDisplay.textContent = actualMin.toFixed(3);
-       maxDisplay.textContent = actualMax.toFixed(3);
-       
-       // Store custom range
-       state.colorbarRange.customMin = actualMin;
-       state.colorbarRange.customMax = actualMax;
-       state.colorbarRange.useCustomRange = true;
-       
-       // Update visualization if we have a current column
-       if (state.colorbarRange.currentColumn) {
-           updatePointColorsWithCustomRange(state.colorbarRange.currentColumn);
-       }
-   }
-   
-   // Slider event listeners
-   minSlider.addEventListener('input', updateSliderDisplay);
-   maxSlider.addEventListener('input', updateSliderDisplay);
-   
-   // Reset button
-   resetButton.addEventListener('click', () => {
-       minSlider.value = 0;
-       maxSlider.value = 100;
-       state.colorbarRange.useCustomRange = false;
-       
-       if (state.colorbarRange.currentColumn) {
-           updatePointColors(state.colorbarRange.currentColumn);
-       }
-   });
-}
-
-// Update sliders when data range changes
-function updateColorbarSliders(column, dataMin, dataMax) {
-   state.colorbarRange.dataMin = dataMin;
-   state.colorbarRange.dataMax = dataMax;
-   state.colorbarRange.currentColumn = column;
-   
-   const minSlider = document.getElementById('colorbar-min-slider');
-   const maxSlider = document.getElementById('colorbar-max-slider');
-   const minDisplay = document.getElementById('colorbar-min-display');
-   const maxDisplay = document.getElementById('colorbar-max-display');
-   
-   if (minSlider && maxSlider && minDisplay && maxDisplay) {
-       // Reset to full range if not using custom range
-       if (!state.colorbarRange.useCustomRange) {
-           minSlider.value = 0;
-           maxSlider.value = 100;
-           minDisplay.textContent = dataMin.toFixed(3);
-           maxDisplay.textContent = dataMax.toFixed(3);
-       } else {
-           // Update displays with current custom range
-           const range = dataMax - dataMin;
-           const minPercent = ((state.colorbarRange.customMin - dataMin) / range) * 100;
-           const maxPercent = ((state.colorbarRange.customMax - dataMin) / range) * 100;
-           
-           minSlider.value = Math.max(0, Math.min(100, minPercent));
-           maxSlider.value = Math.max(0, Math.min(100, maxPercent));
-           minDisplay.textContent = state.colorbarRange.customMin.toFixed(3);
-           maxDisplay.textContent = state.colorbarRange.customMax.toFixed(3);
-       }
    }
 }
 
@@ -1417,13 +1298,6 @@ function resetSelection() {
 
     console.log(`Coloring points by ${column}: Min = ${minVal}, Max = ${maxVal}`);
 
-    // Update colorbar sliders with new data range
-    updateColorbarSliders(column, minVal, maxVal);
-
-    // Use custom range if enabled, otherwise use data range
-    const effectiveMin = state.colorbarRange.useCustomRange ? state.colorbarRange.customMin : minVal;
-    const effectiveMax = state.colorbarRange.useCustomRange ? state.colorbarRange.customMax : maxVal;
-
     // Update colors in the geometry
     const geometry = state.pointCloud.geometry;
     const colors = geometry.attributes.color.array;
@@ -1432,7 +1306,7 @@ function resetSelection() {
     state.points.forEach((point, i) => {
        if (point[column] !== undefined) {
           const value = point[column];
-          const [r, g, b] = calculateColormap(value, effectiveMin, effectiveMax);
+          const [r, g, b] = calculateColormap(value, minVal, maxVal);
 
           // Update buffer colors
           colors[i * 3] = r;
@@ -1451,45 +1325,8 @@ function resetSelection() {
     state.selectedPoints = [];
     updateInfoBox();
 
-    // Update Colorbar
-    updateColorbar(column, effectiveMin, effectiveMax);
- }
-
- // Update point colors using custom range (called by sliders)
- function updatePointColorsWithCustomRange(column) {
-    if (!state.points || state.points.length === 0) {
-       return;
-    }
-
-    // Use the custom range values
-    const effectiveMin = state.colorbarRange.customMin;
-    const effectiveMax = state.colorbarRange.customMax;
-
-    // Update colors in the geometry
-    const geometry = state.pointCloud.geometry;
-    const colors = geometry.attributes.color.array;
-    state.currentColors = [];  // Reset stored colors
-
-    state.points.forEach((point, i) => {
-       if (point[column] !== undefined) {
-          const value = point[column];
-          const [r, g, b] = calculateColormap(value, effectiveMin, effectiveMax);
-
-          // Update buffer colors
-          colors[i * 3] = r;
-          colors[i * 3 + 1] = g;
-          colors[i * 3 + 2] = b;
-
-          // Store the current colors
-          state.currentColors.push([r, g, b]);
-       }
-    });
-
-    // Mark colors for update
-    geometry.attributes.color.needsUpdate = true;
-
-    // Update Colorbar with custom range
-    updateColorbar(column, effectiveMin, effectiveMax);
+   // Update Colorbar
+    updateColorbar(column, minVal, maxVal);
  }
 
  // ======== Helper Functions ========
