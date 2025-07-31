@@ -110,7 +110,6 @@ class Visualize(Verb):
 
         if self.config["visualize"]["display_images"]:
             fields += [self.filename_column_name]
-<<<<<<< HEAD
 
         # If no input directory is specified, read from config.
         if input_dir is None:
@@ -118,8 +117,6 @@ class Visualize(Verb):
             input_dir = (
                 self.config["results"]["inference_dir"] if self.config["results"]["inference_dir"] else None
             )
-=======
->>>>>>> 3b70451 (Ordering Bug Fix for Visualize)
 
         # If no input directory is specified, read from config.
         if input_dir is None:
@@ -150,11 +147,7 @@ class Visualize(Verb):
         self.color_values = None
 
         # Validate torch_tensor_bands configuration
-<<<<<<< HEAD
         self.torch_tensor_bands = self.config["visualize"]["torch_tensor_bands"]  # Defaults to i-band
-=======
-        self.torch_tensor_bands = self.config["visualize"]["torch_tensor_bands"]  # Default to i-band
->>>>>>> 3b70451 (Ordering Bug Fix for Visualize)
         if len(self.torch_tensor_bands) not in [1, 3]:
             raise ValueError(
                 f"torch_tensor_bands must specify either 1 band (single-band) or 3 bands (RGB). "
