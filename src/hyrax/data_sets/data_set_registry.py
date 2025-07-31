@@ -99,7 +99,9 @@ class HyraxDataset:
         # we use your required .ids() method to create the column
         if self._metadata_table is not None:
             colnames = self._metadata_table.colnames
-            if "object_id" not in colnames:
+            if ("object_id" not in colnames) and (
+                self._config["data_set"]["object_id_column_name"] not in colnames
+            ):
                 ids = np.array(list(self.ids()))
                 self._metadata_table.add_column(ids, name="object_id")
 
