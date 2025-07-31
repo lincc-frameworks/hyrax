@@ -110,6 +110,7 @@ class Visualize(Verb):
 
         if self.config["visualize"]["display_images"]:
             fields += [self.filename_column_name]
+<<<<<<< HEAD
 
         # If no input directory is specified, read from config.
         if input_dir is None:
@@ -117,6 +118,8 @@ class Visualize(Verb):
             input_dir = (
                 self.config["results"]["inference_dir"] if self.config["results"]["inference_dir"] else None
             )
+=======
+>>>>>>> 3b70451 (Ordering Bug Fix for Visualize)
 
         # If no input directory is specified, read from config.
         if input_dir is None:
@@ -147,7 +150,11 @@ class Visualize(Verb):
         self.color_values = None
 
         # Validate torch_tensor_bands configuration
+<<<<<<< HEAD
         self.torch_tensor_bands = self.config["visualize"]["torch_tensor_bands"]  # Defaults to i-band
+=======
+        self.torch_tensor_bands = self.config["visualize"]["torch_tensor_bands"]  # Default to i-band
+>>>>>>> 3b70451 (Ordering Bug Fix for Visualize)
         if len(self.torch_tensor_bands) not in [1, 3]:
             raise ValueError(
                 f"torch_tensor_bands must specify either 1 band (single-band) or 3 bands (RGB). "
@@ -673,11 +680,14 @@ class Visualize(Verb):
             # Get sampled ids correspoinding to the idxs
             sampled_ids = [id_map[idx] for idx in chosen_idx]
 
-            # Get metadata - WARNING: this is sorted by index!
-            meta = self.umap_results.metadata(chosen_idx, [self.object_id_column_name, self.filename_column_name])
+            # Get metadata - this is in the same order as chosen_idx
+            meta = self.umap_results.metadata(
+                chosen_idx, [self.object_id_column_name, self.filename_column_name]
+            )
 
-            # Create a dictionary to map indices to metadata
-            meta_idx_map = dict(zip(sorted(chosen_idx), range(len(meta[self.object_id_column_name]))))
+            # Extract metadata directly
+            # DEBUG: object_ids = meta[self.object_id_column_name]
+            raw_filenames = meta[self.filename_column_name]
 
             # Reorder metadata to match the original selection order
             ordered_object_ids = []
