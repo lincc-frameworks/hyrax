@@ -84,11 +84,13 @@ class Visualize(Verb):
         fields += self.config["visualize"]["fields"]
         self.cmap = self.config["visualize"]["cmap"]
 
+        if self.config["data_set"]["filename_column_name"]:
+            self.filename_column_name = self.config["data_set"]["filename_column_name"]
+        else:
+            self.filename_column_name = "filename"
+
         if self.config["visualize"]["display_images"]:
-            if self.config["data_set"]["filename_column_name"]:
-                fields += [self.config["data_set"]["filename_column_name"]]
-            else:
-                fields += ["filename"]
+            fields += [self.filename_column_name]
 
         # If no input directory is specified, read from config.
         if input_dir is None:
@@ -642,25 +644,19 @@ class Visualize(Verb):
             else:
                 chosen_idx = random.sample(list(self.points_idx), n_images)
 
-            # Get sampled ids -- this will match whatever order chosen, idx is in
+            # Get sampled ids correspoinding to the idxs
             sampled_ids = [id_map[idx] for idx in chosen_idx]
 
-            # Get metadata - WARNING: this is sorted by index!
-            meta = self.umap_results.metadata(chosen_idx, ["object_id", "filename"])
+            # Get metadata - this is in the same order as chosen_idx
+            meta = self.umap_results.metadata(
+                chosen_idx, [self.object_id_column_name, self.filename_column_name]
+            )
 
-            # Create a dictionary to map indices to metadata
-            meta_idx_map = dict(zip(sorted(chosen_idx), range(len(meta["object_id"]))))
+            # Extract metadata directly
+            # DEBUG: object_ids = meta[self.object_id_column_name]
+            raw_filenames = meta[self.filename_column_name]
 
-            # Reorder metadata to match the original selection order
-            ordered_object_ids = []
-            ordered_filenames = []
-
-            for idx in chosen_idx:
-                meta_position = meta_idx_map[idx]
-                ordered_object_ids.append(meta["object_id"][meta_position])
-                ordered_filenames.append(meta["filename"][meta_position])
-
-            filenames = [f.decode("utf-8") for f in ordered_filenames]
+            filenames = [f.decode("utf-8") for f in raw_filenames]
 
         else:
             sampled_ids = []
@@ -731,7 +727,7 @@ class Visualize(Verb):
                         norm = LogNorm(vmin=min_positive, vmax=np.max(arr))
                         arr = norm(arr)
 
-                    # title = f"{chosen_idx[i]}:{ordered_object_ids[i]}\n{sampled_ids[i]}"
+                    # DEBUG: title = f"{chosen_idx[i]}:{object_ids[i]}\n{sampled_ids[i]}"
                     title = f"{sampled_ids[i]}"
 
                 except Exception as e:
