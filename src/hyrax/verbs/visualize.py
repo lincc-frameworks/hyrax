@@ -119,7 +119,7 @@ class Visualize(Verb):
         self.color_values = None
 
         # Validate torch_tensor_bands configuration
-        self.torch_tensor_bands = self.config["visualize"]["torch_tensor_bands"])  # Defaults to i-band
+        self.torch_tensor_bands = self.config["visualize"]["torch_tensor_bands"]  # Defaults to i-band
         if len(self.torch_tensor_bands) not in [1, 3]:
             raise ValueError(
                 f"torch_tensor_bands must specify either 1 band (single-band) or 3 bands (RGB). "
