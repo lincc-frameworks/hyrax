@@ -9,6 +9,7 @@ from .hyrax_autoencoderv2 import HyraxAutoencoderV2
 from .hyrax_cnn import HyraxCNN
 from .hyrax_loopback import HyraxLoopback
 from .model_registry import hyrax_model
+from .simclr import SimCLR
 
 __all__ = [
     "hyrax_model",
@@ -19,4 +20,5 @@ __all__ = [
     "HSCAutoencoder",
     "HSCDCAE",
     "ImageDCAE",
+    "SimCLR",
 ]
