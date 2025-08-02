@@ -335,3 +335,17 @@ fields = []
 
 # Whether to display a panel of randomly chosen images corresponding to the selected points
 display_images = false
+
+# Name of catalog column to use for coloring points in the scatter plot. Use false for no coloring.
+color_column = false
+
+# Colormap to use for coloring points in the scatter plot when color_column is specified
+cmap = "viridis"
+
+# Only valid for .pt tensor images. Which bands should be loaded for display
+# [0,3,5] would map bands in that order to R,G,B. Single band will be grayscale.
+torch_tensor_bands = [3]
+
+# Whether to rasterize plot. Will break coloring (Haloviews Bug)
+# Helpful to reduce lag in large datasets. 
+rasterize_plot = false

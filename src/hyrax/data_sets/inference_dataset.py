@@ -232,12 +232,28 @@ class InferenceDataSet(HyraxDataset, Dataset):
         -------
         npt.ArrayLike
             An array where the rows correspond to the passed list of indexes and the columns
-            correspond to the fields passed.
+            correspond to the fields passed. Order is preserved- metadata[i] corresponds to idxs[i].
         """
+
+        idxs = np.asarray(idxs)
+
+        # Get the requested IDs in the order they were requested
         ids_requested = np.array(list(self.ids()))[idxs]  # type: ignore[index]
+
+        # Get all original dataset IDs
         original_ids = np.array(list(self.original_dataset.ids()))  # type: ignore[attr-defined]
-        original_idxs = np.array([str(id) in ids_requested for id in original_ids]).nonzero()[0]
-        return self.original_dataset.metadata(original_idxs, fields)  # type: ignore[attr-defined,no-any-return]
+
+        # Create mapping from original ID to original index
+        id_to_original_idx = {str(oid): i for i, oid in enumerate(original_ids)}
+
+        # Map requested IDs to original indices, preserving order
+        original_idxs = [id_to_original_idx[str(req_id)] for req_id in ids_requested]
+
+        # Get metadata from original dataset
+        original_metadata = self.original_dataset.metadata(original_idxs, fields)  # type: ignore[attr-defined,no-any-return]
+
+        # Return metadata in the same order as requested
+        return original_metadata
 
     def _load_from_batch_file(self, batch_num: int, ids=Union[int, np.ndarray]) -> np.ndarray:
         """Hands back an array of tensors given a set of IDs in a particular batch and the given
