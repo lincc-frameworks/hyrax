@@ -101,6 +101,9 @@ projection_dimension = 128
 # The scalar temperature parameter for its loss function, NTXentLoss, for SimCLR
 temperature = 0.5
 
+# The number of the input channels.
+input_channels = 3
+
 # The probability of applying horizontal flip augmentation for SimCLR
 horizontal_flip_probability = 0.5
 

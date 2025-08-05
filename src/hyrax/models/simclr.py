@@ -13,7 +13,7 @@ from hyrax.models.model_registry import hyrax_model
 class NTXentLoss(nn.Module):
     """Normalized Temperature-scaled Cross Entropy Loss. Based on Chen, 2020"""
 
-    def __init__(self, temperature=0.1):
+    def __init__(self, temperature):
         super().__init__()
         self.temperature = temperature
         self.criterion = nn.CrossEntropyLoss(reduction="sum")
@@ -22,6 +22,7 @@ class NTXentLoss(nn.Module):
         """Forward function of NTXentLoss. Based on Chen, 2020.
         Loss is calculated from representations from two augmented views of the same batch.
         """
+
         batch_size = z_i.shape[0]
         device = z_i.device
 
@@ -72,8 +73,22 @@ class SimCLR(nn.Module):
         self.shape = shape
         proj_dim = config["model"]["SimCLR"]["projection_dimension"]
         temperature = config["model"]["SimCLR"]["temperature"]
+        input_channels = config["model"]["SimCLR"]["input_channels"]
 
         backbone = models.resnet18(pretrained=False)
+
+        # Create a new conv layer with same out_channels, kernel size, stride, padding, etc
+        # But with the new in_channels
+        old_conv = backbone.conv1
+        backbone.conv1 = nn.Conv2d(
+            in_channels=input_channels,
+            out_channels=old_conv.out_channels,
+            kernel_size=old_conv.kernel_size,
+            stride=old_conv.stride,
+            padding=old_conv.padding,
+            bias=old_conv.bias is not None,
+        )
+
         backbone.fc = nn.Identity()
         self.backbone = backbone
 
@@ -82,7 +97,8 @@ class SimCLR(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(512, proj_dim),
         )
-        self.criterion = NTXentLoss(temperature)
+        # TODO: Make sure to revisit this and properly implement custom criterion
+        self.the_criterion = NTXentLoss(temperature)
 
     def forward(self, x):
         feats = self.backbone(x)
@@ -111,7 +127,7 @@ class SimCLR(nn.Module):
         z1 = self.forward(x1)
         z2 = self.forward(x2)
 
-        loss = self.criterion(z1, z2)
+        loss = self.the_criterion(z1, z2)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
