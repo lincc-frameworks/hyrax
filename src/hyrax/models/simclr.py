@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torchvision.models as models
-import torchvision.transforms as T  # noqa N812
+import torchvision.transforms.v2 as T  # noqa N812
 
 from hyrax.models.model_registry import hyrax_model
 
@@ -73,6 +73,64 @@ class SimCLR(nn.Module):
         self.shape = shape
         proj_dim = config["model"]["SimCLR"]["projection_dimension"]
         temperature = config["model"]["SimCLR"]["temperature"]
+
+        backbone = models.resnet18(pretrained=False)
+        backbone.fc = nn.Identity()
+        self.backbone = backbone
+
+        self.projection_head = nn.Sequential(
+            nn.Linear(512, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512, proj_dim),
+        )
+        # TODO: Make sure to revisit this and properly implement custom criterion
+        self.the_criterion = NTXentLoss(temperature)
+
+    def forward(self, x):
+        feats = self.backbone(x)
+        return self.projection_head(feats)
+
+    def train_step(self, x):
+        aug = T.Compose(
+            [
+                T.RandomResizedCrop(size=x.shape[-1]),
+                T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
+                T.RandomApply(
+                    [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
+                    p=self.config["model"]["SimCLR"]["color_jitter_probability"],
+                ),
+                T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
+                T.GaussianBlur(
+                    kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
+                    sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
+                ),
+            ]
+        )
+
+        x1 = torch.stack([aug(img) for img in x])
+        x2 = torch.stack([aug(img) for img in x])
+
+        z1 = self.forward(x1)
+        z2 = self.forward(x2)
+
+        loss = self.the_criterion(z1, z2)
+        self.optimizer.zero_grad()
+        loss.backward()
+        self.optimizer.step()
+        return {"loss": loss.item()}
+
+
+@hyrax_model
+class SimCLRv2(nn.Module):
+    """Modified SimCLR model with new augmentation routine and compatible
+    with an arbitrary number of input channels"""
+
+    def __init__(self, config, shape):
+        super().__init__()
+        self.config = config
+        self.shape = shape
+        proj_dim = config["model"]["SimCLR"]["projection_dimension"]
+        temperature = config["model"]["SimCLR"]["temperature"]
         input_channels = config["model"]["SimCLR"]["input_channels"]
 
         backbone = models.resnet18(pretrained=False)
@@ -109,14 +167,14 @@ class SimCLR(nn.Module):
             [
                 T.RandomResizedCrop(size=x.shape[-1]),
                 T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
-                T.RandomApply(
-                    [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
-                    p=self.config["model"]["SimCLR"]["color_jitter_probability"],
-                ),
-                T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
+                T.RandomRotation(self.config["model"]["SimCLR"]["rotation_range"]),
                 T.GaussianBlur(
                     kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
                     sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
+                ),
+                T.GaussianNoise(
+                    mean=self.config["model"]["SimCLR"]["gaussian_noise_mean"],
+                    sigma=self.config["model"]["SimCLR"]["gaussian_noise_sigma"],
                 ),
             ]
         )
