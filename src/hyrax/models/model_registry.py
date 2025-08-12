@@ -5,7 +5,7 @@ from typing import Any, cast
 import torch.nn as nn
 from torch import Tensor
 
-from hyrax.plugin_utils import get_or_load_class
+from hyrax.plugin_utils import get_or_load_class, update_registry
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +133,37 @@ def hyrax_model(cls):
     for name in required_methods:
         if not hasattr(cls, name):
             logger.error(f"Hyrax model {cls.__name__} missing required method {name}.")
+
+    def attach_dataset(friendly_name, dataset_class, data_directory, fields, primary_id_field=None):
+        if friendly_name in cls.data:
+            logger.error(
+                f"The friendly name '{friendly_name}' already exists."
+                f" If updating, first run `detach_dataset({friendly_name})`, "
+                f"then run `attach_dataset({friendly_name, ...})` again."
+            )
+        cls.data[friendly_name] = {
+            "dataset_class": dataset_class,
+            "data_directory": data_directory,
+            "fields": fields,
+        }
+
+        if primary_id_field and primary_id_field in fields:
+            cls.data[friendly_name]["primary_id_field"] = primary_id_field
+
+    cls.attach_dataset = staticmethod(attach_dataset)
+
+    def detach_dataset(friendly_name):
+        try:
+            cls.data.pop(friendly_name)
+        except KeyError:
+            logger.error(
+                f"Cannot remove '{friendly_name}' from data. These can be removed: {list(cls.data.keys())}"
+            )
+
+    cls.detach_dataset = staticmethod(detach_dataset)
+
+    update_registry(MODEL_REGISTRY, cls.__name__, cls)
+    return cls
 
 
 def fetch_model_class(runtime_config: dict) -> type[nn.Module]:
