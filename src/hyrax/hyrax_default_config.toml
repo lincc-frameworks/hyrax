@@ -101,6 +101,9 @@ projection_dimension = 128
 # The scalar temperature parameter for its loss function, NTXentLoss, for SimCLR
 temperature = 0.5
 
+# The number of the input channels.
+input_channels = 3
+
 # The probability of applying horizontal flip augmentation for SimCLR
 horizontal_flip_probability = 0.5
 
@@ -119,6 +122,15 @@ gaussian_blur_kernel_size = 9
 
 # The sigma range used in Gaussian blur augmentation for SimCLR
 gaussian_blur_sigma_range = [0.1, 2.0]
+
+# The maximum rotation angle (in degrees) augmentation for SimCLR
+rotation_range = 180
+
+# The mean of the distribution for Gaussian noise augmentation for SimCLR
+gaussian_noise_mean = 0
+
+# The standard deviation of the distribution for Gaussian noise augmentation for SimCLR
+gaussian_noise_sigma = 0.2
 
 
 [criterion]
