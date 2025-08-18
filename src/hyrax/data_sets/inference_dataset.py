@@ -1,3 +1,4 @@
+import json
 import logging
 from collections.abc import Generator
 from multiprocessing import Pool
@@ -11,6 +12,9 @@ from torch.utils.data import Dataset
 from hyrax.config_utils import find_most_recent_results_dir
 
 from .data_set_registry import HyraxDataset
+
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +74,11 @@ class InferenceDataSet(HyraxDataset, Dataset):
             msg = f"{self.results_dir} is corrupt and lacks a batch index file."
             raise RuntimeError(msg)
 
+        parquet_output = self.results_dir / 'output.parquet'
+        self.parquet_output = pq.read_table(parquet_output)
+        self.data = self.parquet_output.to_pandas()
+        self.tensor_shape = json.loads(self.parquet_output.schema.metadata.get(b'tensor_shape'))
+
         self.batch_index = np.load(self.results_dir / "batch_index.npy")
         self.length = len(self.batch_index)
 
@@ -106,7 +115,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
         """
         # Note: our __getitem__() needs self.shape() to work. We cannot use HraxDataset.shape()
         # because that shape uses __getitem__(), so we must define this for ourselves
-        return self.shape_element["tensor"].shape
+        return self.tensor_shape
 
     def ids(self) -> Generator[str]:
         """IDs of this dataset. Will return a string generator with IDs.
@@ -125,7 +134,8 @@ class InferenceDataSet(HyraxDataset, Dataset):
         """
         # Note: Not using HyraxDataset.ids() here because we need to return the ids of whatever
         # dataset was used for inference, not the sequential index HyraxDataset.ids() gives.
-        return (str(id) for id in self.batch_index["id"])
+        # return (str(id) for id in self.batch_index["id"])
+        return (str(id) for id in self.parquet_output['id'])
 
     def __getitem__(self, idx: Union[int, np.ndarray]):
         """Implements the ``[]`` operator
@@ -150,36 +160,40 @@ class InferenceDataSet(HyraxDataset, Dataset):
         except TypeError:
             idx = np.array([idx])
 
-        # Allocate a numpy array to hold all the tensors we will get in order
-        # Needs to be the appropriate shape
-        shape_tuple = tuple([len(idx)] + list(self._shape()))
-        all_tensors = np.zeros(shape=shape_tuple)
+        # # Allocate a numpy array to hold all the tensors we will get in order
+        # # Needs to be the appropriate shape
+        # shape_tuple = tuple([len(idx)] + list(self._shape()))
+        # all_tensors = np.zeros(shape=shape_tuple)
 
-        # We need to look up all the batches for the ids we get
-        lookup_batch = self.batch_index[idx]
+        # # We need to look up all the batches for the ids we get
+        # lookup_batch = self.batch_index[idx]
 
-        # We then need to sort the resultant id->batch catalog by batch
-        original_indexes = np.argsort(lookup_batch, order="batch_num")
-        sorted_lookup_batches = np.take_along_axis(lookup_batch, original_indexes, axis=-1)
+        # # We then need to sort the resultant id->batch catalog by batch
+        # original_indexes = np.argsort(lookup_batch, order="batch_num")
+        # sorted_lookup_batches = np.take_along_axis(lookup_batch, original_indexes, axis=-1)
 
-        unique_batch_nums = np.unique(sorted_lookup_batches["batch_num"])
-        for batch_num in unique_batch_nums:
-            # Mask our batch out to get IDs and the original indexes it had in the query
-            batch_mask = sorted_lookup_batches["batch_num"] == batch_num
-            batch_ids = sorted_lookup_batches[batch_mask]["id"]
-            batch_original_indexes = original_indexes[batch_mask]
+        # unique_batch_nums = np.unique(sorted_lookup_batches["batch_num"])
+        # for batch_num in unique_batch_nums:
+        #     # Mask our batch out to get IDs and the original indexes it had in the query
+        #     batch_mask = sorted_lookup_batches["batch_num"] == batch_num
+        #     batch_ids = sorted_lookup_batches[batch_mask]["id"]
+        #     batch_original_indexes = original_indexes[batch_mask]
 
-            # Lookup in each batch file
-            batch_tensors = np.sort(self._load_from_batch_file(batch_num, batch_ids), order="id")
+        #     # Lookup in each batch file
+        #     batch_tensors = np.sort(self._load_from_batch_file(batch_num, batch_ids), order="id")
 
-            # Place the resulting tensors in the results array where they go.
-            all_tensors[batch_original_indexes] = batch_tensors["tensor"]
+        #     # Place the resulting tensors in the results array where they go.
+        #     all_tensors[batch_original_indexes] = batch_tensors["tensor"]
 
-        # In the case of a single id this will be a tensor that has the appropriate shape
-        # Otherwise we will have a stacked array of tensors
-        all_tensors = all_tensors[0] if len(all_tensors) == 1 else all_tensors
+        # # In the case of a single id this will be a tensor that has the appropriate shape
+        # # Otherwise we will have a stacked array of tensors
+        # all_tensors = all_tensors[0] if len(all_tensors) == 1 else all_tensors
 
-        return from_numpy(all_tensors)
+        # return from_numpy(all_tensors)
+
+        tensors = self.data.iloc[idx]['tensor']
+        reshaped_tensors = np.array([tensor.reshape(self.tensor_shape) for tensor in tensors])
+        return from_numpy(reshaped_tensors)
 
     def __len__(self) -> int:
         """Returns the length of the dataset.
@@ -330,6 +344,7 @@ class InferenceDataSetWriter:
             if hasattr(original_dataset, "original_config")
             else original_dataset.config
         )
+        self.write_parquet_metadata = True
 
     def write_batch(self, ids: np.ndarray, tensors: list[np.ndarray]):
         """Write a batch of tensors into the dataset. This writes the whole batch immediately.
@@ -368,6 +383,16 @@ class InferenceDataSetWriter:
         self.all_batch_nums = np.append(self.all_batch_nums, np.full(batch_len, self.batch_index))
 
         self.batch_index += 1
+
+        _shape = json.dumps(tensors[0].shape)
+
+        flattened_tensors = [tensor.flatten() for tensor in tensors]
+        table = pa.Table.from_arrays([ids, flattened_tensors], names=['id', 'tensor'])
+
+        table = table.replace_schema_metadata({'tensor_shape': _shape})
+
+
+        pq.write_table(table, self.result_dir / 'output.parquet')
 
     def write_index(self):
         """Writes out the batch index built up by this object over multiple write_batch calls.
