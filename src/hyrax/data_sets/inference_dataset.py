@@ -1,20 +1,19 @@
 import json
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Iterable
 from multiprocessing import Pool
 from pathlib import Path
-from typing import Iterable, Optional, Union
+from typing import Optional, Union
 
 import numpy as np
 import numpy.typing as npt
+import pyarrow as pa
+import pyarrow.parquet as pq
 from torch.utils.data import Dataset
 
 from hyrax.config_utils import find_most_recent_results_dir, log_runtime_config
 
 from .data_set_registry import HyraxDataset
-
-import pyarrow as pa
-import pyarrow.parquet as pq
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +67,10 @@ class InferenceDataSet(HyraxDataset, Dataset):
         self.results_dir = self._resolve_results_dir(results_dir, verb)
         logger.warning(f"Found results directory: {self.results_dir}")
 
-        parquet_output = self.results_dir / 'output.parquet'
+        parquet_output = self.results_dir / "output.parquet"
         self.parquet_output = pq.read_table(parquet_output)
         self.data = self.parquet_output.to_pandas()
-        self.tensor_shape = json.loads(self.parquet_output.schema.metadata.get(b'tensor_shape'))
+        self.model_output_shape = json.loads(self.parquet_output.schema.metadata.get(b"model_output_shape"))
 
         # Initialize the original dataset using the old config, so we have it
         # around for metadata calls
@@ -105,11 +104,11 @@ class InferenceDataSet(HyraxDataset, Dataset):
         """
         # Note: Not using HyraxDataset.ids() here because we need to return the ids of whatever
         # dataset was used for inference, not the sequential index HyraxDataset.ids() gives.
-        return (str(id) for id in self.parquet_output['id'])
+        return (str(id) for id in self.parquet_output["id"])
 
-    def get_tensor(self, idx):
+    def get_model_output(self, idx):
         """Retrieve tensors from the pandas dataframe and reshape them to their original
-        dimensions using the tensor_shape metadata.
+        dimensions using the model_output_shape metadata.
 
         Parameters
         ----------
@@ -122,11 +121,10 @@ class InferenceDataSet(HyraxDataset, Dataset):
             The tensor(s) corresponding to the input index(es) reshaped to the
             original dimensions.
         """
-        tensors = self.data.iloc[idx]['tensor']
-        reshaped_tensors = np.array([tensor.reshape(self.tensor_shape) for tensor in tensors])
-        return reshaped_tensors
+        model_output = self.data.iloc[idx]["model_output"]
+        return np.array([o.reshape(self.model_output_shape) for o in model_output])
 
-    def __getitem__(self, idx: Union[int, np.ndarray, slice]):
+    def __getitem__(self, idx: Union[int, slice, Iterable]):
         """Implements the ``[]`` operator
 
         Parameters
@@ -145,20 +143,21 @@ class InferenceDataSet(HyraxDataset, Dataset):
         from torch import from_numpy
 
         if not isinstance(idx, (int, slice, Iterable)) or isinstance(idx, (str, bytes)):
-            logger.error("Invalid index type. Expected int, Iterable, or slice. "
+            logger.error(
+                "Invalid index type. Expected int, Iterable, or slice. "
                 "i.e. `42`, `[0,1,2]`, `(11,32,101)` or `[start:end:step]`."
             )
             return None
-    
+
         # If the index is a single integer, we'll cast to a list. This will ensure
         # that when we index into the dataframe, we always get a pandas.Series
         # back. This simplifies the retrieval logic and makes it easier to get
         # consistent return values.
         if isinstance(idx, int):
-            idx = [idx]cl
+            idx = [idx]
 
-        reshaped_tensors = self.get_tensor(idx)
-        return from_numpy(reshaped_tensors)
+        original_model_output = self.get_model_output(idx)
+        return from_numpy(original_model_output)
 
     def __len__(self) -> int:
         """Returns the length of the dataset.
@@ -234,9 +233,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
         # Return metadata in the same order as requested
         return original_metadata
 
-    def _resolve_results_dir(
-        self, results_dir: Optional[Union[Path, str]], verb: Optional[str]
-    ) -> Path:
+    def _resolve_results_dir(self, results_dir: Optional[Union[Path, str]], verb: Optional[str]) -> Path:
         """Initialize an inference results directory as a data source. Accepts an override of what
         directory to use"""
 
@@ -301,24 +298,26 @@ class InferenceDataSetWriter:
 
         log_runtime_config(self.original_dataset_config, self.result_dir, ORIGINAL_DATASET_CONFIG_FILENAME)
 
-    def write_batch(self, ids: np.ndarray, tensors: list[np.ndarray]):
-        """Write a batch of tensors into the dataset. This writes the whole batch immediately.
-        Caller is in charge of batch size consistency considerations, and that ids is the same length as
-        tensors
+    def write_batch(self, ids: np.ndarray, model_output: list[np.ndarray]):
+        """Write a batch of model_output numpy arrays into a parquet results file.
+        This writes the whole batch immediately.
+
+        Caller is in charge of batch size consistency. It is expected that the
+        output will have a consistent shape and that `ids` is the same length as
+        model_output.
 
         Parameters
         ----------
         ids : np.ndarray
-            Array of IDs, dtype of the elements must match the dtype type of the ids of the original dataset
-            used to construct this InferenceDataSetWriter.
-        tensors : list[np.ndarray]
+            Array of IDs, dtype of the elements must match the dtype type of the
+            ids of the original dataset used to construct this InferenceDataSetWriter.
+        model_output : list[np.ndarray]
             List of consistently dimensioned numpy arrays to save.
         """
-        _shape = json.dumps(tensors[0].shape)
+        _shape = json.dumps(model_output[0].shape)
 
-        flattened_tensors = [tensor.flatten() for tensor in tensors]
-        table = pa.Table.from_arrays([ids, flattened_tensors], names=['id', 'tensor'])
+        flattened_model_output = [o.flatten() for o in model_output]
+        table = pa.Table.from_arrays([ids, flattened_model_output], names=["id", "model_output"])
 
-        table = table.replace_schema_metadata({'tensor_shape': _shape})
-
-        pq.write_table(table, self.result_dir / 'output.parquet')
+        table = table.replace_schema_metadata({"model_output_shape": _shape})
+        pq.write_table(table, self.result_dir / "output.parquet")
