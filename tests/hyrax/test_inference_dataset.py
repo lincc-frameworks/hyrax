@@ -37,7 +37,7 @@ def inference_dataset(tmp_path_factory, request):
             np.array(data_set_ids[indexes[10:20]]),  # ids
             np.array(current_data_set[indexes[10:20]]),  # Results
         )
-        data_writer.write_index()
+
         current_data_set = InferenceDataSet(h.config, tmp_path)
 
     return original_data_set, current_data_set

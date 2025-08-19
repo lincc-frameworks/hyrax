@@ -163,7 +163,6 @@ class Umap(Verb):
                 self._log_memory_usage(f"During transformation of batch of shape {batch.shape}")
                 umap_results.write_batch(batch_ids, transformed_batch)
 
-        umap_results.write_index()
         logger.info("Finished transforming all data through UMAP")
 
         return InferenceDataSet(self.config, results_dir)

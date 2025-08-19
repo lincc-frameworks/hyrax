@@ -129,6 +129,10 @@ class SaveToDatabase(Verb):
         config["vector_db"]["vector_db_dir"] = str(vector_db_path)
         log_runtime_config(config, vector_db_path)
 
+
+        #! The following logic will need to change because the parquet implementation
+        #! will not make use of batch indexing and batch files.
+
         # Use the batch_index to get the list of batches.
         batches = np.unique(inference_data_set.batch_index["batch_num"])
 

@@ -130,9 +130,6 @@ class Infer(Verb):
         evaluator = create_evaluator(model, _save_batch, config)
         evaluator.run(data_loader)
 
-        # Write out a dictionary to map IDs->Batch
-        data_writer.write_index()
-
         # Write out our tensorboard stuff
         tensorboardx_logger.close()
 
