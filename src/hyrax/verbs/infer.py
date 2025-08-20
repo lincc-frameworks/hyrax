@@ -130,6 +130,8 @@ class Infer(Verb):
         evaluator = create_evaluator(model, _save_batch, config)
         evaluator.run(data_loader)
 
+        data_writer.finalize()
+
         # Write out our tensorboard stuff
         tensorboardx_logger.close()
 

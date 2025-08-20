@@ -8,6 +8,7 @@ from typing import Optional, Union
 import numpy as np
 import numpy.typing as npt
 import pyarrow as pa
+import pyarrow.dataset as ds
 import pyarrow.parquet as pq
 from torch.utils.data import Dataset
 
@@ -67,14 +68,14 @@ class InferenceDataSet(HyraxDataset, Dataset):
         self.results_dir = self._resolve_results_dir(results_dir, verb)
 
         self.use_parquet = False
-        parquet_output = self.results_dir / "output.parquet"
+        parquet_output = self.results_dir / "output/_metadata.parquet"
         if parquet_output.exists():
             self.use_parquet = True
-            self.parquet_output = pq.read_table(parquet_output)
-            self.data = self.parquet_output.to_pandas()
-            self.model_output_shape = json.loads(
-                self.parquet_output.schema.metadata.get(b"model_output_shape")
-            )
+            self.parquet_output = ds.dataset(self.results_dir / "output", format="parquet")
+            self.data = self.parquet_output.to_table()
+
+            metadata = pq.read_table(self.results_dir / "output/_metadata.parquet")
+            self.model_output_shape = json.loads(metadata.schema.metadata.get(b"model_output_shape"))
 
         # DEPRECATION WARNING - this `if not` block is temporary and here for backwards compatibility
         if not self.use_parquet:
@@ -144,7 +145,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
         # Note: Not using HyraxDataset.ids() here because we need to return the ids of whatever
         # dataset was used for inference, not the sequential index HyraxDataset.ids() gives.
         if self.use_parquet:
-            return (str(id) for id in self.parquet_output["id"])
+            return (str(id) for id in self.data["id"])
 
         # DEPRECATION WARNING - this `else` block is temporary and here for backwards compatibility
         else:
@@ -165,8 +166,10 @@ class InferenceDataSet(HyraxDataset, Dataset):
             The tensor(s) corresponding to the input index(es) reshaped to the
             original dimensions.
         """
-        model_output = self.data.iloc[idx]["model_output"]
-        return np.array([o.reshape(self.model_output_shape) for o in model_output])
+        model_output = self.data["model_output"][idx]
+        if isinstance(model_output, pa.lib.FixedShapeTensorScalar):
+            model_output = [model_output]
+        return np.array([o.to_numpy() for o in model_output])
 
     def get_id(self, idx) -> npt.NDArray[np.str_]:
         """Retrieve the ids of a specific element in the dataset.
@@ -181,7 +184,10 @@ class InferenceDataSet(HyraxDataset, Dataset):
         np.array[str]
             The ID of the element(s) corresponding to the input index(es).
         """
-        return np.array([str(i) for i in self.data.iloc[idx]["id"]])
+        id = self.data["id"][idx]
+        if isinstance(id, pa.lib.StringScalar):
+            id = [id]
+        return np.array([str(i) for i in id])
 
     def __getitem__(self, idx: Union[int, np.ndarray]):
         """
@@ -279,19 +285,9 @@ class InferenceDataSet(HyraxDataset, Dataset):
         """
         from torch import from_numpy
 
-        if not isinstance(idx, (int, slice, Iterable)) or isinstance(idx, (str, bytes)):
-            logger.error(
-                "Invalid index type. Expected int, Iterable, or slice. "
-                "i.e. `42`, `[0,1,2]`, `(11,32,101)` or `[start:end:step]`."
-            )
+        if not isinstance(idx, (int, slice)):
+            logger.error("Invalid index type. Expected int, or slice. i.e. `42`, or `[start:end:step]`.")
             return None
-
-        # If the index is a single integer, we'll cast to a list. This will ensure
-        # that when we index into the dataframe, we always get a pandas.Series
-        # back. This simplifies the retrieval logic and makes it easier to get
-        # consistent return values.
-        if isinstance(idx, int):
-            idx = [idx]
 
         original_model_output = self.get_model_output(idx)
         return from_numpy(original_model_output)
@@ -454,6 +450,10 @@ class InferenceDataSetWriter:
 
         log_runtime_config(self.original_dataset_config, self.result_dir, ORIGINAL_DATASET_CONFIG_FILENAME)
 
+        self.max_buffer_size = 4096
+        self.table = None
+        self.buffer = {}
+
     def write_batch(self, ids: np.ndarray, model_output: list[np.ndarray]):
         """Write a batch of model_output numpy arrays into a parquet results file.
         This writes the whole batch immediately.
@@ -470,26 +470,35 @@ class InferenceDataSetWriter:
         model_output : list[np.ndarray]
             List of consistently dimensioned numpy arrays to save.
         """
-        parquet_file = self.result_dir / "output.parquet"
-        _shape = json.dumps(model_output[0].shape)
+        self._shape_metadata = json.dumps(model_output[0].shape)
 
-        flattened_model_output = [o.flatten() for o in model_output]
-        table = pa.Table.from_arrays([ids, flattened_model_output], names=["id", "model_output"])
+        # flattened_model_output = [o.flatten() for o in model_output]
 
-        #! This seems odd - pyarrow doesn't allow appending to a file.
-        #! fastparquet _does_ support appending, but it's not clear if it will
-        #! support direct writing of flattened numpy arrays.
-        # Check if the Parquet file exists
-        if parquet_file.exists():
-            # Read the existing Parquet file
-            existing_table = pq.read_table(parquet_file)
+        self.buffer["id"] = self.buffer.get("id", []) + list(ids)
+        self.buffer["model_output"] = self.buffer.get("model_output", []) + model_output
 
-            # Combine the existing data with the new data
-            combined_table = pa.concat_tables([existing_table, table])
-        else:
-            # If the file doesn't exist, set the metadata and use the new table
-            table = table.replace_schema_metadata({"model_output_shape": _shape})
-            combined_table = table
+        if len(self.buffer["id"]) > self.max_buffer_size:
+            self._flush_buffer()
 
-        # Write the combined data back to the Parquet file
-        pq.write_table(combined_table, parquet_file)
+    def _flush_buffer(self):
+        self.buffer["model_output"] = pa.FixedShapeTensorArray.from_numpy_ndarray(
+            np.array(self.buffer["model_output"])
+        )
+
+        self.table = pa.Table.from_arrays(
+            [self.buffer["id"], self.buffer["model_output"]], names=["id", "model_output"]
+        )
+
+        pq.write_to_dataset(self.table, root_path=self.result_dir / "output")
+
+        for k in self.buffer:
+            self.buffer[k] = []
+
+    def finalize(self):
+        """Final write out of remaining data and write out metadata."""
+
+        self._flush_buffer()
+        self.table = self.table.replace_schema_metadata({"model_output_shape": self._shape_metadata})
+        pq.write_metadata(
+            self.table.schema, self.result_dir / "output/_metadata.parquet", metadata_collector=[]
+        )

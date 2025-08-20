@@ -28,6 +28,8 @@ def inference_dataset(tmp_path_factory, request):
 
         data_set_ids = np.array(list(current_data_set.ids()))
 
+        #!!! We should make this test align with the expected input format for `write_batch`
+        #! i.e. write_batch(np.array, list[np.array])
         data_writer.write_batch(
             np.array(data_set_ids[indexes[0:10]]),  # ids
             np.array(current_data_set[indexes[0:10]]),  # Results
@@ -37,6 +39,8 @@ def inference_dataset(tmp_path_factory, request):
             np.array(data_set_ids[indexes[10:20]]),  # ids
             np.array(current_data_set[indexes[10:20]]),  # Results
         )
+
+        data_writer.finalize()
 
         current_data_set = InferenceDataSet(h.config, tmp_path)
 
