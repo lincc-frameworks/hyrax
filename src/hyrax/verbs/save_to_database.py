@@ -129,15 +129,14 @@ class SaveToDatabase(Verb):
         config["vector_db"]["vector_db_dir"] = str(vector_db_path)
         log_runtime_config(config, vector_db_path)
 
-
-
         if inference_data_set.use_parquet:
             total_length = len(inference_data_set)
             batch_size = 512
             for idx in range(0, total_length, batch_size):
-                id = inference_data_set.get_id(slice(idx, idx+batch_size))
-                vector = inference_data_set.get_model_output(slice(idx, idx+batch_size))
-                vector_db.insert(ids=list(id), vectors=vector)
+                ids = list(inference_data_set.get_id(slice(idx, idx + batch_size)))
+                vectors = inference_data_set.get_model_output(slice(idx, idx + batch_size))
+                vectors = list(vectors.reshape(len(vectors), -1))
+                vector_db.insert(ids=ids, vectors=vectors)
 
         #! DEPRECATION WARNING - this uses the original InferenceDataset .npy-style
         #! which will be deprecated. This will be removed soon.

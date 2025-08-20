@@ -72,7 +72,9 @@ class InferenceDataSet(HyraxDataset, Dataset):
             self.use_parquet = True
             self.parquet_output = pq.read_table(parquet_output)
             self.data = self.parquet_output.to_pandas()
-            self.model_output_shape = json.loads(self.parquet_output.schema.metadata.get(b"model_output_shape"))
+            self.model_output_shape = json.loads(
+                self.parquet_output.schema.metadata.get(b"model_output_shape")
+            )
 
         # DEPRECATION WARNING - this `if not` block is temporary and here for backwards compatibility
         if not self.use_parquet:
@@ -148,7 +150,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
         else:
             return (str(id) for id in self.batch_index["id"])
 
-    def get_model_output(self, idx):
+    def get_model_output(self, idx) -> npt.NDArray[np.float32]:
         """Retrieve tensors from the pandas dataframe and reshape them to their original
         dimensions using the model_output_shape metadata.
 
@@ -159,14 +161,14 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         Returns
         -------
-        np.array
+        np.array[np.array[np.float]]
             The tensor(s) corresponding to the input index(es) reshaped to the
             original dimensions.
         """
         model_output = self.data.iloc[idx]["model_output"]
         return np.array([o.reshape(self.model_output_shape) for o in model_output])
 
-    def get_id(self, idx):
+    def get_id(self, idx) -> npt.NDArray[np.str_]:
         """Retrieve the ids of a specific element in the dataset.
 
         Parameters
@@ -176,7 +178,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         Returns
         -------
-        str
+        np.array[str]
             The ID of the element(s) corresponding to the input index(es).
         """
         return np.array([str(i) for i in self.data.iloc[idx]["id"]])
@@ -473,7 +475,6 @@ class InferenceDataSetWriter:
 
         flattened_model_output = [o.flatten() for o in model_output]
         table = pa.Table.from_arrays([ids, flattened_model_output], names=["id", "model_output"])
-
 
         #! This seems odd - pyarrow doesn't allow appending to a file.
         #! fastparquet _does_ support appending, but it's not clear if it will
