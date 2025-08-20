@@ -65,12 +65,34 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         super().__init__(config)
         self.results_dir = self._resolve_results_dir(results_dir, verb)
-        logger.warning(f"Found results directory: {self.results_dir}")
 
+        self.use_parquet = False
         parquet_output = self.results_dir / "output.parquet"
-        self.parquet_output = pq.read_table(parquet_output)
-        self.data = self.parquet_output.to_pandas()
-        self.model_output_shape = json.loads(self.parquet_output.schema.metadata.get(b"model_output_shape"))
+        if parquet_output.exists():
+            self.use_parquet = True
+            self.parquet_output = pq.read_table(parquet_output)
+            self.data = self.parquet_output.to_pandas()
+            self.model_output_shape = json.loads(self.parquet_output.schema.metadata.get(b"model_output_shape"))
+
+        # DEPRECATION WARNING - this `if not` block is temporary and here for backwards compatibility
+        if not self.use_parquet:
+            # Open the batch index numpy file.
+            # Loop over files and create if it does not exist
+            batch_index_path = self.results_dir / "batch_index.npy"
+            if not batch_index_path.exists():
+                msg = f"{self.results_dir} is corrupt and lacks a batch index file."
+                raise RuntimeError(msg)
+
+            self.batch_index = np.load(self.results_dir / "batch_index.npy")
+            self.length = len(self.batch_index)
+
+            # Initializes our first element. This primes the cache for sequential access
+            # as well as giving us a sample element for shape()
+            self.cached_batch_num: Optional[int] = None
+
+            self.shape_element = self._load_from_batch_file(
+                self.batch_index["batch_num"][0], self.batch_index["id"][0]
+            )[0]
 
         # Initialize the original dataset using the old config, so we have it
         # around for metadata calls
@@ -86,6 +108,21 @@ class InferenceDataSet(HyraxDataset, Dataset):
         #       we can bring up Only the metadata for a dataset, without constructing the whole thing.
         self._original_dataset_config["data_set"]["preload_cache"] = False
         self.original_dataset = setup_dataset(self._original_dataset_config)  # type: ignore[arg-type]
+
+    def _shape(self):
+        """
+        DEPRECATION WARNING - this method is only used for the .npy output. It will
+        be removed at a later date.
+
+        The shape of the dataset (Discovered from files)
+        Returns
+        -------
+        Tuple
+            Tuple with the shape of an individual element of the dataset
+        """
+        # Note: our __getitem__() needs self.shape() to work. We cannot use HraxDataset.shape()
+        # because that shape uses __getitem__(), so we must define this for ourselves
+        return self.shape_element["tensor"].shape
 
     def ids(self) -> Generator[str]:
         """IDs of this dataset. Will return a string generator with IDs.
@@ -104,7 +141,12 @@ class InferenceDataSet(HyraxDataset, Dataset):
         """
         # Note: Not using HyraxDataset.ids() here because we need to return the ids of whatever
         # dataset was used for inference, not the sequential index HyraxDataset.ids() gives.
-        return (str(id) for id in self.parquet_output["id"])
+        if self.use_parquet:
+            return (str(id) for id in self.parquet_output["id"])
+
+        # DEPRECATION WARNING - this `else` block is temporary and here for backwards compatibility
+        else:
+            return (str(id) for id in self.batch_index["id"])
 
     def get_model_output(self, idx):
         """Retrieve tensors from the pandas dataframe and reshape them to their original
@@ -124,7 +166,100 @@ class InferenceDataSet(HyraxDataset, Dataset):
         model_output = self.data.iloc[idx]["model_output"]
         return np.array([o.reshape(self.model_output_shape) for o in model_output])
 
-    def __getitem__(self, idx: Union[int, slice, Iterable]):
+    def get_id(self, idx):
+        """Retrieve the ids of a specific element in the dataset.
+
+        Parameters
+        ----------
+        idx : Union[int, slice, Iterable]
+            The index or indices of the element(s) to retrieve.
+
+        Returns
+        -------
+        str
+            The ID of the element(s) corresponding to the input index(es).
+        """
+        return np.array([str(i) for i in self.data.iloc[idx]["id"]])
+
+    def __getitem__(self, idx: Union[int, np.ndarray]):
+        """
+        DEPRECATION WARNING - Once the .npy storage format is completely deprecated,
+        the logic in this method will be replaced by the logic in _get_item_parquet.
+
+        This is a wrapper function that calls the appropriate _get_item method
+        based on the file format. The original InferenceDataset implementation used
+        .npy files to store the model output, we're moving to .parquet to make it
+        easier for people to work with the model output outside of the Hyrax
+        ecosystem.
+
+        Returns
+        -------
+        Union[torch.Tensor, List[torch.Tensor]]
+            The tensor(s) corresponding to the input index(es).
+        """
+        if self.use_parquet:
+            return self._get_item_parquet(idx)
+        else:
+            return self._get_item_npy(idx)
+
+    def _get_item_npy(self, idx):
+        """
+        DEPRECATION WARNING - this method is only used for the .npy output. It will
+        be removed at a later date. It is the original implementation of the __getitem__
+        method.
+
+        Implements the ``[]`` operator
+        Parameters
+        ----------
+        idx : Union[int, np.ndarray]
+            Either an index or a numpy array of indexes.
+            These are NOT the ID values of the dataset, but rather a zero-based index starting
+            at the beginning of the inference dataset.
+        Returns
+        -------
+        torch.tensor
+            Either the tensor corresponding to a single result, or a tensor with a multiplicity of
+            results if multiple indexes were passed.
+        """
+        from torch import from_numpy
+
+        try:
+            _ = (e for e in idx)  # type: ignore[union-attr]
+        except TypeError:
+            idx = np.array([idx])
+
+        # Allocate a numpy array to hold all the tensors we will get in order
+        # Needs to be the appropriate shape
+        shape_tuple = tuple([len(idx)] + list(self._shape()))
+        all_tensors = np.zeros(shape=shape_tuple)
+
+        # We need to look up all the batches for the ids we get
+        lookup_batch = self.batch_index[idx]
+
+        # We then need to sort the resultant id->batch catalog by batch
+        original_indexes = np.argsort(lookup_batch, order="batch_num")
+        sorted_lookup_batches = np.take_along_axis(lookup_batch, original_indexes, axis=-1)
+
+        unique_batch_nums = np.unique(sorted_lookup_batches["batch_num"])
+        for batch_num in unique_batch_nums:
+            # Mask our batch out to get IDs and the original indexes it had in the query
+            batch_mask = sorted_lookup_batches["batch_num"] == batch_num
+            batch_ids = sorted_lookup_batches[batch_mask]["id"]
+            batch_original_indexes = original_indexes[batch_mask]
+
+            # Lookup in each batch file
+            batch_tensors = np.sort(self._load_from_batch_file(batch_num, batch_ids), order="id")
+
+            # Place the resulting tensors in the results array where they go.
+            all_tensors[batch_original_indexes] = batch_tensors["tensor"]
+
+        # In the case of a single id this will be a tensor that has the appropriate shape
+        # Otherwise we will have a stacked array of tensors
+        all_tensors = all_tensors[0] if len(all_tensors) == 1 else all_tensors
+
+        return from_numpy(all_tensors)
+
+    def _get_item_parquet(self, idx: Union[int, slice, Iterable]):
         """Implements the ``[]`` operator
 
         Parameters
@@ -167,7 +302,11 @@ class InferenceDataSet(HyraxDataset, Dataset):
         int
             Length of the dataset.
         """
-        return len(self.data)
+        if self.use_parquet:
+            return len(self.data)
+        # DEPRECATION WARNING - this `else` block is temporary and here for backwards compatibility
+        else:
+            return self.length
 
     @property
     def original_config(self) -> dict:
@@ -232,6 +371,21 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         # Return metadata in the same order as requested
         return original_metadata
+
+    def _load_from_batch_file(self, batch_num: int, ids=Union[int, np.ndarray]) -> np.ndarray:
+        """
+        DEPRECATION WARNING - this method is only used for the .npy output. It will
+        be removed at a later date.
+
+        Hands back an array of tensors given a set of IDs in a particular batch and the given
+        batch number"""
+
+        # Ensure the cached batch is loaded
+        if self.cached_batch_num is None or batch_num != self.cached_batch_num:
+            self.cached_batch_num = batch_num
+            self.cached_batch: np.ndarray = np.load(self.results_dir / f"batch_{batch_num}.npy")
+
+        return self.cached_batch[np.isin(self.cached_batch["id"], ids)]
 
     def _resolve_results_dir(self, results_dir: Optional[Union[Path, str]], verb: Optional[str]) -> Path:
         """Initialize an inference results directory as a data source. Accepts an override of what
@@ -314,10 +468,27 @@ class InferenceDataSetWriter:
         model_output : list[np.ndarray]
             List of consistently dimensioned numpy arrays to save.
         """
+        parquet_file = self.result_dir / "output.parquet"
         _shape = json.dumps(model_output[0].shape)
 
         flattened_model_output = [o.flatten() for o in model_output]
         table = pa.Table.from_arrays([ids, flattened_model_output], names=["id", "model_output"])
 
-        table = table.replace_schema_metadata({"model_output_shape": _shape})
-        pq.write_table(table, self.result_dir / "output.parquet")
+
+        #! This seems odd - pyarrow doesn't allow appending to a file.
+        #! fastparquet _does_ support appending, but it's not clear if it will
+        #! support direct writing of flattened numpy arrays.
+        # Check if the Parquet file exists
+        if parquet_file.exists():
+            # Read the existing Parquet file
+            existing_table = pq.read_table(parquet_file)
+
+            # Combine the existing data with the new data
+            combined_table = pa.concat_tables([existing_table, table])
+        else:
+            # If the file doesn't exist, set the metadata and use the new table
+            table = table.replace_schema_metadata({"model_output_shape": _shape})
+            combined_table = table
+
+        # Write the combined data back to the Parquet file
+        pq.write_table(combined_table, parquet_file)

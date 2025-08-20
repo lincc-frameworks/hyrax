@@ -130,25 +130,34 @@ class SaveToDatabase(Verb):
         log_runtime_config(config, vector_db_path)
 
 
-        #! The following logic will need to change because the parquet implementation
-        #! will not make use of batch indexing and batch files.
 
-        # Use the batch_index to get the list of batches.
-        batches = np.unique(inference_data_set.batch_index["batch_num"])
+        if inference_data_set.use_parquet:
+            total_length = len(inference_data_set)
+            batch_size = 512
+            for idx in range(0, total_length, batch_size):
+                id = inference_data_set.get_id(slice(idx, idx+batch_size))
+                vector = inference_data_set.get_model_output(slice(idx, idx+batch_size))
+                vector_db.insert(ids=list(id), vectors=vector)
 
-        logger.info(f"Number of inference result batches to index: {len(batches)}.")
-        for batch in tqdm(batches):
-            # Get all the indices where inference_data_set.batch_index['batch_num'] == batch
-            index_mask = inference_data_set.batch_index["batch_num"] == batch
+        #! DEPRECATION WARNING - this uses the original InferenceDataset .npy-style
+        #! which will be deprecated. This will be removed soon.
+        else:
+            # Use the batch_index to get the list of batches.
+            batches = np.unique(inference_data_set.batch_index["batch_num"])
 
-            # Get the ids of the data in this batch file
-            ids = inference_data_set.batch_index["id"][index_mask]
+            logger.info(f"Number of inference result batches to index: {len(batches)}.")
+            for batch in tqdm(batches):
+                # Get all the indices where inference_data_set.batch_index['batch_num'] == batch
+                index_mask = inference_data_set.batch_index["batch_num"] == batch
 
-            # Retrieve the vectors from the batch file using the ids. We use the
-            # ids here so that we only have to open one file to get the vectors.
-            inference_data = inference_data_set._load_from_batch_file(batch, ids)
+                # Get the ids of the data in this batch file
+                ids = inference_data_set.batch_index["id"][index_mask]
 
-            # Flatten the vectors and turn them into a list of np.arrays.
-            vectors = list(inference_data["tensor"].reshape(len(inference_data["tensor"]), -1))
+                # Retrieve the vectors from the batch file using the ids. We use the
+                # ids here so that we only have to open one file to get the vectors.
+                inference_data = inference_data_set._load_from_batch_file(batch, ids)
 
-            vector_db.insert(ids=list(inference_data["id"]), vectors=vectors)
+                # Flatten the vectors and turn them into a list of np.arrays.
+                vectors = list(inference_data["tensor"].reshape(len(inference_data["tensor"]), -1))
+
+                vector_db.insert(ids=list(inference_data["id"]), vectors=vectors)
