@@ -140,7 +140,7 @@ We attempt to keep the comments as concise as possible.
 Finally, the configuration file is organized into tables that roughly correspond
 to the different actions that Hyrax can take.
 For instance, the ``[train]`` table contains parameters needed when training a
-model such as ``epochs`` and ``weights_filepath``.
+model such as ``epochs`` and ``weights_filename``.
 While the ``[infer]`` table contains keys such as ``model_weights_file``.
 
 

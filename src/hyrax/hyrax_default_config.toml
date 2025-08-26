@@ -128,7 +128,7 @@ lr = 0.01
 
 [train]
 # The name of the file were the model weights will be saved after training.
-weights_filepath = "example_model.pth"
+weights_filename = "example_model.pth"
 
 #The number of epochs to train for.
 epochs = 10
