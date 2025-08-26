@@ -25,7 +25,7 @@ def export_to_onnx(model, sample, config, ctx):
     """
 
     # build the output ONNX file path
-    model_filename = Path(config["train"]["weights_filepath"]).stem
+    model_filename = Path(config["train"]["weights_filename"]).stem
     onnx_opset_version = config["onnx"]["opset_version"]
     onnx_model_filename = f"{model_filename}_opset_{onnx_opset_version}.onnx"
     onnx_output_filepath = ctx["results_dir"] / onnx_model_filename
