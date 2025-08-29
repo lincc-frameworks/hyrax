@@ -113,7 +113,6 @@ class Infer(Verb):
                 ]
             elif batch_has_ids:
                 if isinstance(batch["object_id"], list):
-                    print(f"Object IDs provided: {batch['object_id']}")
                     batch_object_ids = batch["object_id"]
                 else:
                     batch_object_ids = batch["object_id"].tolist()
