@@ -48,7 +48,7 @@ class HyraxCNN(nn.Module):
         self.conv2 = nn.Conv2d(hidden_channels_1, hidden_channels_2, 5)
         self.fc1 = nn.Linear(hidden_channels_2 * pool2_end_h * pool2_end_w, 120)
         self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, self.config["model"]["hyrax_cnn"]["output_classes"])
+        self.fc3 = nn.Linear(84, self.config["model"]["HyraxCNN"]["output_classes"])
 
     def conv2d_output_size(self, input_size, kernel_size, padding=0, stride=1, dilation=1) -> int:
         # From https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html

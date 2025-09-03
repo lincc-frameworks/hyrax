@@ -28,9 +28,9 @@ class VectorDBInsertBenchmarks:
         self.h.config["model"]["name"] = "HyraxLoopback"
 
         # Default inference batch size is 512, so this should result in 4 batch files
-        self.h.config["data_set"]["random_dataset"]["size"] = 2048
-        self.h.config["data_set"]["random_dataset"]["seed"] = 0
-        self.h.config["data_set"]["random_dataset"]["shape"] = [vector_length]
+        self.h.config["data_set"]["HyraxRandomDataset"]["size"] = 2048
+        self.h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+        self.h.config["data_set"]["HyraxRandomDataset"]["shape"] = [vector_length]
 
         # Qdrant requires the vector size in order to create its collections
         self.h.config["vector_db"]["qdrant"]["vector_size"] = vector_length
@@ -88,9 +88,9 @@ class VectorDBSearchBenchmarks:
         self.h.config["model"]["name"] = "HyraxLoopback"
 
         # Default inference batch size is 512, so this should result in 4 batch files
-        self.h.config["data_set"]["random_dataset"]["size"] = 4096
-        self.h.config["data_set"]["random_dataset"]["seed"] = 0
-        self.h.config["data_set"]["random_dataset"]["shape"] = [1024]
+        self.h.config["data_set"]["HyraxRandomDataset"]["size"] = 4096
+        self.h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+        self.h.config["data_set"]["HyraxRandomDataset"]["shape"] = [1024]
 
         # Create a fake weights file and then run inference on the random dataset
         weights_file = self.input_dir / "fakeweights"

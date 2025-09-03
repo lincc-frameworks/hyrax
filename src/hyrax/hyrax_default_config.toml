@@ -95,7 +95,7 @@ latent_dim = 64
 final_layer = "tanh"
 
 
-[model.hyrax_cnn]
+[model.HyraxCNN]
 # The number of classes to predict as the output of the model. i.e. 2 would be a
 # binary classifer, 10 would predict the 10 classes in the CiFAR dataset.
 output_classes = 10
@@ -237,7 +237,7 @@ semi_height_deg = 0.00472
 
 
 
-[data_set.random_dataset]
+[data_set.HyraxRandomDataset]
 # Total number of samples produced by the random dataset
 size = 100
 
