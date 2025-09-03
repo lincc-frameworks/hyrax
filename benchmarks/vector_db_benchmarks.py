@@ -103,9 +103,9 @@ class VectorDBSearchBenchmarks:
         self.data_sample = self.ds[4001]["image"].numpy()
 
         self.h.config["vector_db"]["name"] = vector_db_implementation
-        self.h.config["vector_db.chromadb"]["shard_size_limit"] = shard_size_limit
+        self.h.config["vector_db"]["chromadb"]["shard_size_limit"] = shard_size_limit
         # Qdrant requires the vector size in order to create its collections
-        self.h.config["vector_db.qdrant"]["vector_size"] = 4096
+        self.h.config["vector_db"]["qdrant"]["vector_size"] = 4096
 
         # Save inference results to vector database and create a db connection
         self.h.save_to_database(output_dir=Path(self.output_dir))
