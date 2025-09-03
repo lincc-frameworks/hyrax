@@ -33,7 +33,7 @@ class VectorDBInsertBenchmarks:
         self.h.config["data_set"]["random_dataset"]["shape"] = [vector_length]
 
         # Qdrant requires the vector size in order to create its collections
-        self.h.config["vector_db.qdrant"]["vector_size"] = vector_length
+        self.h.config["vector_db"]["qdrant"]["vector_size"] = vector_length
 
         weights_file = self.input_dir / "fakeweights"
         with open(weights_file, "a"):
