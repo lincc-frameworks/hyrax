@@ -79,6 +79,8 @@ class VectorDBSearchBenchmarks:
         self.input_dir = Path(self.tmp_input_dir.name)
         self.output_dir = Path(self.tmp_output_dir.name)
 
+        self.vector_length = 1024
+
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
         self.h.config["data_set"]["name"] = "HyraxRandomDataset"

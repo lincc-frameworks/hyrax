@@ -25,6 +25,13 @@ class QdrantDB(VectorDB):
         # Results_dir is the directory where the Qdrant database is stored.
         results_dir = self.context["results_dir"]
         self.client = QdrantClient(path=results_dir)
+
+        collections = self.client.get_collections().collections
+        if len(collections):
+            self.collection_name = collections[0].name
+        else:
+            self.collection_name = None
+
         return self.client
 
     def create(self):

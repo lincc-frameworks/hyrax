@@ -34,6 +34,7 @@ def test_connect(tmp_path):
     qdrant_instance = QdrantDB(h.config, {"results_dir": tmp_path})
     qdrant_instance.connect()
 
+    assert qdrant_instance.collection_name is None
     assert qdrant_instance.client is not None
 
 
