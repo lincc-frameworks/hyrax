@@ -143,21 +143,21 @@ withing a Jupyter notebook.
 This example shows how Hyrax can be used to quickly train, infer, and visualize
 data. Next, we recommend checking out the following sections of the documentation:
 
-* `Verbs <verbs>`_ - Description of the various\"verbs\" that Hyrax supports, such as `train`, `infer` etc. 
-* `Configuration <configuration>`_ - How Hyrax can be configured to work with different datasets, models, etc.
-* `Example Notebooks <notebooks>`_ - Example notebooks covering a wide variety of tasks.
+* :doc:`Verbs <verbs>` - Description of the various \"verbs\" that Hyrax supports, such as ``train``, ``infer`` etc. 
+* :doc:`Configuration <configuration>` - How Hyrax can be configured to work with different datasets, models, etc.
+* :doc:`Example Notebooks <notebooks>` - Example notebooks covering a wide variety of tasks.
 
 ----
 
 For a deeper understanding of Hyrax, you can further explore the following resources:
 
-* `About Hyrax <about>`_ - Overview of Hyrax's design principles and goals.
-* `Builtin Datasets <builtin_datasets>`_ - Different datasets that come pre-built within Hyrax. 
-* `Custom Datasets and Models <external_libraries>`_ - How to create your own dataset class and model within Hyrax. 
-* `Data Set Splits <data_set_splits>`_ - Deep dive into how Hyrax handles data set splits.
-* `Model Comparison <model_comparison>`_ - Tools available in Hyrax for model tracking and comparison.
-* `Developer Guide <dev_guide>`_ - How to install Hyrax from source with additional developer tools.
-* `API Reference <autoapi/index>`_ - Detailed API reference for Hyrax.
+* :doc:`About Hyrax <about>` - Overview of Hyrax's design principles and goals.
+* :doc:`Builtin Datasets <autoapi/hyrax/data_sets/index>` - Different datasets that come pre-built within Hyrax. 
+* :doc:`Custom Datasets and Models <external_libraries>` - How to create your own dataset class and model within Hyrax. 
+* :doc:`Data Set Splits <data_set_splits>` - Deep dive into how Hyrax handles data set splits.
+* :doc:`Model Comparison <model_comparison>` - Tools available in Hyrax for model tracking and comparison.
+* :doc:`Developer Guide <dev_guide>` - How to install Hyrax from source with additional developer tools.
+* :doc:`API Reference <autoapi/index>` - Detailed API reference for Hyrax.
 
 
 
@@ -166,13 +166,13 @@ For a deeper understanding of Hyrax, you can further explore the following resou
 
    Getting started <self>
    About <about>
-   Configuration <configuration>
    Verbs <verbs>
+   Configuration <configuration>
+   Architecture overview <architecture_overview>
+   Example notebooks <notebooks>
    Builtin Datasets <autoapi/hyrax/data_sets/index>
    Custom Datasets and Models <external_libraries>
    Data set splits <data_set_splits>
    Model comparison <model_comparison>
-   Architecture overview <architecture_overview>
    Developer guide <dev_guide>
    API Reference <autoapi/index>
-   Example notebooks <notebooks>
