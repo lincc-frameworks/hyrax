@@ -47,7 +47,7 @@ def test_umap_order(loopback_inferred_hyrax):
     if dataset.is_iterable():
         dataset = list(dataset)
 
-    data_shape = h.config["data_set.random_dataset"]["shape"]
+    data_shape = h.config["data_set"]["random_dataset"]["shape"]
 
     for idx, result_id in enumerate(umap_result_ids):
         dataset_idx = None

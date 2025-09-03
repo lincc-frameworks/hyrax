@@ -21,7 +21,7 @@ def random_vector_generator(batch_size=1, vector_size=3):
 def qdrant_instance(tmp_path):
     """Create a QdrantDB instance for testing"""
     h = Hyrax()
-    h.config["vector_db.qdrant"]["vector_size"] = 3
+    h.config["vector_db"]["qdrant"]["vector_size"] = 3
     qdrant_instance = QdrantDB(h.config, {"results_dir": tmp_path})
     qdrant_instance.connect()
     qdrant_instance.create()
