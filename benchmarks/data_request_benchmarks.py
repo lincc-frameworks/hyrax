@@ -11,7 +11,6 @@ class DatasetRequestBenchmarks:
 
     def setup(self):
         """Prepare for benchmark by defining and setting up a random dataset"""
-        self.h = Hyrax()
         self.tmp_dir = tempfile.TemporaryDirectory()
         self.input_dir = Path(self.tmp_dir.name)
 
@@ -19,7 +18,7 @@ class DatasetRequestBenchmarks:
         self.h.config["general"]["results_dir"] = str(self.input_dir)
         self.h.config["data_set"]["name"] = "HyraxRandomDataset"
 
-        num_vectors = 2048
+        num_vectors = 4096
         self.h.config["data_set.random_dataset"]["size"] = num_vectors
         self.h.config["data_set.random_dataset"]["seed"] = 0
         self.h.config["data_set.random_dataset"]["shape"] = [3, 64, 64]
