@@ -140,7 +140,11 @@ class DataProvider(Dataset):
                 )
             else:
                 data_directory = dataset_definition.get("data_directory")
-                dataset_instance = DATA_SET_REGISTRY[dataset_class](self.config, data_directory)
+
+                # Create a temporary config dictionary that merges the original
+                # config with the dataset-specific config.
+                dataset_specific_config = self._apply_configurations(dataset_definition)
+                dataset_instance = DATA_SET_REGISTRY[dataset_class](dataset_specific_config, data_directory)
 
                 # If a user creates a DataProvider instance manually, this will
                 # guard against iterable-style dataset creeping in. Under normal
@@ -167,6 +171,29 @@ class DataProvider(Dataset):
             if "primary_id_field" in dataset_definition:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
+
+    def _apply_configurations(self, dataset_definition) -> dict:
+        """Merge the original config with the dataset-specific config. This function
+        uses the existing configuration utilities to merge the dataset-specific
+        dataset_config dict into the original, default config dict.
+
+        If no dataset_config is provided in the dataset_definition, the original
+        config will be returned unmodified.
+        """
+        from hyrax.config_utils import ConfigManager
+
+        cm = ConfigManager()
+
+        if "dataset_config" in dataset_definition:
+            tmp_config = {
+                "data_set": {dataset_definition["dataset_class"]: dataset_definition["dataset_config"]}
+            }
+
+            # Note that `merge_configs` makes a copy of self.config, so the original
+            # config will not be modified.
+            return cm.merge_configs(self.config, tmp_config)
+        else:
+            return self.config
 
     def validate_request(self):
         """Convenience method to ensure that each requested dataset exists and that
