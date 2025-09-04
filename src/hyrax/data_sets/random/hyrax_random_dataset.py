@@ -41,7 +41,7 @@ class HyraxRandomDatasetBase:
         Initialize the dataset using the parameters defined in the configuration.
 
         All parameters are controlled by the following keys under
-        the ``["data_set.random_dataset"]`` table in the configuration:
+        the ``["data_set"]["HyraxRandomDataset"]`` table in the configuration:
 
         - ``size``: The number of random data samples to produce.
         - ``shape``: The shape of each random data sample as a tuple (e.g. (3, 29, 29) = 3

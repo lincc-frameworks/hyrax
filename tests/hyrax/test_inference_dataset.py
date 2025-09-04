@@ -13,9 +13,9 @@ def inference_dataset(tmp_path_factory, request):
     h = hyrax.Hyrax()
     h.config["general"]["dev_mode"] = True
     h.config["data_set"]["name"] = "HyraxRandomDataset"
-    h.config["data_set.random_dataset"]["size"] = 20
-    h.config["data_set.random_dataset"]["seed"] = 0
-    h.config["data_set.random_dataset"]["shape"] = [2]
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2]
     original_data_set = h.prepare()
 
     current_data_set = original_data_set
@@ -115,11 +115,11 @@ def test_order(inference_dataset):
         if max(idx_pattern) >= len(result):
             continue
 
-        metadata_result = result.metadata(idx_pattern, ["object_id"])
+        metadata_result = result.metadata(idx_pattern, ["object_id_data"])
 
         # Get expected IDs in the exact order requested
         expected_ids = [list(result.ids())[i] for i in idx_pattern]
-        actual_ids = [str(id) for id in metadata_result["object_id"]]
+        actual_ids = [str(id) for id in metadata_result["object_id_data"]]
 
         assert actual_ids == expected_ids, (
             f"CRITICAL: Metadata ordering broken! For indices {idx_pattern}:\n"
