@@ -95,7 +95,7 @@ latent_dim = 64
 final_layer = "tanh"
 
 
-[model.hyrax_cnn]
+[model.HyraxCNN]
 # The number of classes to predict as the output of the model. i.e. 2 would be a
 # binary classifer, 10 would predict the 10 classes in the CiFAR dataset.
 output_classes = 10
@@ -237,7 +237,7 @@ semi_height_deg = 0.00472
 
 
 
-["data_set.random_dataset"]
+[data_set.HyraxRandomDataset]
 # Total number of samples produced by the random dataset
 size = 100
 
@@ -290,7 +290,7 @@ vector_db_dir = false
 infer_results_dir = false
 
 
-["vector_db.chromadb"]
+[vector_db.chromadb]
 # The approximate maximum size of a shard before creating a new one. A smaller
 # value will decrease insert times while increasing search times.
 shard_size_limit = 65536
@@ -300,7 +300,7 @@ shard_size_limit = 65536
 vector_size_warning = 10000
 
 
-["vector_db.qdrant"]
+[vector_db.qdrant]
 # The number of elements in the vectors that will be stored in the vector database.
 # This must be the same as the size of the vectors produced by the model.
 vector_size = 64
@@ -325,7 +325,7 @@ parallel = false
 name = "umap.UMAP"
 
 
-["umap.UMAP"]
+[umap.UMAP]
 # Specify any parameter accepted by https://umap-learn.readthedocs.io/en/latest/api.html#umap
 # Dimension of the embedded space
 n_components = 2

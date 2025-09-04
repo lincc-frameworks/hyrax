@@ -102,7 +102,7 @@ def test_insert_does_not_raise_warning(caplog, tmp_path, random_vector_generator
     when the config vector_size_warning is set to `False`."""
 
     h = Hyrax()
-    h.config["vector_db.chromadb"]["vector_size_warning"] = False
+    h.config["vector_db"]["chromadb"]["vector_size_warning"] = False
     chromadb_instance = ChromaDB(h.config, {"results_dir": tmp_path})
     chromadb_instance.connect()
     chromadb_instance.create()
