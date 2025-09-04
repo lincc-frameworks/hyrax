@@ -78,7 +78,7 @@ class Umap(Verb):
         from hyrax.config_utils import create_results_dir
         from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
 
-        self.reducer = umap.UMAP(**self.config["umap.UMAP"])
+        self.reducer = umap.UMAP(**self.config["umap"]["UMAP"])
 
         # Load all the latent space data.
         inference_results = InferenceDataSet(self.config, results_dir=input_dir)

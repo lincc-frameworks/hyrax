@@ -15,7 +15,7 @@ def test_save_to_database(loopback_inferred_hyrax):
         original_dataset_ids = np.array([str(s["object_id"]) for s in dataset])
 
     h.config["vector_db"]["name"] = "chromadb"
-    original_shape = h.config["data_set.random_dataset"]["shape"]
+    original_shape = h.config["data_set"]["HyraxRandomDataset"]["shape"]
 
     # Populate the vector database with the results of inference
     vdb_path = h.config["general"]["results_dir"]

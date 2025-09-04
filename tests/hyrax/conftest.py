@@ -109,9 +109,9 @@ def loopback_hyrax(tmp_path_factory, request):
 
     h.config["general"]["dev_mode"] = True
     h.config["data_set"]["name"] = request.param
-    h.config["data_set.random_dataset"]["size"] = 20
-    h.config["data_set.random_dataset"]["seed"] = 0
-    h.config["data_set.random_dataset"]["shape"] = [2, 3]
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
 
     h.config["data_set"]["validate_size"] = 0.2
     h.config["data_set"]["test_size"] = 0.2

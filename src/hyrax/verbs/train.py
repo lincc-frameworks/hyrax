@@ -90,7 +90,7 @@ class Train(Verb):
             trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
 
         # Save the trained model
-        model.save(results_dir / config["train"]["weights_filepath"])
+        model.save(results_dir / config["train"]["weights_filename"])
         monitor.stop()
 
         logger.info("Finished Training")

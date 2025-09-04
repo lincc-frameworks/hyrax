@@ -57,7 +57,9 @@ def get_data_by_dataset_type(dataset, idx):
 
 
 def test_order(inference_dataset):
-    """Test cases:
+    """Test ID and metadata ordering consistency between original and inference datasets.
+
+    Test cases:
     1) ids() should not be in the same order between original and result
     2) ids() should contain all the IDs in the original dataset
     3) the ids() from ids, and the ids delivered via metadata from the inference dataset should match exactly
@@ -65,6 +67,7 @@ def test_order(inference_dataset):
     4a) The matching values should have the same ID in both inference_dataset and data_set according to .ids()
     4b) The matching values should have the same ID in both inference_dataset and data_set according to
         respective metadata
+    5) metadata() must preserve the exact order of requested indices (critical for visualization correctness)
     """
     orig, result = inference_dataset
 
@@ -99,3 +102,28 @@ def test_order(inference_dataset):
                 break
         else:
             assert False, "Could not find matching value for ID."  # noqa: B011
+
+    # Test explicit metadata ordering preservation with non-sequential patterns
+    test_patterns = [
+        [3, 1, 4, 0, 2],
+        [19, 5, 10, 15, 2],
+        [0, 19, 1, 18],
+    ]
+
+    for idx_pattern in test_patterns:
+        # Skip patterns that exceed dataset size
+        if max(idx_pattern) >= len(result):
+            continue
+
+        metadata_result = result.metadata(idx_pattern, ["object_id"])
+
+        # Get expected IDs in the exact order requested
+        expected_ids = [list(result.ids())[i] for i in idx_pattern]
+        actual_ids = [str(id) for id in metadata_result["object_id"]]
+
+        assert actual_ids == expected_ids, (
+            f"CRITICAL: Metadata ordering broken! For indices {idx_pattern}:\n"
+            f"Expected IDs: {expected_ids}\n"
+            f"Actual IDs:   {actual_ids}\n"
+            f"This will cause visualization labels and data to be scrambled."
+        )

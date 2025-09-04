@@ -54,34 +54,34 @@ class HyraxRandomDatasetBase:
           Valid values are "nan", "inf", "-inf", "none", or a float value.
         """
         # The total number of random data samples produced
-        data_size = config["data_set.random_dataset"]["size"]
+        data_size = config["data_set"]["HyraxRandomDataset"]["size"]
         if not isinstance(data_size, int):
             raise ValueError(
-                f"Expected integer value for `config['data_set.random_dataset']['size']`, but got {data_size}"
+                f"Expected integer for `config['data_set']['random_dataset']['size']`, but got {data_size}"
             )
 
         # The shape of each random data sample as a tuple.
         # i.e. (3, 29, 29) = 3 layers of 2d data, each layer is 29x29 elements.
-        data_shape = tuple(config["data_set.random_dataset"]["shape"])
+        data_shape = tuple(config["data_set"]["HyraxRandomDataset"]["shape"])
         if not len(data_shape):
             raise ValueError(
-                "Expected `config['data_set.random_dataset']['data_shape']` to have at least 1 value."
+                "Expected `config['data_set']['random_dataset']['data_shape']` to have at least 1 value."
             )
 
         for e in data_shape:
             if e < 1:
                 raise ValueError(
-                    f"Expected all values in `config['data_set.random_dataset']['data_shape']`\
+                    f"Expected all values in `config['data_set']['random_dataset']['data_shape']`\
                         to be > 0, but got {data_shape}."
                 )
             if not isinstance(e, int):
                 raise ValueError(
-                    f"Expected all values in `config['data_set.random_dataset']['data_shape']`\
+                    f"Expected all values in `config['data_set']['random_dataset']['data_shape']`\
                         to be integers, but got {data_shape}."
                 )
 
         # Random seed to use for reproducibility
-        seed = config["data_set.random_dataset"]["seed"]
+        seed = config["data_set"]["HyraxRandomDataset"]["seed"]
         rng = np.random.default_rng(seed)
 
         # Note: We raise exceptions if data_size is not an int, so we can assume
@@ -93,23 +93,23 @@ class HyraxRandomDatasetBase:
         self.id_list = np.array(list(range(id_start, id_start + data_size)))
 
         # Randomly insert flawed values (np.nan, np.inf, -np.inf, None, other float)
-        num_invalid_values = config["data_set.random_dataset"]["number_invalid_values"]
+        num_invalid_values = config["data_set"]["HyraxRandomDataset"]["number_invalid_values"]
         if num_invalid_values:
             # Determine what value to use for invalid values
-            invalid_value_type = config["data_set.random_dataset"]["invalid_value_type"]
+            invalid_value_type = config["data_set"]["HyraxRandomDataset"]["invalid_value_type"]
             if isinstance(invalid_value_type, str):
                 try:
                     invalid_value = INVALID_VALUES[invalid_value_type.lower()]
                 except KeyError as err:
                     raise ValueError(
                         f"Invalid value type '{invalid_value_type}' provided. "
-                        f"Expected `config['data_set.random_dataset']['invalid_value_type']` "
-                        f"to beone of {list(INVALID_VALUES.keys())}"
+                        f"Expected `config['data_set']['random_dataset']['invalid_value_type']` "
+                        f"to be one of {list(INVALID_VALUES.keys())}"
                     ) from err
             else:
                 if not isinstance(invalid_value_type, float):
                     raise ValueError(
-                        f"Expected `config['data_set.random_dataset']['invalid_value_type']` to be "
+                        f"Expected `config['data_set']['random_dataset']['invalid_value_type']` to be "
                         f"a string or a float, but got {type(invalid_value_type)}."
                     )
                 invalid_value = invalid_value_type
@@ -118,7 +118,7 @@ class HyraxRandomDatasetBase:
             flattened[random_inds] = invalid_value
 
         # If a list of possible labels is provided, create the random label list.
-        self.provided_labels = config["data_set.random_dataset"]["provided_labels"]
+        self.provided_labels = config["data_set"]["HyraxRandomDataset"]["provided_labels"]
         if self.provided_labels:
             self.labels = rng.choice(self.provided_labels, size=data_size)
 

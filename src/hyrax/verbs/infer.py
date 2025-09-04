@@ -108,7 +108,10 @@ class Infer(Verb):
                     object_ids[id] for id in range(write_index, write_index + len(batch_results))
                 ]
             elif batch_has_ids:
-                batch_object_ids = batch["object_id"]
+                if isinstance(batch["object_id"], list):
+                    batch_object_ids = batch["object_id"]
+                else:
+                    batch_object_ids = batch["object_id"].tolist()
             elif isinstance(batch, dict):
                 msg = "Dataset dictionary should be returning object_ids to avoid ordering errors. "
                 msg += "Modify the __getitem__ or __iter__ function of your dataset to include 'object_id' "
@@ -161,7 +164,7 @@ class Infer(Verb):
             if recent_results_path is None:
                 raise RuntimeError("Must define model_weights_file in the [infer] section of hyrax config.")
 
-            weights_file = recent_results_path / config["train"]["weights_filepath"]
+            weights_file = recent_results_path / config["train"]["weights_filename"]
 
         # Ensure weights file is a path object.
         weights_file_path = Path(weights_file)

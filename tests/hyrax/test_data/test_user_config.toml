@@ -2,7 +2,7 @@
 dev_mode = true
 
 [train.model]
-weights_filepath = "final_best.pth"
+weights_filename = "final_best.pth"
 layers = 3
 
 [infer]

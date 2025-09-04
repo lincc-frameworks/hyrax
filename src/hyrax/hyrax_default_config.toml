@@ -95,6 +95,12 @@ latent_dim = 64
 final_layer = "tanh"
 
 
+[model.HyraxCNN]
+# The number of classes to predict as the output of the model. i.e. 2 would be a
+# binary classifer, 10 would predict the 10 classes in the CiFAR dataset.
+output_classes = 10
+
+
 [criterion]
 # The name of the built-in criterion to use or the import path to an external criterion
 name = "torch.nn.CrossEntropyLoss"
@@ -122,7 +128,7 @@ lr = 0.01
 
 [train]
 # The name of the file were the model weights will be saved after training.
-weights_filepath = "example_model.pth"
+weights_filename = "example_model.pth"
 
 #The number of epochs to train for.
 epochs = 10
@@ -231,7 +237,7 @@ semi_height_deg = 0.00472
 
 
 
-["data_set.random_dataset"]
+[data_set.HyraxRandomDataset]
 # Total number of samples produced by the random dataset
 size = 100
 
@@ -319,7 +325,7 @@ parallel = false
 name = "umap.UMAP"
 
 
-["umap.UMAP"]
+[umap.UMAP]
 # Specify any parameter accepted by https://umap-learn.readthedocs.io/en/latest/api.html#umap
 # Dimension of the embedded space
 n_components = 2
@@ -335,3 +341,17 @@ fields = []
 
 # Whether to display a panel of randomly chosen images corresponding to the selected points
 display_images = false
+
+# Name of catalog column to use for coloring points in the scatter plot. Use false for no coloring.
+color_column = false
+
+# Colormap to use for coloring points in the scatter plot when color_column is specified
+cmap = "viridis"
+
+# Only valid for .pt tensor images. Which bands should be loaded for display
+# [0,3,5] would map bands in that order to R,G,B. Single band will be grayscale.
+torch_tensor_bands = [3]
+
+# Whether to rasterize plot. Will break coloring (Haloviews Bug)
+# Helpful to reduce lag in large datasets. 
+rasterize_plot = false
