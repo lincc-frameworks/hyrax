@@ -100,12 +100,15 @@ class HyraxDataset:
         if self._metadata_table is not None:
             colnames = self._metadata_table.colnames
             if "object_id" not in colnames:
+                #! TODO: Determine if self.ids() will work for iterable datasets in the future.
+                #! See https://github.com/lincc-frameworks/hyrax/issues/374
                 ids = np.array(list(self.ids()))
                 self._metadata_table.add_column(ids, name="object_id")
 
         self.tensorboardx_logger = None
 
-    def is_iterable(self):
+    @classmethod
+    def is_iterable(cls):
         """
         Returns true if underlying dataset is iterable style, supporting __iter__ vs map style
         where  __getitem__/__len__ are the preferred access methods.
@@ -117,12 +120,14 @@ class HyraxDataset:
         """
         from torch.utils.data import Dataset, IterableDataset
 
-        if isinstance(self, (Dataset, IterableDataset)):
-            return isinstance(self, IterableDataset)
+        if issubclass(cls, (Dataset, IterableDataset)):
+            # All torch IterableDatasets are also Datasets
+            return issubclass(cls, IterableDataset)
         else:
-            return hasattr(self, "__iter__")
+            return hasattr(cls, "__iter__")
 
-    def is_map(self):
+    @classmethod
+    def is_map(cls):
         """
         Returns true if underlying dataset is map style, supporting __getitem__/__len__ vs iterable
         where __iter__ is the preferred access method.
@@ -134,11 +139,11 @@ class HyraxDataset:
         """
         from torch.utils.data import Dataset, IterableDataset
 
-        if isinstance(self, (Dataset, IterableDataset)):
+        if issubclass(cls, (Dataset, IterableDataset)):
             # All torch IterableDatasets are also Datasets
-            return not isinstance(self, IterableDataset)
+            return not issubclass(cls, IterableDataset)
         else:
-            return hasattr(self, "__getitem__")
+            return hasattr(cls, "__getitem__")
 
     @property
     def config(self):
@@ -188,6 +193,21 @@ class HyraxDataset:
                 yield (str(index))
         else:
             return NotImplementedError("You must define __len__ or __iter__ to use automatic id()")
+
+    def sample_data(self) -> dict:
+        """Get a sample from the dataset. This is a convenience function that returns
+        the first sample from the dataset, regardless of whether it is iterable
+        or map-style. Often this will be used to instantiate a model that adjusts
+        its form based on the shape of the data."""
+
+        if self.is_map():
+            return self[0]
+        elif self.is_iterable():
+            return next(iter(self))
+        else:
+            return NotImplementedError(
+                "You must define __getitem__ or __iter__ to use the default `get_sample()` method."
+            )
 
     def metadata_fields(self) -> list[str]:
         """Returns a list of metadata fields supported by this object

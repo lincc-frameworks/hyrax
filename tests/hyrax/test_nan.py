@@ -11,8 +11,8 @@ class RandomNaNDataset(HyraxRandomDataset):
     """Dataset yielding pairs of random numbers. Requires a seed to emulate
     static data on the filesystem between instantiations"""
 
-    def __init__(self, config):
-        super().__init__(config)
+    def __init__(self, config, data_directory):
+        super().__init__(config, data_directory)
 
     def __getitem__(self, idx):
         return from_numpy(self.data[idx])
@@ -63,7 +63,7 @@ def test_nan_handling(loopback_hyrax_nan):
     inference_results = h.infer()
 
     if isinstance(dataset[0], dict):
-        original_nans = tensor([any(isnan(item["image"])) for item in dataset])
+        original_nans = tensor([any(isnan(tensor(item["data"]["image"]))) for item in dataset])
     else:
         original_nans = tensor([any(isnan(item)) for item in dataset])
     assert any(original_nans)
@@ -82,7 +82,7 @@ def test_nan_handling_zero_values(loopback_hyrax_nan):
     inference_results = h.infer()
 
     if isinstance(dataset[0], dict):
-        original_nans = tensor([any(isnan(item["image"])) for item in dataset])
+        original_nans = tensor([any(isnan(tensor(item["data"]["image"]))) for item in dataset])
     else:
         original_nans = tensor([any(isnan(item)) for item in dataset])
     assert any(original_nans)
@@ -101,7 +101,7 @@ def test_nan_handling_off(loopback_hyrax_nan):
     inference_results = h.infer()
 
     if isinstance(dataset[0], dict):
-        original_nans = tensor([any(isnan(item["image"])) for item in dataset])
+        original_nans = tensor([any(isnan(tensor(item["data"]["image"]))) for item in dataset])
     else:
         original_nans = tensor([any(isnan(item)) for item in dataset])
     assert any(original_nans)
@@ -115,9 +115,10 @@ def test_nan_handling_off_returns_input(loopback_hyrax_nan):
     _handle_nans are returned unchanged."""
 
     def to_tensor(data_dict):
-        if "image" in data_dict and "label" in data_dict:
-            image = data_dict["image"]
-            label = data_dict["label"]
+        data = data_dict.get("data", {})
+        if "image" in data and "label" in data:
+            image = tensor(data["image"])
+            label = data["label"]
             return (image, label)
 
     h, dataset = loopback_hyrax_nan

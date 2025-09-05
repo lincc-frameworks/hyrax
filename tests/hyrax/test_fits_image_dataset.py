@@ -39,13 +39,13 @@ def test_prepare(test_hyrax_small_dataset_hscstars):
     assert len(a) == 10
 
     # All tensors are the correct size
-    for tensor in a:
-        assert tensor.shape == Size([1, 20, 20])
+    for d in a:
+        assert d["data"]["image"].shape == Size([1, 20, 20])
 
     # Selected columns in the original catalog exist
-    assert "ira" in a.metadata_fields()
-    assert "idec" in a.metadata_fields()
-    assert "SNR" in a.metadata_fields()
+    assert "ira" in a.metadata_fields("data")
+    assert "idec" in a.metadata_fields("data")
+    assert "SNR" in a.metadata_fields("data")
 
     # IDs are correct and in the correct order
     assert list(a.ids()) == [

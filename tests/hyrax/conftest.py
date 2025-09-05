@@ -40,7 +40,7 @@ class RandomDataset(HyraxDataset, Dataset):
     """Dataset yielding pairs of random numbers. Requires a seed to emulate
     static data on the filesystem between instantiations"""
 
-    def __init__(self, config):
+    def __init__(self, config, data_directory):
         size = config["data_set"]["size"]
 
         dim_1_length = 2
@@ -79,6 +79,10 @@ class RandomDataset(HyraxDataset, Dataset):
         """Yield IDs for the dataset"""
         for id_item in self.id_list:
             yield str(id_item)
+
+    def get_ids(self, idx):
+        """Returns the ids given an index."""
+        return self.id_list[idx]
 
 
 class RandomIterableDataset(RandomDataset, IterableDataset):
