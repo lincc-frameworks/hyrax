@@ -11,6 +11,7 @@ from hyrax.pytorch_ignite import (
     create_trainer,
     create_validator,
     dist_data_loader,
+    setup_dataset,
     setup_model,
 )
 
@@ -43,6 +44,7 @@ class Train(Verb):
         Returns the trained model.
 
         """
+        import inspect
 
         config = self.config
 
@@ -54,7 +56,8 @@ class Train(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         # Instantiate the model and dataset
-        model, dataset = setup_model(config, tensorboardx_logger)
+        dataset = setup_dataset(config, tensorboardx_logger)
+        model = setup_model(config, dataset)
 
         # Create a data loader for the training set (and validation split if configured)
         data_loaders = dist_data_loader(dataset, config, ["train", "validate"])
@@ -91,6 +94,8 @@ class Train(Verb):
 
         # Save the trained model
         model.save(results_dir / config["train"]["weights_filename"])
+        with open(results_dir / "to_tensor.py", "w") as f:
+            f.write(inspect.getsource(model.to_tensor))
         monitor.stop()
 
         logger.info("Finished Training")

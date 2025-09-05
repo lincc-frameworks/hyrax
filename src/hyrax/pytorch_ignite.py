@@ -64,13 +64,27 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     return is_iterable
 
 
-def _setup_dataset(config, tensorboardx_logger):
-    """This function creates an instance of the requested dataset. There are two
-    modes encapsulated here.
-    1) If the dataset_request is for an iterable-style dataset, ensure that only
+def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
+    """This function creates an instance of the requested dataset specified in the
+    runtime configuration. There are two modes encapsulated here:
+
+    1) If the dataset requested includes an iterable-style dataset, ensure that only
     one dataset was requested, and then return an instance of that dataset.
-    2) If the dataset_request is for 1 or more map-style dataset, create an instance
-    of a DataProvider, and return that as the dataset."""
+    2) If the dataset(s) requested is for 1 or more map-style dataset, create an
+    instance of a DataProvider, and return that as the dataset.
+
+    Parameters
+    ----------
+    config : ConfigDict
+        The runtime configuration
+    tensorboardx_logger : SummaryWriter, optional
+        If Tensorboard is in use, the tensorboard logger so the dataset can log things
+
+    Returns
+    -------
+    Dataset
+        An instance of the dataset class specified in the configuration
+    """
 
     data_request = generate_data_request_from_config(config)
     if is_iterable_dataset_requested(data_request):
@@ -105,37 +119,17 @@ def _setup_dataset(config, tensorboardx_logger):
     return dataset
 
 
-def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
-    """Create a dataset object based on the configuration.
-
-    Parameters
-    ----------
-    config : ConfigDict
-        The entire runtime configuration
-    tensorboardx_logger : SummaryWriter, optional
-        If Tensorboard is in use, the tensorboard logger so the dataset can log things
-
-    Returns
-    -------
-    Dataset
-        An instance of the dataset class specified in the configuration
-    """
-
-    # Fetch dataset class specified in config and create an instance of it
-    return _setup_dataset(config, tensorboardx_logger)
-
-
-def setup_model(
-    config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None
-) -> (torch.nn.Module, Dataset):
+def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
     """Create a model object based on the configuration.
 
     Parameters
     ----------
     config : ConfigDict
-        The entire runtime configuration
-    tensorboardx_logger : SummaryWriter, optional
-        If Tensorboard is in use, the tensorboard logger so the dataset can log things
+        The runtime configuration
+    dataset : Dataset
+        The dataset object that will provide data to the model for training or
+        inference. Here it is only used to provide a data sample to the model so
+        that it can resize itself at runtime if necessary.
 
     Returns
     -------
@@ -145,10 +139,9 @@ def setup_model(
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    dataset = _setup_dataset(config, tensorboardx_logger)
     model = model_cls(config=config, data_sample=dataset.sample_data())  # type: ignore[attr-defined]
 
-    return model, dataset
+    return model
 
 
 def dist_data_loader(

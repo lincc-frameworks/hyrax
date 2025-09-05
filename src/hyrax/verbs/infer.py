@@ -33,6 +33,8 @@ class Infer(Verb):
         config : ConfigDict
             The parsed config file as a nested dict
         """
+        import inspect
+
         import numpy as np
         from tensorboardX import SummaryWriter
         from torch import Tensor
@@ -45,6 +47,7 @@ class Infer(Verb):
         from hyrax.pytorch_ignite import (
             create_evaluator,
             dist_data_loader,
+            setup_dataset,
             setup_model,
         )
 
@@ -57,7 +60,8 @@ class Infer(Verb):
         # Create a tensorboardX logger
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
-        model, dataset = setup_model(config, tensorboardx_logger)
+        dataset = setup_dataset(config, tensorboardx_logger)
+        model = setup_model(config, dataset)
         if dataset.is_map():
             logger.info(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 
@@ -76,6 +80,9 @@ class Infer(Verb):
 
         # Log Results directory
         logger.info(f"Saving inference results at: {results_dir}")
+
+        with open(results_dir / "to_tensor.py", "w") as f:
+            f.write(inspect.getsource(model.to_tensor))
 
         data_writer = InferenceDataSetWriter(dataset, results_dir)
 
