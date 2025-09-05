@@ -206,7 +206,7 @@ class HyraxDataset:
             return next(iter(self))
         else:
             return NotImplementedError(
-                "You must define __getitem__ or __iter__ to use automatic get_sample()"
+                "You must define __getitem__ or __iter__ to use the default `get_sample()` method."
             )
 
     def metadata_fields(self) -> list[str]:

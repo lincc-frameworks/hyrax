@@ -75,6 +75,7 @@ class DataProvider(Dataset):
         self.validate_request()
 
         self.prepped_datasets = {}
+        self.dataset_getters = {}
         self.all_metadata_fields = {}
 
         self.primary_dataset = None
@@ -204,6 +205,14 @@ class DataProvider(Dataset):
             # Store the prepared dataset instance in the `self.prepped_datasets`
             self.prepped_datasets[friendly_name] = dataset_instance
 
+            # Cache all of the `get_<field_name>` methods in the dataset instance
+            # so that we don't have to look them up each time we call `resolve_data`.
+            self.dataset_getters[friendly_name] = {}
+            for field in dataset_definition.get("fields", []):
+                self.dataset_getters[friendly_name][field] = getattr(
+                    self.prepped_datasets[friendly_name], f"get_{field}"
+                )
+
             # Get all the dataset's metadata fields and store them in
             # `self.all_metadata_fields` dictionary. Modify the name to be
             # <metadata_field_name>_<friendly_name>, i.e. "RA_cifar" or "photoz_hsc".
@@ -324,8 +333,7 @@ class DataProvider(Dataset):
             # For each of the requested fields, call the corresponding
             # `get_<field_name>` method in the dataset instance.
             for field in dataset_definition.get("fields", []):
-                resolved_data = getattr(self.prepped_datasets[friendly_name], f"get_{field}")(idx)
-                returned_data[friendly_name][field] = resolved_data
+                returned_data[friendly_name][field] = self.dataset_getters[friendly_name][field](idx)
 
         # Because there is machinery in the consuming code that expects an "object_id"
         # key in the returned data, we will add that here if a primary dataset.
@@ -345,7 +353,7 @@ class DataProvider(Dataset):
         # For each dataset:
         # 1) Find the requested metadata fields that come from it
         # 2) Strip the friendly name from the metadata field name
-        # 3) Call the dataset's `metadata` method with indicies and metadata fields.
+        # 3) Call the dataset's `metadata` method with indices and metadata fields.
         for friendly_name, dataset in self.prepped_datasets.items():
             metadata_fields_to_fetch = [
                 field.replace(f"_{friendly_name}", "")
@@ -369,7 +377,23 @@ class DataProvider(Dataset):
         return returned_metadata
 
     def metadata_fields(self, friendly_name=None) -> list[str]:
-        """Returns a list of metadata fields supported by this object
+        """Returns a list of metadata fields that are available across all prepared
+        datasets.
+
+        The field names will be modified to include the friendly name of the
+        dataset they come from. For example, if the "RA" field comes from a dataset
+        with the friendly name "cifar", the returned field name will be "RA_cifar".
+
+        NOTE: If a specific dataset friendly_name is provided, only the metadata
+        fields for that dataset will be returned, and the field names will not
+        include the friendly name suffix.
+
+        Parameters
+        ----------
+        friendly_name : str, optional
+            If provided, only the metadata fields for the specified friendly name
+            will be returned. If not provided, metadata fields from all datasets
+            will be returned.
 
         Returns
         -------
@@ -386,7 +410,10 @@ class DataProvider(Dataset):
 
         for _, v in self.all_metadata_fields.items():
             all_fields.extend(v)
-        all_fields.append("object_id")  # Always include the object_id field
+
+        # Always include the `object_id` field
+        all_fields.append("object_id")
+
         return all_fields
 
     def _primary_or_first_dataset(self):
