@@ -376,7 +376,14 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         # Use the list of object IDs for explicit indexing
         object_id = list(self.files.keys())[idx]
 
-        return {"data": {"image": self._object_id_to_tensor(object_id)}}
+        return {
+            "data": {
+                "object_id": object_id,
+                "image": self._object_id_to_tensor(object_id),
+                "index": idx,
+            },
+            "object_id": object_id,
+        }
 
     def __contains__(self, object_id: str) -> bool:
         """Allows you to do `object_id in dataset` queries. Used by testing code.
