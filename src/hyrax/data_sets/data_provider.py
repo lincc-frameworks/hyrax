@@ -72,7 +72,7 @@ class DataProvider(Dataset):
         self.config = config
         self.data_request = generate_data_request_from_config(self.config)
 
-        self.validate_request()
+        self.validate_request(self.data_request)
 
         self.prepped_datasets = {}
         self.dataset_getters = {}
@@ -131,11 +131,12 @@ class DataProvider(Dataset):
         """DataProvider datasets will always be map-style datasets."""
         return True
 
-    def validate_request(self):
+    @staticmethod
+    def validate_request(data_request: dict):
         """Convenience method to ensure that each requested dataset exists and that
         each field in each dataset has a `get_<field_name>` method."""
         problem_count = 0
-        for friendly_name, dataset_parameters in self.data_request.items():
+        for friendly_name, dataset_parameters in data_request.items():
             dataset_class = dataset_parameters.get("dataset_class")
             if not dataset_class:
                 logger.error(f"Model input for '{friendly_name}' does not specify a 'dataset_class'.")
@@ -147,6 +148,7 @@ class DataProvider(Dataset):
                     f" {list(DATA_SET_REGISTRY.keys())}."
                 )
                 problem_count += 1
+                continue
             if DATA_SET_REGISTRY[dataset_class].is_iterable():
                 logger.error(
                     f"Dataset '{dataset_class}' is an iterable-style dataset. "
@@ -159,6 +161,11 @@ class DataProvider(Dataset):
             # all available get_* methods in the dataset class.
             if "fields" not in dataset_parameters or not dataset_parameters["fields"]:
                 # Gather all available fields from the dataset class
+                logger.info(
+                    f"No fields were specified for {friendly_name}. "
+                    "The request will be modified to select all by default. "
+                    "You can specify `fields` in `model_inputs`."
+                )
                 dataset_parameters["fields"] = [
                     method[4:]
                     for method in dir(DATA_SET_REGISTRY[dataset_class])
@@ -197,7 +204,7 @@ class DataProvider(Dataset):
 
             # Create a temporary config dictionary that merges the original
             # config with the dataset-specific config.
-            dataset_specific_config = self._apply_configurations(dataset_definition)
+            dataset_specific_config = self._apply_configurations(self.config, dataset_definition)
 
             # Instantiate the dataset class
             dataset_instance = DATA_SET_REGISTRY[dataset_class](dataset_specific_config, data_directory)
@@ -228,7 +235,8 @@ class DataProvider(Dataset):
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
 
-    def _apply_configurations(self, dataset_definition: dict) -> dict:
+    @staticmethod
+    def _apply_configurations(base_config: dict, dataset_definition: dict) -> dict:
         """Merge the original base config with the dataset-specific config.
 
         This function uses ``ConfigManager.merge_configs`` to merge the
@@ -266,6 +274,11 @@ class DataProvider(Dataset):
 
         Parameters
         ----------
+        base_config : dict
+            The original base configuration dictionary. A copy of this is created,
+            the dataset_definition dict is merged into the copy, and the copy
+            is returned.
+
         dataset_definition : dict
             A dictionary defining the dataset, including any dataset-specific
             configuration options in a nested ``dataset_config`` dictionary.
@@ -287,9 +300,9 @@ class DataProvider(Dataset):
 
             # Note that `merge_configs` makes a copy of self.config, so the original
             # config will not be modified.
-            return cm.merge_configs(self.config, tmp_config)
+            return cm.merge_configs(base_config, tmp_config)
         else:
-            return self.config
+            return base_config
 
     def sample_data(self) -> dict:
         """Returns a data sample. Primarily this will be used for instantiating a
@@ -344,8 +357,43 @@ class DataProvider(Dataset):
 
         return returned_data
 
-    def metadata(self, idxs=None, fields=None):
-        """Fetch the requested metadata fields for the given indices."""
+    def metadata(self, idxs=None, fields=None) -> np.ndarray:
+        """Fetch the requested metadata fields for the given indices.
+
+        Example:
+        ```python
+        # Fetch the metadata_1 and metadata_2 fields from the dataset with the
+        # friendly name "random_1".
+
+        metadata = data_provider.metadata(
+            idxs=[0, 1, 2],
+            fields=["metadata_1_random_1", "metadata_2_random_1"]
+        )
+
+        Parameters
+        ----------
+        idxs : list of int, optional
+            A list of indices for which to fetch metadata. If None, no metadata
+            will be returned.
+        fields : list of str, optional
+            A list of metadata fields to fetch. If None, no metadata will be
+            returned.
+
+        Returns
+        -------
+        np.ndarray
+            A structured NumPy array containing the requested metadata fields.
+            The dtype names of the array will be the metadata field names, modified
+            to include the friendly name of the dataset they come from. For example,
+            if the "RA" field comes from a dataset with the friendly name "cifar",
+            the returned field name will be "RA_cifar".
+        """
+
+        if idxs is None:
+            idxs = []
+
+        if fields is None:
+            fields = []
 
         # Create an empty structured array to hold the merged metadata
         returned_metadata = np.empty(0, dtype=[])

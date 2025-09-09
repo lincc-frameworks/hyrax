@@ -10,6 +10,7 @@ from torch.utils.data import Dataset, IterableDataset
 import hyrax
 import hyrax.data_sets
 from hyrax.data_sets import HyraxDataset
+from hyrax.data_sets.data_provider import DataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -136,3 +137,39 @@ def loopback_inferred_hyrax(loopback_hyrax):
     inference_results = h.infer()
 
     return h, dataset, inference_results
+
+
+@pytest.fixture(scope="function")
+def multimodal_config():
+    """Create a hyrax instance with a default config setting, then update the
+    config to represent a request for multimodal data."""
+
+    return {
+        "random_0": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_directory": "./in_memory_0",
+            "fields": ["object_id", "image", "label"],
+            "dataset_config": {
+                "shape": [2, 16, 16],
+            },
+            "primary_id_field": "object_id",
+        },
+        "random_1": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_directory": "./in_memory_1",
+            "fields": ["image"],
+            "dataset_config": {
+                "shape": [5, 16, 16],
+                "seed": 4200,
+            },
+        },
+    }
+
+
+@pytest.fixture(scope="function")
+def data_provider(multimodal_config):
+    """Use the multimodal_config fixture to create a DataProvider instance."""
+    h = hyrax.Hyrax()
+    h.config["model_inputs"] = multimodal_config
+    dp = DataProvider(h.config)
+    return dp
