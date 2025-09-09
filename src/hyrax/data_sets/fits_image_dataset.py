@@ -376,7 +376,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         # Use the list of object IDs for explicit indexing
         object_id = list(self.files.keys())[idx]
 
-        return self._object_id_to_tensor(object_id)
+        return {"data": {"image": self._object_id_to_tensor(object_id)}}
 
     def __contains__(self, object_id: str) -> bool:
         """Allows you to do `object_id in dataset` queries. Used by testing code.
@@ -664,7 +664,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
     #
     # For now we just do it the naive way
     def _object_id_to_tensor(self, object_id: str):
-        """Converts an object_id to a pytorch tensor with dimenstions (self.num_filters, self.cutout_shape[0],
+        """Converts an object_id to a pytorch tensor with dimensions (self.num_filters, self.cutout_shape[0],
         self.cutout_shape[1]). This is done by reading the file and slicing away any excess pixels at the
         far corners of the image from (0,0).
 
