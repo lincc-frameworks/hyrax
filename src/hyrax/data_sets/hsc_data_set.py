@@ -42,7 +42,7 @@ class HSCDataSet(FitsImageDataSet):
             config["data_set"]["filter_catalog"] = False
         # If there's no filter catalog, try to use the manifest file if it exists
         elif not config["data_set"]["filter_catalog"]:
-            catalog = Path(config["general"]["data_dir"]) / Downloader.MANIFEST_FILE_NAME
+            catalog = Path(data_directory) / Downloader.MANIFEST_FILE_NAME
             if catalog.exists():
                 config["data_set"]["filter_catalog"] = str(catalog.expanduser().resolve())
 

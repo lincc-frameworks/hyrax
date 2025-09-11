@@ -118,7 +118,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             else "filename"
         )
 
-        self._init_from_path(config["general"]["data_dir"])
+        self._init_from_path(data_directory)
 
         # Relies on self.filters_ref and self.filter_catalog_table which are both determined
         # inside _init_from_path()
@@ -351,6 +351,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         if idx >= len(self.files) or idx < 0:
             raise IndexError("Index out of range")
 
+        # Use the list of object IDs for explicit indexing
         return list(self.files.keys())[idx]
 
     def get_image(self, idx: int):
@@ -373,13 +374,12 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         if idx >= len(self.files) or idx < 0:
             raise IndexError
 
-        # Use the list of object IDs for explicit indexing
-        object_id = list(self.files.keys())[idx]
+        object_id = self.get_object_id(idx)
 
         return {
             "data": {
                 "object_id": object_id,
-                "image": self._object_id_to_tensor(object_id),
+                "image": self.get_image(idx),
                 "index": idx,
             },
             "object_id": object_id,
