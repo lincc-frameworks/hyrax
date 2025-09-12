@@ -11,8 +11,8 @@ class RandomNaNDataset(HyraxRandomDataset):
     """Dataset yielding pairs of random numbers. Requires a seed to emulate
     static data on the filesystem between instantiations"""
 
-    def __init__(self, config, data_directory):
-        super().__init__(config, data_directory)
+    def __init__(self, config, data_location):
+        super().__init__(config, data_location)
 
     def __getitem__(self, idx):
         return from_numpy(self.data[idx])

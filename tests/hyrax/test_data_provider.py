@@ -23,8 +23,8 @@ def test_generate_data_request_from_config():
     assert "data" in ret_val
     assert "dataset_class" in ret_val["data"]
     assert ret_val["data"]["dataset_class"] == "HyraxRandomDataset"
-    assert "data_directory" in ret_val["data"]
-    assert ret_val["data"]["data_directory"] == "./data"
+    assert "data_location" in ret_val["data"]
+    assert ret_val["data"]["data_location"] == "./data"
 
 
 def test_generate_data_request_passes_model_inputs():
@@ -54,11 +54,6 @@ def test_data_provider(data_provider):
 
     dp = data_provider
 
-    assert dp.primary_dataset is None
-    assert dp.primary_dataset_id_field_name is None
-
-    dp.prepare_datasets()
-
     assert dp.primary_dataset == "random_0"
     assert dp.primary_dataset_id_field_name == "object_id"
 
@@ -72,8 +67,8 @@ def test_data_provider(data_provider):
 
     # There should be 2 dataset_getters dicts with subdicts of different sizes
     assert len(dp.dataset_getters) == 2
-    assert len(dp.dataset_getters["random_0"]) == 3
-    assert len(dp.dataset_getters["random_1"]) == 1
+    assert len(dp.dataset_getters["random_0"]) == 5
+    assert len(dp.dataset_getters["random_1"]) == 5
 
     data_request = dp.data_request
     for friendly_name in data_request:
@@ -140,28 +135,28 @@ def test_validate_request_iterable_dataset(multimodal_config, caplog):
 def test_validate_request_no_fields(multimodal_config, caplog):
     """Basic test to see that validation works correctly when no fields are
     requested."""
-
+    h = Hyrax()
     c = multimodal_config
     original_all_fields = c["random_0"].pop("fields", None)
+    h.config["model_inputs"] = c
     with caplog.at_level("INFO"):
-        DataProvider.validate_request(c)
+        DataProvider(h.config)
 
     assert "No fields were" in caplog.text
     for field in original_all_fields:
-        assert field in c["random_0"]["fields"]
+        assert field in h.config["model_inputs"]["random_0"]["fields"]
 
 
 def test_validate_request_bad_field(multimodal_config, caplog):
     """Basic test to see that validation works correctly when a bad field is
     requested."""
-
+    h = Hyrax()
     c = multimodal_config
     c["random_0"]["fields"] = ["image", "no_such_field"]
+    h.config["model_inputs"] = c
     with caplog.at_level("ERROR"):
-        with pytest.raises(RuntimeError) as execinfo:
-            DataProvider.validate_request(c)
+        DataProvider(h.config)
 
-    assert "failed" in str(execinfo.value)
     assert "No `get_no_such_field` method" in caplog.text
 
 
@@ -169,16 +164,18 @@ def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
     """Basic test to see that validation works correctly when a dataset is
     missing all getters."""
 
+    h = Hyrax()
     c = multimodal_config
-    fake_methods = ["fake_one", "fake_two", "fake_three"]
     c["random_0"].pop("fields", None)
+    h.config["model_inputs"] = c
+
+    # Fake methods to return from `dir`, none of which start with `get_*`.
+    fake_methods = ["fake_one", "fake_two", "fake_three"]
 
     with patch.object(builtins, "dir", return_value=fake_methods):
         with caplog.at_level("ERROR"):
-            with pytest.raises(RuntimeError) as execinfo:
-                DataProvider.validate_request(c)
+            DataProvider(h.config)
 
-    assert "failed" in str(execinfo.value)
     assert "No `get_*` methods were found" in caplog.text
 
 
@@ -229,7 +226,7 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name == "object_id"
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_directory == "./in_memory_0"
+    assert primary_dataset.data_location == "./in_memory_0"
 
     # Secondary case with no `primary_id_field` defined
     model_inputs["random_0"].pop("primary_id_field", None)
@@ -242,7 +239,7 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name is None
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_directory == "./in_memory_0"
+    assert primary_dataset.data_location == "./in_memory_0"
 
     # Tertiary case with `primary_id_field` defined on `random_1`
     model_inputs["random_1"]["primary_id_field"] = "object_id"
@@ -255,7 +252,7 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name == "object_id"
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_directory == "./in_memory_1"
+    assert primary_dataset.data_location == "./in_memory_1"
 
 
 def test_metadata_fields(data_provider):

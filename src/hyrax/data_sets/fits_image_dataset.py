@@ -81,7 +81,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
     _called_from_test = False
 
-    def __init__(self, config: ConfigDict, data_directory=None):
+    def __init__(self, config: ConfigDict, data_location=None):
         """
         .. py:method:: __init__
 
@@ -94,7 +94,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         ----------
         config : ConfigDict
             Nested configuration dictionary for hyrax
-        data_directory: Optional[Union[Path, str]]
+        data_location : Optional[Union[Path, str]]
             The directory location of the data that this dataset class will access
         """
 
@@ -118,7 +118,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             else "filename"
         )
 
-        self._init_from_path(data_directory)
+        self._init_from_path(data_location)
 
         # Relies on self.filters_ref and self.filter_catalog_table which are both determined
         # inside _init_from_path()

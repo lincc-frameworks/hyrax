@@ -107,7 +107,7 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
         # dataset at a time, we can just take the first (and only) item in the data_request.
         data_definition = next(iter(data_request.values()))
         dataset_cls = DATA_SET_REGISTRY[data_definition["dataset_class"]]
-        dataset = dataset_cls(config=config, data_directory=data_definition["data_directory"])
+        dataset = dataset_cls(config=config, data_location=data_definition["data_location"])
         dataset.tensorboardx_logger = tensorboardx_logger
 
     else:

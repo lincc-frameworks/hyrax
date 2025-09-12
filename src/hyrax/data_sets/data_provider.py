@@ -32,15 +32,12 @@ def generate_data_request_from_config(config):
     if "model_inputs" in config:
         data_request = config["model_inputs"]
     else:
-        # Assume that we want only one dataset, and that the `model_inputs` table
-        # is not present in the config. We need to assemble a data_request
-        # based on config['data_set'].
         data_request = {
             "data": {
                 "dataset_class": config["data_set"]["name"],
-                "data_directory": config["general"]["data_dir"],
+                "data_location": config["general"]["data_dir"],
                 "primary_id_field": "object_id",
-            }
+            },
         }
 
     return data_request
@@ -81,6 +78,31 @@ class DataProvider(Dataset):
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
 
+        self.prepare_datasets()
+
+        self.pull_up_primary_dataset_methods()
+
+    def pull_up_primary_dataset_methods(self):
+        """If a primary dataset is defined, we will pull up some of its methods
+        to the DataProvider level so that they can be called directly on the
+        DataProvider instance."""
+
+        if self.primary_dataset:
+            primary_dataset_instance = self.prepped_datasets[self.primary_dataset]
+
+            # extend this tuple with more prefixes as needed
+            exclude_prefixes = ("_", "get_")
+            lifted_methods = [
+                name
+                for name in dir(primary_dataset_instance)
+                if not any(name.startswith(p) for p in exclude_prefixes)
+                and callable(getattr(primary_dataset_instance, name, None))
+            ]
+
+            for method_name in lifted_methods:
+                if not hasattr(self, method_name):
+                    setattr(self, method_name, getattr(primary_dataset_instance, method_name))
+
     def __getitem__(self, idx) -> dict:
         """This method returns data for a given index.
 
@@ -110,18 +132,32 @@ class DataProvider(Dataset):
         repr_str = ""
         for friendly_name, data in self.data_request.items():
             if isinstance(data, dict):
-                repr_str += f"{friendly_name}\n"
+                repr_str += f"Name: {friendly_name}\n"
                 repr_str += f"  Dataset class: {data['dataset_class']}\n"
-                repr_str += f"  Data directory: {data['data_directory']}\n"
+                if "data_location" in data:
+                    repr_str += f"  Data location: {data['data_location']}\n"
                 if "fields" in data:
-                    repr_str += f"  Fields: {', '.join(data.get('fields', []))}\n"
+                    repr_str += f"  Requested fields: {', '.join(data.get('fields', []))}\n"
                 else:
-                    repr_str += "  Fields: *All available fields*\n"
+                    repr_str += "  Requested fields: *All available fields*\n"
                 if "dataset_config" in data:
                     repr_str += "  Dataset config:\n"
                     for k, v in data["dataset_config"].items():
                         repr_str += f"    {k}: {v}\n"
         return repr_str
+
+    def fields(self) -> dict:
+        """Print all the available fields for each dataset in the DataProvider.
+
+        Returns
+        -------
+        dict
+            A dictionary mapping friendly dataset names to their available fields.
+        """
+        fields_dict: dict[str, list[str]] = {}
+        for friendly_name, fields in self.dataset_getters.items():
+            fields_dict[friendly_name] = list(fields.keys())
+        return fields_dict
 
     def is_iterable(self):
         """DataProvider datasets will always be map-style datasets."""
@@ -157,34 +193,46 @@ class DataProvider(Dataset):
                     "You should instantiate an iterable-style dataset class directly."
                 )
                 problem_count += 1
+
+            # ^ It is tempting to include a check here to ensure that data_location
+            # ^ is a string and that the path exists, but there are datasets that
+            # ^ don't require a real data directory. i.e. HyraxRandomDataset.
+            # ^ Additionally we may want to open up the concept beyond directories
+            # ^ on disk. i.e. s3 or HuggingFace locations.
+
             # If "fields" wasn't provided or it's empty or None, attempt to gather
             # all available get_* methods in the dataset class.
             if "fields" not in dataset_parameters or not dataset_parameters["fields"]:
-                # Gather all available fields from the dataset class
                 logger.info(
-                    f"No fields were specified for {friendly_name}. "
+                    f"No fields were specified for '{friendly_name}'. "
                     "The request will be modified to select all by default. "
                     "You can specify `fields` in `model_inputs`."
                 )
-                dataset_parameters["fields"] = [
-                    method[4:]
-                    for method in dir(DATA_SET_REGISTRY[dataset_class])
-                    if method.startswith("get_")
-                ]
-                if not dataset_parameters["fields"]:
-                    logger.error(
-                        f"No `get_*` methods were found in the class: {dataset_class}. "
-                        "This is likely an error in the dataset class definition."
-                    )
-                    problem_count += 1
-            else:
-                for field in dataset_parameters.get("fields", []):
-                    if not hasattr(DATA_SET_REGISTRY[dataset_class], f"get_{field}"):
-                        logger.error(
-                            f"No `get_{field}` method for requested field, '{field}' "
-                            f"was found in dataset {dataset_class}."
-                        )
-                        problem_count += 1
+
+                # ^ If there aren't any discovered fields that could be fine.
+                # ^ Consider a dataset class that only reads tabular data, and
+                # ^ produces the getters dynamically at run time - there would be
+                # ^ no get_<field> methods during the validation process because
+                # ^ the class has not been instantiated.
+                # discovered_fields = [
+                #     method
+                #     for method in dir(DATA_SET_REGISTRY[dataset_class])
+                #     if method.startswith("get_")
+                # ]
+                # if not discovered_fields:
+                #     logger.error(
+                #         f"No `get_*` methods were found in the class: {dataset_class}. "
+                #         "This is likely an error in the dataset class definition."
+                #     )
+                #     problem_count += 1
+            # else:
+            #     for field in dataset_parameters.get("fields", []):
+            #         if not hasattr(DATA_SET_REGISTRY[dataset_class], f"get_{field}"):
+            #             logger.error(
+            #                 f"No `get_{field}` method for requested field, '{field}' "
+            #                 f"was found in dataset {dataset_class}."
+            #             )
+            #             problem_count += 1
 
         if problem_count > 0:
             logger.error(f"Finished validating request. Problems found: {problem_count}")
@@ -200,24 +248,50 @@ class DataProvider(Dataset):
         # `self.validate_request()`.
         for friendly_name, dataset_definition in self.data_request.items():
             dataset_class = dataset_definition.get("dataset_class")
-            data_directory = dataset_definition.get("data_directory")
+            data_location = dataset_definition.get("data_location")
 
             # Create a temporary config dictionary that merges the original
             # config with the dataset-specific config.
             dataset_specific_config = self._apply_configurations(self.config, dataset_definition)
 
             # Instantiate the dataset class
-            dataset_instance = DATA_SET_REGISTRY[dataset_class](dataset_specific_config, data_directory)
+            dataset_instance = DATA_SET_REGISTRY[dataset_class](
+                config=dataset_specific_config, data_location=data_location
+            )
 
             # Store the prepared dataset instance in the `self.prepped_datasets`
             self.prepped_datasets[friendly_name] = dataset_instance
 
+            #! If no fields were specifically requested, we'll assume that the user
+            #! wants _all_ the available fields. I am unsure if this is the best default.
+            if not dataset_definition.get("fields", []):
+                dataset_definition["fields"] = [
+                    method[4:] for method in dir(dataset_instance) if method.startswith("get_")
+                ]
+
+            for field in dataset_definition.get("fields", []):
+                if not hasattr(dataset_instance, f"get_{field}"):
+                    logger.error(
+                        f"No `get_{field}` method for requested field, '{field}' "
+                        f"was found in dataset {dataset_class}."
+                    )
+
             # Cache all of the `get_<field_name>` methods in the dataset instance
             # so that we don't have to look them up each time we call `resolve_data`.
+            # self.dataset_getters[friendly_name] = {}
+            # for field in dataset_definition.get("fields", []):
+            #     self.dataset_getters[friendly_name][field] = getattr(dataset_instance, f"get_{field}")
+
             self.dataset_getters[friendly_name] = {}
-            for field in dataset_definition.get("fields", []):
-                self.dataset_getters[friendly_name][field] = getattr(
-                    self.prepped_datasets[friendly_name], f"get_{field}"
+            for method in dir(dataset_instance):
+                if method.startswith("get_"):
+                    field_name = method[4:]  # Remove the "get_" prefix
+                    self.dataset_getters[friendly_name][field_name] = getattr(dataset_instance, method)
+
+            if len(self.dataset_getters[friendly_name]) == 0:
+                logger.error(
+                    f"No `get_*` methods were found in the class: {dataset_class}. "
+                    "This is likely an error in the dataset class definition."
                 )
 
             # Get all the dataset's metadata fields and store them in
@@ -249,7 +323,7 @@ class DataProvider(Dataset):
         ```python
         "my_dataset": {
             "dataset_class": "MyDataset",
-            "data_directory": "/path/to/data",
+            "data_location": "/path/to/data",
             "dataset_config": {
                 "param1": "value1",
                 "param2": "value2"
@@ -261,7 +335,7 @@ class DataProvider(Dataset):
         ```toml
         [model_inputs.my_dataset]
         dataset_class = "MyDataset"
-        data_directory = "/path/to/data"
+        data_location = "/path/to/data"
         fields = ["field1", "field2"]
         [model_inputs.my_dataset.dataset_config]
         param1 = "value1"

@@ -105,6 +105,27 @@ class HyraxDataset:
                 ids = np.array(list(self.ids()))
                 self._metadata_table.add_column(ids, name="object_id")
 
+            import re
+            from types import MethodType
+
+            # ^ This sanitize approach may not be great. I can imagine a case where
+            # ^ many columns are named something like 90_percentile, 95_percentile, etc
+            # ^ and they would all get mapped to get__percentile.
+            def _sanitize(name: str) -> str:
+                # replace non-word chars and leading digits with underscore
+                return re.sub(r"\W|^(?=\d)", "_", name)
+
+            def _make_getter(column):
+                def getter(self, idx, _col=column):
+                    return self._metadata_table[_col][idx]
+
+                return getter
+
+            for col in self._metadata_table.colnames:
+                method_name = f"get_{_sanitize(col)}"
+                if not hasattr(self, method_name):
+                    setattr(self, method_name, MethodType(_make_getter(col), self))
+
         self.tensorboardx_logger = None
 
     @classmethod

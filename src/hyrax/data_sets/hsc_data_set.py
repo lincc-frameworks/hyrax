@@ -25,7 +25,7 @@ class HSCDataSet(FitsImageDataSet):
 
     _called_from_test = False
 
-    def __init__(self, config: ConfigDict, data_directory=None):
+    def __init__(self, config: ConfigDict, data_location=None):
         """
         .. py:method:: __init__
 
@@ -42,13 +42,13 @@ class HSCDataSet(FitsImageDataSet):
             config["data_set"]["filter_catalog"] = False
         # If there's no filter catalog, try to use the manifest file if it exists
         elif not config["data_set"]["filter_catalog"]:
-            catalog = Path(data_directory) / Downloader.MANIFEST_FILE_NAME
+            catalog = Path(data_location) / Downloader.MANIFEST_FILE_NAME
             if catalog.exists():
                 config["data_set"]["filter_catalog"] = str(catalog.expanduser().resolve())
 
         self.filters_config = config["data_set"]["filters"] if config["data_set"]["filters"] else None
 
-        super().__init__(config, data_directory)
+        super().__init__(config, data_location)
 
     def _read_filter_catalog(self, filter_catalog_path: Optional[Path]):
         from astropy.table import Table

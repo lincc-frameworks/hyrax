@@ -15,19 +15,17 @@ logger = logging.getLogger(__name__)
 class HyraxCifarBase:
     """Base class for Hyrax Cifar datasets"""
 
-    # ? Passing in a data_directory here so that we can disambiguate if when there
-    # ? are multiple instances of the dataset requested by the model.
-    def __init__(self, config: ConfigDict, data_directory: Path = None):
+    def __init__(self, config: ConfigDict, data_location: Path = None):
         import torchvision.transforms as transforms
         from astropy.table import Table
         from torchvision.datasets import CIFAR10
 
-        self.data_directory = data_directory if data_directory else config["general"]["data_dir"]
+        self.data_location = data_location if data_location else config["general"]["data_dir"]
 
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         )
-        self.cifar = CIFAR10(root=self.data_directory, train=True, download=True, transform=transform)
+        self.cifar = CIFAR10(root=self.data_location, train=True, download=True, transform=transform)
         metadata_table = Table(
             {"label": np.array([self.cifar[index][1] for index in range(len(self.cifar))])}
         )

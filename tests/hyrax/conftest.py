@@ -147,7 +147,7 @@ def multimodal_config():
     return {
         "random_0": {
             "dataset_class": "HyraxRandomDataset",
-            "data_directory": "./in_memory_0",
+            "data_location": "./in_memory_0",
             "fields": ["object_id", "image", "label"],
             "dataset_config": {
                 "shape": [2, 16, 16],
@@ -156,7 +156,7 @@ def multimodal_config():
         },
         "random_1": {
             "dataset_class": "HyraxRandomDataset",
-            "data_directory": "./in_memory_1",
+            "data_location": "./in_memory_1",
             "fields": ["image"],
             "dataset_config": {
                 "shape": [5, 16, 16],
