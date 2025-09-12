@@ -81,7 +81,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
     _called_from_test = False
 
-    def __init__(self, config: ConfigDict):
+    def __init__(self, config: ConfigDict, data_location=None):
         """
         .. py:method:: __init__
 
@@ -94,6 +94,8 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         ----------
         config : ConfigDict
             Nested configuration dictionary for hyrax
+        data_location : Optional[Union[Path, str]]
+            The directory location of the data that this dataset class will access
         """
 
         self._config = config
@@ -116,7 +118,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             else "filename"
         )
 
-        self._init_from_path(config["general"]["data_dir"])
+        self._init_from_path(data_location)
 
         # Relies on self.filters_ref and self.filter_catalog_table which are both determined
         # inside _init_from_path()
@@ -333,14 +335,55 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         """
         return len(self.files)
 
+    def get_object_id(self, idx: int) -> str:
+        """Get the object ID at the given index
+
+        Parameters
+        ----------
+        idx : int
+            Index of the object ID to return
+
+        Returns
+        -------
+        str
+            The object ID at the given index
+        """
+        if idx >= len(self.files) or idx < 0:
+            raise IndexError("Index out of range")
+
+        # Use the list of object IDs for explicit indexing
+        return list(self.files.keys())[idx]
+
+    def get_image(self, idx: int):
+        """Get the image at the given index as a PyTorch Tensor.
+
+        Parameters
+        ----------
+        idx : int
+            Index of the image to return
+
+        Returns
+        -------
+        torch.Tensor
+            The image at the given index as a PyTorch Tensor.
+        """
+        object_id = self.get_object_id(idx)
+        return self._object_id_to_tensor(object_id)
+
     def __getitem__(self, idx: int):
         if idx >= len(self.files) or idx < 0:
             raise IndexError
 
-        # Use the list of object IDs for explicit indexing
-        object_id = list(self.files.keys())[idx]
+        object_id = self.get_object_id(idx)
 
-        return self._object_id_to_tensor(object_id)
+        return {
+            "data": {
+                "object_id": object_id,
+                "image": self.get_image(idx),
+                "index": idx,
+            },
+            "object_id": object_id,
+        }
 
     def __contains__(self, object_id: str) -> bool:
         """Allows you to do `object_id in dataset` queries. Used by testing code.
@@ -628,7 +671,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
     #
     # For now we just do it the naive way
     def _object_id_to_tensor(self, object_id: str):
-        """Converts an object_id to a pytorch tensor with dimenstions (self.num_filters, self.cutout_shape[0],
+        """Converts an object_id to a pytorch tensor with dimensions (self.num_filters, self.cutout_shape[0],
         self.cutout_shape[1]). This is done by reading the file and slicing away any excess pixels at the
         far corners of the image from (0,0).
 
