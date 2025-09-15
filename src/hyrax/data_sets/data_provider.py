@@ -320,27 +320,30 @@ class DataProvider(Dataset):
         the original base config will be returned unmodified.
 
         Example of a dataset definition dictionary:
-        ```python
-        "my_dataset": {
-            "dataset_class": "MyDataset",
-            "data_location": "/path/to/data",
-            "dataset_config": {
-                "param1": "value1",
-                "param2": "value2"
-            },
-            "fields": ["field1", "field2"]
-        }
-        ```
+
+        .. code-block:: python
+
+            "my_dataset": {
+                "dataset_class": "MyDataset",
+                "data_location": "/path/to/data",
+                "dataset_config": {
+                    "param1": "value1",
+                    "param2": "value2"
+                },
+                "fields": ["field1", "field2"]
+            }
+
         or equivalently in a .toml file:
-        ```toml
-        [model_inputs.my_dataset]
-        dataset_class = "MyDataset"
-        data_location = "/path/to/data"
-        fields = ["field1", "field2"]
-        [model_inputs.my_dataset.dataset_config]
-        param1 = "value1"
-        param2 = "value2"
-        ```
+
+        .. code-block:: toml
+
+            [model_inputs.my_dataset]
+            dataset_class = "MyDataset"
+            data_location = "/path/to/data"
+            fields = ["field1", "field2"]
+            [model_inputs.my_dataset.dataset_config]
+            param1 = "value1"
+            param2 = "value2"
 
         In this example, the `dataset_config` dictionary will be merged into
         the original base config, overriding the values of param1 and param2
@@ -435,14 +438,16 @@ class DataProvider(Dataset):
         """Fetch the requested metadata fields for the given indices.
 
         Example:
-        ```python
-        # Fetch the metadata_1 and metadata_2 fields from the dataset with the
-        # friendly name "random_1".
 
-        metadata = data_provider.metadata(
-            idxs=[0, 1, 2],
-            fields=["metadata_1_random_1", "metadata_2_random_1"]
-        )
+        .. code-block:: python
+
+            # Fetch the metadata_1 and metadata_2 fields from the dataset with the
+            # friendly name "random_1".
+
+            metadata = data_provider.metadata(
+                idxs=[0, 1, 2],
+                fields=["metadata_1_random_1", "metadata_2_random_1"]
+            )
 
         Parameters
         ----------
