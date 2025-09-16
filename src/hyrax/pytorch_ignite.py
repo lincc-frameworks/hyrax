@@ -112,7 +112,6 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
 
     else:
         dataset = DataProvider(config)
-        dataset.prepare_datasets()
         for friendly_name in dataset.prepped_datasets:
             dataset.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
 

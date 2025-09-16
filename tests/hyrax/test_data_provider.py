@@ -132,21 +132,6 @@ def test_validate_request_iterable_dataset(multimodal_config, caplog):
     assert "is an iterable-style dataset" in caplog.text
 
 
-def test_validate_request_no_fields(multimodal_config, caplog):
-    """Basic test to see that validation works correctly when no fields are
-    requested."""
-    h = Hyrax()
-    c = multimodal_config
-    original_all_fields = c["random_0"].pop("fields", None)
-    h.config["model_inputs"] = c
-    with caplog.at_level("INFO"):
-        DataProvider(h.config)
-
-    assert "No fields were" in caplog.text
-    for field in original_all_fields:
-        assert field in h.config["model_inputs"]["random_0"]["fields"]
-
-
 def test_validate_request_bad_field(multimodal_config, caplog):
     """Basic test to see that validation works correctly when a bad field is
     requested."""

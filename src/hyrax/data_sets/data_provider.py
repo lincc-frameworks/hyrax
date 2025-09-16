@@ -1,7 +1,7 @@
 import logging
+from typing import Any
 
 import numpy as np
-from torch.utils.data import Dataset
 
 from hyrax.data_sets.data_set_registry import DATA_SET_REGISTRY
 
@@ -43,7 +43,7 @@ def generate_data_request_from_config(config):
     return data_request
 
 
-class DataProvider(Dataset):
+class DataProvider:
     """This class presents itself as a PyTorch Dataset, but acts like a GraphQL
     gateway that fetches data from multiple datasets based on the `model_inputs`
     dictionary provided during initialization.
@@ -124,8 +124,8 @@ class DataProvider(Dataset):
     def __len__(self) -> int:
         """Returns the length of the dataset.
         If the primary dataset is defined, it will return that length, otherwise
-        it will use the length of the first dataset in the keys of
-        `self.prepped_datasets`."""
+        it will use the length of the first dataset in ``self.prepped_datasets``.
+        """
         return len(self._primary_or_first_dataset())
 
     def __repr__(self) -> str:
@@ -167,6 +167,11 @@ class DataProvider(Dataset):
         """DataProvider datasets will always be map-style datasets."""
         return True
 
+    # ^ Since the getter methods are dynamically created when a dataset class is _instantiated_,
+    # ^ we can't really validate that the requested fields exist until after instantiation.
+    # ^ And instantiation doesn't happen here, it happens in `prepare_datasets`.
+    # ^ See: https://github.com/lincc-frameworks/hyrax/issues/419
+
     @staticmethod
     def validate_request(data_request: dict):
         """Convenience method to ensure that each requested dataset exists and that
@@ -193,46 +198,6 @@ class DataProvider(Dataset):
                     "You should instantiate an iterable-style dataset class directly."
                 )
                 problem_count += 1
-
-            # ^ It is tempting to include a check here to ensure that data_location
-            # ^ is a string and that the path exists, but there are datasets that
-            # ^ don't require a real data directory. i.e. HyraxRandomDataset.
-            # ^ Additionally we may want to open up the concept beyond directories
-            # ^ on disk. i.e. s3 or HuggingFace locations.
-
-            # If "fields" wasn't provided or it's empty or None, attempt to gather
-            # all available get_* methods in the dataset class.
-            if "fields" not in dataset_parameters or not dataset_parameters["fields"]:
-                logger.info(
-                    f"No fields were specified for '{friendly_name}'. "
-                    "The request will be modified to select all by default. "
-                    "You can specify `fields` in `model_inputs`."
-                )
-
-                # ^ If there aren't any discovered fields that could be fine.
-                # ^ Consider a dataset class that only reads tabular data, and
-                # ^ produces the getters dynamically at run time - there would be
-                # ^ no get_<field> methods during the validation process because
-                # ^ the class has not been instantiated.
-                # discovered_fields = [
-                #     method
-                #     for method in dir(DATA_SET_REGISTRY[dataset_class])
-                #     if method.startswith("get_")
-                # ]
-                # if not discovered_fields:
-                #     logger.error(
-                #         f"No `get_*` methods were found in the class: {dataset_class}. "
-                #         "This is likely an error in the dataset class definition."
-                #     )
-                #     problem_count += 1
-            # else:
-            #     for field in dataset_parameters.get("fields", []):
-            #         if not hasattr(DATA_SET_REGISTRY[dataset_class], f"get_{field}"):
-            #             logger.error(
-            #                 f"No `get_{field}` method for requested field, '{field}' "
-            #                 f"was found in dataset {dataset_class}."
-            #             )
-            #             problem_count += 1
 
         if problem_count > 0:
             logger.error(f"Finished validating request. Problems found: {problem_count}")
@@ -262,8 +227,8 @@ class DataProvider(Dataset):
             # Store the prepared dataset instance in the `self.prepped_datasets`
             self.prepped_datasets[friendly_name] = dataset_instance
 
-            #! If no fields were specifically requested, we'll assume that the user
-            #! wants _all_ the available fields. I am unsure if this is the best default.
+            # If no fields were specifically requested, we'll assume that the user
+            # wants _all_ the available fields - user defined and dynamically created!
             if not dataset_definition.get("fields", []):
                 dataset_definition["fields"] = [
                     method[4:] for method in dir(dataset_instance) if method.startswith("get_")
@@ -278,10 +243,6 @@ class DataProvider(Dataset):
 
             # Cache all of the `get_<field_name>` methods in the dataset instance
             # so that we don't have to look them up each time we call `resolve_data`.
-            # self.dataset_getters[friendly_name] = {}
-            # for field in dataset_definition.get("fields", []):
-            #     self.dataset_getters[friendly_name][field] = getattr(dataset_instance, f"get_{field}")
-
             self.dataset_getters[friendly_name] = {}
             for method in dir(dataset_instance):
                 if method.startswith("get_"):
@@ -345,9 +306,9 @@ class DataProvider(Dataset):
             param1 = "value1"
             param2 = "value2"
 
-        In this example, the `dataset_config` dictionary will be merged into
+        In this example, the ``dataset_config`` dictionary will be merged into
         the original base config, overriding the values of param1 and param2
-        when creating an instance of `MyDataset`.
+        when creating an instance of ``MyDataset``.
 
         Parameters
         ----------
@@ -369,6 +330,13 @@ class DataProvider(Dataset):
         from hyrax.config_utils import ConfigManager
 
         cm = ConfigManager()
+
+        # ^ NOTE: This assumes that the dataset-specific configuration options
+        # ^ are nested under a top-level key that matches the dataset class name.
+        # ^ i.e. "data_set": {"MyDataset": {<dataset-specific-options>}}. Or in toml
+        # ^ [data_set.MyDataset]
+        # ^ <dataset-specific-options>
+        # ^ See: https://github.com/lincc-frameworks/hyrax/issues/417
 
         if "dataset_config" in dataset_definition:
             tmp_config = {
@@ -392,6 +360,8 @@ class DataProvider(Dataset):
         """
         return self[0]
 
+    # ^ What is the appropriate return when there is no ``ids()`` method in the
+    # ^ primary_or_first dataset? Perhaps a generator that yields stop iteration error?
     def ids(self):
         """Returns the IDs of the dataset.
 
@@ -403,7 +373,7 @@ class DataProvider(Dataset):
         return primary_dataset.ids() if hasattr(primary_dataset, "ids") else []
 
     def resolve_data(self, idx: int) -> dict:
-        """This does the work of requesting the data from the prepared datasets.
+        """This method requests the field data from the prepared datasets by index.
 
         Parameters
         ----------
@@ -415,7 +385,7 @@ class DataProvider(Dataset):
         dict
             A dictionary containing the requested data from the prepared datasets.
         """
-        returned_data = {}
+        returned_data: dict[str, dict[str, Any]] = {}
         for friendly_name in self.data_request:
             returned_data[friendly_name] = {}
             dataset_definition = self.data_request.get(friendly_name)
@@ -433,6 +403,12 @@ class DataProvider(Dataset):
             ]
 
         return returned_data
+
+    # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
+    # ^ we should be able to remove most or all of this method and the metadata_fields method.
+    # ^ This is really here to support the visualization code, and if we convert that
+    # ^ to using get_<metadata_column_name> methods, we can remove this.
+    # ^ See: https://github.com/lincc-frameworks/hyrax/issues/418
 
     def metadata(self, idxs=None, fields=None) -> np.ndarray:
         """Fetch the requested metadata fields for the given indices.
