@@ -16,7 +16,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
     BANDS = ["u", "g", "r", "i", "z", "y"]
 
-    def __init__(self, config):
+    def __init__(self, config, data_location):
         """
         .. py:method:: __init__
 
@@ -112,7 +112,20 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
     def __len__(self):
         return len(self.catalog)
 
-    def __getitem__(self, idxs):
+    def get_image(self, idxs):
+        """Get image cutouts for the given indices.
+
+        Parameters
+        ----------
+        idxs : int or list of int
+            The index or indices of the cutouts to retrieve.
+
+        Returns
+        -------
+        list or torch.Tensor
+            Single cutout tensor or list of cutout tensors.
+        """
+
         from astropy.table import Table
         from nested_pandas import NestedFrame
 
@@ -132,6 +145,22 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             frame = frame if isinstance(frame, NestedFrame) else NestedFrame(frame).T
             cutouts = [self._fetch_single_cutout(row) for _, row in frame.iterrows()]
             return cutouts if len(cutouts) > 1 else cutouts[0]
+
+    def __getitem__(self, idxs):
+        """Get default data fields for the this dataset.
+
+        Parameters
+        ----------
+        idxs : int or list of int
+            The index or indices of the cutouts to retrieve.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the default data fields.
+        """
+
+        return {"data": {"image": self.get_image(idxs)}}
 
     # def __getitems__(self, idxs):
     #     return __getitem__(self, idxs)
