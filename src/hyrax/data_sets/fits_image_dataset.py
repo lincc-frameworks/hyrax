@@ -18,7 +18,7 @@ in a configuration file if you are running from the CLI
     import hyrax
     h = hyrax.Hyrax()
     h.config["data_set"]["name"] = "FitsImageDataSet"
-    h.config["general"]["data_dir"] = "/file/path/to/where/your/fits/files/are"
+    h.config["download"]["data_location"] = "/file/path/to/where/your/fits/files/are"
 
     # Location of your catalog file. Any file format supported by astropy.Table will work
     h.config["data_set"]["filter_catalog"] = "/file/path/to/your/catalog.fits"
@@ -81,6 +81,23 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
     _called_from_test = False
 
+    @staticmethod 
+    def _get_data_location(config):
+        """Get data location from config, trying various sources for flexibility."""
+        # For FitsImageDataSet, we need to be flexible about where data comes from
+        # since it can be used with different verbs
+        
+        # First try specific verb locations
+        for verb in ["download", "visualize"]:
+            if verb in config and "data_location" in config[verb]:
+                return config[verb]["data_location"]
+        
+        # Fall back to old general.data_dir for backward compatibility
+        if "general" in config and "data_dir" in config["general"]:
+            return config["general"]["data_dir"]
+            
+        return None
+
     def __init__(self, config: ConfigDict):
         """
         .. py:method:: __init__
@@ -116,7 +133,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             else "filename"
         )
 
-        self._init_from_path(config["general"]["data_dir"])
+        self._init_from_path(self._get_data_location(config))
 
         # Relies on self.filters_ref and self.filter_catalog_table which are both determined
         # inside _init_from_path()

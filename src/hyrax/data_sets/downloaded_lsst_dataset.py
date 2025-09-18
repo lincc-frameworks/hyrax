@@ -73,11 +73,24 @@ class DownloadedLSSTDataset(LSSTDataset):
     File Organization:
     - Cutouts saved as: cutout_{object_id}.pt or cutout_{index:04d}.pt
     - Manifest saved as: manifest.fits (Astropy) or manifest.parquet (HATS)
-    - All files stored in config["general"]["data_dir"]
+    - All files stored in download.data_location (or general.data_dir for backward compatibility)
     """
 
+    @staticmethod
+    def _get_data_location(config):
+        """Get data location from config, trying new structure first, then falling back to old."""
+        if "download" in config and "data_location" in config["download"]:
+            return config["download"]["data_location"]
+        elif "general" in config and "data_dir" in config["general"]:
+            return config["general"]["data_dir"]
+        return None
+
     def __init__(self, config):
-        self.download_dir = Path(config["general"]["data_dir"])
+        data_location = self._get_data_location(config)
+        if not data_location:
+            raise RuntimeError("No data location configured. Please set download.data_location in your config.")
+        
+        self.download_dir = Path(data_location)
         self.download_dir.mkdir(exist_ok=True)
 
         # Preventing name collision with parent class config
@@ -153,7 +166,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                 msg = "Cannot find any data source. There is no existing manifest, and there is no "
                 msg += "butler available. Please try to run this on an RSP where a butler is available or "
                 msg += "ensure a proper manifest and cutouts are available in "
-                msg += f"{self.config['general']['data_dir']}"
+                msg += f"{self.download_dir}"
                 raise RuntimeError(msg)
 
             # Create new manifest (no existing manifest found)

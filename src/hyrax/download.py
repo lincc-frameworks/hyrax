@@ -35,7 +35,7 @@ class Downloader:
 
     def __init__(self, config):
         self.config = config
-        self.cutout_path = Path(config["general"]["data_dir"]).expanduser().resolve()
+        self.cutout_path = Path(config["download"]["data_location"]).expanduser().resolve()
         self.manifest_file = self.cutout_path / Downloader.MANIFEST_FILE_NAME
 
     def run(self):

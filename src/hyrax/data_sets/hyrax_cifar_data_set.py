@@ -14,6 +14,21 @@ logger = logging.getLogger(__name__)
 class HyraxCifarBase:
     """Base class for Hyrax Cifar datasets"""
 
+    @staticmethod
+    def _get_data_location(config):
+        """Get data location from config, trying various sources for flexibility."""
+        # For CIFAR, try multiple verb locations since it's a general dataset
+        for verb in ["download", "visualize"]:
+            if verb in config and "data_location" in config[verb]:
+                return config[verb]["data_location"]
+        
+        # Fall back to old general.data_dir for backward compatibility
+        if "general" in config and "data_dir" in config["general"]:
+            return config["general"]["data_dir"]
+            
+        # Default for CIFAR if nothing specified
+        return "./data"
+
     def __init__(self, config: ConfigDict):
         import torchvision.transforms as transforms
         from astropy.table import Table
@@ -23,7 +38,7 @@ class HyraxCifarBase:
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         )
         self.cifar = CIFAR10(
-            root=config["general"]["data_dir"], train=True, download=True, transform=transform
+            root=self._get_data_location(config), train=True, download=True, transform=transform
         )
         metadata_table = Table(
             {"label": np.array([self.cifar[index][1] for index in range(len(self.cifar))])}

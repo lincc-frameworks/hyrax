@@ -88,7 +88,7 @@ def mkconfig(
     and our FakeFitsFS shim can be called.
     """
     return {
-        "general": {"data_dir": "thispathdoesnotexist"},
+        "download": {"data_location": "thispathdoesnotexist"},
         "data_set": {
             "crop_to": crop_to,
             "filters": filters,

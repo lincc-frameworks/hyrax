@@ -20,6 +20,25 @@ class Visualize(Verb):
     cli_name = "visualize"
     add_parser_kwargs = {}
 
+    def _get_data_location(self, config=None):
+        """Get data location from config, trying visualize config first, then fallback options."""
+        if config is None:
+            config = self.config
+            
+        # First try visualize.data_location
+        if "visualize" in config and "data_location" in config["visualize"]:
+            return config["visualize"]["data_location"]
+        
+        # Then try download.data_location (for HSC data)
+        if "download" in config and "data_location" in config["download"]:
+            return config["download"]["data_location"]
+            
+        # Fall back to old general.data_dir for backward compatibility
+        if "general" in config and "data_dir" in config["general"]:
+            return config["general"]["data_dir"]
+            
+        return None
+
     @staticmethod
     def setup_parser(parser: ArgumentParser):
         """CLI not implemented for this verb"""
@@ -599,7 +618,7 @@ class Visualize(Verb):
     def _make_image_pane(self, total_width: int = 500, *args, **kwargs):
         """
         Sample up to 6 of the selected object_ids,
-        load their FITS cutouts from [general][data_dir], and
+        load their FITS cutouts from the configured data location, and
         render as small hv.Image thumbnails in a grid.
         """
         import numpy as np
@@ -664,7 +683,7 @@ class Visualize(Verb):
             sampled_ids = []
             filenames = []
 
-        base_dir = Path(self.umap_results.original_config["general"]["data_dir"])
+        base_dir = Path(self._get_data_location(self.umap_results.original_config))
         crop_to = self.umap_results.original_config["data_set"]["crop_to"]
 
         # Defining a Fallback Image to Display in case of errors
