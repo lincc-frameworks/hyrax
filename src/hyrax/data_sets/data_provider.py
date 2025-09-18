@@ -298,6 +298,7 @@ class DataProvider:
 
         .. code-block:: toml
 
+            [model_inputs]
             [model_inputs.my_dataset]
             dataset_class = "MyDataset"
             data_location = "/path/to/data"
