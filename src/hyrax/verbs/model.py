@@ -14,7 +14,7 @@ class Model(Verb):
     add_parser_kwargs = {}
 
     @staticmethod
-    def setup_parser():
+    def setup_parser(parser):
         """Not implemented"""
         pass
 
