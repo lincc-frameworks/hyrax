@@ -162,7 +162,7 @@ opset_version = 20
 name = "HyraxCifarDataSet"
 
 # Crop pixel dimensions for images, e.g., [100, 100]. If false, scans for the
-# smallest image size in [general].data_dir and uses it.
+# smallest image size in the data directory and uses it.
 crop_to = false
 
 # Used by HSCDataSet, LSSTDataset, and DownloadedLSSTDataset. 
@@ -171,8 +171,8 @@ crop_to = false
 # Options: ["u", "g", "r", "i", "z" , "y"] for LSST
 filters = false
 
-# Path to a fits file that specifies object IDs to use from the data stored in
-# [general].data_dir. Implementation is data_set class dependent. Use `false` for no filtering.
+# Path to a fits file that specifies object IDs to use from the configured data location.
+# Implementation is data_set class dependent. Use `false` for no filtering.
 filter_catalog = false
 
 # The transformation to be applied to images before being passed on to the model
