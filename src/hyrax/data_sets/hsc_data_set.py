@@ -25,6 +25,15 @@ class HSCDataSet(FitsImageDataSet):
 
     _called_from_test = False
 
+    @staticmethod
+    def _get_data_location(config: ConfigDict) -> Optional[str]:
+        """Get data location from config, trying new structure first, then falling back to old."""
+        if "download" in config and "data_location" in config["download"]:
+            return config["download"]["data_location"]
+        elif "general" in config and "data_dir" in config["general"]:
+            return config["general"]["data_dir"]
+        return None
+
     def __init__(self, config: ConfigDict):
         """
         .. py:method:: __init__
@@ -42,9 +51,11 @@ class HSCDataSet(FitsImageDataSet):
             config["data_set"]["filter_catalog"] = False
         # If there's no filter catalog, try to use the manifest file if it exists
         elif not config["data_set"]["filter_catalog"]:
-            catalog = Path(config["general"]["data_dir"]) / Downloader.MANIFEST_FILE_NAME
-            if catalog.exists():
-                config["data_set"]["filter_catalog"] = str(catalog.expanduser().resolve())
+            data_location = self._get_data_location(config)
+            if data_location:
+                catalog = Path(data_location) / Downloader.MANIFEST_FILE_NAME
+                if catalog.exists():
+                    config["data_set"]["filter_catalog"] = str(catalog.expanduser().resolve())
 
         self.filters_config = config["data_set"]["filters"] if config["data_set"]["filters"] else None
 
@@ -528,13 +539,17 @@ class HSCDataSet(FitsImageDataSet):
         logger.info("Writing rebuilt manifest...")
         manifest_table = Table(columns)
 
-        manifest_file_path = Path(config["general"]["data_dir"]) / Downloader.MANIFEST_FILE_NAME
+        data_location = HSCDataSet._get_data_location(config)
+        if not data_location:
+            raise RuntimeError("No data location configured. Please set download.data_location in your config.")
+        
+        manifest_file_path = Path(data_location) / Downloader.MANIFEST_FILE_NAME
 
         # Rename the old manifest
         if manifest_file_path.exists():
             filename_safe_now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             new_file_name = Downloader.MANIFEST_FILE_NAME + f".archived.at.{filename_safe_now}"
-            manifest_file_path.rename(Path(config["general"]["data_dir"]) / new_file_name)
+            manifest_file_path.rename(Path(data_location) / new_file_name)
 
         # Replace the old manifest
         manifest_table.write(manifest_file_path, overwrite=True, format="fits")

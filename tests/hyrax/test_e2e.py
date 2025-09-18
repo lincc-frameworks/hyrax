@@ -70,7 +70,7 @@ def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     """Fixture to configure and initialize the hyrax instance"""
     h = hyrax.Hyrax()
     dataset_class_name, sample_data = dataset_spec
-    h.config["general"]["data_dir"] = str(tmp_dataset_path)
+    h.config["download"]["data_location"] = str(tmp_dataset_path)
     h.config["general"]["results_dir"] = str(tmp_path)
     h.config["data_set"]["name"] = dataset_class_name
     if dataset_class_name == "FitsImageDataSet" and sample_data == "hsc1k":

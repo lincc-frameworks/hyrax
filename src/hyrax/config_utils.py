@@ -197,7 +197,8 @@ class ConfigManager:
         # However we define config defaults from external libraries ought allow them to designate config keys
         # which contain relative paths. ultimately these should end up on the list and be resolved.
         ["data_set", "filter_catalog"],
-        ["general", "data_dir"],
+        ["download", "data_location"],
+        ["visualize", "data_location"],
     ]
 
     def __init__(

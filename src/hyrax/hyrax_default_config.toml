@@ -10,14 +10,16 @@ log_destination = "stderr"
 # Lowest log level to emit. Options: "critical", "error", "warning", "info", "debug".
 log_level = "info"
 
-# Directory where data is stored.
-data_dir = "./data"
+# NOTE: data_dir has been removed. Individual verbs now define their own data_location parameter.
 
 #Top level directory for writing results.
 results_dir = "./results"
 
 
 [download]
+# Directory where downloaded data is stored.
+data_location = "./data"
+
 # Cut out width in arcseconds.
 sw = "22asec"
 
@@ -335,6 +337,8 @@ n_components = 2
 n_neighbors = 15
 
 [visualize]
+# Directory where FITS cutouts are stored for image display.
+data_location = "./data"
 
 # List of metadata field names to use in visualizer. Must be available as metadata in your dataset
 fields = []
