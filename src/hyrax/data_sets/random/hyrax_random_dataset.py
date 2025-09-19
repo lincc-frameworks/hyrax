@@ -36,11 +36,7 @@ class HyraxRandomDatasetBase:
 
         Initialize the dataset using the parameters defined in the configuration.
 
-        The ``data_location`` parameter is included for API symmetry with other dataset classes.
-        Although it is not used by this dataset, including it allows users to use
-        ``HyraxRandomDataset`` as a placeholder and later substitute in another dataset
-        implementation without changing the constructor signature. This helps maintain
-        consistency across different dataset classes in Hyrax.
+        Parameter included for API consistency with other dataset classes, though not used by this implementation.
         All parameters are controlled by the following keys under
         the ``["data_set"]["HyraxRandomDataset"]`` table in the configuration:
 
