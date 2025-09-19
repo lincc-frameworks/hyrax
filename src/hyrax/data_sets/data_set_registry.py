@@ -205,7 +205,7 @@ class HyraxDataset:
                 yield (str(index))
         else:
             raise NotImplementedError(
-                "Dataset must implement either __len__ and __getitem__ for map-style datasets,"
+                f"Dataset class '{self.__class__.__name__}' must implement either __len__ and __getitem__ for map-style datasets, "
                 "or __iter__ for iterable-style datasets to use automatic id() generation."
             )
 
