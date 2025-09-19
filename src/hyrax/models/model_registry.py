@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, as_tensor
 
 from hyrax.plugin_utils import get_or_load_class, update_registry
 
@@ -103,7 +103,7 @@ def hyrax_model(cls):
         data = data_dict.get("data")
 
         if "image" in data and not isinstance(data["image"], Tensor):
-            data["image"] = Tensor(data["image"])
+            data["image"] = as_tensor(data["image"])
         if isinstance(data.get("image"), Tensor):
             if "label" in data:
                 return (data["image"], data["label"])

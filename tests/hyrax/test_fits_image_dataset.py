@@ -16,8 +16,13 @@ def test_hyrax_small_dataset_hscstars(request):
     catalog_file = this_file_dir / "test_data" / "small_dataset_hscstars" / f"star_cat_correct{request.param}"
 
     h = hyrax.Hyrax()
-    h.config["data_set"]["name"] = "FitsImageDataSet"
-    h.config["general"]["data_dir"] = str(catalog_file.parent)
+    h.config["model_inputs"] = {
+        "data": {
+            "dataset_class": "FitsImageDataSet",
+            "data_location": str(catalog_file.parent),
+            "primary_id_field": "object_id",
+        },
+    }
     h.config["data_set"]["filter_catalog"] = str(catalog_file)
     h.config["data_set"]["crop_to"] = [20, 20]
 

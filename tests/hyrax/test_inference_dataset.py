@@ -12,7 +12,13 @@ def inference_dataset(tmp_path_factory, request):
     It returns the data written"""
     h = hyrax.Hyrax()
     h.config["general"]["dev_mode"] = True
-    h.config["data_set"]["name"] = "HyraxRandomDataset"
+    h.config["model_inputs"] = {
+        "data": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": str(tmp_path_factory.mktemp("data")),
+            "primary_id_field": "object_id",
+        },
+    }
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2]
