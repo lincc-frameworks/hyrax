@@ -1,5 +1,6 @@
-import numpy as np
 from pathlib import Path
+
+import numpy as np
 
 
 def test_save_to_database(loopback_inferred_hyrax):
