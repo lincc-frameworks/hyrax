@@ -459,7 +459,7 @@ class DataProvider:
         # 3) Call the dataset's `metadata` method with indices and metadata fields.
         for friendly_name, dataset in self.prepped_datasets.items():
             metadata_fields_to_fetch = [
-                field.replace(f"_{friendly_name}", "")
+                field[: -len(f"_{friendly_name}")]
                 for field in fields
                 if field.endswith(f"_{friendly_name}")
             ]
