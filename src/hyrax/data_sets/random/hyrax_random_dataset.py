@@ -91,7 +91,7 @@ class HyraxRandomDatasetBase:
 
         # Start our IDs at a random integer between 0 and 100
         id_start = rng.integers(100)
-        self.id_list = np.array(list(range(id_start, id_start + data_size)))
+        self.id_list = np.arange(id_start, id_start + data_size)
 
         # Randomly insert flawed values (np.nan, np.inf, -np.inf, None, other float)
         num_invalid_values = config["data_set"]["HyraxRandomDataset"]["number_invalid_values"]
