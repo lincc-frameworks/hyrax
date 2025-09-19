@@ -30,16 +30,17 @@ class HyraxRandomDatasetBase:
     provided_labels: list
     """A list of labels randomly selected from the provided list of possible labels."""
 
-    # ? Adding data_location here for symmetry. It's obviously not used by this dataset
-    # ? but if we want to allow people to use RandomDataset as a placeholder and
-    # ? then immediately drop in a dataset that they actually want to use, it will
-    # ? be important to make the signatures consistent across the datasets.
     def __init__(self, config, data_location):
         """
-        .. py:method:: __init__(config)
+        .. py:method:: __init__(config, data_location)
 
         Initialize the dataset using the parameters defined in the configuration.
 
+        The ``data_location`` parameter is included for API symmetry with other dataset classes.
+        Although it is not used by this dataset, including it allows users to use
+        ``HyraxRandomDataset`` as a placeholder and later substitute in another dataset
+        implementation without changing the constructor signature. This helps maintain
+        consistency across different dataset classes in Hyrax.
         All parameters are controlled by the following keys under
         the ``["data_set"]["HyraxRandomDataset"]`` table in the configuration:
 
