@@ -101,8 +101,7 @@ class HyraxDataset:
         if self._metadata_table is not None:
             colnames = self._metadata_table.colnames
             if "object_id" not in colnames:
-                #! TODO: Determine if self.ids() will work for iterable datasets in the future.
-                #! See https://github.com/lincc-frameworks/hyrax/issues/374
+                # Note: See https://github.com/lincc-frameworks/hyrax/issues/374 for iterable dataset support discussion.
                 ids = np.array(list(self.ids()))
                 self._metadata_table.add_column(ids, name="object_id")
 
