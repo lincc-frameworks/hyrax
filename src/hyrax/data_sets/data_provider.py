@@ -331,12 +331,12 @@ class DataProvider:
 
         cm = ConfigManager()
 
-        # ^ NOTE: This assumes that the dataset-specific configuration options
-        # ^ are nested under a top-level key that matches the dataset class name.
-        # ^ i.e. "data_set": {"MyDataset": {<dataset-specific-options>}}. Or in toml
-        # ^ [data_set.MyDataset]
-        # ^ <dataset-specific-options>
-        # ^ See: https://github.com/lincc-frameworks/hyrax/issues/417
+        # NOTE: This assumes that the dataset-specific configuration options
+        # are nested under a top-level key that matches the dataset class name.
+        # i.e. "data_set": {"MyDataset": {<dataset-specific-options>}}. Or in toml
+        # [data_set.MyDataset]
+        # <dataset-specific-options>
+        # See: https://github.com/lincc-frameworks/hyrax/issues/417
 
         if "dataset_config" in dataset_definition:
             tmp_config = {
