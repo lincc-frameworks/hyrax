@@ -101,7 +101,8 @@ class HyraxDataset:
         if self._metadata_table is not None:
             colnames = self._metadata_table.colnames
             if "object_id" not in colnames:
-                # Note: See https://github.com/lincc-frameworks/hyrax/issues/374 for iterable dataset support discussion.
+                # Note: See https://github.com/lincc-frameworks/hyrax/issues/374
+                # for iterable dataset support discussion.
                 ids = np.array(list(self.ids()))
                 self._metadata_table.add_column(ids, name="object_id")
 
@@ -204,7 +205,8 @@ class HyraxDataset:
                 yield (str(index))
         else:
             raise NotImplementedError(
-                "Dataset must implement either __len__ and __getitem__ for map-style datasets or __iter__ for iterable-style datasets to use automatic id() generation."
+                "Dataset must implement either __len__ and __getitem__ for map-style datasets,"
+                "or __iter__ for iterable-style datasets to use automatic id() generation."
             )
 
     def sample_data(self) -> dict:
