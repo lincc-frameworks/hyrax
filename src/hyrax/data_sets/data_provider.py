@@ -207,6 +207,9 @@ class DataProvider:
         configuration dictionary. Store the prepared instances in the
         ``self.prepped_datasets`` dictionary."""
 
+        if len(self.data_request) == 0:
+            raise RuntimeError("No datasets were requested in `model_inputs`.")
+
         # Note: We can be less strict about checking for existence of keys here
         # because we have already validated the ``model_inputs`` in
         # `self.validate_request()`.
@@ -459,9 +462,7 @@ class DataProvider:
         # 3) Call the dataset's `metadata` method with indices and metadata fields.
         for friendly_name, dataset in self.prepped_datasets.items():
             metadata_fields_to_fetch = [
-                field[: -len(f"_{friendly_name}")]
-                for field in fields
-                if field.endswith(f"_{friendly_name}")
+                field[: -len(f"_{friendly_name}")] for field in fields if field.endswith(f"_{friendly_name}")
             ]
 
             if metadata_fields_to_fetch:
