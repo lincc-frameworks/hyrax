@@ -82,7 +82,11 @@ class Infer(Verb):
         logger.info(f"Saving inference results at: {results_dir}")
 
         with open(results_dir / "to_tensor.py", "w") as f:
-            f.write(inspect.getsource(model.to_tensor))
+            try:
+                f.write(inspect.getsource(model.to_tensor))
+            except (OSError, TypeError) as e:
+                logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
+                f.write("# Source code for model.to_tensor could not be retrieved.\n")
 
         data_writer = InferenceDataSetWriter(dataset, results_dir)
 
