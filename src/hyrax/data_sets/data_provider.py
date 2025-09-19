@@ -6,7 +6,6 @@ import numpy as np
 from hyrax.data_sets.data_set_registry import DATA_SET_REGISTRY
 
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
 
 
 def generate_data_request_from_config(config):
