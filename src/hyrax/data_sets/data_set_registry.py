@@ -203,7 +203,9 @@ class HyraxDataset:
             for index, _ in enumerate(iter(self)):
                 yield (str(index))
         else:
-            raise NotImplementedError("You must define __len__ or __iter__ to use automatic id()")
+            raise NotImplementedError(
+                "Dataset must implement either __len__ and __getitem__ for map-style datasets or __iter__ for iterable-style datasets to use automatic id() generation."
+            )
 
     def sample_data(self) -> dict:
         """Get a sample from the dataset. This is a convenience function that returns
