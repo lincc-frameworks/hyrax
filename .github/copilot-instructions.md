@@ -31,9 +31,14 @@ Hyrax is a Python-based tool for hunting rare and anomalous sources in large ast
 - **Main CLI entry point**: `hyrax` command (defined in pyproject.toml as `hyrax = "hyrax_cli.main:main"`)
 - **Check version**: `hyrax --version`
 - **Get help**: `hyrax --help`
-- **Available verbs/commands**: train, infer, download, prepare, umap, visualize, lookup, save_to_database, database_connection, rebuild_manifest
+- **Available verbs/commands**: 
+  - **Core operations**: `train`, `infer`, `download`, `prepare`
+  - **Analysis**: `umap`, `visualize`, `lookup`
+  - **Vector DB**: `save_to_database`, `database_connection`
+  - **Utilities**: `rebuild_manifest`
 - **Verb-specific help**: `hyrax <verb> --help` (e.g., `hyrax train --help`)
 - **Configuration**: Use `--runtime-config path/to/config.toml` or `-c path/to/config.toml`
+- **Verb implementation**: All verbs are classes in `src/hyrax/verbs/` that inherit from `Verb` base class
 
 ### Development and Code Quality - NEVER CANCEL these commands
 - **Pre-commit checks**: `pre-commit run --all-files` -- NEVER CANCEL: Takes 3-8 minutes. Set timeout to 15+ minutes.
@@ -167,7 +172,27 @@ After making changes, ALWAYS test these scenarios:
 
 ## Performance Notes
 - Vector database operations can be slow with large datasets
-- Benchmarks available in `benchmarks/` directory
+- Benchmarks available in `benchmarks/` directory (run with `asv` tool)
 - Use `--timeout` parameters appropriately for long-running operations
 - ChromaDB performance degrades with vectors >10,000 elements
 - UMAP fitting limited to 1024 samples by default for performance
+- Benchmark tests include timing for CLI help commands, object construction, and vector DB operations
+
+## Common Command Reference
+```bash
+# Full development setup
+conda create -n hyrax python=3.10 && conda activate hyrax
+git clone https://github.com/lincc-frameworks/hyrax.git && cd hyrax
+echo 'y' | bash .setup_dev.sh
+
+# Quick validation workflow  
+ruff check src/ tests/ && ruff format src/ tests/
+python -m pytest -m "not slow"
+pre-commit run --all-files
+
+# Example model training workflow
+hyrax train --runtime-config examples/config.toml
+hyrax infer --runtime-config examples/config.toml
+hyrax umap --runtime-config examples/config.toml
+hyrax visualize --runtime-config examples/config.toml
+```
