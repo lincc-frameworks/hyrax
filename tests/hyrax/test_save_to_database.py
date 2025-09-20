@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import numpy as np
 
 
@@ -34,3 +36,21 @@ def test_save_to_database(loopback_inferred_hyrax):
         saved_value = result[id].reshape(original_shape)
         original_value = dataset[orig_indx]["image"]
         assert np.all(np.isclose(saved_value, original_value.numpy()))
+
+
+def test_save_to_database_tensorboard_logging(loopback_inferred_hyrax):
+    """Test that Tensorboard logs are created during vector database insertion."""
+
+    h, dataset, inference_results = loopback_inferred_hyrax
+    h.config["vector_db"]["name"] = "chromadb"
+
+    # Populate the vector database with the results of inference
+    vdb_path = h.config["general"]["results_dir"]
+    h.save_to_database(output_dir=vdb_path)
+
+    # Check that Tensorboard event files were created in the output directory
+    tensorboard_files = list(Path(vdb_path).glob("events.out.tfevents.*"))
+    assert len(tensorboard_files) > 0, "No Tensorboard event files found in output directory"
+
+    # Optionally, we could parse the event files to check for our specific metrics
+    # but that would require additional dependencies, so we'll just check for file existence
