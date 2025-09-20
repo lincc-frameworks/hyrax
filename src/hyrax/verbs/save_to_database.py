@@ -1,9 +1,11 @@
 import logging
+import time
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Union
 
 import numpy as np
+from tensorboardX import SummaryWriter
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -129,10 +131,17 @@ class SaveToDatabase(Verb):
         config["vector_db"]["vector_db_dir"] = str(vector_db_path)
         log_runtime_config(config, vector_db_path)
 
+        # Create a tensorboardX logger for metrics
+        tensorboardx_logger = SummaryWriter(log_dir=vector_db_path)
+
         # Use the batch_index to get the list of batches.
         batches = np.unique(inference_data_set.batch_index["batch_num"])
 
         logger.info(f"Number of inference result batches to index: {len(batches)}.")
+
+        total_insertion_time = 0.0
+        batch_count = 0
+
         for batch in tqdm(batches):
             # Get all the indices where inference_data_set.batch_index['batch_num'] == batch
             index_mask = inference_data_set.batch_index["batch_num"] == batch
@@ -147,4 +156,36 @@ class SaveToDatabase(Verb):
             # Flatten the vectors and turn them into a list of np.arrays.
             vectors = list(inference_data["tensor"].reshape(len(inference_data["tensor"]), -1))
 
+            # Time the vector database insertion
+            start_time = time.time()
             vector_db.insert(ids=list(inference_data["id"]), vectors=vectors)
+            insertion_time = time.time() - start_time
+
+            # Log insertion metrics to Tensorboard
+            batch_count += 1
+            total_insertion_time += insertion_time
+            vectors_inserted = len(vectors)
+
+            tensorboardx_logger.add_scalar("vector_db/batch_insertion_time", insertion_time, batch_count)
+            tensorboardx_logger.add_scalar("vector_db/vectors_per_batch", vectors_inserted, batch_count)
+            rate = vectors_inserted / insertion_time if insertion_time > 0 else 0
+            tensorboardx_logger.add_scalar("vector_db/insertion_rate_vectors_per_second", rate, batch_count)
+
+            logger.debug(
+                f"Batch {batch}: Inserted {vectors_inserted} vectors in {insertion_time:.3f}s "
+                f"({vectors_inserted / insertion_time:.1f} vectors/sec)"
+            )
+
+        # Log total insertion metrics
+        tensorboardx_logger.add_scalar("vector_db/total_insertion_time", total_insertion_time, 1)
+        tensorboardx_logger.add_scalar("vector_db/total_batches", batch_count, 1)
+        avg_time = total_insertion_time / batch_count if batch_count > 0 else 0
+        tensorboardx_logger.add_scalar("vector_db/average_batch_insertion_time", avg_time, 1)
+
+        # Close the tensorboard logger
+        tensorboardx_logger.close()
+
+        logger.info(
+            f"Vector database insertion complete. Total time: {total_insertion_time:.3f}s "
+            f"for {batch_count} batches"
+        )
