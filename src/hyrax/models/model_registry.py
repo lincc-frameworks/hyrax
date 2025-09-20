@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import torch.nn as nn
-from torch import Tensor
+from torch import Tensor, as_tensor
 
 from hyrax.plugin_utils import get_or_load_class, update_registry
 
@@ -92,53 +92,32 @@ def hyrax_model(cls):
 
     original_init = cls.__init__
 
-    def wrapped_init(self, dataset, *args, **kwargs):
-        # Model constructors need a shape, but only a model can tell how to take a
-        # data dict and extract the tensor. We fixup the call here so original_init
-        # is passed a valid shape.
-        #
-        # TODO: We may want to stop passing 'shape' to model __init__(). This will
-        # come at the cost of allowing models to dynamically size their layers/architecture
-        # given shape information. The typical solution to this limitation seems to be a
-        # static-size model crop/resize transforms defined with the model and executed
-        # during data loading by the driver code.
-
-        # Get a sample item of data
-        if dataset.is_map():
-            sample = dataset[0]
-        elif dataset.is_iterable():
-            sample = next(iter(dataset))
-        else:
-            msg = f"{dataset.__class__.__name} must define __getitem__ or __iter__."
-            return NotImplementedError(msg)
-
-        # Perform conversion to tensor(s) if necessary
-        if isinstance(sample, dict):
-            sample = self.__class__.to_tensor(sample)
-
-        # If its a tuple or list extract first element because it is (data, label)
-        if isinstance(sample, (tuple, list)):
-            sample = sample[0]
-
-        if not isinstance(sample, Tensor):
-            msg = "{self.__class__.__name__}.to_tensor() is not returning a tensor when run with "
-            msg += "data from {dataset.__class__.__name__}."
-            raise RuntimeError(msg)
-
-        kwargs.update({"shape": sample.shape})
-
-        original_init(self, *args, **kwargs)
+    def wrapped_init(self, config, *args, **kwargs):
+        original_init(self, config, *args, **kwargs)
         self.criterion = self._criterion()
         self.optimizer = self._optimizer()
 
     cls.__init__ = wrapped_init
 
     def default_to_tensor(data_dict):
-        if isinstance(data_dict.get("image"), Tensor):
-            if "label" in data_dict:
-                return (data_dict["image"], data_dict["label"])
+        data = data_dict.get("data")
+        if data is None:
+            msg = "Hyrax couldn't find a 'data' key in the data dictionaries from your dataset.\n"
+            msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"
+            msg += "value(s) from the dictionary your dataset is returning:\n\n"
+            msg += f"class {cls.__name__}:\n\n"
+            msg += "    @staticmethod\n"
+            msg += "    def to_tensor(data_dict) -> Tensor:\n"
+            msg += "        <Your implementation goes here>\n\n"
+            raise RuntimeError(msg)
+
+        if "image" in data and not isinstance(data["image"], Tensor):
+            data["image"] = as_tensor(data["image"])
+        if isinstance(data.get("image"), Tensor):
+            if "label" in data:
+                return (data["image"], data["label"])
             else:
-                return data_dict["image"]
+                return data["image"]
         else:
             msg = "Hyrax couldn't find an image in the data dictionaries from your dataset.\n"
             msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"

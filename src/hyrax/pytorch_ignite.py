@@ -7,6 +7,8 @@ from typing import Any, Callable, Optional, Union
 import ignite.distributed as idist
 import numpy as np
 
+from hyrax.data_sets.data_set_registry import DATA_SET_REGISTRY
+
 with warnings.catch_warnings():
     warnings.simplefilter(action="ignore", category=DeprecationWarning)
     import mlflow
@@ -22,7 +24,7 @@ from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.config_utils import ConfigDict
-from hyrax.data_sets.data_set_registry import HyraxDataset, fetch_data_set_class
+from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 
 logger = logging.getLogger(__name__)
@@ -50,13 +52,31 @@ class SubsetSequentialSampler(Sampler[int]):
         return len(self.indices)
 
 
+def is_iterable_dataset_requested(data_request: dict) -> bool:
+    """This function checks each of the datasets included in the data_request.
+    If any of them are iterable-style datasets, we return True.
+    """
+
+    is_iterable = False
+    for _, dataset_definition in data_request.items():
+        if DATA_SET_REGISTRY[dataset_definition["dataset_class"]].is_iterable():
+            is_iterable = True
+    return is_iterable
+
+
 def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
-    """Create a dataset object based on the configuration.
+    """This function creates an instance of the requested dataset specified in the
+    runtime configuration. There are two modes encapsulated here:
+
+    1) If the dataset requested includes an iterable-style dataset, ensure that only
+    one dataset was requested, and then return an instance of that dataset.
+    2) If the dataset(s) requested is for 1 or more map-style dataset, create an
+    instance of a DataProvider, and return that as the dataset.
 
     Parameters
     ----------
     config : ConfigDict
-        The entire runtime configuration
+        The runtime configuration
     tensorboardx_logger : SummaryWriter, optional
         If Tensorboard is in use, the tensorboard logger so the dataset can log things
 
@@ -66,13 +86,36 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
         An instance of the dataset class specified in the configuration
     """
 
-    # Fetch data loader class specified in config and create an instance of it
-    data_set_cls = fetch_data_set_class(config)
-    data_set: HyraxDataset = data_set_cls(config)  # type: ignore[call-arg]
+    data_request = generate_data_request_from_config(config)
+    if is_iterable_dataset_requested(data_request):
+        # If the data_request is for multiple datasets and at least one of
+        # them is iterable, raise an error, we don't support that style of operation
+        if len(data_request) > 1:
+            logger.error(
+                "Multiple datasets requested, including at least one iterable-style. "
+                "Hyrax supports for datasets includes: "
+                "1) 1-N map-style or 2) at most 1 iterable-style."
+            )
+            raise RuntimeError(
+                "Multiple datasets requested, including at least one iterable-style. "
+                "Hyrax supports for datasets includes: "
+                "1) 1-N map-style or 2) at most 1 iterable-style."
+            )
 
-    data_set.tensorboardx_logger = tensorboardx_logger
+        # generate instance of the iterable dataset. Again, because the only mode of
+        # operation for iterable-style datasets that Hyrax supports is 1 iterable
+        # dataset at a time, we can just take the first (and only) item in the data_request.
+        data_definition = next(iter(data_request.values()))
+        dataset_cls = DATA_SET_REGISTRY[data_definition["dataset_class"]]
+        dataset = dataset_cls(config=config, data_location=data_definition["data_location"])
+        dataset.tensorboardx_logger = tensorboardx_logger
 
-    return data_set
+    else:
+        dataset = DataProvider(config)
+        for friendly_name in dataset.prepped_datasets:
+            dataset.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
+
+    return dataset
 
 
 def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
@@ -81,9 +124,11 @@ def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
     Parameters
     ----------
     config : ConfigDict
-        The entire runtime configuration
+        The runtime configuration
     dataset : Dataset
-        Only used to determine the input shape of the data
+        The dataset object that will provide data to the model for training or
+        inference. Here it is only used to provide a data sample to the model so
+        that it can resize itself at runtime if necessary.
 
     Returns
     -------
@@ -93,7 +138,7 @@ def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    model = model_cls(config=config, dataset=dataset)  # type: ignore[attr-defined]
+    model = model_cls(config=config, data_sample=dataset.sample_data())  # type: ignore[attr-defined]
 
     return model
 

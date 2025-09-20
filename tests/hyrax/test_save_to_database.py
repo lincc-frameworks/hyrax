@@ -14,6 +14,7 @@ def test_save_to_database(loopback_inferred_hyrax):
     # If the dataset is iterable, convert it to a list for easier indexing
     if dataset.is_iterable():
         dataset = list(dataset)
+        original_dataset_ids = np.array([str(s["object_id"]) for s in dataset])
 
     h.config["vector_db"]["name"] = "chromadb"
     original_shape = h.config["data_set"]["HyraxRandomDataset"]["shape"]
@@ -34,8 +35,8 @@ def test_save_to_database(loopback_inferred_hyrax):
         orig_indx = np.where(original_dataset_ids == id)[0][0]
         result = db_connection.get_by_id(id)
         saved_value = result[id].reshape(original_shape)
-        original_value = dataset[orig_indx]["image"]
-        assert np.all(np.isclose(saved_value, original_value.numpy()))
+        original_value = dataset[orig_indx]["data"]["image"]
+        assert np.all(np.isclose(saved_value, original_value))
 
 
 def test_save_to_database_tensorboard_logging(loopback_inferred_hyrax):

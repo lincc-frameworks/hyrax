@@ -90,8 +90,8 @@ Additionally, Hyrax supports modification of the configuration interactively in 
    # Create a Hyrax instance, implicitly using the default configuration
    f = Hyrax()
 
-   # Set the data directory for the Hyrax instance config
-   f.config['general']['data_dir'] = '/path/to/data'
+   # Set the log level for the Hyrax instance config
+   f.config['general']['log_level'] = 'debug'
 
    # Train the model specified in the configuration file
    f.train()
