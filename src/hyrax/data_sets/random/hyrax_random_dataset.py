@@ -1,6 +1,5 @@
 import numpy as np
 from astropy.table import Table
-from torch import from_numpy
 from torch.utils.data import Dataset, IterableDataset
 
 from hyrax.data_sets.data_set_registry import HyraxDataset
@@ -31,14 +30,15 @@ class HyraxRandomDatasetBase:
     provided_labels: list
     """A list of labels randomly selected from the provided list of possible labels."""
 
-    def __init__(self, config):
+    def __init__(self, config, data_location):
         """
-        .. py:method:: __init__(config)
+        .. py:method:: __init__(config, data_location)
 
         Initialize the dataset using the parameters defined in the configuration.
 
-        All parameters are controlled by the following keys under
-        the ``["data_set.random_dataset"]`` table in the configuration:
+        Parameter included for API consistency with other dataset classes, though
+        not used by this implementation. All parameters are controlled by the following
+        keys under the ``["data_set"]["HyraxRandomDataset"]`` table in the configuration:
 
         - ``size``: The number of random data samples to produce.
         - ``shape``: The shape of each random data sample as a tuple (e.g. (3, 29, 29) = 3
@@ -87,7 +87,7 @@ class HyraxRandomDatasetBase:
 
         # Start our IDs at a random integer between 0 and 100
         id_start = rng.integers(100)
-        self.id_list = list(range(id_start, id_start + data_size))
+        self.id_list = np.arange(id_start, id_start + data_size)
 
         # Randomly insert flawed values (np.nan, np.inf, -np.inf, None, other float)
         num_invalid_values = config["data_set"]["HyraxRandomDataset"]["number_invalid_values"]
@@ -120,9 +120,31 @@ class HyraxRandomDatasetBase:
             self.labels = rng.choice(self.provided_labels, size=data_size)
 
         # Create a metadata_table that is used when visualizing data
-        metadata_table = Table({"object_id": np.array(list(self.ids()))})
+        metadata_table = Table(
+            {
+                "object_id": np.array([str(id) for id in self.id_list]),
+                "meta_field_1": np.array(list(range(data_size, 0, -1))) / 2,
+                "meta_field_2": np.array(list(range(data_size, 0, -1))) / 3,
+            },
+        )
 
         super().__init__(config, metadata_table)
+
+        self.data_location = data_location
+
+    def get_image(self, idx: int) -> np.ndarray:
+        """Get the image at the given index as a NumPy array."""
+        return self.data[idx]
+
+    def get_label(self, idx: int) -> str:
+        """Get the label at the given index."""
+        if self.provided_labels:
+            return self.labels[idx]
+        return None
+
+    def get_object_id(self, idx: int) -> str:
+        """Get the index of the item."""
+        return str(self.id_list[idx])
 
 
 class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
@@ -153,13 +175,16 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         """
 
         ret = {
-            "index": idx,
-            "object_id": self.id_list[idx],
-            "image": from_numpy(self.data[idx]),
+            "data": {
+                "index": idx,
+                "object_id": self.get_object_id(idx),
+                "image": self.get_image(idx),
+            },
+            "object_id": self.get_object_id(idx),
         }
 
         if self.provided_labels:
-            ret["label"] = self.labels[idx]
+            ret["data"]["label"] = self.get_label(idx)
 
         return ret
 
@@ -187,13 +212,14 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
     """
 
     def __iter__(self):
-        """Yield the next data sample. The returned dictionary will contain the
-        following keys:
+        """Yield the next data sample. The returned dictionary will have the
+        following form:
 
-        - ``index``: The index of the data sample.
-        - ``object_id``: The value will be the same as ``index`` for this dataset.
-        - ``image``: The data sample as a numpy array.
-        - ``label``: The label of the data sample (if provided).
+        - ``data``: A dictionary containing the following keys:
+        -- ``index``: The index of the data sample.
+        -- ``object_id``: The value will be the same as ``index`` for this dataset.
+        -- ``image``: The data sample as a numpy array.
+        -- ``label``: The label of the data sample (if provided).
 
         Returns
         -------
@@ -201,14 +227,17 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
             A dictionary containing a data sample and its metadata.
 
         """
-        for idx, image in enumerate(self.data):
+        for idx, _ in enumerate(self.data):
             ret = {
-                "index": idx,
-                "object_id": idx,
-                "image": from_numpy(image),
+                "data": {
+                    "index": idx,
+                    "object_id": self.get_object_id(idx),
+                    "image": self.get_image(idx),
+                },
+                "object_id": self.get_object_id(idx),
             }
 
             if self.provided_labels:
-                ret["label"] = self.labels[idx]
+                ret["data"]["label"] = self.get_label(idx)
 
             yield ret

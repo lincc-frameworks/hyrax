@@ -10,6 +10,7 @@ from torch.utils.data import Dataset, IterableDataset
 import hyrax
 import hyrax.data_sets
 from hyrax.data_sets import HyraxDataset
+from hyrax.data_sets.data_provider import DataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +41,7 @@ class RandomDataset(HyraxDataset, Dataset):
     """Dataset yielding pairs of random numbers. Requires a seed to emulate
     static data on the filesystem between instantiations"""
 
-    def __init__(self, config):
+    def __init__(self, config, data_directory):
         size = config["data_set"]["size"]
 
         dim_1_length = 2
@@ -80,6 +81,10 @@ class RandomDataset(HyraxDataset, Dataset):
         for id_item in self.id_list:
             yield str(id_item)
 
+    def get_ids(self, idx):
+        """Returns the ids given an index."""
+        return self.id_list[idx]
+
 
 class RandomIterableDataset(RandomDataset, IterableDataset):
     """Iterable version of RandomDataset"""
@@ -104,7 +109,13 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
-    h.config["data_set"]["name"] = request.param
+    h.config["model_inputs"] = {
+        "data": {
+            "dataset_class": request.param,
+            "data_location": str(tmp_path_factory.mktemp("data")),
+            "primary_id_field": "object_id",
+        },
+    }
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
@@ -132,3 +143,39 @@ def loopback_inferred_hyrax(loopback_hyrax):
     inference_results = h.infer()
 
     return h, dataset, inference_results
+
+
+@pytest.fixture(scope="function")
+def multimodal_config():
+    """Create a hyrax instance with a default config setting, then update the
+    config to represent a request for multimodal data."""
+
+    return {
+        "random_0": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": "./in_memory_0",
+            "fields": ["object_id", "image", "label"],
+            "dataset_config": {
+                "shape": [2, 16, 16],
+            },
+            "primary_id_field": "object_id",
+        },
+        "random_1": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": "./in_memory_1",
+            "fields": ["image"],
+            "dataset_config": {
+                "shape": [5, 16, 16],
+                "seed": 4200,
+            },
+        },
+    }
+
+
+@pytest.fixture(scope="function")
+def data_provider(multimodal_config):
+    """Use the multimodal_config fixture to create a DataProvider instance."""
+    h = hyrax.Hyrax()
+    h.config["model_inputs"] = multimodal_config
+    dp = DataProvider(h.config)
+    return dp
