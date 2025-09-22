@@ -76,8 +76,8 @@ class DownloadedLSSTDataset(LSSTDataset):
     - All files stored in config["general"]["data_dir"]
     """
 
-    def __init__(self, config):
-        self.download_dir = Path(config["general"]["data_dir"])
+    def __init__(self, config, data_location):
+        self.download_dir = Path(data_location)
         self.download_dir.mkdir(exist_ok=True)
 
         # Preventing name collision with parent class config
@@ -654,8 +654,20 @@ class DownloadedLSSTDataset(LSSTDataset):
         # Return cutout and downloaded bands info for manifest tracking
         return data_torch, downloaded_bands
 
-    def __getitem__(self, idxs):
-        """Modified to pass index for saving cutouts."""
+    def get_image(self, idxs):
+        """Fetch image cutout(s) for given index or indices, using caching and band filtering.
+
+        Parameters:
+        -----------
+        idxs: int or slice or list
+            Index or indices to fetch.
+
+        Returns:
+        --------
+        torch.Tensor or list of torch.Tensor:
+            Single cutout tensor or list of cutout tensors.
+        """
+
         # Handle single index
         if isinstance(idxs, int):
             row = self.catalog[idxs] if isinstance(self.catalog, Table) else self.catalog.iloc[idxs]
@@ -668,6 +680,23 @@ class DownloadedLSSTDataset(LSSTDataset):
             cutouts.append(self._fetch_single_cutout(row, idx=idx))
 
         return cutouts
+
+    def __getitem__(self, idxs) -> dict:
+        """Modified to pass index for saving cutouts.
+
+        Parameters:
+        -----------
+        idxs: int or slice or list
+            Index or indices to fetch.
+
+        Returns:
+        --------
+        dict:
+            Dictionary with key 'data' containing another dict of default data fields
+            to return. Currently only 'image' is supported.
+        """
+
+        return {"data": {"image": self.get_image(idxs)}}
 
     def download_cutouts(self, indices=None, sync_filesystem=True, max_workers=None, force_retry=False):
         """Download cutouts using multiple threads with caching.

@@ -33,6 +33,8 @@ class Infer(Verb):
         config : ConfigDict
             The parsed config file as a nested dict
         """
+        import inspect
+
         import numpy as np
         from tensorboardX import SummaryWriter
         from torch import Tensor
@@ -58,11 +60,10 @@ class Infer(Verb):
         # Create a tensorboardX logger
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
-        data_set = setup_dataset(config, tensorboardx_logger)
-
-        model = setup_model(config, data_set)
-        if data_set.is_map():
-            logger.info(f"data set has length {len(data_set)}")  # type: ignore[arg-type]
+        dataset = setup_dataset(config, tensorboardx_logger)
+        model = setup_model(config, dataset)
+        if dataset.is_map():
+            logger.info(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 
         # Inference doesnt work at all with the dataloader doing additional shuffling:
         if config["data_loader"]["shuffle"]:
@@ -71,7 +72,7 @@ class Infer(Verb):
             logger.warning(msg)
             config["data_loader"]["shuffle"] = False
 
-        data_loader, data_loader_indexes = dist_data_loader(data_set, config, split=config["infer"]["split"])
+        data_loader, data_loader_indexes = dist_data_loader(dataset, config, split=config["infer"]["split"])
 
         log_runtime_config(config, results_dir)
         Infer.load_model_weights(config, model)
@@ -80,11 +81,18 @@ class Infer(Verb):
         # Log Results directory
         logger.info(f"Saving inference results at: {results_dir}")
 
-        data_writer = InferenceDataSetWriter(data_set, results_dir)
+        with open(results_dir / "to_tensor.py", "w") as f:
+            try:
+                f.write(inspect.getsource(model.to_tensor))
+            except (OSError, TypeError) as e:
+                logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
+                f.write("# Source code for model.to_tensor could not be retrieved.\n")
+
+        data_writer = InferenceDataSetWriter(dataset, results_dir)
 
         # These are values the _save_batch callback needs to run
         write_index = 0
-        object_ids = np.array(list(data_set.ids()))[data_loader_indexes]  # type: ignore[attr-defined]
+        object_ids = np.array(list(dataset.ids()))[data_loader_indexes]  # type: ignore[attr-defined]
 
         def _save_batch(batch: Union[Tensor, list, tuple, dict], batch_results: Tensor):
             """Receive and write results tensors to results_dir immediately
@@ -105,7 +113,6 @@ class Infer(Verb):
 
             # Batch has IDs if it is dict of tensors with the needed key
             batch_has_ids = isinstance(batch, dict) and "object_id" in batch
-
             if batch_lacks_ids:
                 # This fallback is brittle to any re-ordering of data that occurs during data loading
                 batch_object_ids = [

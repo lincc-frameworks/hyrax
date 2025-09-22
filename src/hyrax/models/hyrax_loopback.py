@@ -11,7 +11,7 @@ logger = logging.getLogger()
 class HyraxLoopback(nn.Module):
     """Simple model for testing which returns its own input"""
 
-    def __init__(self, config, shape):
+    def __init__(self, config, data_sample=None):
         from functools import partial
 
         super().__init__()

@@ -1,14 +1,16 @@
 # ruff: noqa: D101, D102
-
+import logging
 
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
-from torch import Tensor
+from torch import Tensor, as_tensor
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
+
+logger = logging.getLogger(__name__)
 
 
 @hyrax_model
@@ -22,11 +24,13 @@ class HyraxAutoencoder(nn.Module):
     The train function has been converted into train_step for use with pytorch-ignite.
     """
 
-    def __init__(self, config, shape=(5, 250, 250)):
+    def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config
 
-        # TODO config-ize or get from data loader somehow
+        shape = self.to_tensor(data_sample).shape
+        logger.info(f"Found shape: {shape} in data sample, using this to initialize model.")
+
         self.num_input_channels, self.image_width, self.image_height = shape
 
         self.c_hid = self.config["model"]["base_channel_size"]
@@ -104,9 +108,7 @@ class HyraxAutoencoder(nn.Module):
         return x
 
     def forward(self, batch):
-        # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
-        x = batch[0] if isinstance(batch, tuple) else batch
-        return self._eval_encoder(x)
+        return self._eval_encoder(batch)
 
     def train_step(self, batch):
         """This function contains the logic for a single training step. i.e. the
@@ -122,12 +124,9 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        # When we run on a supervised dataset like CIFAR10, drop the labels given by the data loader
-        x = batch[0] if isinstance(batch, tuple) else batch
-
-        z = self._eval_encoder(x)
+        z = self._eval_encoder(batch)
         x_hat = self._eval_decoder(z)
-        loss = F.mse_loss(x, x_hat, reduction="none")
+        loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
 
         self.optimizer.zero_grad()
@@ -147,12 +146,12 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        if "image" in data_dict and "label" in data_dict:
-            image = data_dict["image"]
-            label = data_dict["label"]
-            return (image, label)
-        else:
-            raise RuntimeError("Data dict did not contain both image and label keys.")
+        cifar_data = data_dict.get("data", {})
+
+        if "image" in cifar_data:
+            image = as_tensor(cifar_data["image"])
+
+        return image
 
     def _optimizer(self):
         return optim.Adam(self.parameters(), lr=1e-3)

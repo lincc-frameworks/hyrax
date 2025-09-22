@@ -1,20 +1,6 @@
 import logging
 from pathlib import Path
 
-import mlflow
-from tensorboardX import SummaryWriter
-
-from hyrax.config_utils import create_results_dir, log_runtime_config
-from hyrax.gpu_monitor import GpuMonitor
-from hyrax.model_exporters import export_to_onnx
-from hyrax.pytorch_ignite import (
-    create_trainer,
-    create_validator,
-    dist_data_loader,
-    setup_dataset,
-    setup_model,
-)
-
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -44,6 +30,21 @@ class Train(Verb):
         Returns the trained model.
 
         """
+        import inspect
+
+        import mlflow
+        from tensorboardX import SummaryWriter
+
+        from hyrax.config_utils import create_results_dir, log_runtime_config
+        from hyrax.gpu_monitor import GpuMonitor
+        from hyrax.model_exporters import export_to_onnx
+        from hyrax.pytorch_ignite import (
+            create_trainer,
+            create_validator,
+            dist_data_loader,
+            setup_dataset,
+            setup_model,
+        )
 
         config = self.config
 
@@ -55,11 +56,11 @@ class Train(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         # Instantiate the model and dataset
-        data_set = setup_dataset(config, tensorboardx_logger)
-        model = setup_model(config, data_set)
+        dataset = setup_dataset(config, tensorboardx_logger)
+        model = setup_model(config, dataset)
 
         # Create a data loader for the training set (and validation split if configured)
-        data_loaders = dist_data_loader(data_set, config, ["train", "validate"])
+        data_loaders = dist_data_loader(dataset, config, ["train", "validate"])
         train_data_loader, _ = data_loaders["train"]
         validation_data_loader, _ = data_loaders.get("validate", (None, None))
 
@@ -93,6 +94,12 @@ class Train(Verb):
 
         # Save the trained model
         model.save(results_dir / config["train"]["weights_filename"])
+        with open(results_dir / "to_tensor.py", "w") as f:
+            try:
+                f.write(inspect.getsource(model.to_tensor))
+            except (OSError, TypeError) as e:
+                logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
+                f.write("# Source code for model.to_tensor could not be retrieved.\n")
         monitor.stop()
 
         logger.info("Finished Training")
@@ -125,6 +132,7 @@ class Train(Verb):
         results_dir: str
             The full path to the results sub-directory
         """
+        import mlflow
 
         # Log full path to results subdirectory
         mlflow.log_param("Results Directory", results_dir)
