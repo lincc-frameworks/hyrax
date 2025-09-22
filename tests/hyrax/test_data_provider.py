@@ -461,3 +461,90 @@ def test_data_provider_returns_metadata(data_provider):
     assert len(metadata.dtype.names) == 2
     assert "meta_field_1_random_0" in metadata.dtype.names
     assert "meta_field_2_random_1" in metadata.dtype.names
+
+
+def test_primary_id_field_automatically_added_to_fields():
+    """Test that primary_id_field is automatically added to fields list if not present.
+    
+    This test validates the fix for the issue where a KeyError occurs when
+    primary_id_field is specified but not included in the fields list.
+    """
+    from hyrax import Hyrax
+    
+    h = Hyrax()
+    
+    # Configure a dataset where primary_id_field is NOT in the fields list
+    # This would previously cause a KeyError in resolve_data
+    model_inputs = {
+        "test_dataset": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": "./test_data",
+            "fields": ["image", "label"],  # Note: "object_id" is NOT included
+            "primary_id_field": "object_id",  # But this field is set as primary
+            "dataset_config": {
+                "shape": [2, 3, 3],
+                "size": 5,
+                "seed": 42,
+                "provided_labels": ["cat", "dog"],
+                "number_invalid_values": 0,
+                "invalid_value_type": "nan",
+            }
+        }
+    }
+    
+    h.config["model_inputs"] = model_inputs
+    
+    # Create DataProvider - this should automatically add object_id to fields
+    dp = DataProvider(h.config)
+    
+    # Verify the primary_id_field was automatically added to the fields list
+    test_dataset_def = dp.data_request["test_dataset"]
+    assert "object_id" in test_dataset_def["fields"]
+    expected_fields = ["image", "label", "object_id"]
+    assert test_dataset_def["fields"] == expected_fields
+    
+    # Verify DataProvider was properly configured
+    assert dp.primary_dataset == "test_dataset"
+    assert dp.primary_dataset_id_field_name == "object_id"
+    
+    # This should now work without KeyError - the key test
+    data = dp.resolve_data(0)
+    assert "object_id" in data  # Top-level object_id should be present
+    assert "test_dataset" in data
+    assert "object_id" in data["test_dataset"]  # object_id should be in dataset data
+    
+
+def test_primary_id_field_no_duplicate_when_already_present():
+    """Test that primary_id_field is not duplicated if already in fields list."""
+    from hyrax import Hyrax
+    
+    h = Hyrax()
+    
+    # Configure a dataset where primary_id_field IS already in the fields list
+    model_inputs = {
+        "test_dataset": {
+            "dataset_class": "HyraxRandomDataset", 
+            "data_location": "./test_data",
+            "fields": ["object_id", "image", "label"],  # object_id already included
+            "primary_id_field": "object_id",
+            "dataset_config": {
+                "shape": [2, 3, 3],
+                "size": 5,
+                "seed": 42,
+                "provided_labels": ["cat", "dog"],
+                "number_invalid_values": 0,
+                "invalid_value_type": "nan",
+            }
+        }
+    }
+    
+    h.config["model_inputs"] = model_inputs
+    
+    # Create DataProvider - should not duplicate object_id in fields
+    dp = DataProvider(h.config)
+    
+    # Verify no duplicate was added
+    test_dataset_def = dp.data_request["test_dataset"]
+    assert test_dataset_def["fields"].count("object_id") == 1
+    expected_fields = ["object_id", "image", "label"]
+    assert test_dataset_def["fields"] == expected_fields
