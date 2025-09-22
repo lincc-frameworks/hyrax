@@ -1,20 +1,6 @@
 import logging
 from pathlib import Path
 
-import mlflow
-from tensorboardX import SummaryWriter
-
-from hyrax.config_utils import create_results_dir, log_runtime_config
-from hyrax.gpu_monitor import GpuMonitor
-from hyrax.model_exporters import export_to_onnx
-from hyrax.pytorch_ignite import (
-    create_trainer,
-    create_validator,
-    dist_data_loader,
-    setup_dataset,
-    setup_model,
-)
-
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -45,6 +31,20 @@ class Train(Verb):
 
         """
         import inspect
+
+        import mlflow
+        from tensorboardX import SummaryWriter
+
+        from hyrax.config_utils import create_results_dir, log_runtime_config
+        from hyrax.gpu_monitor import GpuMonitor
+        from hyrax.model_exporters import export_to_onnx
+        from hyrax.pytorch_ignite import (
+            create_trainer,
+            create_validator,
+            dist_data_loader,
+            setup_dataset,
+            setup_model,
+        )
 
         config = self.config
 
@@ -132,6 +132,7 @@ class Train(Verb):
         results_dir: str
             The full path to the results sub-directory
         """
+        import mlflow
 
         # Log full path to results subdirectory
         mlflow.log_param("Results Directory", results_dir)
