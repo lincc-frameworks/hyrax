@@ -38,13 +38,13 @@ def generate_data_request_from_config(config):
             "Please use [model_inputs.data][dataset_class] instead. "
             "See documentation for examples of the new configuration format.",
             DeprecationWarning,
-            stacklevel=2
+            stacklevel=2,
         )
         logger.warning(
             "Using deprecated [data_set][name] configuration. "
             "Please migrate to [model_inputs.data][dataset_class]."
         )
-        
+
         data_request = {
             "data": {
                 "dataset_class": config["data_set"]["name"],
