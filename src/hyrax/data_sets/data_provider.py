@@ -131,10 +131,15 @@ class DataProvider:
         repr_str = ""
         for friendly_name, data in self.data_request.items():
             if isinstance(data, dict):
-                repr_str += f"Name: {friendly_name}\n"
+                if self.primary_dataset == friendly_name:
+                    repr_str += f"Name: {friendly_name} (primary dataset)\n"
+                else:
+                    repr_str += f"Name: {friendly_name}\n"
                 repr_str += f"  Dataset class: {data['dataset_class']}\n"
                 if "data_location" in data:
                     repr_str += f"  Data location: {data['data_location']}\n"
+                if self.primary_dataset_id_field_name:
+                    repr_str += f"  Primary ID field: {self.primary_dataset_id_field_name}\n"
                 if "fields" in data:
                     repr_str += f"  Requested fields: {', '.join(data.get('fields', []))}\n"
                 else:
