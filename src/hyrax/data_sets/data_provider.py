@@ -1,4 +1,5 @@
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,19 @@ def generate_data_request_from_config(config):
     if "model_inputs" in config:
         data_request = config["model_inputs"]
     else:
+        # Issue a deprecation warning for the old configuration method
+        warnings.warn(
+            "Using [data_set][name] to define dataset class is deprecated. "
+            "Please use [model_inputs.data][dataset_class] instead. "
+            "See documentation for examples of the new configuration format.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        logger.warning(
+            "Using deprecated [data_set][name] configuration. "
+            "Please migrate to [model_inputs.data][dataset_class]."
+        )
+        
         data_request = {
             "data": {
                 "dataset_class": config["data_set"]["name"],
