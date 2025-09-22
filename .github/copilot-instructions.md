@@ -1,4 +1,4 @@
-# Hyrax - Astronomical Anomaly Detection Framework
+# Hyrax - An extensible Framework for Machine Learning in Astronomy
 
 **ALWAYS follow these instructions first and only fallback to additional search and context gathering if the information here is incomplete or found to be in error.**
 
