@@ -107,7 +107,6 @@ After making changes, ALWAYS test these scenarios:
 - Default config: `src/hyrax/hyrax_default_config.toml`
 - Users can override with custom config files via `--runtime-config`
 - Config sections: `[general]`, `[model]`, `[train]`, `[data_set]`, `[download]`, etc.
-- Key paths: `data_dir`, `results_dir` control where data and outputs are stored
 
 ## Common Tasks and Workflows
 
@@ -123,7 +122,8 @@ After making changes, ALWAYS test these scenarios:
 - Models defined in `src/hyrax/models/`
 - Built-in models: `HyraxAutoencoder`, `HyraxCNN`
 - Model registry system automatically discovers models
-- Configuration in `[model]` section of config files
+- General model configuration in `[model]` section of config files
+- Configurations for specific models in `[model.<ModelName>]` sections
 - Training via `hyrax train` command
 - Export to ONNX format supported
 
@@ -142,7 +142,6 @@ After making changes, ALWAYS test these scenarios:
 - Configuration in `[vector_db]` section
 
 ## Notebook Development
-- Example notebook: `example_notebooks/GettingStartedDownloader.ipynb`
 - Jupyter integration via `holoviews`, `bokeh` for visualizations
 - Interactive visualization via `hyrax visualize` verb
 - Pre-executed examples in `docs/pre_executed/`
@@ -154,11 +153,6 @@ After making changes, ALWAYS test these scenarios:
 - **Documentation**: `build-documentation.yml` builds docs
 - **Benchmarks**: ASV benchmarks via `asv-*.yml` workflows
 - **Pre-commit**: Automated via `pre-commit-ci.yml`
-
-## RSP Development (Rubin Science Platform)
-- Special instructions in `README_RSP.md` for RSP environments
-- Install command: `%pip install -q -e ~/rubin-user/hyrax 2>&1 | grep -vE 'WARNING: Error parsing dependencies of (lsst-|astshim|astro-)'`
-- LSSTDataset class only works within RSP environment
 
 ## Troubleshooting
 - **Import errors**: Ensure `pip install -e .'[dev]'` completed successfully
@@ -189,10 +183,4 @@ echo 'y' | bash .setup_dev.sh
 ruff check src/ tests/ && ruff format src/ tests/
 python -m pytest -m "not slow"
 pre-commit run --all-files
-
-# Example model training workflow
-hyrax train --runtime-config examples/config.toml
-hyrax infer --runtime-config examples/config.toml
-hyrax umap --runtime-config examples/config.toml
-hyrax visualize --runtime-config examples/config.toml
 ```
