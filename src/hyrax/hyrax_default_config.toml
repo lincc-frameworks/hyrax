@@ -154,9 +154,23 @@ run_name = false
 opset_version = 20
 
 
+[model_inputs]
+# Note - the sub-table (model_inputs.<sub-table>) can be named anything you like.
+[model_inputs.data]
+# Name of the dataset class to use, or the import path to an external dataset class.
+# e.g. "HyraxCifarDataSet", "user_pkg.data_set.ExternalDataset".
+dataset_class = "HyraxCifarDataSet"
+
+# Location (directory) where the data is stored.
+data_location = "./data"
+
+# The data field that represents a unique ID for each sample.
+primary_id_field = "object_id"
+
+
 [data_set]
-# Name of the built-in data loader to use or the import path to an external data
-# loader. e.g. "HSCDataSet", "user_pkg.data_set.ExternalDataSet"
+# Warning - using data_set.name to define the dataset class will be deprecated.
+# Please use [model_inputs.<friendly_name>.dataset_class] instead. See usage above.
 name = "HyraxCifarDataSet"
 
 # Crop pixel dimensions for images, e.g., [100, 100]. If false, scans for the

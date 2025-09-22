@@ -19,9 +19,9 @@ class DatasetRequestBenchmarks:
         self.h.config["data_set"]["name"] = "HyraxRandomDataset"
 
         num_vectors = 4096
-        self.h.config["data_set.random_dataset"]["size"] = num_vectors
-        self.h.config["data_set.random_dataset"]["seed"] = 0
-        self.h.config["data_set.random_dataset"]["shape"] = [3, 64, 64]
+        self.h.config["data_set"]["HyraxRandomDataset"]["size"] = num_vectors
+        self.h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+        self.h.config["data_set"]["HyraxRandomDataset"]["shape"] = [3, 64, 64]
 
         self.ds = self.h.prepare()
 
