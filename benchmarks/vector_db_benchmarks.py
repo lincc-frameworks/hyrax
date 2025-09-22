@@ -24,7 +24,13 @@ class VectorDBInsertBenchmarks:
 
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
-        self.h.config["data_set"]["name"] = "HyraxRandomDataset"
+        # Use new model_inputs configuration instead of deprecated data_set.name
+        self.h.config["model_inputs"] = {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(self.input_dir),
+            }
+        }
         self.h.config["model"]["name"] = "HyraxLoopback"
 
         # Default inference batch size is 512, so this should result in 4 batch files
@@ -83,7 +89,13 @@ class VectorDBSearchBenchmarks:
 
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
-        self.h.config["data_set"]["name"] = "HyraxRandomDataset"
+        # Use new model_inputs configuration instead of deprecated data_set.name
+        self.h.config["model_inputs"] = {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(self.input_dir),
+            }
+        }
         self.h.config["data_loader"]["batch_size"] = 4096
         self.h.config["model"]["name"] = "HyraxLoopback"
 
