@@ -164,6 +164,9 @@ dataset_class = "HyraxCifarDataSet"
 # Location (directory) where the data is stored.
 data_location = "./data"
 
+# The data field that represents a unique ID for each sample.
+primary_id_field = "object_id"
+
 
 [data_set]
 # Warning - using data_set.name to define the dataset class will be deprecated.
