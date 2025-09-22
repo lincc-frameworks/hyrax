@@ -541,8 +541,10 @@ class HSCDataSet(FitsImageDataSet):
 
         data_location = HSCDataSet._get_data_location(config)
         if not data_location:
-            raise RuntimeError("No data location configured. Please set download.data_location in your config.")
-        
+            raise RuntimeError(
+                "No data location configured. Please set download.data_location in your config."
+            )
+
         manifest_file_path = Path(data_location) / Downloader.MANIFEST_FILE_NAME
 
         # Rename the old manifest

@@ -81,21 +81,21 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
     _called_from_test = False
 
-    @staticmethod 
+    @staticmethod
     def _get_data_location(config):
         """Get data location from config, trying various sources for flexibility."""
         # For FitsImageDataSet, we need to be flexible about where data comes from
         # since it can be used with different verbs
-        
+
         # First try specific verb locations
         for verb in ["download", "visualize"]:
             if verb in config and "data_location" in config[verb]:
                 return config[verb]["data_location"]
-        
+
         # Fall back to old general.data_dir for backward compatibility
         if "general" in config and "data_dir" in config["general"]:
             return config["general"]["data_dir"]
-            
+
         return None
 
     def __init__(self, config: ConfigDict):

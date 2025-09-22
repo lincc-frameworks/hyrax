@@ -88,8 +88,10 @@ class DownloadedLSSTDataset(LSSTDataset):
     def __init__(self, config):
         data_location = self._get_data_location(config)
         if not data_location:
-            raise RuntimeError("No data location configured. Please set download.data_location in your config.")
-        
+            raise RuntimeError(
+                "No data location configured. Please set download.data_location in your config."
+            )
+
         self.download_dir = Path(data_location)
         self.download_dir.mkdir(exist_ok=True)
 

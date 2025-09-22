@@ -21,11 +21,11 @@ class HyraxCifarBase:
         for verb in ["download", "visualize"]:
             if verb in config and "data_location" in config[verb]:
                 return config[verb]["data_location"]
-        
+
         # Fall back to old general.data_dir for backward compatibility
         if "general" in config and "data_dir" in config["general"]:
             return config["general"]["data_dir"]
-            
+
         # Default for CIFAR if nothing specified
         return "./data"
 

@@ -24,19 +24,19 @@ class Visualize(Verb):
         """Get data location from config, trying visualize config first, then fallback options."""
         if config is None:
             config = self.config
-            
+
         # First try visualize.data_location
         if "visualize" in config and "data_location" in config["visualize"]:
             return config["visualize"]["data_location"]
-        
+
         # Then try download.data_location (for HSC data)
         if "download" in config and "data_location" in config["download"]:
             return config["download"]["data_location"]
-            
+
         # Fall back to old general.data_dir for backward compatibility
         if "general" in config and "data_dir" in config["general"]:
             return config["general"]["data_dir"]
-            
+
         return None
 
     @staticmethod
