@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Quick script to run Lance format benchmarks and generate summary.
+Updated script to run priority-focused storage format benchmarks.
 
 Usage:
-    python run_benchmarks.py [--sizes 100,500,1000] [--output results.txt]
+    python run_benchmarks.py [--scenarios 500,20 1000,50] [--output results.txt]
 """
 
 import argparse
@@ -13,33 +13,40 @@ from pathlib import Path
 # Add benchmarks directory to path
 sys.path.append(str(Path(__file__).parent / "benchmarks"))
 
-from detailed_inference_benchmarks import DetailedBenchmarkSuite
+from updated_format_comparison import UpdatedFormatComparison
 
 
-def parse_sizes(sizes_str):
-    """Parse comma-separated sizes string."""
-    return [int(x.strip()) for x in sizes_str.split(',')]
+def parse_scenarios(scenarios_str):
+    """Parse comma-separated scenarios string like '500,20 1000,50'."""
+    scenarios = []
+    for scenario in scenarios_str.split():
+        parts = scenario.split(',')
+        if len(parts) != 2:
+            raise ValueError(f"Invalid scenario format: {scenario}. Expected 'items,mb'")
+        scenarios.append((int(parts[0]), int(parts[1])))
+    return scenarios
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Run Lance format benchmarks')
-    parser.add_argument('--sizes', default='100,500,1000', 
-                       help='Comma-separated dataset sizes to test (default: 100,500,1000)')
+    parser = argparse.ArgumentParser(description='Run updated format comparison benchmarks')
+    parser.add_argument('--scenarios', default='500,20 1000,50 2000,80', 
+                       help='Space-separated scenarios as items,target_mb (default: 500,20 1000,50 2000,80)')
     parser.add_argument('--output', help='Output file for results (default: stdout)')
     
     args = parser.parse_args()
     
     try:
-        sizes = parse_sizes(args.sizes)
+        scenarios = parse_scenarios(args.scenarios)
     except ValueError as e:
-        print(f"Error parsing sizes: {e}")
+        print(f"Error parsing scenarios: {e}")
         return 1
     
-    print(f"Running benchmarks with sizes: {sizes}")
+    print(f"Running priority-focused benchmarks with scenarios: {scenarios}")
+    print("Priorities: Full scan, Random access, File size, Pandas access, Low boilerplate")
     
     # Run benchmarks
-    benchmark = DetailedBenchmarkSuite()
-    results = benchmark.run_comprehensive_benchmark(sizes)
+    comparison = UpdatedFormatComparison()
+    results = comparison.run_comprehensive_comparison(scenarios)
     
     # Prepare output
     if args.output:
@@ -47,11 +54,11 @@ def main():
             # Redirect stdout to file
             original_stdout = sys.stdout
             sys.stdout = f
-            benchmark.print_detailed_analysis(results)
+            comparison.print_priority_focused_analysis(results)
             sys.stdout = original_stdout
         print(f"Results saved to {args.output}")
     else:
-        benchmark.print_detailed_analysis(results)
+        comparison.print_priority_focused_analysis(results)
     
     return 0
 
