@@ -525,6 +525,8 @@ def test_primary_id_field_reused_when_already_in_fields():
     in the fields list, the resolve_data method reuses that value instead
     of fetching it again.
     """
+    from unittest.mock import MagicMock
+
     from hyrax import Hyrax
 
     h = Hyrax()
@@ -558,12 +560,25 @@ def test_primary_id_field_reused_when_already_in_fields():
     expected_fields = ["object_id", "image", "label"]
     assert test_dataset_def["fields"] == expected_fields
 
+    # Create a mock for the get_object_id method to track calls
+    original_get_object_id = dp.dataset_getters["test_dataset"]["object_id"]
+    mock_get_object_id = MagicMock(side_effect=original_get_object_id)
+    dp.dataset_getters["test_dataset"]["object_id"] = mock_get_object_id
+
     # This should work and reuse the existing object_id value
+    # The get_object_id should be called exactly once during field resolution,
+    # but NOT called again when setting the top-level object_id
     data = dp.resolve_data(0)
+
+    # Verify the get_object_id method was called only once (during field resolution)
+    # Since object_id is in the fields list, it gets called once to populate the field,
+    # and then the value is reused for the top-level object_id
+    assert mock_get_object_id.call_count == 1
+
     assert "object_id" in data  # Top-level object_id should be present
     assert "test_dataset" in data
     # object_id should be in dataset data since it was requested in fields
     assert "object_id" in data["test_dataset"]
 
-    # The top-level object_id should match the dataset's object_id
+    # The top-level object_id should match the dataset's object_id (reused value)
     assert data["object_id"] == data["test_dataset"]["object_id"]
