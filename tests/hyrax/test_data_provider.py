@@ -490,7 +490,7 @@ def test_primary_id_field_fetched_when_not_in_fields():
                 "provided_labels": ["cat", "dog"],
                 "number_invalid_values": 0,
                 "invalid_value_type": "nan",
-            }
+            },
         }
     }
 
@@ -543,7 +543,7 @@ def test_primary_id_field_reused_when_already_in_fields():
                 "provided_labels": ["cat", "dog"],
                 "number_invalid_values": 0,
                 "invalid_value_type": "nan",
-            }
+            },
         }
     }
 
