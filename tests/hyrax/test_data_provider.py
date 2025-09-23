@@ -461,3 +461,124 @@ def test_data_provider_returns_metadata(data_provider):
     assert len(metadata.dtype.names) == 2
     assert "meta_field_1_random_0" in metadata.dtype.names
     assert "meta_field_2_random_1" in metadata.dtype.names
+
+
+def test_primary_id_field_fetched_when_not_in_fields():
+    """Test that primary_id_field is fetched on-demand when not in fields list.
+
+    This test validates the fix for the issue where a KeyError occurs when
+    primary_id_field is specified but not included in the fields list.
+    The fix now fetches the primary_id_field using the dataset getter instead
+    of modifying the fields list.
+    """
+    from hyrax import Hyrax
+
+    h = Hyrax()
+
+    # Configure a dataset where primary_id_field is NOT in the fields list
+    # This would previously cause a KeyError in resolve_data
+    model_inputs = {
+        "test_dataset": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": "./test_data",
+            "fields": ["image", "label"],  # Note: "object_id" is NOT included
+            "primary_id_field": "object_id",  # But this field is set as primary
+            "dataset_config": {
+                "shape": [2, 3, 3],
+                "size": 5,
+                "seed": 42,
+                "provided_labels": ["cat", "dog"],
+                "number_invalid_values": 0,
+                "invalid_value_type": "nan",
+            },
+        }
+    }
+
+    h.config["model_inputs"] = model_inputs
+
+    # Create DataProvider
+    dp = DataProvider(h.config)
+
+    # Verify the primary_id_field was NOT added to the fields list
+    test_dataset_def = dp.data_request["test_dataset"]
+    assert "object_id" not in test_dataset_def["fields"]
+    expected_fields = ["image", "label"]
+    assert test_dataset_def["fields"] == expected_fields
+
+    # Verify DataProvider was properly configured
+    assert dp.primary_dataset == "test_dataset"
+    assert dp.primary_dataset_id_field_name == "object_id"
+
+    # This should now work without KeyError - the key test
+    # The object_id should be fetched on-demand and added to the top level
+    data = dp.resolve_data(0)
+    assert "object_id" in data  # Top-level object_id should be present
+    assert "test_dataset" in data
+    # object_id should NOT be in dataset data since it wasn't requested in fields
+    assert "object_id" not in data["test_dataset"]
+
+
+def test_primary_id_field_reused_when_already_in_fields():
+    """Test that primary_id_field is reused when already in fields list.
+
+    This test validates that when the primary_id_field is already requested
+    in the fields list, the resolve_data method reuses that value instead
+    of fetching it again.
+    """
+    from unittest.mock import MagicMock
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+
+    # Configure a dataset where primary_id_field IS already in the fields list
+    model_inputs = {
+        "test_dataset": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": "./test_data",
+            "fields": ["object_id", "image", "label"],  # object_id already included
+            "primary_id_field": "object_id",
+            "dataset_config": {
+                "shape": [2, 3, 3],
+                "size": 5,
+                "seed": 42,
+                "provided_labels": ["cat", "dog"],
+                "number_invalid_values": 0,
+                "invalid_value_type": "nan",
+            },
+        }
+    }
+
+    h.config["model_inputs"] = model_inputs
+
+    # Create DataProvider - should not duplicate object_id in fields
+    dp = DataProvider(h.config)
+
+    # Verify the fields list is unchanged
+    test_dataset_def = dp.data_request["test_dataset"]
+    assert test_dataset_def["fields"].count("object_id") == 1
+    expected_fields = ["object_id", "image", "label"]
+    assert test_dataset_def["fields"] == expected_fields
+
+    # Create a mock for the get_object_id method to track calls
+    original_get_object_id = dp.dataset_getters["test_dataset"]["object_id"]
+    mock_get_object_id = MagicMock(side_effect=original_get_object_id)
+    dp.dataset_getters["test_dataset"]["object_id"] = mock_get_object_id
+
+    # This should work and reuse the existing object_id value
+    # The get_object_id should be called exactly once during field resolution,
+    # but NOT called again when setting the top-level object_id
+    data = dp.resolve_data(0)
+
+    # Verify the get_object_id method was called only once (during field resolution)
+    # Since object_id is in the fields list, it gets called once to populate the field,
+    # and then the value is reused for the top-level object_id
+    assert mock_get_object_id.call_count == 1
+
+    assert "object_id" in data  # Top-level object_id should be present
+    assert "test_dataset" in data
+    # object_id should be in dataset data since it was requested in fields
+    assert "object_id" in data["test_dataset"]
+
+    # The top-level object_id should match the dataset's object_id (reused value)
+    assert data["object_id"] == data["test_dataset"]["object_id"]
