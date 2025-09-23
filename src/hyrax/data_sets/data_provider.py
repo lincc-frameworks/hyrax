@@ -271,11 +271,6 @@ class DataProvider:
             if "primary_id_field" in dataset_definition:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
-                
-                # Ensure the primary_id_field is included in the fields list
-                # to prevent KeyError when resolve_data tries to access it
-                if self.primary_dataset_id_field_name not in dataset_definition.get("fields", []):
-                    dataset_definition.setdefault("fields", []).append(self.primary_dataset_id_field_name)
 
     @staticmethod
     def _apply_configurations(base_config: dict, dataset_definition: dict) -> dict:
@@ -406,9 +401,15 @@ class DataProvider:
         # Because there is machinery in the consuming code that expects an "object_id"
         # key in the returned data, we will add that here if a primary dataset.
         if self.primary_dataset:
-            returned_data["object_id"] = returned_data[self.primary_dataset][
-                self.primary_dataset_id_field_name
-            ]
+            # If the primary id field wasn't already requested, we fetch it now.
+            if returned_data[self.primary_dataset].get(self.primary_dataset_id_field_name) is None:
+                returned_data["object_id"] = self.dataset_getters[self.primary_dataset][
+                    self.primary_dataset_id_field_name
+                ](idx)
+            else:
+                returned_data["object_id"] = returned_data[self.primary_dataset][
+                    self.primary_dataset_id_field_name
+                ]
 
         return returned_data
 
