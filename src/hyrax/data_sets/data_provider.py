@@ -415,9 +415,14 @@ class DataProvider:
         # Because there is machinery in the consuming code that expects an "object_id"
         # key in the returned data, we will add that here if a primary dataset.
         if self.primary_dataset:
-            returned_data["object_id"] = returned_data[self.primary_dataset][
-                self.primary_dataset_id_field_name
-            ]
+            # If the primary id field wasn't already requested, we fetch it now.
+            if self.primary_dataset_id_field_name not in returned_data[self.primary_dataset]:
+                get_fn = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
+                object_id = get_fn(idx)
+            else:
+                object_id = returned_data[self.primary_dataset][self.primary_dataset_id_field_name]
+
+            returned_data["object_id"] = object_id
 
         return returned_data
 
