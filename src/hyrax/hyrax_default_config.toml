@@ -250,18 +250,6 @@ semi_width_deg = 0.00472
 semi_height_deg = 0.00472
 
 
-[model_inputs]
-# Note - the sub-table (model_inputs.<sub-table>) can be named anything you like.
-[model_inputs.data]
-# Name of the dataset class to use, or the import path to an external dataset class.
-# e.g. "HyraxCifarDataSet", "user_pkg.data_set.ExternalDataset".
-dataset_class = "HyraxCifarDataSet"
-
-# Location (directory) where the data is stored.
-data_location = "./data"
-
-
-
 [data_set.HyraxRandomDataset]
 # Total number of samples produced by the random dataset
 size = 100
