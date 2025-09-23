@@ -274,8 +274,7 @@ class DataProvider:
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
 
             # Cache the requested fields for each dataset as a tuple for faster access in `resolve_data`.
-            for friendly_name in self.data_request:
-                self.requested_fields[friendly_name] = tuple(self.data_request[friendly_name]["fields"])
+            self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
 
     @staticmethod
     def _apply_configurations(base_config: dict, dataset_definition: dict) -> dict:
