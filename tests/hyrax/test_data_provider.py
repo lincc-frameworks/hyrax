@@ -463,16 +463,18 @@ def test_data_provider_returns_metadata(data_provider):
     assert "meta_field_2_random_1" in metadata.dtype.names
 
 
-def test_primary_id_field_automatically_added_to_fields():
-    """Test that primary_id_field is automatically added to fields list if not present.
-    
+def test_primary_id_field_fetched_when_not_in_fields():
+    """Test that primary_id_field is fetched on-demand when not in fields list.
+
     This test validates the fix for the issue where a KeyError occurs when
     primary_id_field is specified but not included in the fields list.
+    The fix now fetches the primary_id_field using the dataset getter instead
+    of modifying the fields list.
     """
     from hyrax import Hyrax
-    
+
     h = Hyrax()
-    
+
     # Configure a dataset where primary_id_field is NOT in the fields list
     # This would previously cause a KeyError in resolve_data
     model_inputs = {
@@ -491,39 +493,46 @@ def test_primary_id_field_automatically_added_to_fields():
             }
         }
     }
-    
+
     h.config["model_inputs"] = model_inputs
-    
-    # Create DataProvider - this should automatically add object_id to fields
+
+    # Create DataProvider
     dp = DataProvider(h.config)
-    
-    # Verify the primary_id_field was automatically added to the fields list
+
+    # Verify the primary_id_field was NOT added to the fields list
     test_dataset_def = dp.data_request["test_dataset"]
-    assert "object_id" in test_dataset_def["fields"]
-    expected_fields = ["image", "label", "object_id"]
+    assert "object_id" not in test_dataset_def["fields"]
+    expected_fields = ["image", "label"]
     assert test_dataset_def["fields"] == expected_fields
-    
+
     # Verify DataProvider was properly configured
     assert dp.primary_dataset == "test_dataset"
     assert dp.primary_dataset_id_field_name == "object_id"
-    
+
     # This should now work without KeyError - the key test
+    # The object_id should be fetched on-demand and added to the top level
     data = dp.resolve_data(0)
     assert "object_id" in data  # Top-level object_id should be present
     assert "test_dataset" in data
-    assert "object_id" in data["test_dataset"]  # object_id should be in dataset data
-    
+    # object_id should NOT be in dataset data since it wasn't requested in fields
+    assert "object_id" not in data["test_dataset"]
 
-def test_primary_id_field_no_duplicate_when_already_present():
-    """Test that primary_id_field is not duplicated if already in fields list."""
+
+def test_primary_id_field_reused_when_already_in_fields():
+    """Test that primary_id_field is reused when already in fields list.
+
+    This test validates that when the primary_id_field is already requested
+    in the fields list, the resolve_data method reuses that value instead
+    of fetching it again.
+    """
     from hyrax import Hyrax
-    
+
     h = Hyrax()
-    
+
     # Configure a dataset where primary_id_field IS already in the fields list
     model_inputs = {
         "test_dataset": {
-            "dataset_class": "HyraxRandomDataset", 
+            "dataset_class": "HyraxRandomDataset",
             "data_location": "./test_data",
             "fields": ["object_id", "image", "label"],  # object_id already included
             "primary_id_field": "object_id",
@@ -537,14 +546,24 @@ def test_primary_id_field_no_duplicate_when_already_present():
             }
         }
     }
-    
+
     h.config["model_inputs"] = model_inputs
-    
+
     # Create DataProvider - should not duplicate object_id in fields
     dp = DataProvider(h.config)
-    
-    # Verify no duplicate was added
+
+    # Verify the fields list is unchanged
     test_dataset_def = dp.data_request["test_dataset"]
     assert test_dataset_def["fields"].count("object_id") == 1
     expected_fields = ["object_id", "image", "label"]
     assert test_dataset_def["fields"] == expected_fields
+
+    # This should work and reuse the existing object_id value
+    data = dp.resolve_data(0)
+    assert "object_id" in data  # Top-level object_id should be present
+    assert "test_dataset" in data
+    # object_id should be in dataset data since it was requested in fields
+    assert "object_id" in data["test_dataset"]
+
+    # The top-level object_id should match the dataset's object_id
+    assert data["object_id"] == data["test_dataset"]["object_id"]
