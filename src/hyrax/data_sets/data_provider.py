@@ -402,7 +402,7 @@ class DataProvider:
         # key in the returned data, we will add that here if a primary dataset.
         if self.primary_dataset:
             # If the primary id field wasn't already requested, we fetch it now.
-            if returned_data[self.primary_dataset].get(self.primary_dataset_id_field_name) is None:
+            if self.primary_dataset_id_field_name not in returned_data[self.primary_dataset]:
                 returned_data["object_id"] = self.dataset_getters[self.primary_dataset][
                     self.primary_dataset_id_field_name
                 ](idx)
