@@ -273,7 +273,8 @@ class DataProvider:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
 
-            # Cache the requested fields for each dataset as a tuple for faster access in `resolve_data`.
+            # Cache the requested fields for each dataset as a tuple. Tuples are immutable (preventing accidental modification)
+            # and can provide slightly faster iteration than lists, which is beneficial for repeated access in `resolve_data`.
             self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
 
     @staticmethod
