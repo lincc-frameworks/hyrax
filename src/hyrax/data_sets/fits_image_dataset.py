@@ -17,8 +17,13 @@ in a configuration file if you are running from the CLI
 
     import hyrax
     h = hyrax.Hyrax()
-    h.config["data_set"]["name"] = "FitsImageDataSet"
-    h.config["general"]["data_dir"] = "/file/path/to/where/your/fits/files/are"
+    # Use new model_inputs configuration approach
+    h.config["model_inputs"] = {
+        "data": {
+            "dataset_class": "FitsImageDataSet",
+            "data_location": "/file/path/to/where/your/fits/files/are"
+        }
+    }
 
     # Location of your catalog file. Any file format supported by astropy.Table will work
     h.config["data_set"]["filter_catalog"] = "/file/path/to/your/catalog.fits"

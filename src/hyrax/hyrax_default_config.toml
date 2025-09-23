@@ -169,8 +169,8 @@ primary_id_field = "object_id"
 
 
 [data_set]
-# Warning - using data_set.name to define the dataset class will be deprecated.
-# Please use [model_inputs.<friendly_name>.dataset_class] instead. See usage above.
+# Warning - using data_set.name to define the dataset class is deprecated.
+# Please use [model_inputs.<friendly_name>.dataset_class] instead. See usage below.
 name = "HyraxCifarDataSet"
 
 # Crop pixel dimensions for images, e.g., [100, 100]. If false, scans for the
@@ -248,7 +248,6 @@ semi_width_deg = 0.00472
 
 # Semi height in degrees of cutouts made from the butler (17 arcsec)
 semi_height_deg = 0.00472
-
 
 
 [data_set.HyraxRandomDataset]

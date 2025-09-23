@@ -64,7 +64,6 @@ def tmp_dataset_path(tmp_path_factory, dataset_spec):
     return tmp_path
 
 
-# This gives a configured hyrax instance
 @pytest.fixture(scope="function")
 def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     """Fixture to configure and initialize the hyrax instance"""
@@ -72,7 +71,13 @@ def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     dataset_class_name, sample_data = dataset_spec
     h.config["general"]["data_dir"] = str(tmp_dataset_path)
     h.config["general"]["results_dir"] = str(tmp_path)
-    h.config["data_set"]["name"] = dataset_class_name
+    # Use new model_inputs configuration instead of deprecated data_set.name
+    h.config["model_inputs"] = {
+        "data": {
+            "dataset_class": dataset_class_name,
+            "data_location": str(tmp_dataset_path),
+        }
+    }
     if dataset_class_name == "FitsImageDataSet" and sample_data == "hsc1k":
         h.config["data_set"]["filter_catalog"] = str(tmp_dataset_path / "manifest.fits")
         h.config["data_set"]["crop_to"] = [100, 100]

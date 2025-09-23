@@ -7,14 +7,16 @@ with your community.
 Two basic conditions must be met to use a custom model or dataset library:
 
 #. The relevant class must be defined under the appropriate decorator or superclass. Models must be decorated with ``@hyrax_model`` and Datasets must inherit from ``HyraxDataset``.
-#. The name of the class must be noted in the hyrax config. ``[model]`` ``name`` for models, or ``[data_set]`` ``name`` for data sets.
+#. The name of the class must be noted in the hyrax config. ``[model]`` ``name`` for models, or ``[model_inputs.data]`` ``dataset_class`` for data sets.
 
 Configuring an external class
 -----------------------------
 
-The ``name`` configuration under either the ``[model]`` or ``[data_set]`` config sections is the dotte python 
-name used to locate the class starting at the top package level. e.g. if your dataset class is called ``MyDataSet`` and 
-is in a package called ``mydataset``, then you would configure as follows:
+For **models**, the ``name`` configuration under the ``[model]`` config section is the dotted python 
+name used to locate the class starting at the top package level.
+
+For **datasets**, use the ``dataset_class`` configuration under the ``[model_inputs.data]`` config section.
+For example, if your dataset class is called ``MyDataSet`` and is in a package called ``mydataset``, then you would configure as follows:
 
 .. tabs::
 
@@ -24,15 +26,21 @@ is in a package called ``mydataset``, then you would configure as follows:
 
             from hyrax import Hyrax
             h = Hyrax()
-            h.config["data_set"]["name"] = "mydataset.MyDataSet"
+            h.config["model_inputs"] = {
+                "data": {
+                    "dataset_class": "mydataset.MyDataSet",
+                    "data_location": "./data"
+                }
+            }
 
     .. group-tab:: CLI
 
         .. code-block:: bash
 
             $ cat hyrax_config.toml
-            [data_set]
-            name = "mydataset.MyDataSet"
+            [model_inputs.data]
+            dataset_class = "mydataset.MyDataSet"
+            data_location = "./data"
 
 Datasets in the current notebook, or within your own package can simply be referred to by their class names without any dots.
 
@@ -194,7 +202,12 @@ When creating a dataset it is easiest to test it using the ``prepare`` verb to h
 
     import hyrax
     h = hyrax.Hyrax()
-    h.config["data_set"]["name"] = "<ClassNameOfYourDataset>"
+    h.config["model_inputs"] = {
+        "data": {
+            "dataset_class": "<ClassNameOfYourDataset>",
+            "data_location": "./data"
+        }
+    }
     # Other config your dataset needs goes here
 
     dataset = h.prepare()
