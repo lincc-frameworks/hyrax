@@ -403,13 +403,12 @@ class DataProvider:
         if self.primary_dataset:
             # If the primary id field wasn't already requested, we fetch it now.
             if self.primary_dataset_id_field_name not in returned_data[self.primary_dataset]:
-                get_fn = self.dataset_getters[self.primary_dataset][
-                    self.primary_dataset_id_field_name]
-                returned_data["object_id"] = get_fn(idx)
+                get_fn = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
+                object_id = get_fn(idx)
             else:
-                returned_data["object_id"] = returned_data[self.primary_dataset][
-                    self.primary_dataset_id_field_name
-                ]
+                object_id = returned_data[self.primary_dataset][self.primary_dataset_id_field_name]
+
+            returned_data["object_id"] = object_id
 
         return returned_data
 
