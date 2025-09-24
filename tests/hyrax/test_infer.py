@@ -58,7 +58,7 @@ def test_load_model_weights_updates_config_when_auto_detected(tmp_path):
     mock_model = MagicMock()
 
     # Mock find_most_recent_results_dir to return our fake train directory
-    with patch("hyrax.verbs.infer.find_most_recent_results_dir", return_value=train_dir):
+    with patch("hyrax.config_utils.find_most_recent_results_dir", return_value=train_dir):
         # Call load_model_weights
         Infer.load_model_weights(config, mock_model)
 
