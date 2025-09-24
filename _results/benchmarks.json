@@ -210,7 +210,7 @@
         "warmup_time": -1
     },
     "data_request_benchmarks.DatasetRequestBenchmarks.time_request_all_data": {
-        "code": "class DatasetRequestBenchmarks:\n    def time_request_all_data(self):\n        \"\"\"Benchmark the amount of time needed to retrieve all the data from\n        the random dataset\n        \"\"\"\n        for indx in self.indexes:\n            self.ds[indx]\n\n    def setup(self):\n        \"\"\"Prepare for benchmark by defining and setting up a random dataset\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_set\"][\"name\"] = \"HyraxRandomDataset\"\n    \n        num_vectors = 4096\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"size\"] = num_vectors\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"seed\"] = 0\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"shape\"] = [3, 64, 64]\n    \n        self.ds = self.h.prepare()\n    \n        self.indexes = np.random.randint(0, num_vectors, size=128, dtype=int)",
+        "code": "class DatasetRequestBenchmarks:\n    def time_request_all_data(self):\n        \"\"\"Benchmark the amount of time needed to retrieve all the data from\n        the random dataset\n        \"\"\"\n        for indx in self.indexes:\n            self.ds[indx]\n\n    def setup(self):\n        \"\"\"Prepare for benchmark by defining and setting up a random dataset\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"model_inputs\"] = {\n            \"data\": {\n                \"dataset_class\": \"HyraxRandomDataset\",\n                \"data_location\": str(self.input_dir),\n                \"fields\": [\"image\", \"label\", \"object_id\"],\n            }\n        }\n    \n        num_vectors = 4096\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"size\"] = num_vectors\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"seed\"] = 0\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"shape\"] = [3, 64, 64]\n    \n        self.ds = self.h.prepare()\n    \n        self.indexes = np.random.randint(0, num_vectors, size=128, dtype=int)",
         "min_run_count": 2,
         "name": "data_request_benchmarks.DatasetRequestBenchmarks.time_request_all_data",
         "number": 0,
@@ -221,7 +221,7 @@
         "sample_time": 0.01,
         "type": "time",
         "unit": "seconds",
-        "version": "9636531a1fa483d62df762e4f700a03693fea2f0cfcdba11fb8c5f3aa6843d0d",
+        "version": "fb29c4de00b8ae98f5355bc0763d7785b2a711282021eb0d6b2065d2f426f355",
         "warmup_time": -1
     },
     "vector_db_benchmarks.VectorDBInsertBenchmarks.peakmem_load_vector_db": {
