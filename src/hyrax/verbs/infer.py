@@ -183,10 +183,10 @@ class Infer(Verb):
         if not weights_file_path.exists():
             raise RuntimeError(f"Model Weights file {weights_file_path} does not exist")
 
-        config["infer"]["model_weights_file"] = str(weights_file_path)
 
         try:
             model.load(weights_file_path)
+            config["infer"]["model_weights_file"] = str(weights_file_path)
         except Exception as err:
             msg = f"Model weights file {weights_file_path} did not load properly. Are you sure you are "
             msg += "predicting using the correct model"
