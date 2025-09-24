@@ -73,6 +73,7 @@ class DataProvider:
         self.prepped_datasets = {}
         self.dataset_getters = {}
         self.all_metadata_fields = {}
+        self.requested_fields = {}
 
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
@@ -272,6 +273,12 @@ class DataProvider:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
 
+            # Cache the requested fields for each dataset as a tuple.
+            # Tuples are immutable (preventing accidental modification) and can
+            # provide slightly faster iteration than lists, which is beneficial
+            # for repeated access in `resolve_data`.
+            self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
     @staticmethod
     def _apply_configurations(base_config: dict, dataset_definition: dict) -> dict:
         """Merge the original base config with the dataset-specific config.
@@ -389,14 +396,11 @@ class DataProvider:
             A dictionary containing the requested data from the prepared datasets.
         """
         returned_data: dict[str, dict[str, Any]] = {}
-        for friendly_name in self.data_request:
-            returned_data[friendly_name] = {}
-            dataset_definition = self.data_request.get(friendly_name)
 
-            # For each of the requested fields, call the corresponding
-            # `get_<field_name>` method in the dataset instance.
-            for field in dataset_definition.get("fields", []):
-                returned_data[friendly_name][field] = self.dataset_getters[friendly_name][field](idx)
+        for friendly_name, fields in self.requested_fields.items():
+            getters = self.dataset_getters[friendly_name]
+            data_dict = {field: getters[field](idx) for field in fields}
+            returned_data[friendly_name] = data_dict
 
         # Because there is machinery in the consuming code that expects an "object_id"
         # key in the returned data, we will add that here if a primary dataset.

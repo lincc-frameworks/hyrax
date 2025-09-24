@@ -16,7 +16,13 @@ class DatasetRequestBenchmarks:
 
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
-        self.h.config["data_set"]["name"] = "HyraxRandomDataset"
+        self.h.config["model_inputs"] = {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(self.input_dir),
+                "fields": ["image", "label", "object_id"],
+            }
+        }
 
         num_vectors = 4096
         self.h.config["data_set"]["HyraxRandomDataset"]["size"] = num_vectors
