@@ -1,5 +1,6 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
-from unittest.mock import patch, MagicMock
 
 from hyrax.config_utils import ConfigDict
 from hyrax.pytorch_ignite import setup_dataset
@@ -19,19 +20,20 @@ class TestSetupDataset:
                 }
             }
         })
-        
+
         # Mock the functions that would be called before our code
         with patch('hyrax.pytorch_ignite.generate_data_request_from_config') as mock_generate:
             with patch('hyrax.pytorch_ignite.is_iterable_dataset_requested') as mock_is_iterable:
                 # Set up mocks to trigger the iterable dataset path
                 mock_generate.return_value = config["model_inputs"]
                 mock_is_iterable.return_value = True
-                
+
                 # This should raise RuntimeError with our specific message
                 with pytest.raises(RuntimeError) as exc_info:
                     setup_dataset(config)
-                
-                assert "dataset_class must be specified in the data_request for iterable datasets." in str(exc_info.value)
+
+                assert ("dataset_class must be specified in the data_request for iterable datasets."
+                        in str(exc_info.value))
 
     def test_setup_dataset_missing_data_location_uses_none(self):
         """Test that missing data_location passes None to dataset constructor."""
@@ -44,11 +46,11 @@ class TestSetupDataset:
                 }
             }
         })
-        
+
         # Mock dataset class and registry
         mock_dataset_instance = MagicMock()
         mock_dataset_cls = MagicMock(return_value=mock_dataset_instance)
-        
+
         with patch('hyrax.pytorch_ignite.generate_data_request_from_config') as mock_generate:
             with patch('hyrax.pytorch_ignite.is_iterable_dataset_requested') as mock_is_iterable:
                 with patch('hyrax.pytorch_ignite.DATA_SET_REGISTRY') as mock_registry:
@@ -56,10 +58,10 @@ class TestSetupDataset:
                     mock_generate.return_value = config["model_inputs"]
                     mock_is_iterable.return_value = True
                     mock_registry.__getitem__.return_value = mock_dataset_cls
-                    
+
                     # Call the function
                     result = setup_dataset(config)
-                    
+
                     # Verify the dataset constructor was called with data_location=None
                     mock_dataset_cls.assert_called_once_with(config=config, data_location=None)
                     assert result == mock_dataset_instance
@@ -75,11 +77,11 @@ class TestSetupDataset:
                 }
             }
         })
-        
+
         # Mock dataset class and registry
         mock_dataset_instance = MagicMock()
         mock_dataset_cls = MagicMock(return_value=mock_dataset_instance)
-        
+
         with patch('hyrax.pytorch_ignite.generate_data_request_from_config') as mock_generate:
             with patch('hyrax.pytorch_ignite.is_iterable_dataset_requested') as mock_is_iterable:
                 with patch('hyrax.pytorch_ignite.DATA_SET_REGISTRY') as mock_registry:
@@ -87,10 +89,10 @@ class TestSetupDataset:
                     mock_generate.return_value = config["model_inputs"]
                     mock_is_iterable.return_value = True
                     mock_registry.__getitem__.return_value = mock_dataset_cls
-                    
+
                     # Call the function
                     result = setup_dataset(config)
-                    
+
                     # Verify the dataset constructor was called with correct parameters
                     mock_dataset_cls.assert_called_once_with(config=config, data_location="/some/valid/path")
                     assert result == mock_dataset_instance
@@ -106,12 +108,12 @@ class TestSetupDataset:
                 }
             }
         })
-        
+
         # Mock dataset class, registry, and logger
         mock_dataset_instance = MagicMock()
         mock_dataset_cls = MagicMock(return_value=mock_dataset_instance)
         mock_logger = MagicMock()
-        
+
         with patch('hyrax.pytorch_ignite.generate_data_request_from_config') as mock_generate:
             with patch('hyrax.pytorch_ignite.is_iterable_dataset_requested') as mock_is_iterable:
                 with patch('hyrax.pytorch_ignite.DATA_SET_REGISTRY') as mock_registry:
@@ -119,10 +121,10 @@ class TestSetupDataset:
                     mock_generate.return_value = config["model_inputs"]
                     mock_is_iterable.return_value = True
                     mock_registry.__getitem__.return_value = mock_dataset_cls
-                    
+
                     # Call the function with logger
                     result = setup_dataset(config, tensorboardx_logger=mock_logger)
-                    
+
                     # Verify the logger was set on the dataset
                     assert result.tensorboardx_logger == mock_logger
 
@@ -136,10 +138,10 @@ class TestSetupDataset:
                 }
             }
         })
-        
+
         mock_data_provider = MagicMock()
         mock_data_provider.prepped_datasets = {"test": MagicMock()}
-        
+
         with patch('hyrax.pytorch_ignite.generate_data_request_from_config') as mock_generate:
             with patch('hyrax.pytorch_ignite.is_iterable_dataset_requested') as mock_is_iterable:
                 with patch('hyrax.pytorch_ignite.DataProvider') as mock_provider_cls:
@@ -147,10 +149,10 @@ class TestSetupDataset:
                     mock_generate.return_value = config["model_inputs"]
                     mock_is_iterable.return_value = False
                     mock_provider_cls.return_value = mock_data_provider
-                    
+
                     # Call the function
                     result = setup_dataset(config)
-                    
+
                     # Verify DataProvider was used instead of direct dataset instantiation
                     mock_provider_cls.assert_called_once_with(config)
                     assert result == mock_data_provider
