@@ -74,8 +74,8 @@ class Infer(Verb):
 
         data_loader, data_loader_indexes = dist_data_loader(dataset, config, split=config["infer"]["split"])
 
-        log_runtime_config(config, results_dir)
         Infer.load_model_weights(config, model)
+        log_runtime_config(config, results_dir)
         context["results_dir"] = results_dir
 
         # Log Results directory
