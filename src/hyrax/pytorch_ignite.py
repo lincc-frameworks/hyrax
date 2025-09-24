@@ -106,8 +106,16 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
         # operation for iterable-style datasets that Hyrax supports is 1 iterable
         # dataset at a time, we can just take the first (and only) item in the data_request.
         data_definition = next(iter(data_request.values()))
-        dataset_cls = DATA_SET_REGISTRY[data_definition["dataset_class"]]
-        dataset = dataset_cls(config=config, data_location=data_definition["data_location"])
+        
+        dataset_class = data_definition["dataset_class"] if "dataset_class" in data_definition else None
+        if dataset_class is None:
+            raise RuntimeError("dataset_class must be specified in the data_request for iterable datasets.")
+        else:
+            dataset_cls = DATA_SET_REGISTRY[data_definition["dataset_class"]]
+
+        data_location = data_definition["data_location"] if "data_location" in data_definition else None
+
+        dataset = dataset_cls(config=config, data_location=data_location)
         dataset.tensorboardx_logger = tensorboardx_logger
 
     else:
