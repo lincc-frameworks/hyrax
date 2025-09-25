@@ -39,13 +39,13 @@ def _torch_criterion(self: nn.Module):
     if criterion_name in config:
         arguments = config[criterion_name]
 
-    # Print some information about the criterion function and parameters used
+    # Print some debugging info about the criterion function and parameters used
     log_string = f"Using criterion: {criterion_name} "
     if arguments:
         log_string += f"with arguments: {arguments}."
     else:
         log_string += "with default arguments."
-    logger.info(log_string)
+    logger.debug(log_string)
 
     return criterion_cls(**arguments)
 
@@ -64,13 +64,13 @@ def _torch_optimizer(self: nn.Module):
     if optimizer_name in config:
         arguments = config[optimizer_name]
 
-    # Print some information about the optimizer function and parameters used
+    # Print some debugging info about the optimizer function and parameters used
     log_string = f"Using optimizer: {optimizer_name} "
     if arguments:
         log_string += f"with arguments: {arguments}."
     else:
         log_string += "with default arguments."
-    logger.info(log_string)
+    logger.debug(log_string)
 
     return optimizer_cls(self.parameters(), **arguments)
 

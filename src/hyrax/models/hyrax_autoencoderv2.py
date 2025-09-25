@@ -1,5 +1,5 @@
 # ruff: noqa: D101, D102
-
+import logging
 
 import torch
 import torch.nn as nn
@@ -9,6 +9,8 @@ from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
+
+logger = logging.getLogger(__name__)
 
 
 class ArcsinhActivation(nn.Module):
@@ -28,11 +30,13 @@ class HyraxAutoencoderV2(nn.Module):
     - Uses criterion and optimizer from config variables
     """
 
-    def __init__(self, config, shape=(5, 250, 250)):
+    def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config
 
-        # TODO config-ize or get from data loader somehow
+        shape = self.to_tensor(data_sample).shape
+        logger.debug(f"Found shape: {shape} in data sample, using this to initialize model.")
+
         self.num_input_channels, self.image_width, self.image_height = shape
 
         self.c_hid = self.config["model"]["base_channel_size"]

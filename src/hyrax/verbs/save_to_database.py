@@ -137,7 +137,7 @@ class SaveToDatabase(Verb):
         # Use the batch_index to get the list of batches.
         batches = np.unique(inference_data_set.batch_index["batch_num"])
 
-        logger.info(f"Number of inference result batches to index: {len(batches)}.")
+        logger.debug(f"Number of inference result batches to index: {len(batches)}.")
 
         total_insertion_time = 0.0
         batch_count = 0
