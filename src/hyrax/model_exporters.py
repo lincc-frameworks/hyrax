@@ -55,7 +55,7 @@ def export_to_onnx(model, sample, config, ctx):
     if not allclose(sample_out, ort_outs[0], rtol=1e-03, atol=1e-05):
         logger.warning("The outputs from the PyTorch model and the ONNX model are not close.")
 
-    logger.info(f"Exported model to ONNX format: {onnx_output_filepath}")
+    logger.debug(f"Exported model to ONNX format: {onnx_output_filepath}")
 
 
 def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):

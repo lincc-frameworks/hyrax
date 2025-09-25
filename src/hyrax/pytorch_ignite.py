@@ -482,8 +482,8 @@ def create_evaluator(
 
     @evaluator.on(Events.STARTED)
     def log_eval_start(evaluator):
-        logger.info(f"Evaluating model on device: {device}")
-        logger.info(f"Total epochs: {evaluator.state.max_epochs}")
+        logger.debug(f"Evaluating model on device: {device}")
+        logger.debug(f"Total epochs: {evaluator.state.max_epochs}")
 
     @evaluator.on(Events.ITERATION_COMPLETED)
     def log_iteration_complete(evaluator):
@@ -637,7 +637,7 @@ def create_trainer(
 
     @trainer.on(Events.STARTED)
     def log_training_start(trainer):
-        logger.info(f"Training model on device: {device}")
+        logger.debug(f"Training model on device: {device}")
 
     @trainer.on(Events.EPOCH_STARTED)
     def log_epoch_start(trainer):
@@ -663,10 +663,10 @@ def create_trainer(
         logger.info(f"Total training time: {trainer.state.times['COMPLETED']:.2f}[s]")
 
     def log_last_checkpoint_location(_, latest_checkpoint):
-        logger.info(f"Latest checkpoint saved as: {latest_checkpoint.last_checkpoint}")
+        logger.debug(f"Latest checkpoint saved as: {latest_checkpoint.last_checkpoint}")
 
     def log_best_checkpoint_location(_, best_checkpoint):
-        logger.info(f"Best metric checkpoint saved as: {best_checkpoint.last_checkpoint}")
+        logger.debug(f"Best metric checkpoint saved as: {best_checkpoint.last_checkpoint}")
 
     trainer.add_event_handler(Events.COMPLETED, log_last_checkpoint_location, latest_checkpoint)
     trainer.add_event_handler(Events.COMPLETED, log_best_checkpoint_location, best_checkpoint)

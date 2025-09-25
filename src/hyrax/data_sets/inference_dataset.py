@@ -288,7 +288,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
                     raise RuntimeError(msg)
                 msg = f"Using most recent results dir {results_dir} for lookup."
                 msg += " Use the [results] inference_dir config to set a directory or pass it to this verb."
-                logger.info(msg)
+                logger.debug(msg)
 
         retval = Path(results_dir) if isinstance(results_dir, str) else results_dir
 

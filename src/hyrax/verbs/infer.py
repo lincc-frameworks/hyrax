@@ -63,7 +63,7 @@ class Infer(Verb):
         dataset = setup_dataset(config, tensorboardx_logger)
         model = setup_model(config, dataset)
         if dataset.is_map():
-            logger.info(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
+            logger.debug(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 
         # Inference doesnt work at all with the dataloader doing additional shuffling:
         if config["data_loader"]["shuffle"]:
