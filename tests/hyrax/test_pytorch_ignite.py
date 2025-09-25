@@ -144,7 +144,7 @@ class TestSetupDataset:
 
         with patch('hyrax.pytorch_ignite.generate_data_request_from_config') as mock_generate:
             with patch('hyrax.pytorch_ignite.is_iterable_dataset_requested') as mock_is_iterable:
-                with patch('hyrax.pytorch_ignite.DataProvider') as mock_provider_cls:
+                with patch('hyrax.data_sets.data_provider.DataProvider') as mock_provider_cls:
                     # Set up mocks for non-iterable path
                     mock_generate.return_value = config["model_inputs"]
                     mock_is_iterable.return_value = False
