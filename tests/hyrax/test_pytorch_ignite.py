@@ -32,7 +32,7 @@ class TestSetupDataset:
                 with pytest.raises(RuntimeError) as exc_info:
                     setup_dataset(config)
 
-                assert ("dataset_class must be specified in the data_request for iterable datasets."
+                assert ("dataset_class must be specified in 'model_inputs'."
                         in str(exc_info.value))
 
     def test_setup_dataset_missing_data_location_uses_none(self):
