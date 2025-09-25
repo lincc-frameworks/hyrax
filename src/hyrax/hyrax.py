@@ -92,7 +92,7 @@ class Hyrax:
             # Setup our handlers from config
             self._initialize_log_handlers()
 
-        self.logger.info(f"Runtime Config read from: {ConfigManager.resolve_runtime_config(config_file)}")
+        self.logger.debug(f"Runtime Config read from: {ConfigManager.resolve_runtime_config(config_file)}")
 
     def _initialize_log_handlers(self):
         """Private initialization helper, Adds handlers and level setting to the global self.logger object"""
