@@ -33,6 +33,35 @@ class TestSetupDataset:
 
                 assert "dataset_class must be specified in 'model_inputs'." in str(exc_info.value)
 
+    def test_setup_dataset_invalid_dataset_class_raises_error(self):
+        """Test that providing an invalid dataset_class raises appropriate RuntimeError."""
+        # Create a config with an invalid dataset_class
+        config = {
+            "model_inputs": {
+                "test_dataset": {
+                    "dataset_class": "NonExistentDatasetClass",
+                    "data_location": "/some/path"
+                }
+            }
+        }
+
+        # Mock the functions that would be called before our code
+        with patch("hyrax.pytorch_ignite.generate_data_request_from_config") as mock_generate:
+            with patch("hyrax.pytorch_ignite.is_iterable_dataset_requested") as mock_is_iterable:
+                with patch("hyrax.pytorch_ignite.DATA_SET_REGISTRY") as mock_registry:
+                    # Set up mocks to trigger the iterable dataset path
+                    mock_generate.return_value = config["model_inputs"]
+                    mock_is_iterable.return_value = True
+                    # Make the registry lookup fail by simulating the dataset class not being in registry
+                    mock_registry.__contains__.return_value = False
+
+                    # This should raise RuntimeError with our specific message
+                    with pytest.raises(RuntimeError) as exc_info:
+                        setup_dataset(config)
+
+                    assert ("dataset_class NonExistentDatasetClass not found in DATA_SET_REGISTRY."
+                            in str(exc_info.value))
+
     def test_setup_dataset_missing_data_location_uses_none(self):
         """Test that missing data_location passes None to dataset constructor."""
         # Create a config with dataset_class but no data_location
