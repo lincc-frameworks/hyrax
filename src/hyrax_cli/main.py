@@ -14,8 +14,12 @@ def main():
     description = "Hyrax CLI"
     epilog = "Hyrax is the Framework for Image-Based Anomaly Detection"
 
-    parser = argparse.ArgumentParser(description=description, epilog=epilog)
-    _add_major_arguments(parser)
+    # Create a parent parser with common arguments
+    parent_parser = argparse.ArgumentParser(add_help=False)
+    _add_major_arguments(parent_parser)
+
+    # Main parser inherits from parent
+    parser = argparse.ArgumentParser(description=description, epilog=epilog, parents=[parent_parser])
 
     # cut off "usage: " from beginning and "\n" from end so we get an invocation
     # which subcommand parsers can add to appropriately.
@@ -30,15 +34,15 @@ def main():
             verb_class = fetch_verb_class(cli_name)
             subparser_kwargs = verb_class.add_parser_kwargs
 
+        # Subparsers also inherit from parent, creating shared arguments
         verb_parser = subparsers.add_parser(
-            cli_name, prog=subparser_usage_prefix + " " + cli_name, **subparser_kwargs
+            cli_name, prog=subparser_usage_prefix + " " + cli_name, parents=[parent_parser], **subparser_kwargs
         )
 
         if is_verb_class(cli_name):
             verb_class.setup_parser(verb_parser)
 
         verb_parser.set_defaults(verb=cli_name)
-        _add_major_arguments(verb_parser)
 
     args = parser.parse_args()
 
@@ -46,7 +50,7 @@ def main():
         print(version("hyrax"))
         return
 
-    if not args.verb:
+    if not hasattr(args, 'verb') or not args.verb:
         parser.print_help()
         sys.exit(1)
 
