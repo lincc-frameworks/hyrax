@@ -72,6 +72,13 @@ dev = [
     "pytest-env", # Used to set environment variables in testing
     "pytest-xdist", # Used to parallelize unit tests
     "ruff", # Used for static linting of files
+    "sphinx",
+    "sphinx-autoapi",
+    "nbsphinx",
+    "sphinx-tabs",
+    "sphinx-copybutton",
+    "sphinx-togglebutton",
+    "sphinx-rtd-theme",
 ]
 
 [build-system]

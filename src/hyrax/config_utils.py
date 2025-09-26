@@ -428,6 +428,10 @@ class ConfigManager:
         if isinstance(runtime_config_filepath, str):
             runtime_config_filepath = Path(runtime_config_filepath)
 
+        if isinstance(runtime_config_filepath, Path):  # noqa: SIM102
+            if not runtime_config_filepath.exists():
+                raise FileNotFoundError(f"Cannot find config file {runtime_config_filepath}")
+
         # If a named config exists in cwd, and no config specified on cmdline, use cwd.
         if (
             runtime_config_filepath is None
