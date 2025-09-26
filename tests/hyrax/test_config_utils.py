@@ -360,3 +360,30 @@ def test_config_help_too_many_args(capsys):
 Usage: config.help(['table_name'|'key_name']), config.help('table_name', 'key_name')"""
 
     assert expected_output in captured.out
+
+
+def test_resolve_runtime_config_non_existent_file():
+    """Test that resolve_runtime_config raises FileNotFoundError for non-existent config files."""
+    non_existent_file = "/path/to/non/existent/config.toml"
+
+    with pytest.raises(FileNotFoundError, match=f"Cannot find config file {non_existent_file}"):
+        ConfigManager.resolve_runtime_config(non_existent_file)
+
+
+def test_resolve_runtime_config_valid_file():
+    """Test that resolve_runtime_config works correctly with an existing file."""
+    # Use a file that we know exists - the default config
+    this_file_dir = os.path.dirname(os.path.abspath(__file__))
+    existing_config = os.path.abspath(os.path.join(this_file_dir, "./test_data/test_user_config.toml"))
+
+    # This should not raise an exception
+    result = ConfigManager.resolve_runtime_config(existing_config)
+    assert str(result) == existing_config
+
+
+def test_resolve_runtime_config_none():
+    """Test that resolve_runtime_config works correctly with None (fallback behavior)."""
+    # This should not raise an exception and should return the default config
+    result = ConfigManager.resolve_runtime_config(None)
+    # The result should be one of the default paths
+    assert result is not None
