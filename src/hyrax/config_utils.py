@@ -424,9 +424,19 @@ class ConfigManager:
         Path
             Path to the configuration file ultimately used for config resolution. When we fall back to the
             package supplied default config file, the Path to that file is returned.
+        
+        Raises
+        ------
+        FileNotFoundError
+            If a runtime config file is specified but does not exist.
         """
         if isinstance(runtime_config_filepath, str):
             runtime_config_filepath = Path(runtime_config_filepath)
+
+        # If a runtime config file is explicitly specified, validate it exists
+        if isinstance(runtime_config_filepath, Path):
+            if not runtime_config_filepath.exists():
+                raise FileNotFoundError(f"Cannot find config file {runtime_config_filepath}")
 
         # If a named config exists in cwd, and no config specified on cmdline, use cwd.
         if (
