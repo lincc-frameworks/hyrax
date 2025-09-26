@@ -63,7 +63,7 @@ class Infer(Verb):
         dataset = setup_dataset(config, tensorboardx_logger)
         model = setup_model(config, dataset)
         if dataset.is_map():
-            logger.info(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
+            logger.debug(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 
         # Inference doesnt work at all with the dataloader doing additional shuffling:
         if config["data_loader"]["shuffle"]:
@@ -74,8 +74,8 @@ class Infer(Verb):
 
         data_loader, data_loader_indexes = dist_data_loader(dataset, config, split=config["infer"]["split"])
 
-        log_runtime_config(config, results_dir)
         Infer.load_model_weights(config, model)
+        log_runtime_config(config, results_dir)
         context["results_dir"] = results_dir
 
         # Log Results directory
@@ -185,6 +185,7 @@ class Infer(Verb):
 
         try:
             model.load(weights_file_path)
+            config["infer"]["model_weights_file"] = str(weights_file_path)
         except Exception as err:
             msg = f"Model weights file {weights_file_path} did not load properly. Are you sure you are "
             msg += "predicting using the correct model"

@@ -106,8 +106,18 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
         # operation for iterable-style datasets that Hyrax supports is 1 iterable
         # dataset at a time, we can just take the first (and only) item in the data_request.
         data_definition = next(iter(data_request.values()))
-        dataset_cls = DATA_SET_REGISTRY[data_definition["dataset_class"]]
-        dataset = dataset_cls(config=config, data_location=data_definition["data_location"])
+
+        dataset_class = data_definition.get("dataset_class", None)
+        if dataset_class is None:
+            raise RuntimeError("dataset_class must be specified in 'model_inputs'.")
+        elif dataset_class not in DATA_SET_REGISTRY:
+            raise RuntimeError(f"dataset_class {dataset_class} not found in DATA_SET_REGISTRY.")
+        else:
+            dataset_cls = DATA_SET_REGISTRY[dataset_class]
+
+        data_location = data_definition.get("data_location", None)
+
+        dataset = dataset_cls(config=config, data_location=data_location)
         dataset.tensorboardx_logger = tensorboardx_logger
 
     else:
@@ -482,8 +492,8 @@ def create_evaluator(
 
     @evaluator.on(Events.STARTED)
     def log_eval_start(evaluator):
-        logger.info(f"Evaluating model on device: {device}")
-        logger.info(f"Total epochs: {evaluator.state.max_epochs}")
+        logger.debug(f"Evaluating model on device: {device}")
+        logger.debug(f"Total epochs: {evaluator.state.max_epochs}")
 
     @evaluator.on(Events.ITERATION_COMPLETED)
     def log_iteration_complete(evaluator):
@@ -637,7 +647,7 @@ def create_trainer(
 
     @trainer.on(Events.STARTED)
     def log_training_start(trainer):
-        logger.info(f"Training model on device: {device}")
+        logger.debug(f"Training model on device: {device}")
 
     @trainer.on(Events.EPOCH_STARTED)
     def log_epoch_start(trainer):
@@ -663,10 +673,10 @@ def create_trainer(
         logger.info(f"Total training time: {trainer.state.times['COMPLETED']:.2f}[s]")
 
     def log_last_checkpoint_location(_, latest_checkpoint):
-        logger.info(f"Latest checkpoint saved as: {latest_checkpoint.last_checkpoint}")
+        logger.debug(f"Latest checkpoint saved as: {latest_checkpoint.last_checkpoint}")
 
     def log_best_checkpoint_location(_, best_checkpoint):
-        logger.info(f"Best metric checkpoint saved as: {best_checkpoint.last_checkpoint}")
+        logger.debug(f"Best metric checkpoint saved as: {best_checkpoint.last_checkpoint}")
 
     trainer.add_event_handler(Events.COMPLETED, log_last_checkpoint_location, latest_checkpoint)
     trainer.add_event_handler(Events.COMPLETED, log_best_checkpoint_location, best_checkpoint)
