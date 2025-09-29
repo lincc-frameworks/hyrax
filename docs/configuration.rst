@@ -34,7 +34,7 @@ or pass the path to the configuration file when creating a ``Hyrax`` object.
 
         .. code-block:: bash
 
-           >> hyrax -c <path_to_config_file.toml> train
+           >> hyrax train -c <path_to_config_file.toml>
 
 
 Your first custom configuration
@@ -76,7 +76,7 @@ the rest of the configuration unchanged.
 
         .. code-block:: bash
 
-           >> hyrax -c my_config.toml train
+           >> hyrax train -c my_config.toml
 
 
 Updating settings in a notebook
