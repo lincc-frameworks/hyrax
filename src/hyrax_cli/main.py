@@ -15,7 +15,7 @@ def main():
     epilog = "Hyrax is the Framework for Image-Based Anomaly Detection"
 
     parser = argparse.ArgumentParser(description=description, epilog=epilog)
-    _add_major_arguments(parser)
+    parser.add_argument("--version", dest="version", action="store_true", help="Show version")
 
     # cut off "usage: " from beginning and "\n" from end so we get an invocation
     # which subcommand parsers can add to appropriately.
