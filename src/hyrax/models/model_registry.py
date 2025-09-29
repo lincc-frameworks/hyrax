@@ -32,8 +32,8 @@ def _torch_criterion(self: nn.Module):
     config = cast(dict[str, Any], self.config)
 
     # Load the class and get any parameters from the config dictionary
-    criterion_cls = get_or_load_class(config["criterion"])
     criterion_name = config["criterion"]["name"]
+    criterion_cls = get_or_load_class(criterion_name)
 
     arguments = {}
     if criterion_name in config:
@@ -57,8 +57,8 @@ def _torch_optimizer(self: nn.Module):
     config = cast(dict[str, Any], self.config)
 
     # Load the class and get any parameters from the config dictionary
-    optimizer_cls = get_or_load_class(config["optimizer"])
     optimizer_name = config["optimizer"]["name"]
+    optimizer_cls = get_or_load_class(optimizer_name)
 
     arguments = {}
     if optimizer_name in config:
@@ -168,11 +168,11 @@ def fetch_model_class(runtime_config: dict) -> type[nn.Module]:
         If no model was specified in the runtime configuration.
     """
 
-    model_config = runtime_config["model"]
+    model_name = runtime_config["model"]["name"]
     model_cls = None
 
     try:
-        model_cls = cast(type[nn.Module], get_or_load_class(model_config, MODEL_REGISTRY))
+        model_cls = cast(type[nn.Module], get_or_load_class(model_name, MODEL_REGISTRY))
     except ValueError as exc:
         raise ValueError("Error fetching model class") from exc
 

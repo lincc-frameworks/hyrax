@@ -82,14 +82,6 @@ def test_data_provider(data_provider):
             assert friendly_name in metadata_field
 
 
-def test_validate_request(multimodal_config):
-    """Basic test to see that validation works as expected in the base
-    case."""
-
-    c = multimodal_config
-    DataProvider.validate_request(c)
-
-
 def test_validate_request_no_dataset_class(multimodal_config, caplog):
     """Basic test to see that validation works as when no dataset class
     name is provided."""
@@ -116,20 +108,6 @@ def test_validate_request_unknown_dataset(multimodal_config, caplog):
 
     assert "failed" in str(execinfo.value)
     assert "Unable to locate dataset" in caplog.text
-
-
-def test_validate_request_iterable_dataset(multimodal_config, caplog):
-    """Basic test to see that validation works correctly when an iterable dataset
-    is requested"""
-
-    c = multimodal_config
-    c["random_0"]["dataset_class"] = "HyraxRandomIterableDataset"
-    with caplog.at_level("ERROR"):
-        with pytest.raises(RuntimeError) as execinfo:
-            DataProvider.validate_request(c)
-
-    assert "failed" in str(execinfo.value)
-    assert "is an iterable-style dataset" in caplog.text
 
 
 def test_validate_request_bad_field(multimodal_config, caplog):

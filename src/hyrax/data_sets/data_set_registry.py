@@ -276,36 +276,35 @@ class HyraxDataset:
         return self._metadata_table[idxs][columns].as_array()
 
 
-def fetch_data_set_class(runtime_config: dict) -> type[HyraxDataset]:
-    """Fetch the data loader class from the registry.
+def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:
+    """Fetch the dataset class from the registry.
 
     Parameters
     ----------
-    runtime_config : dict
-        The runtime configuration dictionary.
+    class_name : str
+        The name of the dataset class to fetch. Either the class name of a built
+      in dataset, or the fully qualified name of a user-defined dataset.
+      e.g. "my_module.my_submodule.MyDatasetClass" or "HyraxRandomDataset".
 
     Returns
     -------
-    type
-        The data loader class.
+    type[HyraxDataset]
+        The dataset class.
 
     Raises
     ------
     ValueError
-        If a built in data loader was requested, but not found in the registry.
+        If a built in dataset was requested, but not found in the registry.
     ValueError
-        If no data loader was specified in the runtime configuration.
+        If no dataset was specified in the runtime configuration.
     """
 
-    data_set_config = runtime_config["data_set"]
-    data_set_cls = None
-
     try:
-        data_set_cls = get_or_load_class(data_set_config, DATA_SET_REGISTRY)
+        dataset_cls = get_or_load_class(class_name, DATA_SET_REGISTRY)
     except ValueError as exc:
-        raise ValueError("Error fetching data set class") from exc
+        raise ValueError(f"Error fetching dataset class {class_name}") from exc
 
-    return data_set_cls
+    return dataset_cls
 
 
 class HyraxImageDataset:
