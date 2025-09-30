@@ -108,8 +108,6 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
         data_definition = next(iter(data_request.values()))
 
         dataset_class = data_definition.get("dataset_class", None)
-        if dataset_class is None:
-            raise RuntimeError("dataset_class must be specified in 'model_inputs'.")
 
         dataset_cls = fetch_dataset_class(dataset_class)
 

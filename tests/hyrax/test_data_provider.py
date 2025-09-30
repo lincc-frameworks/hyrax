@@ -85,29 +85,29 @@ def test_data_provider(data_provider):
 def test_validate_request_no_dataset_class(multimodal_config, caplog):
     """Basic test to see that validation works as when no dataset class
     name is provided."""
-
+    h = Hyrax()
     c = multimodal_config
     c["random_0"].pop("dataset_class", None)
+    h.config["model_inputs"] = c
     with caplog.at_level("ERROR"):
         with pytest.raises(RuntimeError) as execinfo:
-            DataProvider.validate_request(c)
+            DataProvider(h.config)
 
-    assert "failed" in str(execinfo.value)
+    assert "does not specify a 'dataset_class'" in str(execinfo.value)
     assert "does not specify a 'dataset_class'" in caplog.text
 
 
 def test_validate_request_unknown_dataset(multimodal_config, caplog):
     """Basic test to see that validation raises correctly when a nonexistent
     dataset class name is provided."""
-
+    h = Hyrax()
     c = multimodal_config
     c["random_0"]["dataset_class"] = "NoSuchDataset"
+    h.config["model_inputs"] = c
     with caplog.at_level("ERROR"):
-        with pytest.raises(RuntimeError) as execinfo:
-            DataProvider.validate_request(c)
+        DataProvider(h.config)
 
-    assert "failed" in str(execinfo.value)
-    assert "Unable to locate dataset" in caplog.text
+    assert "not found in registry" in caplog.text
 
 
 def test_validate_request_bad_field(multimodal_config, caplog):

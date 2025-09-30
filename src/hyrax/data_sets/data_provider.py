@@ -182,6 +182,7 @@ class DataProvider:
             dataset_class = dataset_definition.get("dataset_class")
             if not dataset_class:
                 logger.error(f"Model input for '{friendly_name}' does not specify a 'dataset_class'.")
+                raise RuntimeError(f"Model input for '{friendly_name}' does not specify a 'dataset_class'.")
 
             # It's ok for data_location to be None, some datasets
             # (e.g. HyraxRandomDataset) may not require it.

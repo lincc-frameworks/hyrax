@@ -299,10 +299,13 @@ def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:
         If no dataset was specified in the runtime configuration.
     """
 
+    if not class_name:
+        raise RuntimeError("dataset_class must be specified in 'model_inputs'.")
+
     try:
         dataset_cls = get_or_load_class(class_name, DATA_SET_REGISTRY)
-    except ValueError as exc:
-        raise ValueError(f"Error fetching dataset class {class_name}") from exc
+    except Exception:
+        raise
 
     return dataset_cls
 

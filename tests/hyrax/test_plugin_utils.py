@@ -65,10 +65,10 @@ def test_fetch_model_class_no_model():
 
     config = {"model": {"name": ""}}
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(RuntimeError) as excinfo:
         fetch_model_class(config)
 
-    assert "Error fetching model class" in str(excinfo.value)
+    assert "A model class name or path must be provided" in str(excinfo.value)
 
 
 def test_fetch_model_class_no_model_cls():
@@ -90,7 +90,7 @@ def test_fetch_model_class_not_in_registry():
     with pytest.raises(ValueError) as excinfo:
         fetch_model_class(config)
 
-    assert "Error fetching model class" in str(excinfo.value)
+    assert "not found in registry and is not a full import path" in str(excinfo.value)
 
 
 def test_fetch_model_class_in_registry():

@@ -23,17 +23,24 @@ def get_or_load_class(class_name: str, registry: Optional[dict[str, T]] = None) 
 
     """
 
-    if registry and class_name in registry:
-        returned_class = registry[class_name]
-    else:
-        #! I'm not a big fan of this check here. It would be nice if this was
-        #! handled more gracefully elsewhere.
-        if "." not in class_name:
-            raise ValueError(f"Class name {class_name} not found in registry and is not a full import path.")
-        returned_class = import_module_from_string(class_name)
-        # if the class was loaded successfully, add it to the provided registry
-        if registry:
+    if registry:
+        if class_name in registry:
+            return registry[class_name]
+        else:
+            # If the class isn't in the registry, it must be an external class,
+            # so we require the user to provide the full import path.
+            if "." not in class_name:
+                raise ValueError(
+                    f"Class name {class_name} not found in registry and is not a full import path."
+                )
+            returned_class = import_module_from_string(class_name)
             update_registry(registry, class_name, returned_class)
+
+    else:
+        # If there is no registry, we require the user to provide the full import path.
+        if "." not in class_name:
+            raise ValueError(f"Class name {class_name} is not a full import path.")
+        returned_class = import_module_from_string(class_name)
 
     return returned_class
 

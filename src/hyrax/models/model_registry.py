@@ -171,9 +171,15 @@ def fetch_model_class(runtime_config: dict) -> type[nn.Module]:
     model_name = runtime_config["model"]["name"]
     model_cls = None
 
+    if not model_name:
+        raise RuntimeError(
+            "A model class name or path must be provided. "
+            "e.g. 'HyraxCNN' or 'my_package.my_module.MyModelClass'."
+        )
+
     try:
         model_cls = cast(type[nn.Module], get_or_load_class(model_name, MODEL_REGISTRY))
-    except ValueError as exc:
-        raise ValueError("Error fetching model class") from exc
+    except Exception:
+        raise
 
     return model_cls
