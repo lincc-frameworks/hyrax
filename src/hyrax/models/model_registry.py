@@ -177,9 +177,6 @@ def fetch_model_class(runtime_config: dict) -> type[nn.Module]:
             "e.g. 'HyraxCNN' or 'my_package.my_module.MyModelClass'."
         )
 
-    try:
-        model_cls = cast(type[nn.Module], get_or_load_class(model_name, MODEL_REGISTRY))
-    except Exception:
-        raise
+    model_cls = cast(type[nn.Module], get_or_load_class(model_name, MODEL_REGISTRY))
 
     return model_cls
