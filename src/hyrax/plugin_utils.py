@@ -67,6 +67,8 @@ def import_module_from_string(module_path: str) -> Any:
         If the module is not found using the provided import spec.
     """
 
+    # The only place that uses this function already checks for ".", but in case
+    # this function is used elsewhere in the future, we check again here.
     if "." not in module_path:
         raise ValueError(f"Invalid module path: {module_path}. Expected format: 'module.submodule.ClassName'")
 

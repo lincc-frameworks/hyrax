@@ -104,10 +104,10 @@ def test_validate_request_unknown_dataset(multimodal_config, caplog):
     c = multimodal_config
     c["random_0"]["dataset_class"] = "NoSuchDataset"
     h.config["model_inputs"] = c
-    with caplog.at_level("ERROR"):
+    with pytest.raises(ValueError) as execinfo:
         DataProvider(h.config)
 
-    assert "not found in registry" in caplog.text
+    assert "not found in registry" in str(execinfo.value)
 
 
 def test_validate_request_bad_field(multimodal_config, caplog):

@@ -8,7 +8,6 @@ from torch import from_numpy
 from torch.utils.data import Dataset, IterableDataset
 
 import hyrax
-import hyrax.data_sets
 from hyrax.data_sets import HyraxDataset
 from hyrax.data_sets.data_provider import DataProvider
 
