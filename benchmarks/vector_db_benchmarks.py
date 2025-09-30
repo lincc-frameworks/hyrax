@@ -102,7 +102,7 @@ class VectorDBSearchBenchmarks:
 
         # Get the list of dataset ids
         self.ds = self.h.prepare()
-        self.data_sample = self.ds[4001]["data"]["image"].numpy()
+        self.data_sample = self.ds[4001]["data"]["image"]
 
         self.h.config["vector_db"]["name"] = vector_db_implementation
         self.h.config["vector_db"]["chromadb"]["shard_size_limit"] = shard_size_limit
