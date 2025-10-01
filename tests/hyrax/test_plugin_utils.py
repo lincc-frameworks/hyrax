@@ -47,7 +47,7 @@ def test_import_module_from_string_no_class():
     with pytest.raises(AttributeError) as excinfo:
         plugin_utils.import_module_from_string(module_path)
 
-    assert "Model class Nonexistent not found" in str(excinfo.value)
+    assert "Unable to find Nonexistent in module" in str(excinfo.value)
 
 
 def test_fetch_model_class():
@@ -63,12 +63,12 @@ def test_fetch_model_class_no_model():
     """Test that the fetch_model_class function raises an error when no model
     is specified in the configuration."""
 
-    config = {"model": {}}
+    config = {"model": {"name": ""}}
 
-    with pytest.raises(ValueError) as excinfo:
+    with pytest.raises(RuntimeError) as excinfo:
         fetch_model_class(config)
 
-    assert "Error fetching model class" in str(excinfo.value)
+    assert "A model class name or path must be provided" in str(excinfo.value)
 
 
 def test_fetch_model_class_no_model_cls():
@@ -79,7 +79,7 @@ def test_fetch_model_class_no_model_cls():
     with pytest.raises(AttributeError) as excinfo:
         fetch_model_class(config)
 
-    assert "Model class Nonexistent not found" in str(excinfo.value)
+    assert "Unable to find Nonexistent in module" in str(excinfo.value)
 
 
 def test_fetch_model_class_not_in_registry():
@@ -90,7 +90,7 @@ def test_fetch_model_class_not_in_registry():
     with pytest.raises(ValueError) as excinfo:
         fetch_model_class(config)
 
-    assert "Error fetching model class" in str(excinfo.value)
+    assert "not found in registry and is not a full import path" in str(excinfo.value)
 
 
 def test_fetch_model_class_in_registry():

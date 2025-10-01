@@ -3,7 +3,7 @@ from typing import Any
 
 import numpy as np
 
-from hyrax.data_sets.data_set_registry import DATA_SET_REGISTRY
+from hyrax.data_sets.data_set_registry import fetch_dataset_class
 
 logger = logging.getLogger(__name__)
 
@@ -67,8 +67,6 @@ class DataProvider:
 
         self.config = config
         self.data_request = generate_data_request_from_config(self.config)
-
-        self.validate_request(self.data_request)
 
         self.prepped_datasets = {}
         self.dataset_getters = {}
@@ -172,42 +170,6 @@ class DataProvider:
         """DataProvider datasets will always be map-style datasets."""
         return True
 
-    # ^ Since the getter methods are dynamically created when a dataset class is _instantiated_,
-    # ^ we can't really validate that the requested fields exist until after instantiation.
-    # ^ And instantiation doesn't happen here, it happens in `prepare_datasets`.
-    # ^ See: https://github.com/lincc-frameworks/hyrax/issues/419
-
-    @staticmethod
-    def validate_request(data_request: dict):
-        """Convenience method to ensure that each requested dataset exists and that
-        each field in each dataset has a `get_<field_name>` method."""
-        problem_count = 0
-        for friendly_name, dataset_parameters in data_request.items():
-            dataset_class = dataset_parameters.get("dataset_class")
-            if not dataset_class:
-                logger.error(f"Model input for '{friendly_name}' does not specify a 'dataset_class'.")
-                problem_count += 1
-                continue
-            if dataset_class not in DATA_SET_REGISTRY:
-                logger.error(
-                    f"Unable to locate dataset, '{dataset_class}' in the registered datasets:"
-                    f" {list(DATA_SET_REGISTRY.keys())}."
-                )
-                problem_count += 1
-                continue
-            if DATA_SET_REGISTRY[dataset_class].is_iterable():
-                logger.error(
-                    f"Dataset '{dataset_class}' is an iterable-style dataset. "
-                    "This is not supported in the current implementation of DataProvider. "
-                    "Hyrax DataProvider only supports map-style datasets at this time. "
-                    "You should instantiate an iterable-style dataset class directly."
-                )
-                problem_count += 1
-
-        if problem_count > 0:
-            logger.error(f"Finished validating request. Problems found: {problem_count}")
-            raise RuntimeError("Data request validation failed. See logs for details.")
-
     def prepare_datasets(self):
         """Instantiate each of the requested datasets based on the ``model_inputs``
         configuration dictionary. Store the prepared instances in the
@@ -216,11 +178,14 @@ class DataProvider:
         if len(self.data_request) == 0:
             raise RuntimeError("No datasets were requested in `model_inputs`.")
 
-        # Note: We can be less strict about checking for existence of keys here
-        # because we have already validated the ``model_inputs`` in
-        # `self.validate_request()`.
         for friendly_name, dataset_definition in self.data_request.items():
             dataset_class = dataset_definition.get("dataset_class")
+            if not dataset_class:
+                logger.error(f"Model input for '{friendly_name}' does not specify a 'dataset_class'.")
+                raise RuntimeError(f"Model input for '{friendly_name}' does not specify a 'dataset_class'.")
+
+            # It's ok for data_location to be None, some datasets
+            # (e.g. HyraxRandomDataset) may not require it.
             data_location = dataset_definition.get("data_location")
 
             # Create a temporary config dictionary that merges the original
@@ -228,9 +193,8 @@ class DataProvider:
             dataset_specific_config = self._apply_configurations(self.config, dataset_definition)
 
             # Instantiate the dataset class
-            dataset_instance = DATA_SET_REGISTRY[dataset_class](
-                config=dataset_specific_config, data_location=data_location
-            )
+            dataset_cls = fetch_dataset_class(dataset_class)
+            dataset_instance = dataset_cls(config=dataset_specific_config, data_location=data_location)
 
             # Store the prepared dataset instance in the `self.prepped_datasets`
             self.prepped_datasets[friendly_name] = dataset_instance

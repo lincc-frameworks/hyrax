@@ -7,7 +7,7 @@ from typing import Any, Callable, Optional, Union
 import ignite.distributed as idist
 import numpy as np
 
-from hyrax.data_sets.data_set_registry import DATA_SET_REGISTRY
+from hyrax.data_sets.data_set_registry import fetch_dataset_class
 
 with warnings.catch_warnings():
     warnings.simplefilter(action="ignore", category=DeprecationWarning)
@@ -59,7 +59,7 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
 
     is_iterable = False
     for _, dataset_definition in data_request.items():
-        if DATA_SET_REGISTRY[dataset_definition["dataset_class"]].is_iterable():
+        if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
             is_iterable = True
     return is_iterable
 
@@ -108,12 +108,8 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
         data_definition = next(iter(data_request.values()))
 
         dataset_class = data_definition.get("dataset_class", None)
-        if dataset_class is None:
-            raise RuntimeError("dataset_class must be specified in 'model_inputs'.")
-        elif dataset_class not in DATA_SET_REGISTRY:
-            raise RuntimeError(f"dataset_class {dataset_class} not found in DATA_SET_REGISTRY.")
-        else:
-            dataset_cls = DATA_SET_REGISTRY[dataset_class]
+
+        dataset_cls = fetch_dataset_class(dataset_class)
 
         data_location = data_definition.get("data_location", None)
 

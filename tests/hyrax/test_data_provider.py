@@ -82,54 +82,32 @@ def test_data_provider(data_provider):
             assert friendly_name in metadata_field
 
 
-def test_validate_request(multimodal_config):
-    """Basic test to see that validation works as expected in the base
-    case."""
-
-    c = multimodal_config
-    DataProvider.validate_request(c)
-
-
 def test_validate_request_no_dataset_class(multimodal_config, caplog):
     """Basic test to see that validation works as when no dataset class
     name is provided."""
-
+    h = Hyrax()
     c = multimodal_config
     c["random_0"].pop("dataset_class", None)
+    h.config["model_inputs"] = c
     with caplog.at_level("ERROR"):
         with pytest.raises(RuntimeError) as execinfo:
-            DataProvider.validate_request(c)
+            DataProvider(h.config)
 
-    assert "failed" in str(execinfo.value)
+    assert "does not specify a 'dataset_class'" in str(execinfo.value)
     assert "does not specify a 'dataset_class'" in caplog.text
 
 
 def test_validate_request_unknown_dataset(multimodal_config, caplog):
     """Basic test to see that validation raises correctly when a nonexistent
     dataset class name is provided."""
-
+    h = Hyrax()
     c = multimodal_config
     c["random_0"]["dataset_class"] = "NoSuchDataset"
-    with caplog.at_level("ERROR"):
-        with pytest.raises(RuntimeError) as execinfo:
-            DataProvider.validate_request(c)
+    h.config["model_inputs"] = c
+    with pytest.raises(ValueError) as execinfo:
+        DataProvider(h.config)
 
-    assert "failed" in str(execinfo.value)
-    assert "Unable to locate dataset" in caplog.text
-
-
-def test_validate_request_iterable_dataset(multimodal_config, caplog):
-    """Basic test to see that validation works correctly when an iterable dataset
-    is requested"""
-
-    c = multimodal_config
-    c["random_0"]["dataset_class"] = "HyraxRandomIterableDataset"
-    with caplog.at_level("ERROR"):
-        with pytest.raises(RuntimeError) as execinfo:
-            DataProvider.validate_request(c)
-
-    assert "failed" in str(execinfo.value)
-    assert "is an iterable-style dataset" in caplog.text
+    assert "not found in registry" in str(execinfo.value)
 
 
 def test_validate_request_bad_field(multimodal_config, caplog):
