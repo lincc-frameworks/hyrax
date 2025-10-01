@@ -63,7 +63,7 @@ examples = [
 ]
 
 dev = [
-    "asv==0.6.4", # Used to compute performance benchmarks
+    "asv==0.6.5", # Used to compute performance benchmarks
     "jupyter", # Clears output from Jupyter notebooks
     "matplotlib", # For example notebooks
     "pre-commit", # Used to run checks before finalizing a git commit
