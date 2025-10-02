@@ -217,8 +217,14 @@ class ConfigManager:
             self.user_specific_config
         )
 
-        self.overall_default_config = TOMLDocument()
-        self._merge_defaults()
+        # 1) merge all the external library config dictionaries together
+        self.external_default_config = self.merge_external_default_configs(self.external_library_config_paths)
+        # 2) merge the external library configs on top of the hyrax defaults
+        #! ? Should we just create the hyrax_default_config inside this staticmethod?
+        self.overall_default_config = self.merge_default_configs(
+            self.hyrax_default_config, self.external_default_config
+        )
+        # 3) merge the user config on top of the overall defaults
         self.config = self.merge_configs(self.overall_default_config, self.user_specific_config)
 
         ConfigManager._resolve_config_paths(self.config)
@@ -292,32 +298,63 @@ class ConfigManager:
 
         return default_config_paths
 
-    def _merge_defaults(self):
-        """Merge the default configurations from the hyrax and external libraries."""
+    @staticmethod
+    def merge_external_default_configs(external_default_config_paths):
+        """Merge the default configurations from external libraries into the overall
+        default configuration.
 
+        Parameters
+        ----------
+        external_default_config_paths : set
+            A set containing the default configuration Paths for the external
+            libraries that are requested in the users configuration file.
+
+        Returns
+        -------
+        dict
+            The merged overall default configuration including the external library defaults.
+        """
+        overall_default_config = TOMLDocument()
         # Merge all external library default configurations first
-        for path in self.external_library_config_paths:
-            external_library_config = self.read_runtime_config(path)
-            self.overall_default_config = self.merge_configs(
-                self.overall_default_config, external_library_config
+        for path in external_default_config_paths:
+            external_library_config = ConfigManager.read_runtime_config(path)
+            overall_default_config = ConfigManager.merge_configs(
+                overall_default_config, external_library_config
             )
 
-        # Merge the external library default configurations with the hyrax default configuration
-        self.overall_default_config = self.merge_configs(
-            self.hyrax_default_config, self.overall_default_config
-        )
+        return overall_default_config
 
     @staticmethod
-    def merge_configs(default_config: dict, overriding_config: dict) -> dict:
+    def merge_default_configs(hyrax_defaults, external_defaults):
+        """Merge the default configurations of external libraries on top of the
+        Hyrax default configuration.
+
+        Parameters
+        ----------
+        hyrax_defaults : dict
+            The default configuration from hyrax.
+        external_defaults : dict
+            The default configuration from external libraries.
+
+        Returns
+        -------
+        dict
+            The merged overall default configuration including the external library defaults.
+        """
+        return ConfigManager.merge_configs(hyrax_defaults, external_defaults)
+
+    @staticmethod
+    def merge_configs(base_config: dict, overriding_config: dict) -> dict:
         """Merge two ConfigDicts with the overriding_config values overriding
         the default_config values.
 
         Parameters
         ----------
-        default_config : dict
-            The default configuration.
+        base_config : dict
+            The base configuration with keys that may be overridden by the
+            overriding_config.
         overriding_config : dict
-            The new configuration values to be merged into default_config.
+            The new configuration values that will override the values in base_config.
 
         Returns
         -------
@@ -325,10 +362,10 @@ class ConfigManager:
             The merged configuration.
         """
 
-        final_config = default_config.copy()
+        final_config = base_config.copy()
         for k, v in overriding_config.items():
             if k in final_config and isinstance(final_config[k], dict) and isinstance(v, dict):
-                final_config[k] = ConfigManager.merge_configs(default_config[k], v)
+                final_config[k] = ConfigManager.merge_configs(base_config[k], v)
             else:
                 final_config[k] = v
 
