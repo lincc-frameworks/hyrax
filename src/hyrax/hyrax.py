@@ -94,6 +94,27 @@ class Hyrax:
 
         self.logger.debug(f"Runtime Config read from: {ConfigManager.resolve_runtime_config(config_file)}")
 
+    def set_config(self, key: str, value):
+        """
+        Set a config value at runtime. This modifies the in-memory config object.
+        Once the configuration is updated, the entire config is re-rendered to
+        ensure that any requested external library default configs are incorporated.
+
+        Would be used like:
+        hyrax.set_config("model.name", "external_hyrax_example.example_model.ExampleModel")
+        hyrax.set_config("train.epochs", 42)
+
+        Parameters
+        ----------
+        key : str
+            The dotted key to set, e.g. "model.name"
+
+        value : Any
+            The value to set the key to.
+        """
+        self.config_manager.set_config(key, value)  # type: ignore[arg-type]
+        self.config = self.config_manager.config
+
     def _initialize_log_handlers(self):
         """Private initialization helper, Adds handlers and level setting to the global self.logger object"""
 
