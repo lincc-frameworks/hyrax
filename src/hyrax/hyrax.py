@@ -110,6 +110,7 @@ class Hyrax:
 
         Examples
         --------
+        >>> from hyrax import Hyrax
         >>> h = Hyrax()
         >>> h.set_config("model.name", "external_hyrax_example.example_model.ExampleModel")
         >>> h.set_config("train.epochs", 42)

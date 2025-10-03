@@ -258,12 +258,6 @@ class ConfigManager:
 
         value : Any
             The value to set the key to.
-
-        Examples
-        --------
-        >>> h = Hyrax()
-        >>> h.set_config("model.name", "external_hyrax_example.example_model.ExampleModel")
-        >>> h.set_config("train.epochs", 42)
         """
         keys = key.split(".")
         d = self.config
