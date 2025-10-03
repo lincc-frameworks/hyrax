@@ -100,6 +100,10 @@ class Hyrax:
         Once the configuration is updated, the entire config is re-rendered to
         ensure that any requested external library default configs are incorporated.
 
+        Would be used like:
+        hyrax.set_config("model.name", "external_hyrax_example.example_model.ExampleModel")
+        hyrax.set_config("train.epochs", 42)
+
         Parameters
         ----------
         key : str
@@ -107,13 +111,6 @@ class Hyrax:
 
         value : Any
             The value to set the key to.
-
-        Examples
-        --------
-        >>> from hyrax import Hyrax
-        >>> h = Hyrax()
-        >>> h.set_config("model.name", "external_hyrax_example.example_model.ExampleModel")
-        >>> h.set_config("train.epochs", 42)
         """
         self.config_manager.set_config(key, value)  # type: ignore[arg-type]
         self.config = self.config_manager.config
