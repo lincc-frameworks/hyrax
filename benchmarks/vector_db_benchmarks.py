@@ -27,8 +27,8 @@ class VectorDBInsertBenchmarks:
         self.h.config["model_inputs"] = {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
-                "data_location": str(self.input_dir),
                 "fields": ["image", "label", "object_id"],
+                "primary_id_field": "object_id",
             }
         }
         self.h.config["model"]["name"] = "HyraxLoopback"
@@ -92,8 +92,8 @@ class VectorDBSearchBenchmarks:
         self.h.config["model_inputs"] = {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
-                "data_location": str(self.input_dir),
                 "fields": ["image", "label", "object_id"],
+                "primary_id_field": "object_id",
             }
         }
         self.h.config["data_loader"]["batch_size"] = 4096
