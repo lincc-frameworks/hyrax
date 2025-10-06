@@ -14,6 +14,9 @@ from tomlkit.toml_document import TOMLDocument
 
 DEFAULT_CONFIG_FILEPATH = Path(__file__).parent.resolve() / "hyrax_default_config.toml"
 DEFAULT_USER_CONFIG_FILEPATH = Path.cwd() / "hyrax_config.toml"
+# There are only a couple of configuration keys where we would expect to find an
+# external library string, so we specify those here.
+KEYS_WITH_EXTERNAL_LIBS = ["name", "dataset_class"]
 
 logger = logging.getLogger(__name__)
 
@@ -266,6 +269,7 @@ class ConfigManager:
         d[keys[-1]] = value
 
         self.config = self._render_config(self.config, self.original_config)
+        self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
     def read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:
@@ -310,7 +314,7 @@ class ConfigManager:
             if isinstance(value, dict):
                 default_config_paths |= ConfigManager._find_external_library_default_config_paths(value)
             else:
-                if (key == "name" or key == "dataset_class") and "." in value:
+                if key in KEYS_WITH_EXTERNAL_LIBS and "." in value:
                     external_library = value.split(".")[0]
                     if importlib_util.find_spec(external_library) is not None:
                         try:
