@@ -24,7 +24,13 @@ class VectorDBInsertBenchmarks:
 
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
-        self.h.config["data_set"]["name"] = "HyraxRandomDataset"
+        self.h.config["model_inputs"] = {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(self.input_dir),
+                "fields": ["image", "label", "object_id"],
+            }
+        }
         self.h.config["model"]["name"] = "HyraxLoopback"
 
         # Default inference batch size is 512, so this should result in 4 batch files
@@ -83,7 +89,13 @@ class VectorDBSearchBenchmarks:
 
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
-        self.h.config["data_set"]["name"] = "HyraxRandomDataset"
+        self.h.config["model_inputs"] = {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(self.input_dir),
+                "fields": ["image", "label", "object_id"],
+            }
+        }
         self.h.config["data_loader"]["batch_size"] = 4096
         self.h.config["model"]["name"] = "HyraxLoopback"
 
@@ -102,7 +114,7 @@ class VectorDBSearchBenchmarks:
 
         # Get the list of dataset ids
         self.ds = self.h.prepare()
-        self.data_sample = self.ds[4001]["data"]["image"].numpy()
+        self.data_sample = self.ds[0]["data"]["image"]
 
         self.h.config["vector_db"]["name"] = vector_db_implementation
         self.h.config["vector_db"]["chromadb"]["shard_size_limit"] = shard_size_limit
