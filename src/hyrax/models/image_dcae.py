@@ -30,6 +30,8 @@ class ImageDCAE(nn.Module):
     def __init__(self, config, data_sample=None):
         super().__init__()
 
+        if data_sample is None:
+            raise ValueError("data_sample must be provided to ImageDCAE for dynamic sizing.")
         # Store input shape for dynamic sizing
         self.input_shape = data_sample.shape
         self.config = config
