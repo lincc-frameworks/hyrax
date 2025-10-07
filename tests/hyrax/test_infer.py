@@ -39,11 +39,10 @@ def test_infer_order(loopback_hyrax, split, shuffle):
 
 def test_load_model_weights_updates_config_when_auto_detected(tmp_path):
     """Test that config is updated when model_weights_file is auto-detected from train directory"""
-    from hyrax.config_utils import ConfigDict
     from hyrax.verbs.infer import Infer
 
     # Create a mock config with no model_weights_file specified
-    config = ConfigDict()
+    config = {}
     config["infer"] = {"model_weights_file": None}
     config["train"] = {"weights_filename": "model_weights.pth"}
     config["general"] = {"results_dir": str(tmp_path)}
@@ -72,7 +71,6 @@ def test_load_model_weights_preserves_explicit_config():
     """Test that config is still updated when model_weights_file is explicitly provided"""
     from tempfile import NamedTemporaryFile
 
-    from hyrax.config_utils import ConfigDict
     from hyrax.verbs.infer import Infer
 
     # Create a temporary weights file
@@ -82,7 +80,7 @@ def test_load_model_weights_preserves_explicit_config():
 
     try:
         # Create a mock config with explicit model_weights_file
-        config = ConfigDict()
+        config = {}
         config["infer"] = {"model_weights_file": str(weights_path)}
         config["train"] = {"weights_filename": "model_weights.pth"}
 

@@ -12,8 +12,6 @@ from typing import Optional
 import numpy as np
 from schwimmbad import MultiPool
 
-from hyrax.config_utils import ConfigDict
-
 from .fits_image_dataset import FitsImageDataSet, files_dict
 
 logger = logging.getLogger(__name__)
@@ -25,7 +23,7 @@ class HSCDataSet(FitsImageDataSet):
 
     _called_from_test = False
 
-    def __init__(self, config: ConfigDict, data_location=None):
+    def __init__(self, config: dict, data_location=None):
         """
         .. py:method:: __init__
 

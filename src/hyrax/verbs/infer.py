@@ -30,7 +30,7 @@ class Infer(Verb):
 
         Parameters
         ----------
-        config : ConfigDict
+        config : dict
             The parsed config file as a nested dict
         """
         import inspect
@@ -158,7 +158,7 @@ class Infer(Verb):
 
         Parameters
         ----------
-        config : ConfigDict
+        config : dict
             Full runtime configuration
         model : nn.Module
             The model class to load weights into

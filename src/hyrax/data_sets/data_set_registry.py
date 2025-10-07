@@ -6,7 +6,6 @@ from typing import Any, Callable
 
 import numpy.typing as npt
 
-from hyrax.config_utils import ConfigDict
 from hyrax.plugin_utils import get_or_load_class, update_registry
 
 logger = logging.getLogger(__name__)
@@ -48,7 +47,7 @@ class HyraxDataset:
 
     """
 
-    def __init__(self, config: ConfigDict, metadata_table=None):
+    def __init__(self, config: dict, metadata_table=None):
         """
         .. py:method:: __init__
 
@@ -84,7 +83,7 @@ class HyraxDataset:
 
         Parameters
         ----------
-        config : ConfigDict, Optional
+        config : dict, Optional
             The runtime configuration for hyrax
         metadata_table : Optional[Table], optional
             An Astropy Table with
