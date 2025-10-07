@@ -1,4 +1,5 @@
 import base64
+import copy
 import datetime
 import importlib
 import logging
@@ -13,6 +14,9 @@ from tomlkit.toml_document import TOMLDocument
 
 DEFAULT_CONFIG_FILEPATH = Path(__file__).parent.resolve() / "hyrax_default_config.toml"
 DEFAULT_USER_CONFIG_FILEPATH = Path.cwd() / "hyrax_config.toml"
+# There are only a couple of configuration keys where we would expect to find an
+# external library string, so we specify those here.
+KEYS_WITH_EXTERNAL_LIBS = ["name", "dataset_class"]
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +32,7 @@ class ConfigDict(dict):
     # mutate) before we pass control to possibly external module code that is relying on the dictionary
     # to be static throughout the run.
     #
-    # Note that we currently modify configdict objects in HSCDataSet as a matter of course
+    # Note that we currently modify ConfigDict objects in HSCDataSet as a matter of course
     # This is to serialize the config used to create them, so it can be kept around in InferenceDatasets
     # and re-constituted for visualization purposes
 
@@ -36,7 +40,6 @@ class ConfigDict(dict):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-
         # Replace all dictionary keys with values recursively.
         for key, val in self.items():
             if isinstance(val, dict) and not isinstance(val, ConfigDict):
@@ -189,7 +192,7 @@ class ConfigManager:
     _called_from_test = False
 
     """
-    Hardcoded set of config keys which definitionally contain paths, and we resolve to global paths
+    Hardcoded set of config keys which we know to contain paths, and we resolve to global paths
     during initialization in ConfigManager._resolve_config_paths().
     """
     PATH_CONFIG_KEYS = [
@@ -213,17 +216,60 @@ class ConfigManager:
         else:
             self.user_specific_config = ConfigManager.read_runtime_config(self.runtime_config_filepath)
 
-        self.external_library_config_paths = ConfigManager._find_external_library_default_config_paths(
-            self.user_specific_config
+        self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
+        self.original_config = copy.deepcopy(self.config)
+
+    @staticmethod
+    def _render_config(
+        user_specific_config: TOMLDocument = None,
+        hyrax_default_config: TOMLDocument = None,
+    ):
+        user_specific_config = user_specific_config if user_specific_config is not None else TOMLDocument()
+        hyrax_default_config = hyrax_default_config if hyrax_default_config is not None else TOMLDocument()
+
+        external_library_config_paths = set()
+        external_library_config_paths |= ConfigManager._find_external_library_default_config_paths(
+            user_specific_config
         )
 
-        self.overall_default_config = TOMLDocument()
-        self._merge_defaults()
-        self.config = self.merge_configs(self.overall_default_config, self.user_specific_config)
+        # 1) merge all the external library config dictionaries together
+        external_default_config = ConfigManager.merge_external_default_configs(external_library_config_paths)
 
-        ConfigManager._resolve_config_paths(self.config)
-        if not self.config["general"]["dev_mode"]:
-            ConfigManager._validate_runtime_config(self.config, self.overall_default_config)
+        # 2) merge the external library configs on top of the hyrax defaults
+        overall_default_config = ConfigManager.merge_default_configs(
+            hyrax_default_config, external_default_config
+        )
+
+        # 3) merge the user config on top of the overall defaults
+        config = ConfigManager.merge_configs(overall_default_config, user_specific_config)
+
+        ConfigManager._resolve_config_paths(config)
+        if not config["general"]["dev_mode"]:
+            ConfigManager._validate_runtime_config(config, overall_default_config)
+
+        return config
+
+    def set_config(self, key: str, value: Any):
+        """Set a config value at runtime. This modifies the in-memory config object.
+        Once the configuration is updated, the entire config is re-rendered to
+        ensure that any requested external library default configs are incorporated.
+
+        Parameters
+        ----------
+        key : str
+            The dotted key to set, e.g. "model.name"
+
+        value : Any
+            The value to set the key to.
+        """
+        keys = key.split(".")
+        d = self.config
+        for k in keys[:-1]:
+            d = d[k]
+        d[keys[-1]] = value
+
+        self.config = self._render_config(self.config, self.original_config)
+        self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
     def read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:
@@ -268,7 +314,7 @@ class ConfigManager:
             if isinstance(value, dict):
                 default_config_paths |= ConfigManager._find_external_library_default_config_paths(value)
             else:
-                if key == "name" and "." in value:
+                if key in KEYS_WITH_EXTERNAL_LIBS and "." in value:
                     external_library = value.split(".")[0]
                     if importlib_util.find_spec(external_library) is not None:
                         try:
@@ -279,7 +325,7 @@ class ConfigManager:
                             if lib_default_config_path.exists():
                                 default_config_paths.add(lib_default_config_path)
                             else:
-                                logger.warning(f"Cannot find default_config.toml for {external_library}.")
+                                logger.warning(f"Cannot find default_config.toml for {value}.")
                         except ModuleNotFoundError:
                             logger.error(
                                 f"External library {lib} not found. Please install it before running."
@@ -292,32 +338,64 @@ class ConfigManager:
 
         return default_config_paths
 
-    def _merge_defaults(self):
-        """Merge the default configurations from the hyrax and external libraries."""
+    @staticmethod
+    def merge_external_default_configs(external_default_config_paths):
+        """Merge the default configurations from external libraries into the overall
+        default configuration.
 
+        Parameters
+        ----------
+        external_default_config_paths : set
+            A set containing the default configuration Paths for the external
+            libraries that are requested in the users configuration file.
+
+        Returns
+        -------
+        dict
+            The merged overall default configuration including the external library defaults.
+        """
+        overall_default_config = TOMLDocument()
         # Merge all external library default configurations first
-        for path in self.external_library_config_paths:
-            external_library_config = self.read_runtime_config(path)
-            self.overall_default_config = self.merge_configs(
-                self.overall_default_config, external_library_config
+        for path in external_default_config_paths:
+            logger.info(f"Merging external default config from {path}")
+            external_library_config = ConfigManager.read_runtime_config(path)
+            overall_default_config = ConfigManager.merge_configs(
+                overall_default_config, external_library_config
             )
 
-        # Merge the external library default configurations with the hyrax default configuration
-        self.overall_default_config = self.merge_configs(
-            self.hyrax_default_config, self.overall_default_config
-        )
+        return overall_default_config
 
     @staticmethod
-    def merge_configs(default_config: dict, overriding_config: dict) -> dict:
+    def merge_default_configs(hyrax_defaults, external_defaults):
+        """Merge the default configurations of external libraries on top of the
+        Hyrax default configuration.
+
+        Parameters
+        ----------
+        hyrax_defaults : dict
+            The default configuration from hyrax.
+        external_defaults : dict
+            The default configuration from external libraries.
+
+        Returns
+        -------
+        dict
+            The merged overall default configuration including the external library defaults.
+        """
+        return ConfigManager.merge_configs(hyrax_defaults, external_defaults)
+
+    @staticmethod
+    def merge_configs(base_config: dict, overriding_config: dict) -> dict:
         """Merge two ConfigDicts with the overriding_config values overriding
         the default_config values.
 
         Parameters
         ----------
-        default_config : dict
-            The default configuration.
+        base_config : dict
+            The base configuration with keys that may be overridden by the
+            overriding_config.
         overriding_config : dict
-            The new configuration values to be merged into default_config.
+            The new configuration values that will override the values in base_config.
 
         Returns
         -------
@@ -325,10 +403,10 @@ class ConfigManager:
             The merged configuration.
         """
 
-        final_config = default_config.copy()
+        final_config = base_config.copy()
         for k, v in overriding_config.items():
             if k in final_config and isinstance(final_config[k], dict) and isinstance(v, dict):
-                final_config[k] = ConfigManager.merge_configs(default_config[k], v)
+                final_config[k] = ConfigManager.merge_configs(base_config[k], v)
             else:
                 final_config[k] = v
 
@@ -357,22 +435,22 @@ class ConfigManager:
         """
         for key in runtime_config:
             if key not in default_config:
-                msg = f"Runtime config contains key or section {key} which has no default defined. "
+                msg = f"Runtime config contains key or section '{key}' which has no default defined. "
                 msg += f"All configuration keys and sections must be defined in {DEFAULT_CONFIG_FILEPATH}"
-                raise RuntimeError(msg)
+                logger.warning(msg)
+                continue
 
             if isinstance(runtime_config[key], dict):
                 if not isinstance(default_config[key], dict):
-                    msg = (
-                        f"Runtime config contains a section named {key} which is the name of a value in the "
-                    )
-                    msg += "default config. Please choose another name for this section."
-                    raise RuntimeError(msg)
+                    msg = f"Runtime config contains a section named '{key}' which is the name of a "
+                    msg += "value in the default config. Please choose another name for this section."
+                    logger.warning(msg)
+                    continue
                 ConfigManager._validate_runtime_config(runtime_config[key], default_config[key])
 
     @staticmethod
     def _resolve_config_paths(runtime_config: dict) -> None:
-        """Convert all paths in a runntime config to global paths in the current environment.
+        """Convert all paths in a runtime config to global paths in the current environment.
         Uses the hardcoded list of paths in ConfigManager.PATH_CONFIG_KEYS
 
         This mutates the config dictionary passed.
