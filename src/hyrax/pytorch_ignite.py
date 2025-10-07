@@ -144,9 +144,12 @@ def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    model = model_cls(config=config, data_sample=dataset.sample_data())  # type: ignore[attr-defined]
 
-    return model
+    # Pass a single sample of data through the model's to_tensor function
+    data_sample = model_cls.to_tensor(dataset.sample_data())
+
+    # Provide the data sample for runtime modifications to the model architecture
+    return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
 
 
 def dist_data_loader(
