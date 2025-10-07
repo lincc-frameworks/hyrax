@@ -67,7 +67,7 @@ class HyraxCSVDataset(HyraxDataset):
         sample = {"data": {}}
 
         for col in self.column_names:
-            sample["data"][col] = self.mem_mapped_csv[0][col]
+            sample["data"][col] = self.mem_mapped_csv.iloc[0][col]
 
         return sample
 
