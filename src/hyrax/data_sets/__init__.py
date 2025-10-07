@@ -71,6 +71,7 @@ from .random.hyrax_random_dataset import (
 from .inference_dataset import InferenceDataSet
 from .data_set_registry import HyraxDataset
 from .hyrax_cifar_data_set import HyraxCifarBase
+from .hyrax_csv_dataset import HyraxCSVDataset
 
 __all__ = [
     "HyraxCifarDataSet",
@@ -85,4 +86,5 @@ __all__ = [
     "HyraxRandomDataset",
     "HyraxRandomIterableDataset",
     "HyraxRandomDatasetBase",
+    "HyraxCSVDataset",
 ]
