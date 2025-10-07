@@ -13,7 +13,7 @@ class HyraxCSVDataset(HyraxDataset):
     It dynamically creates getter methods for each column in the CSV file,
     allowing users to request data from specific columns.
 
-    Note: Column names found in the CS file are used to create the getter methods.
+    Note: Column names found in the CSV file are used to create the getter methods.
     If a column name contains characters that are invalid for method names,
     those characters are replaced with underscores.
 
