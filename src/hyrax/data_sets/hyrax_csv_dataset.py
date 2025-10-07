@@ -38,8 +38,6 @@ class HyraxCSVDataset(HyraxDataset):
         self.mem_mapped_csv = pd.read_csv(data_location, memory_map=True, header=0)
 
         # Automatically generate all the getter methods based on the column names.
-        # TODO: It would be a good idea to clean the column names to remove invalid
-        # characters for method names. i.e. "-", " ", ".", etc.
         def _make_getter(column):
             def getter(self, idx, _col=column):
                 ret_val = self.mem_mapped_csv[_col][idx]
