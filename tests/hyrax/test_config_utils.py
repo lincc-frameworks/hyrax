@@ -89,8 +89,8 @@ key2 = "value2" # unlikely to modify
     assert runtime_config.as_string() == string_representation
 
 
-def test_validate_runtime_config():
-    """Test that the validate_runtime_config function will raise a RuntimeError
+def test_validate_runtime_config(caplog):
+    """Test that the validate_runtime_config function will log a warning
     if a user key is not defined in the default configuration dictionary.
     """
 
@@ -100,14 +100,14 @@ def test_validate_runtime_config():
     user = {"general": {"dev_mode": False, "foo": "bar"}}
     user_config = ConfigDict(user)
 
-    with pytest.raises(RuntimeError) as excinfo:
+    with caplog.at_level(logging.WARNING):
         ConfigManager._validate_runtime_config(user_config, default_config)
 
-    assert "Runtime config contains key" in str(excinfo.value)
+    assert "Runtime config contains key" in caplog.text
 
 
-def test_validate_runtime_config_section():
-    """Test that the validate_runtime_config function will raise a RuntimeError
+def test_validate_runtime_config_section(caplog):
+    """Test that the validate_runtime_config function will log a warning
     if a user section name conflicts with a default configuration key.
     """
 
@@ -117,10 +117,10 @@ def test_validate_runtime_config_section():
     user = {"general": {"dev_mode": {"b": 2}}}
     user_config = ConfigDict(user)
 
-    with pytest.raises(RuntimeError) as excinfo:
+    with caplog.at_level(logging.WARNING):
         ConfigManager._validate_runtime_config(user_config, default_config)
 
-    assert "Runtime config contains a section named dev_mode" in str(excinfo.value)
+    assert "Runtime config contains a section named 'dev_mode'" in caplog.text
 
 
 def test_find_external_library_config_path_no_module():

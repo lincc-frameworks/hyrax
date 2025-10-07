@@ -1,3 +1,4 @@
+import copy
 import logging
 from typing import Any
 
@@ -29,7 +30,7 @@ def generate_data_request_from_config(config):
     """
 
     if "model_inputs" in config:
-        data_request = config["model_inputs"]
+        data_request = copy.deepcopy(config["model_inputs"])
     else:
         data_request = {
             "data": {
