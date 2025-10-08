@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
 
+from colorama import Back, Fore, Style
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -57,7 +59,9 @@ class Train(Verb):
 
         # Instantiate the model and dataset
         dataset = setup_dataset(config, tensorboardx_logger)
+        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}")
         model = setup_model(config, dataset)
+        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL}\n{model}")
 
         # Create a data loader for the training set (and validation split if configured)
         data_loaders = dist_data_loader(dataset, config, ["train", "validate"])

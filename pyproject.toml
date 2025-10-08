@@ -49,6 +49,7 @@ dependencies = [
     "psutil", # Used for memory monitoring
     "tqdm", # Used to show progress bars
     "qdrant-client", # Vector database for similarity search
+    "colorama", # Used to color terminal output
 ]
 
 [project.scripts]
