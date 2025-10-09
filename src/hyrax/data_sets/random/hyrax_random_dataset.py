@@ -46,6 +46,8 @@ class HyraxRandomDatasetBase:
         - ``seed``: The random seed to use for reproducibility.
         - ``provided_labels``: A list of possible labels to randomly select from.
           If this is provided, the dataset will randomly select a label for each data sample.
+        - ``metadata_fields``: A list of metadata field names. Used to create a metadata
+            table with columns corresponding to each field name. All data is numeric.
         - ``number_invalid_values``: The number of invalid values to insert into the data.
         - ``invalid_value_type``: The type of invalid value to insert into the data.
           Valid values are "nan", "inf", "-inf", "none", or a float value.
@@ -119,14 +121,15 @@ class HyraxRandomDatasetBase:
         if self.provided_labels:
             self.labels = rng.choice(self.provided_labels, size=data_size)
 
+        meta_fields = config["data_set"]["HyraxRandomDataset"]["metadata_fields"]
+
+        meta = {"object_id": [str(id) for id in self.id_list]}
+
+        for i, field in enumerate(meta_fields):
+            meta[field] = np.array(list(range(data_size, 0, -1))) / (i + 2)
+
         # Create a metadata_table that is used when visualizing data
-        metadata_table = Table(
-            {
-                "object_id": np.array([str(id) for id in self.id_list]),
-                "meta_field_1": np.array(list(range(data_size, 0, -1))) / 2,
-                "meta_field_2": np.array(list(range(data_size, 0, -1))) / 3,
-            },
-        )
+        metadata_table = Table(meta)
 
         super().__init__(config, metadata_table)
 

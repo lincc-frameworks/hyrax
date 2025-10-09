@@ -266,6 +266,9 @@ seed = 42
 # If set to false, no labels will be included with the data.
 provided_labels = [0, 1, 2]
 
+# List of metadata field names. These will be populated with dummy data.
+metadata_fields = ["meta_field_1", "meta_field_2"]
+
 # Set this to a positive integer to randomly replace some values with an "invalid" value.
 number_invalid_values = 0
 
