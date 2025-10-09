@@ -151,55 +151,57 @@ def test_nan_handling_tuple_with_three_elements(loopback_hyrax_nan):
     """Test that tuples with more than 2 elements are handled correctly.
     This simulates the AppleCider use case where to_tensor returns (metadata, image, labels)."""
     h, dataset = loopback_hyrax_nan
-    
-    # Create a test tuple with 3 elements: metadata (non-tensor), image (tensor with NaNs), labels (non-tensor)
+
+    # Create a test tuple with 3 elements: metadata (non-tensor),
+    # image (tensor with NaNs), labels (non-tensor)
     metadata = {"id": 123, "timestamp": "2024-01-01"}
-    image_with_nans = torch.tensor([[1.0, float('nan'), 3.0], [4.0, 5.0, float('nan')]])
+    image_with_nans = torch.tensor([[1.0, float("nan"), 3.0], [4.0, 5.0, float("nan")]])
     labels = "test_label"
-    
+
     test_tuple = (metadata, image_with_nans, labels)
-    
+
     # Test with nan_mode = 'zero'
     h.config["data_set"]["nan_mode"] = "zero"
     output = _handle_nans(test_tuple, h.config)
-    
+
     # Verify we get back a tuple with 3 elements
     assert isinstance(output, tuple)
     assert len(output) == 3
-    
+
     # Verify metadata is unchanged
     assert output[0] == metadata
-    
+
     # Verify image had NaNs replaced with zeros
     assert isinstance(output[1], torch.Tensor)
     assert not torch.any(torch.isnan(output[1]))
     assert torch.all(output[1] == torch.tensor([[1.0, 0.0, 3.0], [4.0, 5.0, 0.0]]))
-    
+
     # Verify labels are unchanged
     assert output[2] == labels
 
 
 def test_nan_handling_tuple_multiple_tensors(loopback_hyrax_nan):
-    """Test that when a tuple contains multiple tensors, NaN handling is applied to all of them."""
+    """Test that when a tuple contains multiple tensors, NaN handling is applied
+    to all of them."""
     h, dataset = loopback_hyrax_nan
-    
+
     # Create a test tuple with multiple tensors
-    tensor1 = torch.tensor([1.0, float('nan'), 3.0])
-    tensor2 = torch.tensor([4.0, 5.0, float('nan')])
+    tensor1 = torch.tensor([1.0, float("nan"), 3.0])
+    tensor2 = torch.tensor([4.0, 5.0, float("nan")])
     label = "label"
-    
+
     test_tuple = (tensor1, tensor2, label)
-    
+
     # Test with nan_mode = 'zero'
     h.config["data_set"]["nan_mode"] = "zero"
     output = _handle_nans(test_tuple, h.config)
-    
+
     # Verify all tensors had NaN handling applied
     assert len(output) == 3
     assert not torch.any(torch.isnan(output[0]))
     assert not torch.any(torch.isnan(output[1]))
     assert output[2] == label
-    
+
     # Verify the values are correct
     assert torch.all(output[0] == torch.tensor([1.0, 0.0, 3.0]))
     assert torch.all(output[1] == torch.tensor([4.0, 5.0, 0.0]))
@@ -208,20 +210,20 @@ def test_nan_handling_tuple_multiple_tensors(loopback_hyrax_nan):
 def test_nan_handling_tuple_preserves_order(loopback_hyrax_nan):
     """Test that the order of elements in the tuple is preserved."""
     h, dataset = loopback_hyrax_nan
-    
+
     # Create a test tuple with mixed types in specific order
     elem1 = "first"
-    elem2 = torch.tensor([1.0, float('nan')])
+    elem2 = torch.tensor([1.0, float("nan")])
     elem3 = {"key": "value"}
-    elem4 = torch.tensor([float('nan'), 2.0])
+    elem4 = torch.tensor([float("nan"), 2.0])
     elem5 = 42
-    
+
     test_tuple = (elem1, elem2, elem3, elem4, elem5)
-    
+
     # Test with nan_mode = 'zero'
     h.config["data_set"]["nan_mode"] = "zero"
     output = _handle_nans(test_tuple, h.config)
-    
+
     # Verify length and order
     assert len(output) == 5
     assert output[0] == elem1
