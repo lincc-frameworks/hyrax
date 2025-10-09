@@ -123,7 +123,7 @@ class HyraxRandomDatasetBase:
 
         meta_fields = config["data_set"]["HyraxRandomDataset"]["metadata_fields"]
 
-        meta = {"object_id": np.array([str(id) for id in self.id_list])}
+        meta = {"object_id": [str(id) for id in self.id_list]}
 
         for i, field in enumerate(meta_fields):
             meta[field] = np.array(list(range(data_size, 0, -1))) / (i + 2)
