@@ -347,13 +347,15 @@ def _handle_nans_tuple(batch, config):
     # Process each element in the tuple
     handled_elements = []
     for element in batch:
-        # Only apply nan handling to tensor elements
+        # Only apply nan handling to tensor elements. For now this is fine, because
+        # all of the nan-handling logic utilizes torch functions. This is an area
+        # we will need to refactor later, when we support more than just PyTorch.
         if isinstance(element, torch.Tensor):
             handled_elements.append(_handle_nans_logic(element, config))
         else:
             # Keep non-tensor elements unchanged (e.g., labels, metadata)
             handled_elements.append(element)
-    
+
     return tuple(handled_elements)
 
 
