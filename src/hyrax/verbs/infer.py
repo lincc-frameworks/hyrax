@@ -2,6 +2,8 @@ import logging
 from pathlib import Path
 from typing import Optional, Union
 
+from colorama import Back, Fore, Style
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -61,7 +63,11 @@ class Infer(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         dataset = setup_dataset(config, tensorboardx_logger)
+        logger.info(
+            f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}\n{dataset}"
+        )
         model = setup_model(config, dataset)
+        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL}\n{model}")
         if dataset.is_map():
             logger.debug(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 
