@@ -21,62 +21,6 @@ KEYS_WITH_EXTERNAL_LIBS = ["name", "dataset_class"]
 logger = logging.getLogger(__name__)
 
 
-class ConfigDict(dict):
-    """The purpose of this class is to ensure key errors on config dictionaries return something helpful.
-    and to discourage mutation actions on config dictionaries that should not happen at runtime.
-    """
-
-    # TODO: Should there be some sort of "bake" method which occurs after config processing, and
-    # percolates down to nested ConfigDicts and prevents __setitem__ and other mutations of dictionary
-    # values? i.e. a method to make a config dictionary fully immutable (or very difficult/annoying to
-    # mutate) before we pass control to possibly external module code that is relying on the dictionary
-    # to be static throughout the run.
-    #
-    # Note that we currently modify ConfigDict objects in HSCDataSet as a matter of course
-    # This is to serialize the config used to create them, so it can be kept around in InferenceDatasets
-    # and re-constituted for visualization purposes
-
-    __slots__ = ()  # we don't need __dict__ on this object at all.
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # Replace all dictionary keys with values recursively.
-        for key, val in self.items():
-            if isinstance(val, dict) and not isinstance(val, ConfigDict):
-                self[key] = ConfigDict(val)
-
-    def __missing__(self, key):
-        msg = f"Accessed configuration key/section {key} which has not been defined. "
-        msg += f"All configuration keys and sections must be defined in {DEFAULT_CONFIG_FILEPATH}"
-        logger.fatal(msg)
-        raise RuntimeError(msg)
-
-    def get(self, key, default=None):
-        """Nonfunctional stub of dict.get() which errors always. Overriding this
-        prevents the possibility of defining default values in code that conflict
-        with default values defined in the config file."""
-        msg = f"ConfigDict.get({key},{default}) called. "
-        msg += "Please index config dictionaries with [] or __getitem__() only. "
-        msg += f"Configuration keys and sections must be defined in {DEFAULT_CONFIG_FILEPATH}"
-        logger.fatal(msg)
-        raise RuntimeError(msg)
-
-    def __delitem__(self, key):
-        raise RuntimeError("Removing keys or sections from a ConfigDict using del is not supported")
-
-    def pop(self, key, default):
-        """Nonfunctional stub of dict.pop() which errors always"""
-        raise RuntimeError("Removing keys or sections from a ConfigDict using pop() is not supported")
-
-    def popitem(self):
-        """Nonfunctional stub of dict.popitem() which errors always"""
-        raise RuntimeError("Removing keys or sections from a ConfigDict using popitem() is not supported")
-
-    def clear(self):
-        """Nonfunctional stub of dict.clear() which errors always"""
-        raise RuntimeError("Removing keys or sections from a ConfigDict using clear() is not supported")
-
-
 def config_help(config: TOMLDocument, *args):
     """
     A simple config help function. It's a bit difficult to parse through
@@ -169,15 +113,6 @@ def find_keys(config: dict[str, Any], key_name: str):
     return matching_keys
 
 
-# Here we patch the TOMLDocument functions to use the ConfigDict functions so that
-# we get the behavior that we desire - i.e. errors on missing default keys, no
-# use of config.get(..., <default>), etc.
-TOMLDocument.__missing__ = ConfigDict.__missing__  # type: ignore[attr-defined]
-TOMLDocument.get = ConfigDict.get  # type: ignore[assignment, method-assign]
-TOMLDocument.__delitem__ = ConfigDict.__delitem__  # type: ignore[assignment, method-assign]
-TOMLDocument.pop = ConfigDict.pop  # type: ignore[assignment, method-assign]
-TOMLDocument.popitem = ConfigDict.popitem  # type: ignore[assignment, method-assign]
-TOMLDocument.clear = ConfigDict.clear  # type: ignore[assignment, method-assign]
 TOMLDocument.help = config_help  # type: ignore
 
 
@@ -273,7 +208,7 @@ class ConfigManager:
 
     @staticmethod
     def read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:
-        """Read a single toml file and return a ConfigDict
+        """Read a single toml file and return a TOMLDocument
 
         Parameters
         ----------
@@ -386,8 +321,8 @@ class ConfigManager:
 
     @staticmethod
     def merge_configs(base_config: dict, overriding_config: dict) -> dict:
-        """Merge two ConfigDicts with the overriding_config values overriding
-        the default_config values.
+        """Merge two config dictionaries with the overriding_config values overriding
+        the base_config values.
 
         Parameters
         ----------
@@ -422,9 +357,9 @@ class ConfigManager:
 
         Parameters
         ----------
-        runtime_config : ConfigDict
+        runtime_config : dict
             Nested config dictionary representing the runtime config.
-        default_config : ConfigDict
+        default_config : dict
             Nested config dictionary representing the defaults
 
         Raises
@@ -529,7 +464,7 @@ class ConfigManager:
         return runtime_config_filepath
 
 
-def create_results_dir(config: ConfigDict, postfix: str) -> Path:
+def create_results_dir(config: dict, postfix: str) -> Path:
     """Creates a results directory for this run.
 
     Postfix is the verb name of the run e.g. (infer, train, etc)
@@ -541,7 +476,7 @@ def create_results_dir(config: ConfigDict, postfix: str) -> Path:
 
     Parameters
     ----------
-    config : ConfigDict
+    config : dict
         The full runtime configuration for this run
     postfix : str
         The verb name of the run.
@@ -563,7 +498,7 @@ def create_results_dir(config: ConfigDict, postfix: str) -> Path:
     return directory
 
 
-def find_most_recent_results_dir(config: ConfigDict, verb: str) -> Optional[Path]:
+def find_most_recent_results_dir(config: dict, verb: str) -> Optional[Path]:
     """Find the most recent results directory corresponding to a particular verb
     This is a best effort search in the currently configured results root.
 
@@ -594,13 +529,13 @@ def find_most_recent_results_dir(config: ConfigDict, verb: str) -> Optional[Path
     return best_path
 
 
-def log_runtime_config(runtime_config: ConfigDict, output_path: Path, file_name: str = "runtime_config.toml"):
+def log_runtime_config(runtime_config: dict, output_path: Path, file_name: str = "runtime_config.toml"):
     """Log a runtime configuration.
 
     Parameters
     ----------
-    runtime_config : ConfigDict
-        A ConfigDict object containing runtime configuration values.
+    runtime_config : dict
+        A dictionary object containing runtime configuration values.
     output_path : str
         The path to put the config file
     file_name : str, Optional
