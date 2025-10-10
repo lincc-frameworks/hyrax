@@ -23,7 +23,6 @@ from tensorboardX import SummaryWriter
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, Sampler
 
-from hyrax.config_utils import ConfigDict
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 
@@ -64,7 +63,7 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     return is_iterable
 
 
-def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
+def setup_dataset(config: dict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
     """This function creates an instance of the requested dataset specified in the
     runtime configuration. There are two modes encapsulated here:
 
@@ -75,7 +74,7 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
 
     Parameters
     ----------
-    config : ConfigDict
+    config : dict
         The runtime configuration
     tensorboardx_logger : SummaryWriter, optional
         If Tensorboard is in use, the tensorboard logger so the dataset can log things
@@ -124,12 +123,12 @@ def setup_dataset(config: ConfigDict, tensorboardx_logger: Optional[SummaryWrite
     return dataset
 
 
-def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
+def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     """Create a model object based on the configuration.
 
     Parameters
     ----------
-    config : ConfigDict
+    config : dict
         The runtime configuration
     dataset : Dataset
         The dataset object that will provide data to the model for training or
@@ -154,7 +153,7 @@ def setup_model(config: ConfigDict, dataset: Dataset) -> torch.nn.Module:
 
 def dist_data_loader(
     data_set: Dataset,
-    config: ConfigDict,
+    config: dict,
     split: Union[str, list[str], bool] = False,
 ):
     """Create Pytorch Ignite distributed data loaders
@@ -165,7 +164,7 @@ def dist_data_loader(
     ----------
     data_set : Dataset
         A Pytorch Dataset object
-    config : ConfigDict
+    config : dict
         Hyrax runtime configuration
     split : Union[str, list[str]], Optional
         The name(s) of the split we want to use from the data set.
@@ -238,7 +237,7 @@ def dist_data_loader(
     return dataloaders[split[0]] if len(split) == 1 else dataloaders
 
 
-def create_splits(data_set: Dataset, config: ConfigDict):
+def create_splits(data_set: Dataset, config: dict):
     """Returns train, test, and validation indexes constructed to be used with the passed in
     dataset. The allocation of indexes in the underlying dataset to samplers depends on
     the data_set section of the config dict.
@@ -247,7 +246,7 @@ def create_splits(data_set: Dataset, config: ConfigDict):
     ----------
     data_set : Dataset
         The data set to use
-    config : ConfigDict
+    config : dict
         Configuration that defines dataset splits
     split : str
         Name of the split to use.
@@ -345,10 +344,21 @@ def _handle_nans_tensor(batch, config):
 
 @_handle_nans.register(tuple)
 def _handle_nans_tuple(batch, config):
-    """This is the tuple-specific implementation of _handle_nans. The first element
-    of the tuple is expected to hold the data that needs nan-cleaning."""
-    nan_handled = _handle_nans_logic(batch[0], config)
-    return (nan_handled, batch[1])
+    """This is the tuple-specific implementation of _handle_nans. Each tensor element
+    of the tuple will have nan-handling applied. Non-tensor elements are returned unchanged."""
+    # Process each element in the tuple
+    handled_elements = []
+    for element in batch:
+        # Only apply nan handling to tensor elements. For now this is fine, because
+        # all of the nan-handling logic utilizes torch functions. This is an area
+        # we will need to refactor later, when we support more than just PyTorch.
+        if isinstance(element, torch.Tensor):
+            handled_elements.append(_handle_nans_logic(element, config))
+        else:
+            # Keep non-tensor elements unchanged (e.g., labels, metadata)
+            handled_elements.append(element)
+
+    return tuple(handled_elements)
 
 
 def _handle_nans_logic(batch, config):
@@ -418,7 +428,7 @@ def _create_process_func(funcname, device, model, config):
     return inner_loop
 
 
-def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, config: ConfigDict) -> Engine:
+def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, config: dict) -> Engine:
     """Unified creation of the pytorch engine object for either an evaluator or trainer.
 
     This function will automatically unwrap a distributed model to find the necessary function, and construct
@@ -434,7 +444,7 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
         The device the engine will run the model on
     model : torch.nn.Module
         The Model the engine will be using
-    config : ConfigDict
+    config : dict
         The runtime config in use
     """
     return Engine(_create_process_func(funcname, device, model, config))
@@ -462,7 +472,7 @@ def extract_model_method(model, method_name):
 
 
 def create_evaluator(
-    model: torch.nn.Module, save_function: Callable[[torch.Tensor, torch.Tensor], Any], config: ConfigDict
+    model: torch.nn.Module, save_function: Callable[[torch.Tensor, torch.Tensor], Any], config: dict
 ) -> Engine:
     """Creates an evaluator engine
     Primary purpose of this function is to attach the appropriate handlers to an evaluator engine
@@ -476,7 +486,7 @@ def create_evaluator(
         A function which will receive Engine.state.output at the end of each iteration. The intent
         is for the results of evaluation to be saved.
 
-    config : ConfigDict
+    config : dict
         The runtime config in use
 
     Returns
@@ -513,7 +523,7 @@ def create_evaluator(
 #! refactor this code to reduce duplication.
 def create_validator(
     model: torch.nn.Module,
-    config: ConfigDict,
+    config: dict,
     results_directory: Path,
     tensorboardx_logger: SummaryWriter,
     validation_data_loader: DataLoader,
@@ -526,7 +536,7 @@ def create_validator(
     ----------
     model : torch.nn.Module
         The model to train
-    config : ConfigDict
+    config : dict
         Hyrax runtime configuration
     results_directory : Path
         The directory where training results will be saved
@@ -579,7 +589,7 @@ def create_validator(
 
 
 def create_trainer(
-    model: torch.nn.Module, config: ConfigDict, results_directory: Path, tensorboardx_logger: SummaryWriter
+    model: torch.nn.Module, config: dict, results_directory: Path, tensorboardx_logger: SummaryWriter
 ) -> Engine:
     """This function is originally copied from here:
     https://github.com/pytorch-ignite/examples/blob/main/tutorials/intermediate/cifar10-distributed.py#L164
@@ -590,7 +600,7 @@ def create_trainer(
     ----------
     model : torch.nn.Module
         The model to train
-    config : ConfigDict
+    config : dict
         Hyrax runtime configuration
     results_directory : Path
         The directory where training results will be saved

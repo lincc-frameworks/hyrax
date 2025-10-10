@@ -5,8 +5,6 @@ from pathlib import Path
 import numpy as np
 from torch.utils.data import Dataset, IterableDataset
 
-from hyrax.config_utils import ConfigDict
-
 from .data_set_registry import HyraxDataset
 
 logger = logging.getLogger(__name__)
@@ -15,7 +13,7 @@ logger = logging.getLogger(__name__)
 class HyraxCifarBase:
     """Base class for Hyrax Cifar datasets"""
 
-    def __init__(self, config: ConfigDict, data_location: Path = None):
+    def __init__(self, config: dict, data_location: Path = None):
         import torchvision.transforms as transforms
         from astropy.table import Table
         from torchvision.datasets import CIFAR10

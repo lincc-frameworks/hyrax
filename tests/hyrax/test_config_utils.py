@@ -3,7 +3,7 @@ import os
 
 import pytest
 
-from hyrax.config_utils import ConfigDict, ConfigManager
+from hyrax.config_utils import ConfigManager
 
 
 def test_merge_configs():
@@ -95,10 +95,10 @@ def test_validate_runtime_config(caplog):
     """
 
     default = {"general": {"dev_mode": False}, "train": {"model_name": "example_model"}}
-    default_config = ConfigDict(default)
+    default_config = default
 
     user = {"general": {"dev_mode": False, "foo": "bar"}}
-    user_config = ConfigDict(user)
+    user_config = user
 
     with caplog.at_level(logging.WARNING):
         ConfigManager._validate_runtime_config(user_config, default_config)
@@ -112,10 +112,10 @@ def test_validate_runtime_config_section(caplog):
     """
 
     default = {"general": {"dev_mode": False}, "train": {"model_name": "example_model"}}
-    default_config = ConfigDict(default)
+    default_config = default
 
     user = {"general": {"dev_mode": {"b": 2}}}
-    user_config = ConfigDict(user)
+    user_config = user
 
     with caplog.at_level(logging.WARNING):
         ConfigManager._validate_runtime_config(user_config, default_config)
@@ -129,7 +129,7 @@ def test_find_external_library_config_path_no_module():
     """
 
     config = {"general": {"dev_mode": False}, "model": {"name": "foo.bar.model.Model"}}
-    default_config = ConfigDict(config)
+    default_config = config
 
     with pytest.raises(ModuleNotFoundError) as excinfo:
         ConfigManager._find_external_library_default_config_paths(default_config)
@@ -141,7 +141,7 @@ def test_find_external_library_config_path_no_default_config(caplog):
     """Test that a warning is logged when a default configuration file is not found."""
 
     config = {"general": {"dev_mode": False}, "model": {"name": "toml.bar.model.Model"}}
-    default_config = ConfigDict(config)
+    default_config = config
 
     with caplog.at_level(logging.WARNING):
         ConfigManager._find_external_library_default_config_paths(default_config)

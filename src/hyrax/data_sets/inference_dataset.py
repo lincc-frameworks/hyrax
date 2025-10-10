@@ -200,7 +200,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         Returns
         -------
-        ConfigDict
+        dict
             Configuration that can be used to create the original dataset that was used
             as input for whatever inference process created this dataset.
         """

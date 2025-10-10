@@ -65,8 +65,6 @@ import numpy as np
 import numpy.typing as npt
 from torch.utils.data import Dataset
 
-from hyrax.config_utils import ConfigDict
-
 from .data_set_registry import HyraxDataset, HyraxImageDataset
 
 logger = logging.getLogger(__name__)
@@ -81,7 +79,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
     _called_from_test = False
 
-    def __init__(self, config: ConfigDict, data_location=None):
+    def __init__(self, config: dict, data_location=None):
         """
         .. py:method:: __init__
 
@@ -92,7 +90,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
         Parameters
         ----------
-        config : ConfigDict
+        config : dict
             Nested configuration dictionary for hyrax
         data_location : Optional[Union[Path, str]]
             The directory location of the data that this dataset class will access
