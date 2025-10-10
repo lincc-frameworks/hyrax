@@ -341,10 +341,21 @@ def _handle_nans_tensor(batch, config):
 
 @_handle_nans.register(tuple)
 def _handle_nans_tuple(batch, config):
-    """This is the tuple-specific implementation of _handle_nans. The first element
-    of the tuple is expected to hold the data that needs nan-cleaning."""
-    nan_handled = _handle_nans_logic(batch[0], config)
-    return (nan_handled, batch[1])
+    """This is the tuple-specific implementation of _handle_nans. Each tensor element
+    of the tuple will have nan-handling applied. Non-tensor elements are returned unchanged."""
+    # Process each element in the tuple
+    handled_elements = []
+    for element in batch:
+        # Only apply nan handling to tensor elements. For now this is fine, because
+        # all of the nan-handling logic utilizes torch functions. This is an area
+        # we will need to refactor later, when we support more than just PyTorch.
+        if isinstance(element, torch.Tensor):
+            handled_elements.append(_handle_nans_logic(element, config))
+        else:
+            # Keep non-tensor elements unchanged (e.g., labels, metadata)
+            handled_elements.append(element)
+
+    return tuple(handled_elements)
 
 
 def _handle_nans_logic(batch, config):
