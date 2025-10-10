@@ -27,20 +27,22 @@ class ImageDCAE(nn.Module):
     arbitarily sized images with arbitrary number of channels.
     """
 
-    def __init__(self, config, shape):
+    def __init__(self, config, data_sample=None):
         super().__init__()
 
+        if data_sample is None:
+            raise ValueError("data_sample must be provided to ImageDCAE for dynamic sizing.")
         # Store input shape for dynamic sizing
-        self.input_shape = shape
+        self.input_shape = data_sample.shape
         self.config = config
 
         # Extract dimensions from input shape
-        if len(shape) == 4:  # Batch dimension included
-            self.num_input_channels = shape[1]
-            self.image_height, self.image_width = shape[2], shape[3]
+        if len(self.input_shape) == 4:  # Batch dimension included
+            self.num_input_channels = self.input_shape[1]
+            self.image_height, self.image_width = self.input_shape[2], self.input_shape[3]
         else:  # No batch dimension
-            self.num_input_channels = shape[0]
-            self.image_height, self.image_width = shape[1], shape[2]
+            self.num_input_channels = self.input_shape[0]
+            self.image_height, self.image_width = self.input_shape[1], self.input_shape[2]
 
         # Get latent dimension from config (similar to HyraxAutoencoder)
         self.latent_dim = config["model"].get("latent_dim", 512)
