@@ -84,6 +84,72 @@ def config_help(config: TOMLDocument, *args):
         print("Usage: config.help(['table_name'|'key_name']), config.help('table_name', 'key_name')")
 
 
+def parse_dotted_key(key: str) -> list[str]:
+    """
+    Parse a dotted key string, respecting quoted sections.
+
+    Quoted sections (using single or double quotes) are treated as a single key
+    component, even if they contain dots. This allows for keys like 'torch.optim.Adam'
+    to be used as a single table name in TOML configuration files.
+
+    Parameters
+    ----------
+    key : str
+        The dotted key to parse, e.g. "model.name" or "'torch.optim.Adam'.lr"
+
+    Returns
+    -------
+    list[str]
+        A list of key components
+
+    Examples
+    --------
+    >>> parse_dotted_key("model.name")
+    ['model', 'name']
+    >>> parse_dotted_key("'torch.optim.Adam'.lr")
+    ['torch.optim.Adam', 'lr']
+    >>> parse_dotted_key('"torch.optim.Adam".lr')
+    ['torch.optim.Adam', 'lr']
+    """
+    if not key:
+        return []
+
+    keys = []
+    current = []
+    in_quote = None  # None, "'", or '"'
+    i = 0
+
+    while i < len(key):
+        char = key[i]
+
+        # Handle quote start/end
+        if char in ("'", '"'):
+            if in_quote is None:
+                # Starting a quoted section
+                in_quote = char
+            elif in_quote == char:
+                # Ending the quoted section
+                in_quote = None
+            else:
+                # Different quote type, add to current
+                current.append(char)
+        # Handle dot separator
+        elif char == "." and in_quote is None:
+            # Dot outside quotes - this is a separator
+            keys.append("".join(current))
+            current = []
+        else:
+            # Regular character, add to current
+            current.append(char)
+
+        i += 1
+
+    # Add any remaining characters
+    keys.append("".join(current))
+
+    return keys
+
+
 def find_keys(config: dict[str, Any], key_name: str):
     """
     Recursively find all keys in a nested dictionary that match the given key name.
@@ -192,12 +258,14 @@ class ConfigManager:
         Parameters
         ----------
         key : str
-            The dotted key to set, e.g. "model.name"
+            The dotted key to set, e.g. "model.name" or "'torch.optim.Adam'.lr"
+            Quoted sections (using single or double quotes) are treated as single
+            key components, allowing for table names like 'torch.optim.Adam'.
 
         value : Any
             The value to set the key to.
         """
-        keys = key.split(".")
+        keys = parse_dotted_key(key)
         d = self.config
         for k in keys[:-1]:
             d = d[k]

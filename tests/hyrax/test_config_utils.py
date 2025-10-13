@@ -387,3 +387,78 @@ def test_resolve_runtime_config_none():
     result = ConfigManager.resolve_runtime_config(None)
     # The result should be one of the default paths
     assert result is not None
+
+
+def test_parse_dotted_key():
+    """Test the parse_dotted_key function with various inputs."""
+    from hyrax.config_utils import parse_dotted_key
+
+    # Basic cases
+    assert parse_dotted_key("model.name") == ["model", "name"]
+    assert parse_dotted_key("model.layers.count") == ["model", "layers", "count"]
+
+    # Quoted sections with single quotes
+    assert parse_dotted_key("'torch.optim.Adam'.lr") == ["torch.optim.Adam", "lr"]
+    assert parse_dotted_key("optimizer.'torch.optim.SGD'.momentum") == [
+        "optimizer",
+        "torch.optim.SGD",
+        "momentum",
+    ]
+
+    # Quoted sections with double quotes
+    assert parse_dotted_key('"torch.optim.Adam".lr') == ["torch.optim.Adam", "lr"]
+
+    # Single elements
+    assert parse_dotted_key("simple") == ["simple"]
+    assert parse_dotted_key("'single.quoted'") == ["single.quoted"]
+    assert parse_dotted_key('"double.quoted"') == ["double.quoted"]
+
+    # Complex mixed cases
+    assert parse_dotted_key("a.b.'c.d'.e") == ["a", "b", "c.d", "e"]
+
+    # Edge cases
+    assert parse_dotted_key("") == []
+    assert parse_dotted_key("a") == ["a"]
+
+
+def test_set_config_simple():
+    """Test that set_config works with simple dotted keys."""
+    this_file_dir = os.path.dirname(os.path.abspath(__file__))
+    config_manager = ConfigManager(
+        runtime_config_filepath=os.path.abspath(
+            os.path.join(this_file_dir, "./test_data/test_user_config.toml")
+        ),
+        default_config_filepath=os.path.abspath(
+            os.path.join(this_file_dir, "./test_data/test_default_config.toml")
+        ),
+    )
+
+    # Test setting a simple value
+    config_manager.set_config("general.dev_mode", False)
+    assert config_manager.config["general"]["dev_mode"] is False
+
+    # Test setting a nested value
+    config_manager.set_config("train.model.layers", 5)
+    assert config_manager.config["train"]["model"]["layers"] == 5
+
+
+def test_set_config_quoted_key():
+    """Test that set_config works with quoted dotted keys."""
+    this_file_dir = os.path.dirname(os.path.abspath(__file__))
+    config_manager = ConfigManager(
+        default_config_filepath=os.path.abspath(
+            os.path.join(this_file_dir, "./test_data/test_default_config.toml")
+        ),
+    )
+
+    # Manually create a quoted table name to test with
+    config_manager.config["torch.optim.Adam"] = {"lr": 0.01}
+
+    # Test setting a value in a quoted table using single quotes
+    config_manager.set_config("'torch.optim.Adam'.lr", 0.001)
+    assert config_manager.config["torch.optim.Adam"]["lr"] == 0.001
+
+    # Test setting a value in a quoted table using double quotes
+    config_manager.config["torch.optim.SGD"] = {"momentum": 0.9}
+    config_manager.set_config('"torch.optim.SGD".momentum', 0.95)
+    assert config_manager.config["torch.optim.SGD"]["momentum"] == 0.95
