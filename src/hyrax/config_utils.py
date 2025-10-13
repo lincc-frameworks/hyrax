@@ -99,49 +99,25 @@ def parse_dotted_key(key: str) -> list[str]:
         - "model.name" -> ['model', 'name']
         - "'torch.optim.Adam'.lr" -> ['torch.optim.Adam', 'lr']
         - '"torch.optim.Adam".lr' -> ['torch.optim.Adam', 'lr']
+        - "optimizer.'torch.optim.Adam'.lr" -> ['optimizer', 'torch.optim.Adam', 'lr']
 
     Returns
     -------
     list[str]
         A list of key components
     """
-    if not key:
-        return []
+    pattern = r"""(['"])(.*?)\1|([^.'"]+)"""
+    matches = re.findall(pattern, key)
+    parts = []
 
-    keys = []
-    current = []
-    in_quote = None  # None, "'", or '"'
-    i = 0
-
-    while i < len(key):
-        char = key[i]
-
-        # Handle quote start/end
-        if char in ("'", '"'):
-            if in_quote is None:
-                # Starting a quoted section
-                in_quote = char
-            elif in_quote == char:
-                # Ending the quoted section
-                in_quote = None
-            else:
-                # Different quote type, add to current
-                current.append(char)
-        # Handle dot separator
-        elif char == "." and in_quote is None:
-            # Dot outside quotes - this is a separator
-            keys.append("".join(current))
-            current = []
-        else:
-            # Regular character, add to current
-            current.append(char)
-
-        i += 1
-
-    # Add any remaining characters
-    keys.append("".join(current))
-
-    return keys
+    # For the example input key = '"torch.optim.Adam".lr'
+    # `matches` = [('"', 'torch.optim.Adam', ''), ('', '', 'lr')]
+    for _, quoted, unquoted in matches:
+        if quoted:
+            parts.append(quoted)
+        elif unquoted:
+            parts.append(unquoted)
+    return parts
 
 
 def find_keys(config: dict[str, Any], key_name: str):
