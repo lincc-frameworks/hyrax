@@ -95,21 +95,15 @@ def parse_dotted_key(key: str) -> list[str]:
     Parameters
     ----------
     key : str
-        The dotted key to parse, e.g. "model.name" or "'torch.optim.Adam'.lr"
+        The dotted key to parse. Examples:
+        - "model.name" -> ['model', 'name']
+        - "'torch.optim.Adam'.lr" -> ['torch.optim.Adam', 'lr']
+        - '"torch.optim.Adam".lr' -> ['torch.optim.Adam', 'lr']
 
     Returns
     -------
     list[str]
         A list of key components
-
-    Examples
-    --------
-    >>> parse_dotted_key("model.name")
-    ['model', 'name']
-    >>> parse_dotted_key("'torch.optim.Adam'.lr")
-    ['torch.optim.Adam', 'lr']
-    >>> parse_dotted_key('"torch.optim.Adam".lr')
-    ['torch.optim.Adam', 'lr']
     """
     if not key:
         return []
