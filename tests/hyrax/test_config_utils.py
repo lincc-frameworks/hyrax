@@ -415,6 +415,8 @@ def test_parse_dotted_key():
 
     # Complex mixed cases
     assert parse_dotted_key("a.b.'c.d'.e") == ["a", "b", "c.d", "e"]
+    assert parse_dotted_key("'a.b'.c.d.e") == ["a.b", "c", "d", "e"]
+    assert parse_dotted_key("a.b.c.'d.e'") == ["a", "b", "c", "d.e"]
 
     # Edge cases
     assert parse_dotted_key("") == []
