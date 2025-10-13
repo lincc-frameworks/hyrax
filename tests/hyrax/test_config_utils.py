@@ -446,19 +446,27 @@ def test_set_config_quoted_key():
     """Test that set_config works with quoted dotted keys."""
     this_file_dir = os.path.dirname(os.path.abspath(__file__))
     config_manager = ConfigManager(
+        runtime_config_filepath=os.path.abspath(
+            os.path.join(this_file_dir, "./test_data/test_config_quoted_tables.toml")
+        ),
         default_config_filepath=os.path.abspath(
             os.path.join(this_file_dir, "./test_data/test_default_config.toml")
         ),
     )
 
-    # Manually create a quoted table name to test with
-    config_manager.config["torch.optim.Adam"] = {"lr": 0.01}
+    # Verify the quoted tables are loaded correctly
+    assert "my.custom.optimizer.Adam" in config_manager.config
+    assert config_manager.config["my.custom.optimizer.Adam"]["lr"] == 0.01
 
     # Test setting a value in a quoted table using single quotes
-    config_manager.set_config("'torch.optim.Adam'.lr", 0.001)
-    assert config_manager.config["torch.optim.Adam"]["lr"] == 0.001
+    config_manager.set_config("'my.custom.optimizer.Adam'.lr", 0.001)
+    assert config_manager.config["my.custom.optimizer.Adam"]["lr"] == 0.001
 
     # Test setting a value in a quoted table using double quotes
-    config_manager.config["torch.optim.SGD"] = {"momentum": 0.9}
-    config_manager.set_config('"torch.optim.SGD".momentum', 0.95)
-    assert config_manager.config["torch.optim.SGD"]["momentum"] == 0.95
+    assert config_manager.config["my.custom.optimizer.SGD"]["momentum"] == 0.9
+    config_manager.set_config('"my.custom.optimizer.SGD".momentum', 0.95)
+    assert config_manager.config["my.custom.optimizer.SGD"]["momentum"] == 0.95
+
+    # Test setting a new key in a quoted table
+    config_manager.set_config("'my.custom.optimizer.Adam'.beta2", 0.999)
+    assert config_manager.config["my.custom.optimizer.Adam"]["beta2"] == 0.999
