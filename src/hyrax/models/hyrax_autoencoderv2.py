@@ -34,7 +34,7 @@ class HyraxAutoencoderV2(nn.Module):
         super().__init__()
         self.config = config
 
-        shape = self.to_tensor(data_sample).shape
+        shape = data_sample.shape
         logger.debug(f"Found shape: {shape} in data sample, using this to initialize model.")
 
         self.num_input_channels, self.image_width, self.image_height = shape

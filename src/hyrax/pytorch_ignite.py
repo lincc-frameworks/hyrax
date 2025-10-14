@@ -152,7 +152,7 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
 
 
 def dist_data_loader(
-    data_set: Dataset,
+    dataset: Dataset,
     config: dict,
     split: Union[str, list[str], bool] = False,
 ):
@@ -162,8 +162,8 @@ def dist_data_loader(
 
     Parameters
     ----------
-    data_set : Dataset
-        A Pytorch Dataset object
+    dataset : HyraxDataset
+        A Hyrax dataset instance
     config : dict
         Hyrax runtime configuration
     split : Union[str, list[str]], Optional
@@ -187,16 +187,16 @@ def dist_data_loader(
     if isinstance(split, bool):
         # We still need to return the list of indexes used by the dataloader,
         # but here, it will simply be the indexes for the entire dataset.
-        if data_set.is_iterable():
-            ids = list(data_set.ids())
+        if dataset.is_iterable():
+            ids = list(dataset.ids())
             indexes = list(range(len(ids)))
         else:
-            indexes = list(range(len(data_set)))
+            indexes = list(range(len(dataset)))
 
         # Note that when sampler=None, a default sampler is used. The default config
         # defines shuffle=False, which should prevent any shuffling of of the data.
         # We expect that this will be the primary use case when running inference.
-        return idist.auto_dataloader(data_set, sampler=None, **config["data_loader"]), indexes
+        return idist.auto_dataloader(dataset, sampler=None, **config["data_loader"]), indexes
 
     # Sanitize split argument
     if isinstance(split, str):
@@ -208,22 +208,22 @@ def dist_data_loader(
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    if data_set.is_iterable():
-        ids = list(data_set.ids())
+    if dataset.is_iterable():
+        ids = list(dataset.ids())
         indexes = list(range(len(ids)))
         dataloaders = {
-            s: (idist.auto_dataloader(data_set, pin_memory=True, **config["data_loader"]), indexes)
+            s: (idist.auto_dataloader(dataset, pin_memory=True, **config["data_loader"]), indexes)
             for s in split
         }
     else:
         # Create the indexes for all splits based on config.
-        indexes = create_splits(data_set, config)
+        indexes = create_splits(dataset, config)
 
         # Create samplers and dataloaders for each split we are interested in
         samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
 
         dataloaders = {
-            split: (idist.auto_dataloader(data_set, sampler=sampler, **config["data_loader"]), indexes[split])
+            split: (idist.auto_dataloader(dataset, sampler=sampler, **config["data_loader"]), indexes[split])
             if sampler
             else None
             for split, sampler in samplers.items()
@@ -689,6 +689,11 @@ def create_trainer(
 
     trainer.add_event_handler(Events.COMPLETED, log_last_checkpoint_location, latest_checkpoint)
     trainer.add_event_handler(Events.COMPLETED, log_best_checkpoint_location, best_checkpoint)
+
+    @trainer.on(Events.COMPLETED)
+    def attach_final_metrics_to_model(trainer):
+        # Attach the final training metrics to the model object for easy access
+        model.final_training_metrics = trainer.state.output
 
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(trainer)
