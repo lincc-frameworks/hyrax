@@ -19,11 +19,12 @@ def _torch_save(self: nn.Module, save_path: Path):
 
 
 def _torch_load(self: nn.Module, load_path: Path):
+    import ignite.distributed as idist
     import torch
 
-    # Determine the device to map to - if CUDA is available, use it; otherwise use CPU
+    # Use ignite's device detection which handles distributed training and device availability
     # This allows models trained on GPU to be loaded on CPU-only machines
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = idist.device()
     state_dict = torch.load(load_path, weights_only=True, map_location=device)
     self.load_state_dict(state_dict, assign=True)
 
