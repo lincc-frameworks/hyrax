@@ -57,9 +57,17 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     """
 
     is_iterable = False
-    for _, dataset_definition in data_request.items():
-        if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
-            is_iterable = True
+    # !This if/else is probably not needed since we'll always have a `train` key
+    if "train" in data_request:
+        for _, value in data_request.items():
+            for _, dataset_definition in value.items():
+                if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
+                    is_iterable = True
+                    break
+    else:
+        for _, dataset_definition in data_request.items():
+            if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
+                is_iterable = True
     return is_iterable
 
 
@@ -116,9 +124,14 @@ def setup_dataset(config: dict, tensorboardx_logger: Optional[SummaryWriter] = N
         dataset.tensorboardx_logger = tensorboardx_logger
 
     else:
-        dataset = DataProvider(config)
-        for friendly_name in dataset.prepped_datasets:
-            dataset.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
+        # We know that `model_inputs` will always have at least 2 sub-tables, `train`
+        # and `infer`. It may have additional sub-tables such as `validate`.
+        dataset = {}
+        for key, value in data_request.items():
+            ds = DataProvider(config, value)
+            for friendly_name in ds.prepped_datasets:
+                ds.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
+            dataset[key] = ds
 
     return dataset
 
@@ -145,7 +158,12 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     model_cls = fetch_model_class(config)
 
     # Pass a single sample of data through the model's to_tensor function
-    data_sample = model_cls.to_tensor(dataset.sample_data())
+    if isinstance(dataset, dict):
+        # If we have multiple datasets, just take the first one
+        first_dataset = next(iter(dataset.values()))
+        data_sample = model_cls.to_tensor(first_dataset.sample_data())
+    else:
+        data_sample = model_cls.to_tensor(dataset.sample_data())
 
     # Provide the data sample for runtime modifications to the model architecture
     return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]

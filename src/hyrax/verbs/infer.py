@@ -63,13 +63,11 @@ class Infer(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         dataset = setup_dataset(config, tensorboardx_logger)
-        logger.info(
-            f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}\n{dataset}"
-        )
+        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}")
+        logger.info(f"{dataset['infer']}")
+
         model = setup_model(config, dataset)
         logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL}\n{model}")
-        if dataset.is_map():
-            logger.debug(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 
         # Inference doesnt work at all with the dataloader doing additional shuffling:
         if config["data_loader"]["shuffle"]:
@@ -78,7 +76,12 @@ class Infer(Verb):
             logger.warning(msg)
             config["data_loader"]["shuffle"] = False
 
-        data_loader, data_loader_indexes = dist_data_loader(dataset, config, split=config["infer"]["split"])
+        # If `dataset` is a dict containing the key "infer", we'll pull that out.
+        # The only time it wouldn't be is if the dataset is an iterable dataset.
+        if isinstance(dataset, dict) and "infer" in dataset:
+            dataset = dataset["infer"]
+
+        data_loader, data_loader_indexes = dist_data_loader(dataset, config, False)
 
         Infer.load_model_weights(config, model)
         log_runtime_config(config, results_dir)

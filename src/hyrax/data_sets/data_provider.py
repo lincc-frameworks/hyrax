@@ -56,7 +56,7 @@ class DataProvider:
     during initialization.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, request: dict):
         """Initialize the DataProvider with a Hyrax config and extract (or create)
         the data_request.
 
@@ -64,10 +64,12 @@ class DataProvider:
         ----------
         config : dict
             The Hyrax configuration that defines the data_request.
+        request : dict
+            A dictionary that defines the data request.
         """
 
         self.config = config
-        self.data_request = generate_data_request_from_config(self.config)
+        self.data_request = request
 
         self.prepped_datasets = {}
         self.dataset_getters = {}
