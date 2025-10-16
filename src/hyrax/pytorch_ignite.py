@@ -572,6 +572,7 @@ def create_validator(
     def log_training_loss():
         logger.debug(f"Validation run time: {validator.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Validation metrics: {validator.state.output}")
+        model.final_validation_metrics = validator.state.output
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
