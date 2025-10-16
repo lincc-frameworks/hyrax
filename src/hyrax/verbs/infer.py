@@ -63,8 +63,8 @@ class Infer(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         dataset = setup_dataset(config, tensorboardx_logger)
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}")
-        logger.info(f"{dataset['infer']}")
+        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Prepared dataset(s):{Style.RESET_ALL}")
+        logger.info(f"Inference:\n{dataset['infer']}")
 
         model = setup_model(config, dataset)
         logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL}\n{model}")

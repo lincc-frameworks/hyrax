@@ -167,6 +167,7 @@ data_location = "./data"
 # The data field that represents a unique ID for each sample.
 primary_id_field = "object_id"
 
+
 [model_inputs.infer.data]
 # Name of the dataset class to use, or the import path to an external dataset class.
 # e.g. "HyraxCifarDataSet", "user_pkg.data_set.ExternalDataset".
@@ -177,6 +178,7 @@ data_location = "./data"
 
 # The data field that represents a unique ID for each sample.
 primary_id_field = "object_id"
+
 
 [data_set]
 # Warning - using data_set.name to define the dataset class will be deprecated.

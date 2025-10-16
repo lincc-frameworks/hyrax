@@ -57,18 +57,23 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     """
 
     is_iterable = False
-    # !This if/else is probably not needed since we'll always have a `train` key
-    if "train" in data_request:
-        for _, value in data_request.items():
-            for _, dataset_definition in value.items():
-                if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
-                    is_iterable = True
-                    break
-    else:
-        for _, dataset_definition in data_request.items():
+    for _, value in data_request.items():
+        for _, dataset_definition in value.items():
             if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
                 is_iterable = True
+                break
     return is_iterable
+    # if "train" in data_request:
+    #     for _, value in data_request.items():
+    #         for _, dataset_definition in value.items():
+    #             if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
+    #                 is_iterable = True
+    #                 break
+    # else:
+    #     for _, dataset_definition in data_request.items():
+    #         if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
+    #             is_iterable = True
+    # return is_iterable
 
 
 def setup_dataset(config: dict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
@@ -93,40 +98,43 @@ def setup_dataset(config: dict, tensorboardx_logger: Optional[SummaryWriter] = N
         An instance of the dataset class specified in the configuration
     """
 
+    dataset = {}
     data_request = generate_data_request_from_config(config)
     if is_iterable_dataset_requested(data_request):
         # If the data_request is for multiple datasets and at least one of
         # them is iterable, raise an error, we don't support that style of operation
-        if len(data_request) > 1:
-            logger.error(
-                "Multiple datasets requested, including at least one iterable-style. "
-                "Hyrax supports for datasets includes: "
-                "1) 1-N map-style or 2) at most 1 iterable-style."
-            )
-            raise RuntimeError(
-                "Multiple datasets requested, including at least one iterable-style. "
-                "Hyrax supports for datasets includes: "
-                "1) 1-N map-style or 2) at most 1 iterable-style."
-            )
+        for _, value in data_request.items():
+            if len(value) > 1:
+                logger.error(
+                    "Multiple datasets requested, including at least one iterable-style. "
+                    "Hyrax supports for datasets includes: "
+                    "1) 1-N map-style or 2) at most 1 iterable-style."
+                )
+                raise RuntimeError(
+                    "Multiple datasets requested, including at least one iterable-style. "
+                    "Hyrax supports for datasets includes: "
+                    "1) 1-N map-style or 2) at most 1 iterable-style."
+                )
 
         # generate instance of the iterable dataset. Again, because the only mode of
         # operation for iterable-style datasets that Hyrax supports is 1 iterable
         # dataset at a time, we can just take the first (and only) item in the data_request.
-        data_definition = next(iter(data_request.values()))
+        for set_name in ["train", "infer"]:
+            data_definition = next(iter(data_request[set_name].values()))
 
-        dataset_class = data_definition.get("dataset_class", None)
+            dataset_class = data_definition.get("dataset_class", None)
+            dataset_cls = fetch_dataset_class(dataset_class)
 
-        dataset_cls = fetch_dataset_class(dataset_class)
+            data_location = data_definition.get("data_location", None)
+            ds = dataset_cls(config=config, data_location=data_location)
 
-        data_location = data_definition.get("data_location", None)
+            ds.tensorboardx_logger = tensorboardx_logger
 
-        dataset = dataset_cls(config=config, data_location=data_location)
-        dataset.tensorboardx_logger = tensorboardx_logger
+            dataset[set_name] = ds
 
     else:
         # We know that `model_inputs` will always have at least 2 sub-tables, `train`
         # and `infer`. It may have additional sub-tables such as `validate`.
-        dataset = {}
         for key, value in data_request.items():
             ds = DataProvider(config, value)
             for friendly_name in ds.prepped_datasets:
