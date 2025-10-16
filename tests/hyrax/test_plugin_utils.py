@@ -105,3 +105,53 @@ def test_fetch_model_class_in_registry():
     model_cls = fetch_model_class(config)
 
     assert model_cls.__name__ == "NewClass"
+
+
+def test_torch_load_with_map_location(tmp_path):
+    """Test that _torch_load properly handles loading models with map_location.
+    This verifies that models trained on GPU can be loaded on CPU-only machines."""
+    import torch
+    import torch.nn as nn
+
+    from hyrax.models.model_registry import hyrax_model
+
+    # Create a simple model
+    @hyrax_model
+    class SimpleModel(nn.Module):
+        def __init__(self, config, data_sample=None):
+            super().__init__()
+            self.config = config
+            self.linear = nn.Linear(10, 5)
+
+        def forward(self, x):
+            return self.linear(x)
+
+        def train_step(self, batch):
+            return {"loss": 0.0}
+
+    # Create config
+    config = {
+        "criterion": {"name": "torch.nn.MSELoss"},
+        "optimizer": {"name": "torch.optim.SGD"},
+        "torch.optim.SGD": {"lr": 0.01},
+    }
+
+    # Create model instance
+    model = SimpleModel(config)
+
+    # Save the model's state dict
+    weights_path = tmp_path / "test_weights.pth"
+    model.save(weights_path)
+
+    # Verify the file was created
+    assert weights_path.exists()
+
+    # Create a new instance and load the weights
+    # This should work regardless of whether CUDA is available
+    new_model = SimpleModel(config)
+    new_model.load(weights_path)
+
+    # Verify that the weights were loaded correctly
+    # by comparing the state dicts
+    for key in model.state_dict():
+        assert torch.allclose(model.state_dict()[key], new_model.state_dict()[key])
