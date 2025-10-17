@@ -136,7 +136,7 @@ def loopback_hyrax(tmp_path_factory, request):
                 "data_location": str(tmp_path_factory.mktemp("data_infer")),
                 "primary_id_field": "object_id",
             },
-        }
+        },
     }
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
@@ -173,22 +173,44 @@ def multimodal_config():
     config to represent a request for multimodal data."""
 
     return {
-        "random_0": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "./in_memory_0",
-            "fields": ["object_id", "image", "label"],
-            "dataset_config": {
-                "shape": [2, 16, 16],
+        "train": {
+            "random_0": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./in_memory_0",
+                "fields": ["object_id", "image", "label"],
+                "dataset_config": {
+                    "shape": [2, 16, 16],
+                },
+                "primary_id_field": "object_id",
             },
-            "primary_id_field": "object_id",
+            "random_1": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./in_memory_1",
+                "fields": ["image"],
+                "dataset_config": {
+                    "shape": [5, 16, 16],
+                    "seed": 4200,
+                },
+            },
         },
-        "random_1": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "./in_memory_1",
-            "fields": ["image"],
-            "dataset_config": {
-                "shape": [5, 16, 16],
-                "seed": 4200,
+        "infer": {
+            "random_0": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./in_memory_0",
+                "fields": ["object_id", "image", "label"],
+                "dataset_config": {
+                    "shape": [2, 16, 16],
+                },
+                "primary_id_field": "object_id",
+            },
+            "random_1": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./in_memory_1",
+                "fields": ["image"],
+                "dataset_config": {
+                    "shape": [5, 16, 16],
+                    "seed": 4200,
+                },
             },
         },
     }
@@ -199,5 +221,5 @@ def data_provider(multimodal_config):
     """Use the multimodal_config fixture to create a DataProvider instance."""
     h = hyrax.Hyrax()
     h.config["model_inputs"] = multimodal_config
-    dp = DataProvider(h.config)
+    dp = DataProvider(h.config, multimodal_config["train"])
     return dp
