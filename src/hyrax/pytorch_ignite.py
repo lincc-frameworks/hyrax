@@ -166,9 +166,7 @@ def load_collate_function(data_loader_kwargs: dict) -> Optional[Callable]:
     Optional[Callable]
         The collate function if specified, else None
     """
-    collate_fn = data_loader_kwargs["collate_fn"] if data_loader_kwargs["collate_fn"] else None
-    if collate_fn:
-        collate_fn = get_or_load_class(collate_fn)
+    collate_fn = get_or_load_class(data_loader_kwargs["collate_fn"]) if data_loader_kwargs["collate_fn"] else None
     return collate_fn
 
 
