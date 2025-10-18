@@ -285,8 +285,8 @@ batch_size = 512
 # Ensure that the data loader does no secondary shuffling of the data.
 shuffle = false
 
-# The collate function to use in the data loader. Using `false` will use PyTorch's
-# default collate function, or specify an import path i.e. "package.module.my_collate_fn"
+# The collate function to use in the data loader. Using `false` will use PyTorch's default collate function,
+# or specify an import path to a callable function i.e. "package.module.my_collate_fn"
 collate_fn = false
 
 
