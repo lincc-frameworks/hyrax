@@ -108,8 +108,18 @@ def test_fetch_model_class_in_registry():
 
 
 def test_torch_load_with_map_location(tmp_path):
-    """Test that _torch_load properly handles loading models with map_location.
-    This verifies that models trained on GPU can be loaded on CPU-only machines."""
+    """Test that _torch_load uses map_location parameter to handle device remapping.
+
+    This test verifies that the fix for GPU->CPU loading works by:
+    1. Mocking torch.load to verify map_location is passed
+    2. Testing that the model loads successfully with the map_location parameter
+
+    The actual GPU->CPU scenario is difficult to test in CI (CPU-only can't create GPU
+    state dicts, GPU CI won't experience the error), so we verify that the fix
+    (adding map_location parameter) is correctly implemented.
+    """
+    from unittest.mock import patch
+
     import torch
     import torch.nn as nn
 
@@ -136,22 +146,34 @@ def test_torch_load_with_map_location(tmp_path):
         "torch.optim.SGD": {"lr": 0.01},
     }
 
-    # Create model instance
+    # Create model instance and save
     model = SimpleModel(config)
-
-    # Save the model's state dict
     weights_path = tmp_path / "test_weights.pth"
     model.save(weights_path)
 
-    # Verify the file was created
-    assert weights_path.exists()
-
-    # Create a new instance and load the weights
-    # This should work regardless of whether CUDA is available
+    # Create a new model instance
     new_model = SimpleModel(config)
-    new_model.load(weights_path)
+
+    # Mock torch.load to verify map_location is used
+    original_torch_load = torch.load
+
+    def mock_torch_load(path, *args, **kwargs):
+        # Verify that map_location parameter is present
+        assert "map_location" in kwargs, "map_location parameter must be passed to torch.load"
+        # Call the original function
+        return original_torch_load(path, *args, **kwargs)
+
+    # Patch torch.load and load the model
+    with patch("torch.load", side_effect=mock_torch_load) as mock_load:
+        new_model.load(weights_path)
+
+        # Verify torch.load was called
+        assert mock_load.called, "torch.load should have been called"
+
+        # Verify map_location was in the call
+        call_kwargs = mock_load.call_args[1]
+        assert "map_location" in call_kwargs, "map_location must be passed to torch.load"
 
     # Verify that the weights were loaded correctly
-    # by comparing the state dicts
     for key in model.state_dict():
         assert torch.allclose(model.state_dict()[key], new_model.state_dict()[key])
