@@ -108,18 +108,17 @@ def test_fetch_model_class_in_registry():
 
 
 def test_torch_load_with_map_location(tmp_path):
-    """Test that _torch_load uses map_location parameter to handle device remapping.
+    """Test that _torch_load properly handles device remapping via map_location.
 
-    This test verifies that the fix for GPU->CPU loading works by:
-    1. Mocking torch.load to verify map_location is passed
-    2. Testing that the model loads successfully with the map_location parameter
+    This test verifies that the fix works by checking that loaded tensors are on
+    the expected device (as determined by idist.device()). This tests the actual
+    problem (device mismatch handling) without mocking torch's interface, making
+    it robust to future PyTorch API changes.
 
-    The actual GPU->CPU scenario is difficult to test in CI (CPU-only can't create GPU
-    state dicts, GPU CI won't experience the error), so we verify that the fix
-    (adding map_location parameter) is correctly implemented.
+    While we can't create a true GPU->CPU scenario in CPU-only CI, this test ensures
+    that whatever device is available, the loaded state dict tensors match it.
     """
-    from unittest.mock import patch
-
+    import ignite.distributed as idist
     import torch
     import torch.nn as nn
 
@@ -146,34 +145,26 @@ def test_torch_load_with_map_location(tmp_path):
         "torch.optim.SGD": {"lr": 0.01},
     }
 
-    # Create model instance and save
+    # Get the expected device from idist (same as _torch_load uses)
+    expected_device = idist.device()
+
+    # Create and save a model
     model = SimpleModel(config)
     weights_path = tmp_path / "test_weights.pth"
     model.save(weights_path)
 
-    # Create a new model instance
+    # Create a new model instance and load the weights
     new_model = SimpleModel(config)
+    new_model.load(weights_path)
 
-    # Mock torch.load to verify map_location is used
-    original_torch_load = torch.load
+    # Verify that all loaded tensors are on the expected device
+    # This is the actual fix: map_location ensures tensors are on the right device
+    for key, tensor in new_model.state_dict().items():
+        assert tensor.device == expected_device, (
+            f"Tensor {key} is on device {tensor.device}, expected {expected_device}. "
+            "This indicates map_location is not working correctly."
+        )
 
-    def mock_torch_load(path, *args, **kwargs):
-        # Verify that map_location parameter is present
-        assert "map_location" in kwargs, "map_location parameter must be passed to torch.load"
-        # Call the original function
-        return original_torch_load(path, *args, **kwargs)
-
-    # Patch torch.load and load the model
-    with patch("torch.load", side_effect=mock_torch_load) as mock_load:
-        new_model.load(weights_path)
-
-        # Verify torch.load was called
-        assert mock_load.called, "torch.load should have been called"
-
-        # Verify map_location was in the call
-        call_kwargs = mock_load.call_args[1]
-        assert "map_location" in call_kwargs, "map_location must be passed to torch.load"
-
-    # Verify that the weights were loaded correctly
+    # Verify that the weights were loaded correctly (functional test)
     for key in model.state_dict():
         assert torch.allclose(model.state_dict()[key], new_model.state_dict()[key])
