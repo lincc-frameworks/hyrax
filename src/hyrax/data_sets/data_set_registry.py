@@ -47,7 +47,7 @@ class HyraxDataset:
 
     """
 
-    def __init__(self, config: ConfigDict, metadata_table=None):
+    def __init__(self, config: ConfigDict, metadata_table=None, object_id_column_name=None):
         """
         .. py:method:: __init__
 
@@ -94,14 +94,22 @@ class HyraxDataset:
 
         self._config = config
         self._metadata_table = metadata_table
+        
+        if metadata_table is not None:
+            self._object_id_column_name = object_id_column_name
+            if object_id_column_name is None:
+                msg = "Metadata table was provided without an object_id_column_name.\n"
+                msg += "Please ensure object_id_column_name is passed up to the HyraxDataset constructor.\n"
+                raise RuntimeError(msg)
 
+        # xcxc remove
         # If your metadata does not contain an object_id field
         # we use your required .ids() method to create the column
-        if self._metadata_table is not None:
-            colnames = self._metadata_table.colnames
-            if "object_id" not in colnames:
-                ids = np.array(list(self.ids()))
-                self._metadata_table.add_column(ids, name="object_id")
+        # if self._metadata_table is not None and self._object_id_column_name is None:
+        #     colnames = self._metadata_table.colnames
+        #     if "object_id" not in colnames:
+        #         ids = np.array(list(self.ids()))
+        #         self._metadata_table.add_column(ids, name="object_id")
 
         self.tensorboardx_logger = None
 
