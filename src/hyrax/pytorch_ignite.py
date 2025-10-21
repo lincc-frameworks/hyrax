@@ -25,6 +25,7 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
+from hyrax.plugin_utils import get_or_load_class
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +178,26 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
 
 
+def load_collate_function(data_loader_kwargs: dict) -> Optional[Callable]:
+    """Load a collate function if one is specified in the config. Otherwise return None.
+    Returning None will cause the DataLoader to use PyTorch's default collate function.
+
+    Parameters
+    ----------
+    data_loader_kwargs : dict
+        The configuration dictionary that will be passed as kwargs to the DataLoader
+
+    Returns
+    -------
+    Optional[Callable]
+        The collate function if specified, else None
+    """
+    collate_fn = (
+        get_or_load_class(data_loader_kwargs["collate_fn"]) if data_loader_kwargs["collate_fn"] else None
+    )
+    return collate_fn
+
+
 def dist_data_loader(
     dataset: Dataset,
     config: dict,
@@ -209,6 +230,12 @@ def dist_data_loader(
     If an iterable dataset is passed, we cannot create multiple splits with a pyTorch sampler object
     so we return the same thing for all splits, which is a dataloader representing the entire iterable
     """
+
+    # Extract the config dictionary that will be provided as kwargs to the DataLoader
+    data_loader_kwargs = dict(config["data_loader"])
+    # Load the collate function if one is specified in the config
+    data_loader_kwargs["collate_fn"] = load_collate_function(data_loader_kwargs)
+
     # Handle case where no split is needed.
     if isinstance(split, bool):
         # We still need to return the list of indexes used by the dataloader,
@@ -222,7 +249,7 @@ def dist_data_loader(
         # Note that when sampler=None, a default sampler is used. The default config
         # defines shuffle=False, which should prevent any shuffling of of the data.
         # We expect that this will be the primary use case when running inference.
-        return idist.auto_dataloader(dataset, sampler=None, **config["data_loader"]), indexes
+        return idist.auto_dataloader(dataset, sampler=None, **data_loader_kwargs), indexes
 
     # Sanitize split argument
     if isinstance(split, str):
@@ -238,8 +265,7 @@ def dist_data_loader(
         ids = list(dataset.ids())
         indexes = list(range(len(ids)))
         dataloaders = {
-            s: (idist.auto_dataloader(dataset, pin_memory=True, **config["data_loader"]), indexes)
-            for s in split
+            s: (idist.auto_dataloader(dataset, pin_memory=True, **data_loader_kwargs), indexes) for s in split
         }
     else:
         # Create the indexes for all splits based on config.
@@ -249,7 +275,7 @@ def dist_data_loader(
         samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
 
         dataloaders = {
-            split: (idist.auto_dataloader(dataset, sampler=sampler, **config["data_loader"]), indexes[split])
+            split: (idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes[split])
             if sampler
             else None
             for split, sampler in samplers.items()
