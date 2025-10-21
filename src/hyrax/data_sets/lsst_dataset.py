@@ -15,6 +15,8 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
     """
 
     BANDS = ["u", "g", "r", "i", "z", "y"]
+    object_id_autodetect_names = ["object_id", "objectId"]
+
 
     def __init__(self, config, data_location):
         """
@@ -60,11 +62,39 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         self.sh_deg = config["data_set"]["semi_height_deg"]
         self.sw_deg = config["data_set"]["semi_width_deg"]
 
+        # xcxc todo make this a dataset level config
+        oid_column_name = config["data_set"]["object_id_column_name"] if config["data_set"]["object_id_column_name"] \
+            else self._detect_object_id_column_name()
+
         # TODO: Metadata from the catalog
-        super().__init__(config, self.catalog)
+        super().__init__(config, self.catalog, self._detect_object_id_column_name())
         
         self.set_function_transform()
         self.set_crop_transform()
+
+    def _detect_object_id_column_name(self):
+        """Setup file naming strategy based on catalog columns."""
+        catalog_columns = self.catalog.colnames if hasattr(self.catalog, "colnames") else self.catalog.columns
+
+        # Autodetect ID column
+        for object_id_name in LSSTDataset.object_id_autodetect_names:
+            if object_id_name in catalog_columns:
+                object_id_column_name = object_id_name
+                break
+        else:
+            msg = "Must provide an Object ID column in your catalog. This ID must be unique and is used to\n"
+            msg += "track in-progress downloads. It need not be a Rubin generated objectId, but could be.\n"
+            msg += "You can configure the name of your object ID column with \n"
+            msg += "config['data_set']['object_id_column_name']. \n"
+            msg += "If nothing is configured, a column named 'object_id' or 'objectId' will be used\n"
+            msg += "automatically if present in your catalog.\n"
+            raise RuntimeError(msg)
+
+        return object_id_column_name
+        # xcxc todo check and remove this since self.use_object_id is no more
+        # if not self.use_object_id:
+        #     dataset_length = len(self.catalog)
+        #     self.padding_length = max(4, len(str(dataset_length)))
 
     def _load_catalog(self, data_set_config):
         """
@@ -100,6 +130,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         table_path = Path(table_path)
 
         # Check if it's a pickle file
+        # Loading a pickle file is significantly faster than Table.read()
         if table_path.suffix.lower() in [".pkl", ".pickle"]:
             with open(table_path, "rb") as f:
                 table = pickle.load(f)
