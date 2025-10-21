@@ -59,14 +59,29 @@ class Train(Verb):
 
         # Instantiate the model and dataset
         dataset = setup_dataset(config, tensorboardx_logger)
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}")
+        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Prepared dataset(s):{Style.RESET_ALL}")
+        logger.info(f"Training:\n{dataset['train']}")
+        if "validate" in dataset:
+            logger.info(f"Validation:\n{dataset['validate']}")
         model = setup_model(config, dataset)
         logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL}\n{model}")
 
-        # Create a data loader for the training set (and validation split if configured)
-        data_loaders = dist_data_loader(dataset, config, ["train", "validate"])
-        train_data_loader, _ = data_loaders["train"]
-        validation_data_loader, _ = data_loaders.get("validate", (None, None))
+        # We know that `dataset` will always be returned as a dictionary with at least
+        # a `train` and `infer` key. There may be a `validate` key as well.
+        # The only instance in which a dataset would not be a dictionary is if
+        # the user has requested an iterable dataset. But we don't want to support that
+        # for training right now.
+        if isinstance(dataset, dict) and "validate" in dataset:
+            train_data_loader, _ = dist_data_loader(dataset["train"], config, False)
+            validation_data_loader, _ = dist_data_loader(dataset["validate"], config, False)
+
+        # if `validate` isn't in the dataset dict, then we assume the user wants to
+        # use percentage-based splits on the `train` dataset. Or the user has an
+        # iterable dataset - but we don't support training with iterable datasets.
+        else:
+            data_loaders = dist_data_loader(dataset["train"], config, ["train", "validate"])
+            train_data_loader, _ = data_loaders["train"]
+            validation_data_loader, _ = data_loaders.get("validate", (None, None))
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir, tensorboardx_logger)
