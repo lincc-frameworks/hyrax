@@ -60,7 +60,10 @@ class Train(Verb):
         # Instantiate the model and dataset
         dataset = setup_dataset(config, tensorboardx_logger)
         model = setup_model(config, dataset)
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} {model.__class__.__name__}")
+        logger.info(
+            f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
+            f"{model.__class__.__name__}"
+        )
         logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}")
 
         # Create a data loader for the training set (and validation split if configured)
