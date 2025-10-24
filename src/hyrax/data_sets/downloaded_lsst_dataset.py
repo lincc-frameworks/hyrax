@@ -76,7 +76,6 @@ class DownloadedLSSTDataset(LSSTDataset):
     - All files stored in config["general"]["data_dir"]
     """
 
-
     def __init__(self, config, data_location):
         self.download_dir = Path(data_location)
         self.download_dir.mkdir(exist_ok=True)
@@ -87,7 +86,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         super().__init__(config)
 
         # Examine LSSTDataset's catalog for the object ids we need throughout to manage in-progress downloads.
-        #self._detect_object_id_column_name()
+        # self._detect_object_id_column_name()
         self.catalog_object_ids = set(self.catalog[self._object_id_column_name])
 
         try:
@@ -119,29 +118,26 @@ class DownloadedLSSTDataset(LSSTDataset):
         self._manifest_to_catalog_index_map = None
         self._build_catalog_to_manifest_index_map()
 
-
-
-
     def _initialize_manifest(self):
         """Create new manifest or load/merge with existing manifest, with band filtering validation.
-        
+
         The manifest is always an astropy Table with at least the following columns:
         cutout_shape: np.array of dimensions e.g. [3,150,150]
         filename: string containing the fits filename containing the tensor for the object
-        downloaded_bands: string containing a comma separated list of the bands downloaded. 
-                          Order is expected to be consistent between rows.
+        downloaded_bands: string containing a comma separated list of the bands downloaded.
+        Order is expected to be consistent between rows.
 
         When this astropy table is loaded into memory, multiple sources are consulted.
         - The Manifest on the filesystem, which contains the source of truth for what
-          files have been downloaded. If this is not found, it is created.
-        - The bands given in the catalog passed in 
+        files have been downloaded. If this is not found, it is created.
+        - The bands given in the catalog passed in
 
         """
         if not isinstance(self.catalog, Table):
             raise NotImplementedError("LSSTDataset self.catalog should always be an astropy table.")
-        
+
         self.manifest_path = self.download_dir / "manifest.fits"
-         
+
         # Initialize band filtering flags
         self._is_filtering_bands = False
         self._original_bands = None
@@ -163,7 +159,7 @@ class DownloadedLSSTDataset(LSSTDataset):
             self.manifest = Table()
 
             # Copy only the data columns
-            #xcxc this is copying over all the astro data from LSSTDataset's catalog
+            # xcxc this is copying over all the astro data from LSSTDataset's catalog
             # We probably don't need that, and its going to make merge ops less performant if we
             # ever have to copy the catalog, which we will...
             #
@@ -237,7 +233,7 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def _update_manifest_from_catalog(self, existing_manifest):
         """
-        Using object_id as a unique key, adds manifest entries to existing_manifest, 
+        Using object_id as a unique key, adds manifest entries to existing_manifest,
         using self.catalog as the source of any new objects.
 
         self.catalog is not altered by this operation.
@@ -248,7 +244,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         """
 
         # Verify object_id merging is possible
-        #if not self.use_object_id:
+        # if not self.use_object_id:
         #    raise ValueError("Cannot merge manifests without object_id")
 
         # Check required columns exist in existing manifest
@@ -277,7 +273,7 @@ class DownloadedLSSTDataset(LSSTDataset):
             # Keep the FULL existing manifest but store filtering info for operations
             self._manifest_filter_object_ids = current_object_ids
             merged_manifest = existing_manifest
-            
+
         else:
             # Current catalog contains new objects - add them to existing manifest
             logger.info(
@@ -322,7 +318,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                 manifest_idx = manifest_lookup[catalog_obj_id]
                 self._catalog_to_manifest_index_map[catalog_idx] = manifest_idx
                 self._manifest_to_catalog_index_map[manifest_idx] = catalog_idx
-            #else:
+            # else:
             #    raise ValueError(f"Object ID {catalog_obj_id} from catalog not found in manifest")
 
     def _add_manifest_columns_to_table(self, table):
@@ -455,7 +451,7 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         This updates the manifest to reflect what is on the filesystem.
         For existing cutouts this loads every file using `torch.load`
-        
+
         """
         logger.info("Syncing manifest with filesystem...")
         synced_count = 0
@@ -463,8 +459,8 @@ class DownloadedLSSTDataset(LSSTDataset):
         # When filtering is active, we need to map manifest indices to catalog indices
         #
         # TODO performance: We need to iterate over the files we have downloaded
-        # NOT over the manifest entries. Why? Think about how many stat calls we 
-        # are issuing in each case. We could try to stat every file we think ought to exist, 
+        # NOT over the manifest entries. Why? Think about how many stat calls we
+        # are issuing in each case. We could try to stat every file we think ought to exist,
         # or we could go over all the files that *do* exist via listing the directory.
         # The latter will be faster overall, and also touch the filesystem fewer times
         #
@@ -566,7 +562,7 @@ class DownloadedLSSTDataset(LSSTDataset):
         """Fetch cutout, using saved cutout if available, with optional band filtering."""
         if idx is not None:
             # xcxc there's a race here where the cutout is mid-download and doesn't exist in the manifest yet
-            # but we are still trying to access it, and the file exists. THis codepath needs to consult the 
+            # but we are still trying to access it, and the file exists. THis codepath needs to consult the
             # manifest and consider synchronization.
             cutout_path = self._get_cutout_path(idx)
             if cutout_path.exists():
@@ -782,9 +778,9 @@ class DownloadedLSSTDataset(LSSTDataset):
             # Determine number of workers
             if max_workers is None:
                 max_workers = self._determine_numprocs_download()
-    
+
             logger.info(f"Downloading {len(indices_to_download)} cutouts using {max_workers} threads.")
-    
+
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 futures = {
                     executor.submit(self._download_single_cutout, catalog_idx, manifest_idx): (
@@ -793,7 +789,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                     )
                     for catalog_idx, manifest_idx in indices_to_download
                 }
-    
+
                 with tqdm(total=len(indices_to_download), desc="Downloading cutouts") as pbar:
                     for future in as_completed(futures):
                         try:
@@ -807,21 +803,21 @@ class DownloadedLSSTDataset(LSSTDataset):
                             )
                             self._update_manifest_entry(manifest_idx, None, "Attempted", [])
                             pbar.update(1)
-    
+
             # Final manifest save
             with self._manifest_lock:
                 if self._updates_since_save > 0:
                     self._save_manifest()
                     self._updates_since_save = 0
-    
+
             # Log cache and download stats
             cache_info = self._request_patch_cached.cache_info()
             logger.info(f"Download complete. Cache stats: {cache_info}")
             logger.info(f"Manifest saved to {self.manifest_path}")
-        else: 
+        else:
             # indicies_to_download has no elements
             logger.info("All cutouts already downloaded")
-            
+
         return self.manifest
 
     def _download_single_cutout(self, catalog_idx, manifest_idx):
@@ -874,9 +870,7 @@ class DownloadedLSSTDataset(LSSTDataset):
             )
             failed = sum(1 for filename in self.manifest["filename"] if filename == "Attempted")
             pending = sum(1 for filename in self.manifest["filename"] if not filename)
-            expected_band_count = (
-                len(self._original_bands) if self._is_filtering_bands else len(self.BANDS)
-            )
+            expected_band_count = len(self._original_bands) if self._is_filtering_bands else len(self.BANDS)
 
             # Add statistics about partial downloads (cutouts with missing bands)
             partial_downloads = sum(
