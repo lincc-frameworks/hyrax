@@ -76,10 +76,15 @@ def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):
     # from the ONNX version to make sure it's the same, i.e. `np.assert_allclose`.
     sample_out = model(sample)
 
+    # If sample is a tuple, wrap it in another tuple to prevent torch.onnx.export
+    # from unpacking it as multiple arguments to the model's forward method.
+    # This ensures that models expecting a tuple as input work correctly.
+    export_args = (sample,) if isinstance(sample, tuple) else sample
+
     # export the model to ONNX format
     export(
         model,
-        sample,
+        export_args,
         output_filepath,
         opset_version=opset_version,
         input_names=["input"],
