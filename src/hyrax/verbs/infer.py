@@ -63,11 +63,14 @@ class Infer(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         dataset = setup_dataset(config, tensorboardx_logger)
+        model = setup_model(config, dataset)
+        logger.info(
+            f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL} "
+            f"{model.__class__.__name__}"
+        )
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}\n{dataset}"
         )
-        model = setup_model(config, dataset)
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL}\n{model}")
         if dataset.is_map():
             logger.debug(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 
