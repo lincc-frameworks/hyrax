@@ -122,7 +122,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         # inside _init_from_path()
         logger.debug("Preparing Metadata")
         metadata = self._prepare_metadata()
-        super().__init__(config, metadata)
+        super().__init__(config, metadata, object_id_column_name=self.object_id_column_name)
 
         self._before_preload()
 

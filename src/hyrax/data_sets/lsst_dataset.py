@@ -17,8 +17,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
     BANDS = ["u", "g", "r", "i", "z", "y"]
     object_id_autodetect_names = ["object_id", "objectId"]
 
-
-    def __init__(self, config, data_location):
+    def __init__(self, config, data_location=None):
         """
         .. py:method:: __init__
 
@@ -62,13 +61,15 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         self.sh_deg = config["data_set"]["semi_height_deg"]
         self.sw_deg = config["data_set"]["semi_width_deg"]
 
-        # xcxc todo make this a dataset level config
-        oid_column_name = config["data_set"]["object_id_column_name"] if config["data_set"]["object_id_column_name"] \
+        oid_column_name = (
+            config["data_set"]["object_id_column_name"]
+            if config["data_set"]["object_id_column_name"]
             else self._detect_object_id_column_name()
+        )
 
         # TODO: Metadata from the catalog
-        super().__init__(config, self.catalog, self._detect_object_id_column_name())
-        
+        super().__init__(config, self.catalog, oid_column_name)
+
         self.set_function_transform()
         self.set_crop_transform()
 
@@ -167,7 +168,6 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         else:
             row = self.catalog[idxs]
             return self._fetch_single_cutout(row)
-
 
     def __getitem__(self, idxs):
         """Get default data fields for the this dataset.
