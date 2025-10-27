@@ -153,7 +153,6 @@ class TestSetupDataset:
                     result = setup_dataset(config)
 
                     # Verify the dataset constructor was called with correct parameters
-                    assert mock_dataset_cls.call_count == 2
                     expected_call = call(config=config, data_location="/some/valid/path")
                     assert mock_dataset_cls.call_count == 2
                     mock_dataset_cls.assert_has_calls([expected_call, expected_call])

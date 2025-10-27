@@ -71,8 +71,6 @@ class Infer(Verb):
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}\n{dataset}"
         )
-        if dataset.is_map():
-            logger.debug(f"data set has length {len(dataset)}")  # type: ignore[arg-type]
 
         # Inference doesnt work at all with the dataloader doing additional shuffling:
         if config["data_loader"]["shuffle"]:
@@ -85,6 +83,8 @@ class Infer(Verb):
         # The only time it wouldn't be is if the dataset is an iterable dataset.
         if isinstance(dataset, dict) and "infer" in dataset:
             dataset = dataset["infer"]
+            if dataset.is_map():
+                logger.debug(f"Inference dataset has length: {len(dataset)}")  # type: ignore[arg-type]
 
         data_loader, data_loader_indexes = dist_data_loader(dataset, config, False)
 

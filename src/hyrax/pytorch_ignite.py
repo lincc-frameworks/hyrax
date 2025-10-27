@@ -64,17 +64,6 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
                 is_iterable = True
                 break
     return is_iterable
-    # if "train" in data_request:
-    #     for _, value in data_request.items():
-    #         for _, dataset_definition in value.items():
-    #             if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
-    #                 is_iterable = True
-    #                 break
-    # else:
-    #     for _, dataset_definition in data_request.items():
-    #         if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
-    #             is_iterable = True
-    # return is_iterable
 
 
 def setup_dataset(config: dict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:

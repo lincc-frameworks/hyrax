@@ -12,10 +12,9 @@ def test_infer_order(loopback_hyrax, split, shuffle):
     is correct in the presence of several splits
     """
     h, dataset = loopback_hyrax
-    h.config["infer"]["split"] = split if split is not None else False
     h.config["data_loader"]["shuffle"] = shuffle
 
-    dataset = dataset[split if split is not None else "infer"]
+    dataset = dataset["infer"]
     inference_results = h.infer()
     inference_result_ids = list(inference_results.ids())
     original_dataset_ids = list(dataset.ids())
