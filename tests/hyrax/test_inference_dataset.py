@@ -13,10 +13,19 @@ def inference_dataset(tmp_path_factory, request):
     h = hyrax.Hyrax()
     h.config["general"]["dev_mode"] = True
     h.config["model_inputs"] = {
-        "data": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": str(tmp_path_factory.mktemp("data")),
-            "primary_id_field": "object_id",
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path_factory.mktemp("data")),
+                "primary_id_field": "object_id",
+            },
+        },
+        "infer": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path_factory.mktemp("data")),
+                "primary_id_field": "object_id",
+            },
         },
     }
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
@@ -24,7 +33,7 @@ def inference_dataset(tmp_path_factory, request):
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2]
     original_data_set = h.prepare()
 
-    current_data_set = original_data_set
+    current_data_set = original_data_set["train"]
 
     for round_number in range(request.param):
         tmp_path = tmp_path_factory.mktemp(f"order_test_{request.param}_{round_number}")
@@ -48,7 +57,7 @@ def inference_dataset(tmp_path_factory, request):
         data_writer.write_index()
         current_data_set = InferenceDataSet(h.config, tmp_path)
 
-    return original_data_set, current_data_set
+    return original_data_set["train"], current_data_set
 
 
 def get_data_by_dataset_type(dataset, idx):

@@ -155,17 +155,7 @@ opset_version = 20
 
 
 [model_inputs]
-# Note - the sub-table (model_inputs.<sub-table>) can be named anything you like.
-[model_inputs.data]
-# Name of the dataset class to use, or the import path to an external dataset class.
-# e.g. "HyraxCifarDataSet", "user_pkg.data_set.ExternalDataset".
-dataset_class = "HyraxCifarDataSet"
-
-# Location (directory) where the data is stored.
-data_location = "./data"
-
-# The data field that represents a unique ID for each sample.
-primary_id_field = "object_id"
+# Top-level table that defines the dataset(s) used for training, validation, and inference.
 
 
 [data_set]
@@ -294,8 +284,9 @@ collate_fn = false
 # The path to the model weights file to use for inference.
 model_weights_file = false
 
+# >>> I believe that we can simply remove this entry <<<<<<<<<<<<<<<<<<<<<<<<<<<
 # The data_set split to use for inference. Use `false` for entire dataset.
-split = false
+split = "infer"
 
 
 [vector_db]

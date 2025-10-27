@@ -95,6 +95,11 @@ class InferenceDataSet(HyraxDataset, Dataset):
         #       we can bring up Only the metadata for a dataset, without constructing the whole thing.
         self._original_dataset_config["data_set"]["preload_cache"] = False
         self.original_dataset = setup_dataset(self._original_dataset_config)  # type: ignore[arg-type]
+        self.original_dataset = (
+            self.original_dataset["infer"]
+            if isinstance(self.original_dataset, dict)
+            else self.original_dataset
+        )
 
     def _shape(self):
         """The shape of the dataset (Discovered from files)

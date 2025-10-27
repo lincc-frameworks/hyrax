@@ -25,11 +25,20 @@ class VectorDBInsertBenchmarks:
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
         self.h.config["model_inputs"] = {
-            "data": {
-                "dataset_class": "HyraxRandomDataset",
-                "fields": ["image", "label", "object_id"],
-                "primary_id_field": "object_id",
-            }
+            "train": {
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "fields": ["image", "label", "object_id"],
+                    "primary_id_field": "object_id",
+                },
+            },
+            "infer": {
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "fields": ["image", "label", "object_id"],
+                    "primary_id_field": "object_id",
+                },
+            },
         }
         self.h.config["model"]["name"] = "HyraxLoopback"
 
@@ -90,11 +99,20 @@ class VectorDBSearchBenchmarks:
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
         self.h.config["model_inputs"] = {
-            "data": {
-                "dataset_class": "HyraxRandomDataset",
-                "fields": ["image", "label", "object_id"],
-                "primary_id_field": "object_id",
-            }
+            "train": {
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "fields": ["image", "label", "object_id"],
+                    "primary_id_field": "object_id",
+                },
+            },
+            "infer": {
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "fields": ["image", "label", "object_id"],
+                    "primary_id_field": "object_id",
+                },
+            },
         }
         self.h.config["data_loader"]["batch_size"] = 4096
         self.h.config["model"]["name"] = "HyraxLoopback"
@@ -114,7 +132,7 @@ class VectorDBSearchBenchmarks:
 
         # Get the list of dataset ids
         self.ds = self.h.prepare()
-        self.data_sample = self.ds[0]["data"]["image"]
+        self.data_sample = self.ds["infer"][0]["data"]["image"]
 
         self.h.config["vector_db"]["name"] = vector_db_implementation
         self.h.config["vector_db"]["chromadb"]["shard_size_limit"] = shard_size_limit
