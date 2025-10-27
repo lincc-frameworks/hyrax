@@ -59,12 +59,12 @@ class Train(Verb):
 
         # Instantiate the model and dataset
         dataset = setup_dataset(config, tensorboardx_logger)
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Prepared dataset(s):{Style.RESET_ALL}")
-        logger.info(f"Training:\n{dataset['train']}")
-        if "validate" in dataset:
-            logger.info(f"Validation:\n{dataset['validate']}")
         model = setup_model(config, dataset)
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL}\n{model}")
+        logger.info(
+            f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
+            f"{model.__class__.__name__}"
+        )
+        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}")
 
         # We know that `dataset` will always be returned as a dictionary with at least
         # a `train` and `infer` key. There may be a `validate` key as well.
