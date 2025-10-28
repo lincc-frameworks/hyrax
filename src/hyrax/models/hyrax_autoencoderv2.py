@@ -39,8 +39,8 @@ class HyraxAutoencoderV2(nn.Module):
 
         self.num_input_channels, self.image_width, self.image_height = shape
 
-        self.c_hid = self.config["model"]["base_channel_size"]
-        self.latent_dim = self.config["model"]["latent_dim"]
+        self.c_hid = self.config["model"]["HyraxAutoencoderV2"]["base_channel_size"]
+        self.latent_dim = self.config["model"]["HyraxAutoencoderV2"]["latent_dim"]
 
         # Calculate how much our convolutional layers will affect the size of final convolution
         # Formula evaluated from: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
@@ -89,7 +89,7 @@ class HyraxAutoencoderV2(nn.Module):
 
         # Configure final activation
         # Should be set to the same value as ["dataset"]["transform"] in most cases
-        final_layer = self.config["model"].get("final_layer", "tanh")
+        final_layer = self.config["model"]["HyraxAutoencoderV2"]["final_layer"] if self.config["model"]["HyraxAutoencoderV2"]["final_layer"] else "tanh"
         if final_layer == "sigmoid":
             self.final_activation = nn.Sigmoid()
         elif final_layer == "tanh":
