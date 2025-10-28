@@ -59,14 +59,7 @@ def test_generate_data_request_empty_model_inputs(caplog):
             generate_data_request_from_config(h.config)
 
     error_message = str(execinfo.value)
-    assert "[model_inputs] table in your configuration is empty" in error_message
-    assert "provide 'train' and optionally 'validate' dataset definitions" in error_message
-    assert "provide 'infer' dataset definition" in error_message
-    assert "dataset_class" in error_message
-    assert "Available built-in dataset classes:" in error_message
-    assert "HyraxRandomDataset" in error_message
-    assert "https://hyrax.readthedocs.io" in error_message
-    assert error_message in caplog.text
+    assert "The [model_inputs] table in the configuration is empty." in error_message
 
 
 def test_data_provider(data_provider):

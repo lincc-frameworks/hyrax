@@ -31,36 +31,39 @@ def generate_data_request_from_config(config):
 
     if "model_inputs" in config:
         data_request = copy.deepcopy(config["model_inputs"])
-        
+
         # Check if model_inputs is empty and provide helpful error message
         if not data_request:
             available_datasets = sorted(DATASET_REGISTRY.keys())
             error_msg = (
                 "The [model_inputs] table in your configuration is empty.\n\n"
                 "You must provide dataset definitions for training and/or inference:\n"
-                "  - For training: provide 'train' and optionally 'validate' dataset definitions\n"
-                "  - For inference: provide 'infer' dataset definition\n\n"
+                '  - For training: provide "train" and optionally "validate" dataset definitions\n'
+                '  - For inference: provide "infer" dataset definition\n\n'
                 "Example configuration:\n"
                 "  [model_inputs.train]\n"
                 "  [model_inputs.train.data]\n"
-                "  dataset_class = \"HyraxRandomDataset\"\n"
-                "  data_location = \"./data\"\n"
-                "  primary_id_field = \"object_id\"\n\n"
+                '  dataset_class = "HyraxRandomDataset"\n'
+                '  data_location = "./data"\n'
+                '  primary_id_field = "object_id"\n\n'
                 "  [model_inputs.infer]\n"
                 "  [model_inputs.infer.data]\n"
-                "  dataset_class = \"HyraxRandomDataset\"\n"
-                "  data_location = \"./data\"\n"
-                "  primary_id_field = \"object_id\"\n\n"
+                '  dataset_class = "HyraxRandomDataset"\n'
+                '  data_location = "./data"\n'
+                '  primary_id_field = "object_id"\n\n'
             )
             if available_datasets:
-                error_msg += f"Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
+                error_msg += "Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
                 error_msg += "\n\n"
             error_msg += (
                 "For more information and examples, see the documentation at:\n"
-                "  https://hyrax.readthedocs.io/en/latest/notebooks.html"
+                "  https://hyrax.readthedocs.io/en/latest/notebooks/model_input_1.html"
             )
             logger.error(error_msg)
-            raise RuntimeError(error_msg)
+            raise RuntimeError(
+                "The [model_inputs] table in the configuration is empty. "
+                "Check the preceeding error log for details and help."
+            )
     else:
         data_request = {
             "train": {
