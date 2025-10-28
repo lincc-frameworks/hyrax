@@ -47,6 +47,28 @@ def test_generate_data_request_passes_model_inputs():
     assert ret_val == model_inputs
 
 
+def test_generate_data_request_empty_model_inputs(caplog):
+    """Test that generate_data_request raises an error with a helpful message
+    when model_inputs is empty."""
+
+    h = Hyrax()
+    h.config["model_inputs"] = {}
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(RuntimeError) as execinfo:
+            generate_data_request_from_config(h.config)
+
+    error_message = str(execinfo.value)
+    assert "[model_inputs] table in your configuration is empty" in error_message
+    assert "provide 'train' and optionally 'validate' dataset definitions" in error_message
+    assert "provide 'infer' dataset definition" in error_message
+    assert "dataset_class" in error_message
+    assert "Available built-in dataset classes:" in error_message
+    assert "HyraxRandomDataset" in error_message
+    assert "https://hyrax.readthedocs.io" in error_message
+    assert error_message in caplog.text
+
+
 def test_data_provider(data_provider):
     """Testing the happy path scenario of creating a DataProvider
     instance with a config that requests two instances of

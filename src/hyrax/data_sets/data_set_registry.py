@@ -9,7 +9,7 @@ import numpy.typing as npt
 from hyrax.plugin_utils import get_or_load_class, update_registry
 
 logger = logging.getLogger(__name__)
-DATA_SET_REGISTRY: dict[str, type["HyraxDataset"]] = {}
+DATASET_REGISTRY: dict[str, type["HyraxDataset"]] = {}
 
 
 class HyraxDataset:
@@ -185,7 +185,7 @@ class HyraxDataset:
         #       opportunity to do configuration or logging to help people navigate writing a dataset?
 
         # Ensure the class is in the registry so the config system can find it
-        update_registry(DATA_SET_REGISTRY, cls.__name__, cls)
+        update_registry(DATASET_REGISTRY, cls.__name__, cls)
 
     def ids(self) -> Generator[str]:
         """This is the default IDs function you get when you derive from hyrax Dataset
@@ -301,7 +301,7 @@ def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:
     if not class_name:
         raise RuntimeError("dataset_class must be specified in 'model_inputs'.")
 
-    dataset_cls = get_or_load_class(class_name, DATA_SET_REGISTRY)
+    dataset_cls = get_or_load_class(class_name, DATASET_REGISTRY)
 
     return dataset_cls
 
