@@ -47,6 +47,21 @@ def test_generate_data_request_passes_model_inputs():
     assert ret_val == model_inputs
 
 
+def test_generate_data_request_empty_model_inputs(caplog):
+    """Test that generate_data_request raises an error with a helpful message
+    when model_inputs is empty."""
+
+    h = Hyrax()
+    h.config["model_inputs"] = {}
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(RuntimeError) as execinfo:
+            generate_data_request_from_config(h.config)
+
+    error_message = str(execinfo.value)
+    assert "The [model_inputs] table in the configuration is empty." in error_message
+
+
 def test_data_provider(data_provider):
     """Testing the happy path scenario of creating a DataProvider
     instance with a config that requests two instances of
