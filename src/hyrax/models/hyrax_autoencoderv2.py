@@ -3,8 +3,7 @@ import logging
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F  # noqa N812
-from torch import Tensor
+from torch import Tensor, optim
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
@@ -51,6 +50,9 @@ class HyraxAutoencoderV2(nn.Module):
 
         self._init_encoder()
         self._init_decoder()
+
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.SGD(self.parameters(), lr=0.01, momentum=0.9)
 
     def conv2d_multi_layer(self, input_size, num_applications, **kwargs) -> int:
         for _ in range(num_applications):
@@ -150,11 +152,11 @@ class HyraxAutoencoderV2(nn.Module):
         x_hat = self._eval_decoder(z)
 
         # Configurable band reduction strategy
-        band_reduction = self.config["criterion"].get("band_loss_reduction", "mean")
+        band_reduction = self.config["model"]["HyraxAutoencoderV2"]["band_loss_reduction"]
 
         # The loss averaging strategy here is different from v1 which averages
         # over only the batch dimension. Here we always average over both batch
-        # and spaital dimensions; so as the loss-value is not impacted by image size.
+        # and spatial dimensions; so as the loss-value is not impacted by image size.
         if band_reduction == "sum":
             # Sum across bands, mean over spatial dims and batch
             # More channels will result in larger loss values
@@ -189,7 +191,8 @@ class HyraxAutoencoderV2(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        if "image" in data_dict:
-            return data_dict["image"]
+        data = data_dict.get("data", {})
+        if "image" in data:
+            return data["image"]
         else:
             raise RuntimeError("Data dict did not contain image key.")

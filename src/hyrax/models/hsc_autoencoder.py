@@ -2,6 +2,7 @@
 
 
 import torch.nn as nn
+from torch import optim
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
@@ -37,6 +38,9 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         )
 
         self.config = config
+
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.SGD(self.parameters(), lr=0.01, momentum=0.9)
 
     def forward(self, x):
         encoded = self.encoder(x)

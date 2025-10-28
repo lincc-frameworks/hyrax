@@ -162,14 +162,3 @@ class Train(Verb):
         # Log some training and data loader params
         mlflow.log_param("epochs", config["train"]["epochs"])
         mlflow.log_param("batch_size", config["data_loader"]["batch_size"])
-
-        # Log the criterion and optimizer params
-        criterion_name = config["criterion"]["name"]
-        mlflow.log_param("criterion", criterion_name)
-        if criterion_name in config:
-            mlflow.log_params(config[criterion_name])
-
-        optimizer_name = config["optimizer"]["name"]
-        mlflow.log_param("optimizer", optimizer_name)
-        if optimizer_name in config:
-            mlflow.log_params(config[optimizer_name])

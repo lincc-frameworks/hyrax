@@ -54,6 +54,9 @@ class HyraxCNN(nn.Module):
         self.fc2 = nn.Linear(120, 84)
         self.fc3 = nn.Linear(84, self.config["model"]["HyraxCNN"]["output_classes"])
 
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = torch.optim.SGD(self.parameters(), lr=0.01, momentum=0.9)
+
     def conv2d_output_size(self, input_size, kernel_size, padding=0, stride=1, dilation=1) -> int:
         # From https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
         numerator = input_size + 2 * padding - dilation * (kernel_size - 1) - 1

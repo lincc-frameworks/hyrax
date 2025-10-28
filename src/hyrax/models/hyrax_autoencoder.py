@@ -4,7 +4,7 @@ import logging
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
-from torch import Tensor, as_tensor
+from torch import as_tensor
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
@@ -45,6 +45,8 @@ class HyraxAutoencoder(nn.Module):
 
         self._init_encoder()
         self._init_decoder()
+
+        self.optimizer = optim.Adam(self.parameters(), lr=1e-3)
 
     def conv2d_multi_layer(self, input_size, num_applications, **kwargs) -> int:
         for _ in range(num_applications):
@@ -138,7 +140,7 @@ class HyraxAutoencoder(nn.Module):
         return {"loss": loss.item()}
 
     @staticmethod
-    def to_tensor(data_dict) -> tuple[Tensor]:
+    def to_tensor(data_dict):
         """This function converts structured data to the input tensor we need to run
 
         Parameters
@@ -146,12 +148,5 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        cifar_data = data_dict.get("data", {})
-
-        if "image" in cifar_data:
-            image = as_tensor(cifar_data["image"])
-
-        return image
-
-    def _optimizer(self):
-        return optim.Adam(self.parameters(), lr=1e-3)
+        data = data_dict.get("data", {})
+        return as_tensor(data["image"])

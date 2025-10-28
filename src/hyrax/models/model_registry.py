@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import torch.nn as nn
 from torch import Tensor, as_tensor
@@ -25,56 +25,6 @@ def _torch_load(self: nn.Module, load_path: Path):
     self.load_state_dict(state_dict, assign=True)
 
 
-def _torch_criterion(self: nn.Module):
-    """Load the criterion class using the name defined in the config and
-    instantiate it with the arguments defined in the config."""
-
-    config = cast(dict[str, Any], self.config)
-
-    # Load the class and get any parameters from the config dictionary
-    criterion_name = config["criterion"]["name"]
-    criterion_cls = get_or_load_class(criterion_name)
-
-    arguments = {}
-    if criterion_name in config:
-        arguments = config[criterion_name]
-
-    # Print some debugging info about the criterion function and parameters used
-    log_string = f"Using criterion: {criterion_name} "
-    if arguments:
-        log_string += f"with arguments: {arguments}."
-    else:
-        log_string += "with default arguments."
-    logger.debug(log_string)
-
-    return criterion_cls(**arguments)
-
-
-def _torch_optimizer(self: nn.Module):
-    """Load the optimizer class using the name defined in the config and
-    instantiate it with the arguments defined in the config."""
-
-    config = cast(dict[str, Any], self.config)
-
-    # Load the class and get any parameters from the config dictionary
-    optimizer_name = config["optimizer"]["name"]
-    optimizer_cls = get_or_load_class(optimizer_name)
-
-    arguments = {}
-    if optimizer_name in config:
-        arguments = config[optimizer_name]
-
-    # Print some debugging info about the optimizer function and parameters used
-    log_string = f"Using optimizer: {optimizer_name} "
-    if arguments:
-        log_string += f"with arguments: {arguments}."
-    else:
-        log_string += "with default arguments."
-    logger.debug(log_string)
-
-    return optimizer_cls(self.parameters(), **arguments)
-
-
 def hyrax_model(cls):
     """Decorator to register a model with the model registry, and to add common interface functions
 
@@ -87,15 +37,11 @@ def hyrax_model(cls):
     if issubclass(cls, nn.Module):
         cls.save = _torch_save
         cls.load = _torch_load
-        cls._criterion = _torch_criterion if not hasattr(cls, "_criterion") else cls._criterion
-        cls._optimizer = _torch_optimizer if not hasattr(cls, "_optimizer") else cls._optimizer
 
     original_init = cls.__init__
 
     def wrapped_init(self, config, *args, **kwargs):
         original_init(self, config, *args, **kwargs)
-        self.criterion = self._criterion()
-        self.optimizer = self._optimizer()
 
     cls.__init__ = wrapped_init
 

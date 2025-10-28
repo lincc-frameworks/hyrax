@@ -100,6 +100,9 @@ class ImageDCAE(nn.Module):
         else:
             self.final_activation = nn.Identity()
 
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.Adam(self.parameters(), lr=1e-3)
+
     def _calculate_conv_output_size(self):
         """Calculate the output size after all convolutional layers for the linear bottleneck."""
         # Simulate the forward pass through conv layers to get the size
@@ -218,14 +221,11 @@ class ImageDCAE(nn.Module):
 
         return {"loss": loss.item()}
 
-    def _optimizer(self):
-        """Default optimizer configuration."""
-        return optim.Adam(self.parameters(), lr=1e-3)
-
     @staticmethod
     def to_tensor(data_dict):
         """Convert structured data to tensor format."""
-        if "image" in data_dict:
-            return data_dict["image"]
+        data = data_dict.get("data", {})
+        if "image" in data:
+            return data["image"]
         else:
             raise RuntimeError("Data dict did not contain image key.")
