@@ -1,3 +1,5 @@
+import logging
+
 import pytest
 
 from hyrax import plugin_utils
@@ -71,6 +73,18 @@ def test_fetch_model_class_no_model():
     assert "A model class name or path must be provided" in str(excinfo.value)
 
 
+def test_fetch_model_class_false_model():
+    """Test that the fetch_model_class function raises an error when model
+    is set to false in the configuration."""
+
+    config = {"model": {"name": False}}
+
+    with pytest.raises(RuntimeError) as excinfo:
+        fetch_model_class(config)
+
+    assert "A model class name or path must be provided" in str(excinfo.value)
+
+
 def test_fetch_model_class_no_model_cls():
     """Test that an exception is raised when a non-existent model class is requested."""
 
@@ -91,6 +105,22 @@ def test_fetch_model_class_not_in_registry():
         fetch_model_class(config)
 
     assert "not found in registry and is not a full import path" in str(excinfo.value)
+
+
+def test_fetch_model_class_false_logs_registered_models(caplog):
+    """Test that the fetch_model_class function logs registered models when
+    model is set to false."""
+
+    config = {"model": {"name": False}}
+
+    with caplog.at_level(logging.ERROR):
+        with pytest.raises(RuntimeError):
+            fetch_model_class(config)
+
+    # Check that the error message contains expected information
+    assert "No model name was provided" in caplog.text
+    assert "h.set_config('model.name'" in caplog.text
+    assert "Currently registered models:" in caplog.text
 
 
 def test_fetch_model_class_in_registry():

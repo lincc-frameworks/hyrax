@@ -83,7 +83,7 @@ mask = false
 
 # The name of the model to use. Option are a built-in model class name or import path
 # to an external model. e.g. "HyraxAutoencoder", "user_pkg.model.ExternalModel"
-name = "HyraxAutoencoder"
+name = false
 
 # The number of output channels from the first layer.
 base_channel_size = 32
