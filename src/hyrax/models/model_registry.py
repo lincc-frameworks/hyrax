@@ -176,7 +176,9 @@ def fetch_model_class(runtime_config: dict) -> type[nn.Module]:
         logger.error(
             "No model name was provided in the configuration. "
             "You must specify a model to use before running Hyrax.\n\n"
-            "To set a model, use: h.set_config('model.name', '<model_name>')\n\n"
+            "To set a model, use: h.set_config('model.name', '<model_name>')\n"
+            "<model_name> can be one of the following registered models or a path to a custom model class "
+            "e.g. 'HyraxCNN' or 'my_package.my_module.MyModelClass'.\n\n"
             f"Currently registered models:\n{model_list}"
         )
         raise RuntimeError(
