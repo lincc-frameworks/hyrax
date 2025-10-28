@@ -89,8 +89,7 @@ class HyraxAutoencoderV2(nn.Module):
 
         # Configure final activation
         # Should be set to the same value as ["dataset"]["transform"] in most cases
-        final_layer_value = self.config["model"]["HyraxAutoencoderV2"].get("final_layer")
-        final_layer = final_layer_value if final_layer_value else "tanh"
+        final_layer = self.config["model"]["HyraxAutoencoderV2"]["final_layer"] if self.config["model"]["HyraxAutoencoderV2"]["final_layer"] else "tanh"
         if final_layer == "sigmoid":
             self.final_activation = nn.Sigmoid()
         elif final_layer == "tanh":
