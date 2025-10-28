@@ -85,6 +85,16 @@ mask = false
 # to an external model. e.g. "HyraxAutoencoder", "user_pkg.model.ExternalModel"
 name = ""
 
+
+[model.HyraxAutoencoder]
+# The number of output channels from the first layer.
+base_channel_size = 32
+
+# The length of the latent space vector. 
+latent_dim = 64
+
+
+[model.HyraxAutoencoderV2]
 # The number of output channels from the first layer.
 base_channel_size = 32
 
