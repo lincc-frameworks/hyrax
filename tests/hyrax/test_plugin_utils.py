@@ -77,7 +77,7 @@ def test_fetch_model_class_false_model():
     """Test that the fetch_model_class function raises an error when model
     is set to false in the configuration."""
 
-    config = {"model": {"name": False}}
+    config = {"model": {"name": ""}}
 
     with pytest.raises(RuntimeError) as excinfo:
         fetch_model_class(config)
@@ -111,7 +111,7 @@ def test_fetch_model_class_false_logs_registered_models(caplog):
     """Test that the fetch_model_class function logs registered models when
     model is set to false."""
 
-    config = {"model": {"name": False}}
+    config = {"model": {"name": ""}}
 
     with caplog.at_level(logging.ERROR):
         with pytest.raises(RuntimeError):
