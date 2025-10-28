@@ -168,10 +168,19 @@ def fetch_model_class(runtime_config: dict) -> type[nn.Module]:
         If no model was specified in the runtime configuration.
     """
 
-    model_name = runtime_config["model"]["name"]
+    model_name = runtime_config["model"]["name"] if runtime_config["model"]["name"] else None
     model_cls = None
 
     if not model_name:
+        model_list = "\n".join([f"  - {model}" for model in sorted(MODEL_REGISTRY.keys())])
+        logger.error(
+            "No model name was provided in the configuration. "
+            "You must specify a model to use before running Hyrax.\n\n"
+            "To set a model, use: h.set_config('model.name', '<model_name>')\n"
+            "<model_name> can be one of the following registered models or a path to a custom model class "
+            "e.g. 'HyraxCNN' or 'my_package.my_module.MyModelClass'.\n\n"
+            f"Currently registered models:\n{model_list}"
+        )
         raise RuntimeError(
             "A model class name or path must be provided. "
             "e.g. 'HyraxCNN' or 'my_package.my_module.MyModelClass'."
