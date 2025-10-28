@@ -33,8 +33,8 @@ class HyraxAutoencoder(nn.Module):
 
         self.num_input_channels, self.image_width, self.image_height = shape
 
-        self.c_hid = self.config["model"]["base_channel_size"]
-        self.latent_dim = self.config["model"]["latent_dim"]
+        self.c_hid = self.config["model"]["HyraxAutoencoder"]["base_channel_size"]
+        self.latent_dim = self.config["model"]["HyraxAutoencoder"]["latent_dim"]
 
         # Calculate how much our convolutional layers will affect the size of final convolution
         # Formula evaluated from: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html

@@ -156,6 +156,7 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     model_cls = fetch_model_class(config)
 
     # Pass a single sample of data through the model's to_tensor function
+    # ? I don't think that the `if` portion of this logic is used, should double check
     if isinstance(dataset, dict):
         # If we have multiple datasets, just take the first one
         first_dataset = next(iter(dataset.values()))
