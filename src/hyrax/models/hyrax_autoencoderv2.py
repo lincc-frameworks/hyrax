@@ -51,7 +51,7 @@ class HyraxAutoencoderV2(nn.Module):
         self._init_encoder()
         self._init_decoder()
 
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.MSELoss()
         self.optimizer = optim.SGD(self.parameters(), lr=0.01, momentum=0.9)
 
     def conv2d_multi_layer(self, input_size, num_applications, **kwargs) -> int:
