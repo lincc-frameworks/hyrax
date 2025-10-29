@@ -149,4 +149,9 @@ class HyraxAutoencoder(nn.Module):
             The dictionary returned from our data source
         """
         data = data_dict.get("data", {})
+        if "image" not in data:
+            raise RuntimeError(
+                "Missing 'image' key in data dictionary passed to HyraxAutoencoder.to_tensor. "
+                "Expected data['image'] to contain the input image tensor."
+            )
         return as_tensor(data["image"])
