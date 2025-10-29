@@ -26,7 +26,6 @@ class HyraxAutoencoderV2(nn.Module):
 
     V2 improvements:
     - Configurable final layer activation
-    - Uses criterion and optimizer from config variables
     """
 
     def __init__(self, config, data_sample=None):
