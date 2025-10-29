@@ -39,7 +39,7 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
 
         self.config = config
 
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.MSELoss()
         self.optimizer = optim.SGD(self.parameters(), lr=0.01, momentum=0.9)
 
     def forward(self, x):
