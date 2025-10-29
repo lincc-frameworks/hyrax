@@ -104,36 +104,14 @@ latent_dim = 64
 # The activation function of the final layer.
 final_layer = "tanh"
 
+# Whether to "sum" or "mean" loss across channels. Only used by HyraxAutoencoderV2
+band_loss_reduction = "mean"
+
 
 [model.HyraxCNN]
 # The number of classes to predict as the output of the model. i.e. 2 would be a
 # binary classifer, 10 would predict the 10 classes in the CiFAR dataset.
 output_classes = 10
-
-
-[criterion]
-# The name of the built-in criterion to use or the import path to an external criterion
-name = "torch.nn.CrossEntropyLoss"
-
-# Whether to "sum" or "mean" loss across channels. Only used by HyraxAutoencoderV2
-band_loss_reduction = "mean"
-
-
-[optimizer]
-# The name of the built-in optimizer to use or the import path to an external optimizer
-name = "torch.optim.SGD"
-
-
-["torch.optim.SGD"]
-# learning rate for torch.optim.SGD optimizer.
-lr = 0.01
-
-# momentum for torch.optim.SGD optimizer.
-momentum = 0.9
-
-["torch.optim.Adam"]
-# learning rate for torch.optim.SGD optimizer.
-lr = 0.01
 
 
 [train]

@@ -29,6 +29,9 @@ class HyraxLoopback(nn.Module):
         # load definition when performed in the usual fashion.
         self.load = partial(load, self)
 
+        # Must define a self.optimizer so that checkpointing works
+        self.optimizer = {}
+
     def forward(self, x):
         """We simply return our input"""
         if isinstance(x, tuple):

@@ -6,6 +6,7 @@
 
 import torch
 import torch.nn as nn
+from torch import optim
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
@@ -58,6 +59,9 @@ class HSCDCAE(nn.Module):
             self.final_activation = nn.Identity()
 
         self.config = config
+
+        self.criterion = nn.CrossEntropyLoss()
+        self.optimizer = optim.SGD(self.parameters(), lr=0.01, momentum=0.9)
 
     def forward(self, x):
         # Dropping labels if present
