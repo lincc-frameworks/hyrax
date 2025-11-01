@@ -21,7 +21,7 @@ dependencies = [
     # https://github.com/pytorch/ignite/issues/3372 function correctly
     # while allowing us to release packages that don't depend on dev versions
     # of pytorch-ignite.
-    "pytorch-ignite <= 0.5.2", # Used for distributed training, logging, etc.
+    "pytorch-ignite <= 0.5.3", # Used for distributed training, logging, etc.
     "more-itertools", # Used to work around the issue in pytorch-ignite above
     "toml", # Used to load configuration files as dictionaries
     "tomlkit", # Used to load configuration files as dictionaries and retain comments
