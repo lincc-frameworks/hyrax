@@ -31,8 +31,6 @@ class ToOnnx(Verb):
         """Export the model to ONNX format and save it to the specified path."""
         from pathlib import Path
 
-        from torch.nn import Module as pytorch_model  # noqa: N813
-
         from hyrax.config_utils import ConfigManager, find_most_recent_results_dir
         from hyrax.model_exporters import export_to_onnx
         from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
@@ -79,21 +77,10 @@ class ToOnnx(Verb):
         # Create an instance of the dataloader so that we can request a sample batch.
         train_data_loader, _ = dist_data_loader(dataset["train"], config_from_training, False)
 
-        # Determine the ML framework of the model
-        ml_framework = None
-        if isinstance(model, pytorch_model):
-            ml_framework = "pytorch"
-        else:
-            logger.warning(
-                f"ONNX export currently only supports PyTorch models. "
-                f"Model of type {type(model)} is not supported."
-            )
-            return
-
         # Generate the `context` dictionary that will be provided to the ONNX exporter.
         context = {
             "results_dir": input_directory,
-            "ml_framework": ml_framework,
+            "ml_framework": "pytorch",
         }
 
         # Get a sample of input data.
