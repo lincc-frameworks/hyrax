@@ -69,7 +69,7 @@ class ToOnnx(Verb):
             raise RuntimeError(f"Could not find trained model weights: {weights_file_path}")
 
         # Use the config in the model directory to load the dataset(s) and create
-        # The dataloader instance to provide a data sample to the ONNX exporter.
+        # The data loader instance to provide a data sample to the ONNX exporter.
         dataset = setup_dataset(config_from_training)
         model = setup_model(config_from_training, dataset["train"])
         # Load the trained weights and send the model to the CPU for ONNX export.
