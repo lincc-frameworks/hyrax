@@ -1,3 +1,4 @@
+import datetime
 import logging
 from pathlib import Path
 
@@ -27,7 +28,8 @@ def export_to_onnx(model, sample, config, ctx):
     # build the output ONNX file path
     model_filename = Path(config["train"]["weights_filename"]).stem
     onnx_opset_version = config["onnx"]["opset_version"]
-    onnx_model_filename = f"{model_filename}_opset_{onnx_opset_version}.onnx"
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    onnx_model_filename = f"{model_filename}_opset_{onnx_opset_version}_ts_{timestamp}.onnx"
     onnx_output_filepath = ctx["results_dir"] / onnx_model_filename
 
     # use the "ml_framework" context value to determine how to convert to ONNX.
