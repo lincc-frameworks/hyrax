@@ -77,7 +77,7 @@ class ToOnnx(Verb):
         model.train(False)
 
         # Create an instance of the dataloader so that we can request a sample batch.
-        train_data_loader, _ = dist_data_loader(dataset["train"], config, False)
+        train_data_loader, _ = dist_data_loader(dataset["train"], config_from_training, False)
 
         # Determine the ML framework of the model
         ml_framework = None
