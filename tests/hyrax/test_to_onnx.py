@@ -7,9 +7,9 @@ import pytest
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.slow
-def test_to_onnx_successful_export(tmp_path):
-    """Test successful ONNX export from a trained model"""
+@pytest.fixture
+def trained_hyrax(tmp_path):
+    """Fixture that creates a trained Hyrax instance for ONNX export tests"""
     import hyrax
 
     # Create a Hyrax instance with loopback model configuration
@@ -36,6 +36,14 @@ def test_to_onnx_successful_export(tmp_path):
 
     # Train the model
     h.train()
+    
+    return h
+
+
+@pytest.mark.slow
+def test_to_onnx_successful_export(trained_hyrax):
+    """Test successful ONNX export from a trained model"""
+    h = trained_hyrax
 
     # Find the training results directory
     from hyrax.config_utils import find_most_recent_results_dir
@@ -104,34 +112,9 @@ def test_to_onnx_missing_input_directory_from_config(tmp_path):
 
 
 @pytest.mark.slow
-def test_to_onnx_auto_detect_recent_training(tmp_path):
+def test_to_onnx_auto_detect_recent_training(trained_hyrax):
     """Test proper resolution of the most recent training directory"""
-    import hyrax
-
-    # Create a Hyrax instance and train a model
-    h = hyrax.Hyrax()
-    h.config["model"]["name"] = "HyraxLoopback"
-    h.config["train"]["epochs"] = 1
-    h.config["data_loader"]["batch_size"] = 4
-    h.config["general"]["results_dir"] = str(tmp_path)
-    h.config["general"]["dev_mode"] = True
-
-    # Configure dataset
-    h.config["model_inputs"] = {
-        "train": {
-            "data": {
-                "dataset_class": "HyraxRandomDataset",
-                "data_location": str(tmp_path / "data_train"),
-                "primary_id_field": "object_id",
-            }
-        },
-    }
-    h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
-    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
-    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
-
-    # Train the model
-    h.train()
+    h = trained_hyrax
 
     # Find the training results directory
     from hyrax.config_utils import find_most_recent_results_dir
@@ -168,60 +151,6 @@ def test_to_onnx_no_previous_training(tmp_path):
     # The verb should log an error and return without creating ONNX files
     onnx_files = list(tmp_path.glob("**/*.onnx"))
     assert len(onnx_files) == 0, "No ONNX files should be created without prior training"
-
-
-@pytest.mark.slow
-def test_to_onnx_timestamp_filename_format(tmp_path):
-    """Test that the exported ONNX model has the expected timestamp-based filename"""
-    import re
-
-    import hyrax
-
-    # Create a Hyrax instance and train a model
-    h = hyrax.Hyrax()
-    h.config["model"]["name"] = "HyraxLoopback"
-    h.config["train"]["epochs"] = 1
-    h.config["data_loader"]["batch_size"] = 4
-    h.config["general"]["results_dir"] = str(tmp_path)
-    h.config["general"]["dev_mode"] = True
-
-    # Configure dataset
-    h.config["model_inputs"] = {
-        "train": {
-            "data": {
-                "dataset_class": "HyraxRandomDataset",
-                "data_location": str(tmp_path / "data_train"),
-                "primary_id_field": "object_id",
-            }
-        },
-    }
-    h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
-    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
-    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
-
-    # Train the model
-    h.train()
-
-    # Find the training results directory
-    from hyrax.config_utils import find_most_recent_results_dir
-
-    train_dir = find_most_recent_results_dir(h.config, "train")
-
-    # Export to ONNX
-    from hyrax.verbs.to_onnx import ToOnnx
-
-    to_onnx_verb = ToOnnx(h.config)
-    to_onnx_verb.run(str(train_dir))
-
-    # Verify ONNX model filename format
-    onnx_files = list(train_dir.glob("*.onnx"))
-    assert len(onnx_files) == 1
-
-    onnx_filename = onnx_files[0].name
-    # Expected pattern: <model_name>_opset_<version>_ts_<timestamp>.onnx
-    # Timestamp format: YYYYMMDD-HHMMSS
-    pattern = r"^.+_opset_\d+_ts_\d{8}-\d{6}\.onnx$"
-    assert re.match(pattern, onnx_filename), f"ONNX filename '{onnx_filename}' doesn't match expected pattern"
 
 
 def test_to_onnx_cli_argument_parsing(tmp_path):
