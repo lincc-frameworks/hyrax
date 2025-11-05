@@ -104,7 +104,7 @@ def test_use_config_criterion():
 
 
 def test_no_criterion_defined_logs_warning(caplog):
-    """Test that if neither model nor config define an criterion, a warning is logged."""
+    """Test that if neither model nor config define a criterion, a warning is logged."""
 
     @hyrax_model
     class TestModel(nn.Module):
