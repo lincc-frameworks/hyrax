@@ -716,6 +716,11 @@ def create_trainer(
     def log_training_loss(trainer):
         logger.debug(f"Epoch {trainer.state.epoch} run time: {trainer.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Epoch {trainer.state.epoch} metrics: {trainer.state.output}")
+        tensorboardx_logger.add_scalar(
+            "training/training/epoch_duration_sec",
+            trainer.state.times["EPOCH_COMPLETED"],
+            trainer.state.epoch,
+        )
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)

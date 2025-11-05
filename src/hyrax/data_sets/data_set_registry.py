@@ -1,5 +1,6 @@
 # ruff: noqa: D102, B027
 import logging
+import time
 from collections.abc import Generator
 from types import MethodType
 from typing import Any, Callable
@@ -116,6 +117,7 @@ class HyraxDataset:
                 if not hasattr(self, method_name):
                     setattr(self, method_name, MethodType(_make_getter(col), self))
 
+        self.tensorboard_start_ns = time.monotonic_ns()
         self.tensorboardx_logger = None
 
     @classmethod
@@ -273,6 +275,30 @@ class HyraxDataset:
             raise RuntimeError(msg)
 
         return self._metadata_table[idxs][columns].as_array()
+
+    def log_duration_tensorboard(self, name: str, start_time: int):
+        """Log a duration to tensorboardX. NOOP if no tensorboard logger configured
+
+        The time logged is a floating point number of seconds derived from integer
+        monotonic nanosecond measurements. time.monotonic_ns() is used for the current time
+
+        The step number for the scalar series is an integer number of microseconds.
+
+        Parameters
+        ----------
+        name : str
+            The name of the scalar to log to tensorboard
+        start_time : int
+            integer number of nanoseconds. Should be from time.monotonic_ns() when the duration started
+
+        """
+        now = time.monotonic_ns()
+        name = f"{self.__class__.__name__}/" + name
+        if self.tensorboardx_logger:
+            since_tensorboard_start_us = (start_time - self.tensorboard_start_ns) / 1.0e3
+
+            duration_s = (now - start_time) / 1.0e9
+            self.tensorboardx_logger.add_scalar(name, duration_s, since_tensorboard_start_us)
 
 
 def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:
