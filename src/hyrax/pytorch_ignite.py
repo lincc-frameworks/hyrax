@@ -717,7 +717,7 @@ def create_trainer(
         logger.debug(f"Epoch {trainer.state.epoch} run time: {trainer.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Epoch {trainer.state.epoch} metrics: {trainer.state.output}")
         tensorboardx_logger.add_scalar(
-            "training/training/epoch_duration_sec",
+            "training/epoch_duration_sec",
             trainer.state.times["EPOCH_COMPLETED"],
             trainer.state.epoch,
         )

@@ -1,10 +1,9 @@
-import time
-
 import numpy as np
 from astropy.table import Table
 from torch.utils.data import Dataset, IterableDataset
 
 from hyrax.data_sets.data_set_registry import HyraxDataset
+from hyrax.data_sets.timing import report_duration_to_tensorboard
 
 INVALID_VALUES = {
     "nan": np.nan,
@@ -137,12 +136,10 @@ class HyraxRandomDatasetBase:
 
         self.data_location = data_location
 
+    @report_duration_to_tensorboard
     def get_image(self, idx: int) -> np.ndarray:
         """Get the image at the given index as a NumPy array."""
-        start_time = time.monotonic_ns()
-        image = self.data[idx]
-        self.log_duration_tensorboard("get_image", start_time)
-        return image
+        return self.data[idx]
 
     def get_label(self, idx: int) -> str:
         """Get the label at the given index."""
