@@ -4,14 +4,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+import hyrax
+from hyrax.config_utils import find_most_recent_results_dir
+from hyrax.verbs.to_onnx import ToOnnx
+
 logger = logging.getLogger(__name__)
 
 
 @pytest.fixture
 def trained_hyrax(tmp_path):
     """Fixture that creates a trained Hyrax instance for ONNX export tests"""
-    import hyrax
-
     # Create a Hyrax instance with loopback model configuration
     h = hyrax.Hyrax()
     h.config["model"]["name"] = "HyraxLoopback"
@@ -40,20 +42,15 @@ def trained_hyrax(tmp_path):
     return h
 
 
-@pytest.mark.slow
 def test_to_onnx_successful_export(trained_hyrax):
     """Test successful ONNX export from a trained model"""
     h = trained_hyrax
 
     # Find the training results directory
-    from hyrax.config_utils import find_most_recent_results_dir
-
     train_dir = find_most_recent_results_dir(h.config, "train")
     assert train_dir is not None, "Training results directory should exist"
 
     # Export to ONNX using the verb
-    from hyrax.verbs.to_onnx import ToOnnx
-
     to_onnx_verb = ToOnnx(h.config)
     to_onnx_verb.run(str(train_dir))
 
@@ -70,13 +67,9 @@ def test_to_onnx_successful_export(trained_hyrax):
 
 def test_to_onnx_missing_input_directory(tmp_path):
     """Test handling of missing input directories"""
-    import hyrax
-
     h = hyrax.Hyrax()
     h.config["model"]["name"] = "HyraxLoopback"
     h.config["general"]["results_dir"] = str(tmp_path)
-
-    from hyrax.verbs.to_onnx import ToOnnx
 
     to_onnx_verb = ToOnnx(h.config)
 
@@ -92,14 +85,10 @@ def test_to_onnx_missing_input_directory(tmp_path):
 
 def test_to_onnx_missing_input_directory_from_config(tmp_path):
     """Test handling of missing input directories specified in config"""
-    import hyrax
-
     h = hyrax.Hyrax()
     h.config["model"]["name"] = "HyraxLoopback"
     h.config["general"]["results_dir"] = str(tmp_path)
     h.config["onnx"]["input_model_directory"] = str(tmp_path / "does_not_exist")
-
-    from hyrax.verbs.to_onnx import ToOnnx
 
     to_onnx_verb = ToOnnx(h.config)
 
@@ -111,20 +100,15 @@ def test_to_onnx_missing_input_directory_from_config(tmp_path):
     assert len(onnx_files) == 0, "No ONNX files should be created for missing directory"
 
 
-@pytest.mark.slow
 def test_to_onnx_auto_detect_recent_training(trained_hyrax):
     """Test proper resolution of the most recent training directory"""
     h = trained_hyrax
 
     # Find the training results directory
-    from hyrax.config_utils import find_most_recent_results_dir
-
     train_dir = find_most_recent_results_dir(h.config, "train")
     assert train_dir is not None, "Training results directory should exist"
 
     # Export to ONNX without specifying input directory (should auto-detect)
-    from hyrax.verbs.to_onnx import ToOnnx
-
     to_onnx_verb = ToOnnx(h.config)
     to_onnx_verb.run()  # No input_model_directory specified
 
@@ -135,13 +119,9 @@ def test_to_onnx_auto_detect_recent_training(trained_hyrax):
 
 def test_to_onnx_no_previous_training(tmp_path):
     """Test handling when no previous training results exist"""
-    import hyrax
-
     h = hyrax.Hyrax()
     h.config["model"]["name"] = "HyraxLoopback"
     h.config["general"]["results_dir"] = str(tmp_path)
-
-    from hyrax.verbs.to_onnx import ToOnnx
 
     to_onnx_verb = ToOnnx(h.config)
 
@@ -155,12 +135,8 @@ def test_to_onnx_no_previous_training(tmp_path):
 
 def test_to_onnx_cli_argument_parsing(tmp_path):
     """Test that CLI arguments are properly parsed"""
-    import hyrax
-
     h = hyrax.Hyrax()
     h.config["general"]["results_dir"] = str(tmp_path)
-
-    from hyrax.verbs.to_onnx import ToOnnx
 
     to_onnx_verb = ToOnnx(h.config)
 
