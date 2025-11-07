@@ -39,24 +39,30 @@ def test_csv_dataset_column_getters(test_hyrax_csv_dataset):
     """Check that column getter methods are dynamically created"""
     dataset = test_hyrax_csv_dataset.prepare()
 
+    # Get the underlying HyraxCSVDataset instance
+    csv_dataset = dataset._primary_or_first_dataset()
+
     # Check that getter methods exist for each column
-    assert hasattr(dataset.data_set, "get_object_id")
-    assert hasattr(dataset.data_set, "get_ra")
-    assert hasattr(dataset.data_set, "get_dec")
-    assert hasattr(dataset.data_set, "get_magnitude")
-    assert hasattr(dataset.data_set, "get_flux")
-    assert hasattr(dataset.data_set, "get_classification")
+    assert hasattr(csv_dataset, "get_object_id")
+    assert hasattr(csv_dataset, "get_ra")
+    assert hasattr(csv_dataset, "get_dec")
+    assert hasattr(csv_dataset, "get_magnitude")
+    assert hasattr(csv_dataset, "get_flux")
+    assert hasattr(csv_dataset, "get_classification")
 
     # Check that getter methods return correct values
-    assert dataset.data_set.get_object_id(0) == 1001
-    assert dataset.data_set.get_ra(0) == 30.5
-    assert dataset.data_set.get_classification(0) == "star"
+    assert csv_dataset.get_object_id(0) == 1001
+    assert csv_dataset.get_ra(0) == 30.5
+    assert csv_dataset.get_classification(0) == "star"
 
 
 def test_csv_dataset_sample_data(test_hyrax_csv_dataset):
     """Check that sample_data returns the first row correctly"""
     dataset = test_hyrax_csv_dataset.prepare()
-    sample = dataset.data_set.sample_data()
+
+    # Get the underlying HyraxCSVDataset instance
+    csv_dataset = dataset._primary_or_first_dataset()
+    sample = csv_dataset.sample_data()
 
     # Check that sample has the expected structure
     assert "data" in sample
