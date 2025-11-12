@@ -1,6 +1,6 @@
 import logging
 from collections.abc import Generator
-from multiprocessing import Pool
+from multiprocessing import get_context
 from pathlib import Path
 from typing import Optional, Union
 
@@ -325,7 +325,7 @@ class InferenceDataSetWriter:
 
         self.all_ids = np.array([], dtype=self.id_dtype)
         self.all_batch_nums = np.array([], dtype=np.int64)
-        self.writer_pool = Pool()
+        self.writer_pool = get_context("fork").Pool()
 
         # If we're being asked to write an InferenceDataset based on another InferenceDataset then we
         # Use the backing InferenceDataset's original config, which is presumably a non-InferenceDataset
