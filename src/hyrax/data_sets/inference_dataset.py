@@ -325,6 +325,10 @@ class InferenceDataSetWriter:
 
         self.all_ids = np.array([], dtype=self.id_dtype)
         self.all_batch_nums = np.array([], dtype=np.int64)
+
+        # Create a multiprocessing pool to write batches in parallel. We specifically
+        # use the "fork" context because Hyrax makes heavy use of delayed imports
+        # which will cause crashes if we use "spawn" (the default on Windows and MacOS)
         self.writer_pool = get_context("fork").Pool()
 
         # If we're being asked to write an InferenceDataset based on another InferenceDataset then we
