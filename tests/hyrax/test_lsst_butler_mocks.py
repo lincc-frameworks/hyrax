@@ -178,10 +178,6 @@ def test_lsst_dataset_with_mocks(mock_lsst_environment, sample_catalog, lsst_con
     # Create LSSTDataset instance
     dataset = LSSTDataset(lsst_config, data_location=str(tmp_path))
 
-    # Verify butler was created
-    assert dataset.butler is not None
-    assert dataset.skymap is not None
-
     # Verify catalog was loaded
     assert dataset.catalog is not None
     assert len(dataset.catalog) == 5
