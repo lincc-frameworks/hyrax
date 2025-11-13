@@ -23,7 +23,7 @@ repos:
         entry: jupyter nbconvert --clear-output
     # Prevents committing directly branches named 'main' and 'master'.
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v6.0.0
     hooks:
       - id: no-commit-to-branch
         name: Prevent main branch commits
@@ -34,14 +34,14 @@ repos:
         args: ['--maxkb=500']
     # Verify that pyproject.toml is well formed
   - repo: https://github.com/abravalheri/validate-pyproject
-    rev: v0.12.1
+    rev: v0.24.1
     hooks:
       - id: validate-pyproject
         name: Validate pyproject.toml
         description: Verify that pyproject.toml adheres to the established schema.
     # Verify that GitHub workflows are well formed
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.28.0
+    rev: 0.34.1
     hooks:
       - id: check-github-workflows
         args: ["--verbose"]
@@ -56,7 +56,7 @@ repos:
         always_run: true
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.11.2
+    rev: v0.14.2
     hooks:
       - id: ruff
         name: Lint code using ruff; sort and organize imports 
@@ -64,7 +64,7 @@ repos:
         args: ["--fix"]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.11.2
+    rev: v0.14.2
     hooks:
       - id: ruff-format
         name: Format code using ruff
