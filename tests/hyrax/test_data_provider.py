@@ -20,11 +20,15 @@ def test_generate_data_request_from_config():
 
     ret_val = generate_data_request_from_config(config)
 
-    assert "data" in ret_val
-    assert "dataset_class" in ret_val["data"]
-    assert ret_val["data"]["dataset_class"] == "HyraxRandomDataset"
-    assert "data_location" in ret_val["data"]
-    assert ret_val["data"]["data_location"] == "./data"
+    assert "train" in ret_val
+    assert "infer" in ret_val
+    for split in ["train", "infer"]:
+        ret_val_subset = ret_val[split]
+        assert "data" in ret_val_subset
+        assert "dataset_class" in ret_val_subset["data"]
+        assert ret_val_subset["data"]["dataset_class"] == "HyraxRandomDataset"
+        assert "data_location" in ret_val_subset["data"]
+        assert ret_val_subset["data"]["data_location"] == "./data"
 
 
 def test_generate_data_request_passes_model_inputs():
@@ -32,18 +36,30 @@ def test_generate_data_request_passes_model_inputs():
     dict from the config, unchanged."""
 
     h = Hyrax()
-    h.config["model_inputs"] = {
+    model_inputs = {
         "a": "foo",
         "b": {"c": "bar"},
     }
+    h.config["model_inputs"] = model_inputs
 
     ret_val = generate_data_request_from_config(h.config)
 
-    assert "a" in ret_val
-    assert ret_val["a"] == "foo"
-    assert "b" in ret_val
-    assert isinstance(ret_val["b"], dict)
-    assert ret_val["b"] == {"c": "bar"}
+    assert ret_val == model_inputs
+
+
+def test_generate_data_request_empty_model_inputs(caplog):
+    """Test that generate_data_request raises an error with a helpful message
+    when model_inputs is empty."""
+
+    h = Hyrax()
+    h.config["model_inputs"] = {}
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(RuntimeError) as execinfo:
+            generate_data_request_from_config(h.config)
+
+    error_message = str(execinfo.value)
+    assert "The [model_inputs] table in the configuration is empty." in error_message
 
 
 def test_data_provider(data_provider):
@@ -87,11 +103,11 @@ def test_validate_request_no_dataset_class(multimodal_config, caplog):
     name is provided."""
     h = Hyrax()
     c = multimodal_config
-    c["random_0"].pop("dataset_class", None)
+    c["train"]["random_0"].pop("dataset_class", None)
     h.config["model_inputs"] = c
     with caplog.at_level("ERROR"):
         with pytest.raises(RuntimeError) as execinfo:
-            DataProvider(h.config)
+            DataProvider(h.config, c["train"])
 
     assert "does not specify a 'dataset_class'" in str(execinfo.value)
     assert "does not specify a 'dataset_class'" in caplog.text
@@ -102,10 +118,10 @@ def test_validate_request_unknown_dataset(multimodal_config, caplog):
     dataset class name is provided."""
     h = Hyrax()
     c = multimodal_config
-    c["random_0"]["dataset_class"] = "NoSuchDataset"
+    c["train"]["random_0"]["dataset_class"] = "NoSuchDataset"
     h.config["model_inputs"] = c
     with pytest.raises(ValueError) as execinfo:
-        DataProvider(h.config)
+        DataProvider(h.config, c["train"])
 
     assert "not found in registry" in str(execinfo.value)
 
@@ -115,10 +131,10 @@ def test_validate_request_bad_field(multimodal_config, caplog):
     requested."""
     h = Hyrax()
     c = multimodal_config
-    c["random_0"]["fields"] = ["image", "no_such_field"]
+    c["train"]["random_0"]["fields"] = ["image", "no_such_field"]
     h.config["model_inputs"] = c
     with caplog.at_level("ERROR"):
-        DataProvider(h.config)
+        DataProvider(h.config, c["train"])
 
     assert "No `get_no_such_field` method" in caplog.text
 
@@ -129,7 +145,7 @@ def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
 
     h = Hyrax()
     c = multimodal_config
-    c["random_0"].pop("fields", None)
+    c["train"]["random_0"].pop("fields", None)
     h.config["model_inputs"] = c
 
     # Fake methods to return from `dir`, none of which start with `get_*`.
@@ -137,7 +153,7 @@ def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
 
     with patch.object(builtins, "dir", return_value=fake_methods):
         with caplog.at_level("ERROR"):
-            DataProvider(h.config)
+            DataProvider(h.config, c["train"])
 
     assert "No `get_*` methods were found" in caplog.text
 
@@ -152,7 +168,7 @@ def test_apply_configurations(multimodal_config):
     base_config = h.config
     model_inputs = multimodal_config
 
-    merged_config = DataProvider._apply_configurations(base_config, model_inputs["random_0"])
+    merged_config = DataProvider._apply_configurations(base_config, model_inputs["train"]["random_0"])
 
     assert merged_config["data_set"]["HyraxRandomDataset"]["shape"] == [2, 16, 16]
     assert (
@@ -161,7 +177,7 @@ def test_apply_configurations(multimodal_config):
     )
     assert merged_config["general"] == base_config["general"]
 
-    merged_config = DataProvider._apply_configurations(base_config, model_inputs["random_1"])
+    merged_config = DataProvider._apply_configurations(base_config, model_inputs["train"]["random_1"])
 
     assert base_config["data_set"]["HyraxRandomDataset"]["shape"] != [5, 16, 16]
     assert base_config["data_set"]["HyraxRandomDataset"]["seed"] != 4200
@@ -182,7 +198,7 @@ def test_primary_or_first_dataset(multimodal_config):
     model_inputs = multimodal_config
     h.config["model_inputs"] = model_inputs
 
-    dp = DataProvider(h.config)
+    dp = DataProvider(h.config, model_inputs["train"])
     dp.prepare_datasets()
 
     assert dp.primary_dataset == "random_0"
@@ -192,10 +208,10 @@ def test_primary_or_first_dataset(multimodal_config):
     assert primary_dataset.data_location == "./in_memory_0"
 
     # Secondary case with no `primary_id_field` defined
-    model_inputs["random_0"].pop("primary_id_field", None)
+    model_inputs["train"]["random_0"].pop("primary_id_field", None)
     h.config["model_inputs"] = model_inputs
 
-    dp = DataProvider(h.config)
+    dp = DataProvider(h.config, model_inputs["train"])
     dp.prepare_datasets()
 
     assert dp.primary_dataset is None
@@ -205,10 +221,10 @@ def test_primary_or_first_dataset(multimodal_config):
     assert primary_dataset.data_location == "./in_memory_0"
 
     # Tertiary case with `primary_id_field` defined on `random_1`
-    model_inputs["random_1"]["primary_id_field"] = "object_id"
+    model_inputs["train"]["random_1"]["primary_id_field"] = "object_id"
     h.config["model_inputs"] = model_inputs
 
-    dp = DataProvider(h.config)
+    dp = DataProvider(h.config, model_inputs["train"])
     dp.prepare_datasets()
 
     assert dp.primary_dataset == "random_1"
@@ -308,7 +324,7 @@ def test_sample_data():
     }
 
     h.config["model_inputs"] = multimodal_config
-    dp = DataProvider(h.config)
+    dp = DataProvider(h.config, multimodal_config)
     dp.prepare_datasets()
 
     sample = dp.sample_data()
@@ -475,7 +491,7 @@ def test_primary_id_field_fetched_when_not_in_fields():
     h.config["model_inputs"] = model_inputs
 
     # Create DataProvider
-    dp = DataProvider(h.config)
+    dp = DataProvider(h.config, model_inputs)
 
     # Verify the primary_id_field was NOT added to the fields list
     test_dataset_def = dp.data_request["test_dataset"]
@@ -530,7 +546,7 @@ def test_primary_id_field_reused_when_already_in_fields():
     h.config["model_inputs"] = model_inputs
 
     # Create DataProvider - should not duplicate object_id in fields
-    dp = DataProvider(h.config)
+    dp = DataProvider(h.config, model_inputs)
 
     # Verify the fields list is unchanged
     test_dataset_def = dp.data_request["test_dataset"]

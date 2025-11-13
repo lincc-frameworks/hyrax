@@ -84,6 +84,42 @@ def config_help(config: TOMLDocument, *args):
         print("Usage: config.help(['table_name'|'key_name']), config.help('table_name', 'key_name')")
 
 
+def parse_dotted_key(key: str) -> list[str]:
+    """
+    Parse a dotted key string, respecting quoted sections.
+
+    Quoted sections (using single or double quotes) are treated as a single key
+    component, even if they contain dots. This allows for keys like 'torch.optim.Adam'
+    to be used as a single table name in TOML configuration files.
+
+    Parameters
+    ----------
+    key : str
+        The dotted key to parse. Examples:
+        - "model.name" -> ['model', 'name']
+        - "'torch.optim.Adam'.lr" -> ['torch.optim.Adam', 'lr']
+        - '"torch.optim.Adam".lr' -> ['torch.optim.Adam', 'lr']
+        - "optimizer.'torch.optim.Adam'.lr" -> ['optimizer', 'torch.optim.Adam', 'lr']
+
+    Returns
+    -------
+    list[str]
+        A list of key components
+    """
+    pattern = r"""(['"])(.*?)\1|([^.'"]+)"""
+    matches = re.findall(pattern, key)
+    parts = []
+
+    # For the example input key = '"torch.optim.Adam".lr'
+    # `matches` = [('"', 'torch.optim.Adam', ''), ('', '', 'lr')]
+    for _, quoted, unquoted in matches:
+        if quoted:
+            parts.append(quoted)
+        elif unquoted:
+            parts.append(unquoted)
+    return parts
+
+
 def find_keys(config: dict[str, Any], key_name: str):
     """
     Recursively find all keys in a nested dictionary that match the given key name.
@@ -192,12 +228,14 @@ class ConfigManager:
         Parameters
         ----------
         key : str
-            The dotted key to set, e.g. "model.name"
+            The dotted key to set, e.g. "model.name" or "'torch.optim.Adam'.lr"
+            Quoted sections (using single or double quotes) are treated as single
+            key components, allowing for table names like 'torch.optim.Adam'.
 
         value : Any
             The value to set the key to.
         """
-        keys = key.split(".")
+        keys = parse_dotted_key(key)
         d = self.config
         for k in keys[:-1]:
             d = d[k]
@@ -249,7 +287,8 @@ class ConfigManager:
             if isinstance(value, dict):
                 default_config_paths |= ConfigManager._find_external_library_default_config_paths(value)
             else:
-                if key in KEYS_WITH_EXTERNAL_LIBS and "." in value:
+                # We expect that values we are interested in will be of type string.
+                if key in KEYS_WITH_EXTERNAL_LIBS and isinstance(value, str) and "." in value:
                     external_library = value.split(".")[0]
                     if importlib_util.find_spec(external_library) is not None:
                         try:

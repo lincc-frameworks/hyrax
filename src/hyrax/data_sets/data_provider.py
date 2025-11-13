@@ -4,7 +4,7 @@ from typing import Any
 
 import numpy as np
 
-from hyrax.data_sets.data_set_registry import fetch_dataset_class
+from hyrax.data_sets.data_set_registry import DATASET_REGISTRY, fetch_dataset_class
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +31,55 @@ def generate_data_request_from_config(config):
 
     if "model_inputs" in config:
         data_request = copy.deepcopy(config["model_inputs"])
+
+        # Check if model_inputs is empty and provide helpful error message
+        if not data_request:
+            available_datasets = sorted(DATASET_REGISTRY.keys())
+            error_msg = """The [model_inputs] table in your configuration is empty.
+
+You must provide dataset definitions for training and/or inference:
+  - For training: provide "train" and optionally "validate" dataset definitions
+  - For inference: provide "infer" dataset definition
+
+Example configuration:
+  [model_inputs.train]
+  [model_inputs.train.data]
+  dataset_class = "HyraxRandomDataset"
+  data_location = "./data"
+  primary_id_field = "object_id"
+
+  [model_inputs.infer]
+  [model_inputs.infer.data]
+  dataset_class = "HyraxRandomDataset"
+  data_location = "./data"
+  primary_id_field = "object_id"
+
+"""
+            if available_datasets:
+                error_msg += "Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
+                error_msg += "\n\n"
+            error_msg += """For more information and examples, see the documentation at:
+  https://hyrax.readthedocs.io/en/latest/notebooks/model_input_1.html"""
+            logger.error(error_msg)
+            raise RuntimeError(
+                "The [model_inputs] table in the configuration is empty. "
+                "Check the preceding error log for details and help."
+            )
     else:
         data_request = {
-            "data": {
-                "dataset_class": config["data_set"]["name"],
-                "data_location": config["general"]["data_dir"],
-                "primary_id_field": "object_id",
+            "train": {
+                "data": {
+                    "dataset_class": config["data_set"]["name"],
+                    "data_location": config["general"]["data_dir"],
+                    "primary_id_field": "object_id",
+                },
+            },
+            "infer": {
+                "data": {
+                    "dataset_class": config["data_set"]["name"],
+                    "data_location": config["general"]["data_dir"],
+                    "primary_id_field": "object_id",
+                },
             },
         }
 
@@ -56,7 +99,7 @@ class DataProvider:
     during initialization.
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, request: dict):
         """Initialize the DataProvider with a Hyrax config and extract (or create)
         the data_request.
 
@@ -64,10 +107,12 @@ class DataProvider:
         ----------
         config : dict
             The Hyrax configuration that defines the data_request.
+        request : dict
+            A dictionary that defines the data request.
         """
 
         self.config = config
-        self.data_request = generate_data_request_from_config(self.config)
+        self.data_request = request
 
         self.prepped_datasets = {}
         self.dataset_getters = {}

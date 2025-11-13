@@ -83,8 +83,18 @@ mask = false
 
 # The name of the model to use. Option are a built-in model class name or import path
 # to an external model. e.g. "HyraxAutoencoder", "user_pkg.model.ExternalModel"
-name = "HyraxAutoencoder"
+name = ""
 
+
+[model.HyraxAutoencoder]
+# The number of output channels from the first layer.
+base_channel_size = 32
+
+# The length of the latent space vector. 
+latent_dim = 64
+
+
+[model.HyraxAutoencoderV2]
 # The number of output channels from the first layer.
 base_channel_size = 32
 
@@ -155,17 +165,7 @@ opset_version = 20
 
 
 [model_inputs]
-# Note - the sub-table (model_inputs.<sub-table>) can be named anything you like.
-[model_inputs.data]
-# Name of the dataset class to use, or the import path to an external dataset class.
-# e.g. "HyraxCifarDataSet", "user_pkg.data_set.ExternalDataset".
-dataset_class = "HyraxCifarDataSet"
-
-# Location (directory) where the data is stored.
-data_location = "./data"
-
-# The data field that represents a unique ID for each sample.
-primary_id_field = "object_id"
+# Top-level table that defines the dataset(s) used for training, validation, and inference.
 
 
 [data_set]
@@ -285,13 +285,18 @@ batch_size = 512
 # Ensure that the data loader does no secondary shuffling of the data.
 shuffle = false
 
+# The collate function to use in the data loader. Using `false` will use PyTorch's default collate function,
+# or specify an import path to a callable function i.e. "package.module.my_collate_fn"
+collate_fn = false
+
 
 [infer]
 # The path to the model weights file to use for inference.
 model_weights_file = false
 
+# >>> I believe that we can simply remove this entry <<<<<<<<<<<<<<<<<<<<<<<<<<<
 # The data_set split to use for inference. Use `false` for entire dataset.
-split = false
+split = "infer"
 
 
 [vector_db]

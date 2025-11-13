@@ -19,11 +19,15 @@ class HyraxCNN(nn.Module):
     This CNN is designed to work with datasets that are prepared with Hyrax's HSC Data Set class.
     """
 
-    def __init__(self, config, shape=(3, 32, 32)):
+    def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config
 
-        self.num_input_channels, self.image_width, self.image_height = shape
+        if data_sample is None:
+            raise ValueError("A `data_sample` must be provided to HyraxCNN for dynamic sizing.")
+
+        image_sample = data_sample[0]
+        self.num_input_channels, self.image_width, self.image_height = image_sample.shape
         hidden_channels_1 = 6
         hidden_channels_2 = 16
 

@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
@@ -13,10 +13,18 @@ class TestSetupDataset:
         # Create a minimal config that would trigger iterable dataset path
         config = {
             "model_inputs": {
-                "test_dataset": {
-                    # Intentionally missing "dataset_class"
-                    "data_location": "/some/path"
-                }
+                "train": {
+                    "test_dataset": {
+                        # Intentionally missing "dataset_class"
+                        "data_location": "/some/path"
+                    },
+                },
+                "infer": {
+                    "test_dataset": {
+                        # Intentionally missing "dataset_class"
+                        "data_location": "/some/path"
+                    },
+                },
             }
         }
 
@@ -38,7 +46,18 @@ class TestSetupDataset:
         # Create a config with an invalid dataset_class
         config = {
             "model_inputs": {
-                "test_dataset": {"dataset_class": "NonExistentDatasetClass", "data_location": "/some/path"}
+                "train": {
+                    "test_dataset": {
+                        "dataset_class": "NonExistentDatasetClass",
+                        "data_location": "/some/path",
+                    }
+                },
+                "infer": {
+                    "test_dataset": {
+                        "dataset_class": "NonExistentDatasetClass",
+                        "data_location": "/some/path",
+                    },
+                },
             }
         }
 
@@ -61,10 +80,18 @@ class TestSetupDataset:
         # Create a config with dataset_class but no data_location
         config = {
             "model_inputs": {
-                "test_dataset": {
-                    "dataset_class": "HyraxRandomIterableDataset"
-                    # Intentionally missing "data_location"
-                }
+                "train": {
+                    "test_dataset": {
+                        "dataset_class": "HyraxRandomIterableDataset"
+                        # Intentionally missing "data_location"
+                    },
+                },
+                "infer": {
+                    "test_dataset": {
+                        "dataset_class": "HyraxRandomIterableDataset"
+                        # Intentionally missing "data_location"
+                    },
+                },
             }
         }
 
@@ -84,18 +111,29 @@ class TestSetupDataset:
                     result = setup_dataset(config)
 
                     # Verify the dataset constructor was called with data_location=None
-                    mock_dataset_cls.assert_called_once_with(config=config, data_location=None)
-                    assert result == mock_dataset_instance
+                    expected_call = call(config=config, data_location=None)
+                    assert mock_dataset_cls.call_count == 2
+                    mock_dataset_cls.assert_has_calls([expected_call, expected_call])
+                    assert result["train"] == mock_dataset_instance
+                    assert result["infer"] == mock_dataset_instance
 
     def test_setup_dataset_with_both_keys_present(self):
         """Test normal case where both dataset_class and data_location are present."""
         # Create a complete config
         config = {
             "model_inputs": {
-                "test_dataset": {
-                    "dataset_class": "HyraxRandomIterableDataset",
-                    "data_location": "/some/valid/path",
-                }
+                "train": {
+                    "test_dataset": {
+                        "dataset_class": "HyraxRandomIterableDataset",
+                        "data_location": "/some/valid/path",
+                    },
+                },
+                "infer": {
+                    "test_dataset": {
+                        "dataset_class": "HyraxRandomIterableDataset",
+                        "data_location": "/some/valid/path",
+                    },
+                },
             }
         }
 
@@ -115,18 +153,29 @@ class TestSetupDataset:
                     result = setup_dataset(config)
 
                     # Verify the dataset constructor was called with correct parameters
-                    mock_dataset_cls.assert_called_once_with(config=config, data_location="/some/valid/path")
-                    assert result == mock_dataset_instance
+                    expected_call = call(config=config, data_location="/some/valid/path")
+                    assert mock_dataset_cls.call_count == 2
+                    mock_dataset_cls.assert_has_calls([expected_call, expected_call])
+                    assert result["train"] == mock_dataset_instance
+                    assert result["infer"] == mock_dataset_instance
 
     def test_setup_dataset_sets_tensorboardx_logger(self):
         """Test that tensorboardx_logger is properly set on the dataset."""
         # Create a complete config
         config = {
             "model_inputs": {
-                "test_dataset": {
-                    "dataset_class": "HyraxRandomIterableDataset",
-                    "data_location": "/some/valid/path",
-                }
+                "train": {
+                    "test_dataset": {
+                        "dataset_class": "HyraxRandomIterableDataset",
+                        "data_location": "/some/valid/path",
+                    },
+                },
+                "infer": {
+                    "test_dataset": {
+                        "dataset_class": "HyraxRandomIterableDataset",
+                        "data_location": "/some/valid/path",
+                    },
+                },
             }
         }
 
@@ -147,4 +196,5 @@ class TestSetupDataset:
                     result = setup_dataset(config, tensorboardx_logger=mock_logger)
 
                     # Verify the logger was set on the dataset
-                    assert result.tensorboardx_logger == mock_logger
+                    assert result["train"].tensorboardx_logger == mock_logger
+                    assert result["infer"].tensorboardx_logger == mock_logger

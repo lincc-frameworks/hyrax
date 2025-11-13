@@ -1,0 +1,11 @@
+# Test config with quoted table names
+[general]
+dev_mode = true
+
+["my.custom.optimizer.Adam"]
+lr = 0.01
+beta1 = 0.9
+
+["my.custom.optimizer.SGD"]
+lr = 0.01
+momentum = 0.9

@@ -25,6 +25,7 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
+from hyrax.plugin_utils import get_or_load_class
 
 logger = logging.getLogger(__name__)
 
@@ -57,9 +58,11 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     """
 
     is_iterable = False
-    for _, dataset_definition in data_request.items():
-        if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
-            is_iterable = True
+    for _, value in data_request.items():
+        for _, dataset_definition in value.items():
+            if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
+                is_iterable = True
+                break
     return is_iterable
 
 
@@ -85,40 +88,48 @@ def setup_dataset(config: dict, tensorboardx_logger: Optional[SummaryWriter] = N
         An instance of the dataset class specified in the configuration
     """
 
+    dataset = {}
     data_request = generate_data_request_from_config(config)
     if is_iterable_dataset_requested(data_request):
         # If the data_request is for multiple datasets and at least one of
         # them is iterable, raise an error, we don't support that style of operation
-        if len(data_request) > 1:
-            logger.error(
-                "Multiple datasets requested, including at least one iterable-style. "
-                "Hyrax supports for datasets includes: "
-                "1) 1-N map-style or 2) at most 1 iterable-style."
-            )
-            raise RuntimeError(
-                "Multiple datasets requested, including at least one iterable-style. "
-                "Hyrax supports for datasets includes: "
-                "1) 1-N map-style or 2) at most 1 iterable-style."
-            )
+        for _, value in data_request.items():
+            if len(value) > 1:
+                logger.error(
+                    "Multiple datasets requested, including at least one iterable-style. "
+                    "Hyrax supports for datasets includes: "
+                    "1) 1-N map-style or 2) at most 1 iterable-style."
+                )
+                raise RuntimeError(
+                    "Multiple datasets requested, including at least one iterable-style. "
+                    "Hyrax supports for datasets includes: "
+                    "1) 1-N map-style or 2) at most 1 iterable-style."
+                )
 
         # generate instance of the iterable dataset. Again, because the only mode of
         # operation for iterable-style datasets that Hyrax supports is 1 iterable
         # dataset at a time, we can just take the first (and only) item in the data_request.
-        data_definition = next(iter(data_request.values()))
+        for set_name in ["train", "infer"]:
+            data_definition = next(iter(data_request[set_name].values()))
 
-        dataset_class = data_definition.get("dataset_class", None)
+            dataset_class = data_definition.get("dataset_class", None)
+            dataset_cls = fetch_dataset_class(dataset_class)
 
-        dataset_cls = fetch_dataset_class(dataset_class)
+            data_location = data_definition.get("data_location", None)
+            ds = dataset_cls(config=config, data_location=data_location)
 
-        data_location = data_definition.get("data_location", None)
+            ds.tensorboardx_logger = tensorboardx_logger
 
-        dataset = dataset_cls(config=config, data_location=data_location)
-        dataset.tensorboardx_logger = tensorboardx_logger
+            dataset[set_name] = ds
 
     else:
-        dataset = DataProvider(config)
-        for friendly_name in dataset.prepped_datasets:
-            dataset.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
+        # We know that `model_inputs` will always have at least 2 sub-tables, `train`
+        # and `infer`. It may have additional sub-tables such as `validate`.
+        for key, value in data_request.items():
+            ds = DataProvider(config, value)
+            for friendly_name in ds.prepped_datasets:
+                ds.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
+            dataset[key] = ds
 
     return dataset
 
@@ -143,13 +154,42 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-    model = model_cls(config=config, data_sample=dataset.sample_data())  # type: ignore[attr-defined]
 
-    return model
+    # Pass a single sample of data through the model's to_tensor function
+    # ? I don't think that the `if` portion of this logic is used, should double check
+    if isinstance(dataset, dict):
+        # If we have multiple datasets, just take the first one
+        first_dataset = next(iter(dataset.values()))
+        data_sample = model_cls.to_tensor(first_dataset.sample_data())
+    else:
+        data_sample = model_cls.to_tensor(dataset.sample_data())
+
+    # Provide the data sample for runtime modifications to the model architecture
+    return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
+
+
+def load_collate_function(data_loader_kwargs: dict) -> Optional[Callable]:
+    """Load a collate function if one is specified in the config. Otherwise return None.
+    Returning None will cause the DataLoader to use PyTorch's default collate function.
+
+    Parameters
+    ----------
+    data_loader_kwargs : dict
+        The configuration dictionary that will be passed as kwargs to the DataLoader
+
+    Returns
+    -------
+    Optional[Callable]
+        The collate function if specified, else None
+    """
+    collate_fn = (
+        get_or_load_class(data_loader_kwargs["collate_fn"]) if data_loader_kwargs["collate_fn"] else None
+    )
+    return collate_fn
 
 
 def dist_data_loader(
-    data_set: Dataset,
+    dataset: Dataset,
     config: dict,
     split: Union[str, list[str], bool] = False,
 ):
@@ -159,8 +199,8 @@ def dist_data_loader(
 
     Parameters
     ----------
-    data_set : Dataset
-        A Pytorch Dataset object
+    dataset : HyraxDataset
+        A Hyrax dataset instance
     config : dict
         Hyrax runtime configuration
     split : Union[str, list[str]], Optional
@@ -180,20 +220,26 @@ def dist_data_loader(
     If an iterable dataset is passed, we cannot create multiple splits with a pyTorch sampler object
     so we return the same thing for all splits, which is a dataloader representing the entire iterable
     """
+
+    # Extract the config dictionary that will be provided as kwargs to the DataLoader
+    data_loader_kwargs = dict(config["data_loader"])
+    # Load the collate function if one is specified in the config
+    data_loader_kwargs["collate_fn"] = load_collate_function(data_loader_kwargs)
+
     # Handle case where no split is needed.
     if isinstance(split, bool):
         # We still need to return the list of indexes used by the dataloader,
         # but here, it will simply be the indexes for the entire dataset.
-        if data_set.is_iterable():
-            ids = list(data_set.ids())
+        if dataset.is_iterable():
+            ids = list(dataset.ids())
             indexes = list(range(len(ids)))
         else:
-            indexes = list(range(len(data_set)))
+            indexes = list(range(len(dataset)))
 
         # Note that when sampler=None, a default sampler is used. The default config
         # defines shuffle=False, which should prevent any shuffling of of the data.
         # We expect that this will be the primary use case when running inference.
-        return idist.auto_dataloader(data_set, sampler=None, **config["data_loader"]), indexes
+        return idist.auto_dataloader(dataset, sampler=None, **data_loader_kwargs), indexes
 
     # Sanitize split argument
     if isinstance(split, str):
@@ -205,22 +251,21 @@ def dist_data_loader(
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    if data_set.is_iterable():
-        ids = list(data_set.ids())
+    if dataset.is_iterable():
+        ids = list(dataset.ids())
         indexes = list(range(len(ids)))
         dataloaders = {
-            s: (idist.auto_dataloader(data_set, pin_memory=True, **config["data_loader"]), indexes)
-            for s in split
+            s: (idist.auto_dataloader(dataset, pin_memory=True, **data_loader_kwargs), indexes) for s in split
         }
     else:
         # Create the indexes for all splits based on config.
-        indexes = create_splits(data_set, config)
+        indexes = create_splits(dataset, config)
 
         # Create samplers and dataloaders for each split we are interested in
         samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
 
         dataloaders = {
-            split: (idist.auto_dataloader(data_set, sampler=sampler, **config["data_loader"]), indexes[split])
+            split: (idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes[split])
             if sampler
             else None
             for split, sampler in samplers.items()
@@ -569,6 +614,7 @@ def create_validator(
     def log_training_loss():
         logger.debug(f"Validation run time: {validator.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Validation metrics: {validator.state.output}")
+        model.final_validation_metrics = validator.state.output
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
@@ -686,6 +732,11 @@ def create_trainer(
 
     trainer.add_event_handler(Events.COMPLETED, log_last_checkpoint_location, latest_checkpoint)
     trainer.add_event_handler(Events.COMPLETED, log_best_checkpoint_location, best_checkpoint)
+
+    @trainer.on(Events.COMPLETED)
+    def attach_final_metrics_to_model(trainer):
+        # Attach the final training metrics to the model object for easy access
+        model.final_training_metrics = trainer.state.output
 
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(trainer)

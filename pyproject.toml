@@ -21,7 +21,7 @@ dependencies = [
     # https://github.com/pytorch/ignite/issues/3372 function correctly
     # while allowing us to release packages that don't depend on dev versions
     # of pytorch-ignite.
-    "pytorch-ignite <= 0.5.2", # Used for distributed training, logging, etc.
+    "pytorch-ignite <= 0.5.3", # Used for distributed training, logging, etc.
     "more-itertools", # Used to work around the issue in pytorch-ignite above
     "toml", # Used to load configuration files as dictionaries
     "tomlkit", # Used to load configuration files as dictionaries and retain comments
@@ -45,6 +45,7 @@ dependencies = [
     "pooch", # Used to download data files
     "onnx", # Used to export models to ONNX format
     "onnxruntime", # Used to run ONNX models
+    "onnxscript", # Used to convert PyTorch models to ONNX format
     "plotly", # Used in 3d visualization
     "psutil", # Used for memory monitoring
     "tqdm", # Used to show progress bars
