@@ -33,11 +33,8 @@ class Visualize(Verb):
         self,
         input_dir: Optional[Union[Path, str]] = None,
         *,
-        make_lupton_rgb_opts: Optional[dict] = None,
-        color_column: Optional[str] = None,
-        cmap: str = "viridis",
-        rasterize_plot: bool = True,
         return_verb: bool = False,
+        make_lupton_rgb_opts: Optional[dict] = None,
         **kwargs,
     ):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.
@@ -51,16 +48,6 @@ class Visualize(Verb):
             Directory holding the output from the 'umap' verb, by default None. When not provided, we use
             [results][inference_dir] from config. If that's false; we the most recent umap in the current
             results directory.
-
-        color_column : Optional[str], optional
-            Name of catalog column to use for coloring points in the scatter plot.
-
-        cmap : str, optional
-            Colormap to use for coloring points. Defaults to 'viridis'.
-
-        rasterize_plot : bool, optional
-            If True, use rasterization for performance optimization. Defaults to True.
-            Rasterization converts points to pixels for better performance with large datasets.
 
         return_verb : bool, optional
             If True, also return the underlying Visualize instance for post-hoc access
@@ -110,13 +97,6 @@ class Visualize(Verb):
 
         if self.config["visualize"]["display_images"]:
             fields += [self.filename_column_name]
-
-        # If no input directory is specified, read from config.
-        if input_dir is None:
-            logger.info("UMAP directory not specified at runtime. Reading from config values.")
-            input_dir = (
-                self.config["results"]["inference_dir"] if self.config["results"]["inference_dir"] else None
-            )
 
         # If no input directory is specified, read from config.
         if input_dir is None:
@@ -682,16 +662,7 @@ class Visualize(Verb):
             # DEBUG: object_ids = meta[self.object_id_column_name]
             raw_filenames = meta[self.filename_column_name]
 
-            # Reorder metadata to match the original selection order
-            ordered_object_ids = []
-            ordered_filenames = []
-
-            for idx in chosen_idx:
-                meta_position = meta_idx_map[idx]
-                ordered_object_ids.append(meta[self.object_id_column_name][meta_position])
-                ordered_filenames.append(meta[self.filename_column_name][meta_position])
-
-            filenames = [f.decode("utf-8") for f in ordered_filenames]
+            filenames = [f.decode("utf-8") for f in raw_filenames]
 
         else:
             sampled_ids = []
@@ -731,10 +702,6 @@ class Visualize(Verb):
                                 rgb_arrays.append(tensor[band_idx].numpy())
                             # Stack along new axis to create (H, W, 3) RGB array
                             arr = np.stack(rgb_arrays, axis=-1)
-                            ## TO-DO: CHANGE VIA CONFIG TO GET PROPER BAND
-                            ## WE ARE JUST GETTING THE 4th FILTER WHIHCH
-                            ## SHOULD BE i-band FOR A COMPLETE FILTER SET.
-                            #arr = tensor[3].numpy()
                     else:
                         raise ValueError(
                             f"Unsupported file format: {cutout_path.suffix}. Currently\
