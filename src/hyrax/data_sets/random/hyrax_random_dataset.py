@@ -3,6 +3,7 @@ from astropy.table import Table
 from torch.utils.data import Dataset, IterableDataset
 
 from hyrax.data_sets.data_set_registry import HyraxDataset
+from hyrax.data_sets.timing import report_duration_to_tensorboard
 
 INVALID_VALUES = {
     "nan": np.nan,
@@ -135,6 +136,7 @@ class HyraxRandomDatasetBase:
 
         self.data_location = data_location
 
+    @report_duration_to_tensorboard
     def get_image(self, idx: int) -> np.ndarray:
         """Get the image at the given index as a NumPy array."""
         return self.data[idx]

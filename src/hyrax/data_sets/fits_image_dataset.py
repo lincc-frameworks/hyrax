@@ -533,7 +533,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
                 # Output timing every 1k tensors
                 if idx % 1_000 == 0 and idx != 0:
-                    self._log_duration_tensorboard("preload_1k_obj_s", start_time)
+                    self.log_duration_tensorboard("preload_1k_obj_s", start_time)
                     start_time = time.monotonic_ns()
 
     def _lazy_map_executor(self, executor: Executor, ids: Iterable[str]):
@@ -594,30 +594,6 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
                 else:
                     yield result
 
-    def _log_duration_tensorboard(self, name: str, start_time: int):
-        """Log a duration to tensorboardX. NOOP if no tensorboard logger configured
-
-        The time logged is a floating point number of seconds derived from integer
-        monotonic nanosecond measurements. time.monotonic_ns() is used for the current time
-
-        The step number for the scalar series is an integer number of microseonds.
-
-        Parameters
-        ----------
-        name : str
-            The name of the scalar to log to tensorboard
-        start_time : int
-            integer number of nanoseconds. Should be from time.monotonic_ns() when the duration started
-
-        """
-        now = time.monotonic_ns()
-        name = f"{self.__class__.__name__}/" + name
-        if self.tensorboardx_logger:
-            since_tensorboard_start_us = (start_time - self.tensorboard_start_ns) / 1.0e3
-
-            duration_s = (now - start_time) / 1.0e9
-            self.tensorboardx_logger.add_scalar(name, duration_s, since_tensorboard_start_us)
-
     def _check_object_id_to_tensor_cache(self, object_id: str):
         return self.tensors.get(object_id, None)
 
@@ -638,12 +614,12 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             file_start_time = time.monotonic_ns()
             raw_data = fits.getdata(filepath, memmap=False)
             data.append(raw_data)
-            self._log_duration_tensorboard("file_read_time_s", file_start_time)
+            self.log_duration_tensorboard("file_read_time_s", file_start_time)
 
-        self._log_duration_tensorboard("object_read_time_s", start_time)
+        self.log_duration_tensorboard("object_read_time_s", start_time)
 
         data_torch = self._convert_to_torch(data)
-        self._log_duration_tensorboard("object_total_read_time_s", start_time)
+        self.log_duration_tensorboard("object_total_read_time_s", start_time)
         return data_torch
 
     def _convert_to_torch(self, data: list[npt.ArrayLike]):
@@ -658,7 +634,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         # Apply our transform stack
         data_torch = self.transform(data_torch) if self.transform is not None else data_torch
 
-        self._log_duration_tensorboard("object_convert_tensor_time_s", start_time)
+        self.log_duration_tensorboard("object_convert_tensor_time_s", start_time)
         return data_torch
 
     # TODO: Performance Change when files are read/cache pytorch tensors?
@@ -693,9 +669,9 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
         data_torch = self._check_object_id_to_tensor_cache(object_id)
         if data_torch is not None:
-            self._log_duration_tensorboard("cache_hit_s", start_time)
+            self.log_duration_tensorboard("cache_hit_s", start_time)
             return data_torch
 
         data_torch = self._populate_object_id_to_tensor_cache(object_id)
-        self._log_duration_tensorboard("cache_miss_s", start_time)
+        self.log_duration_tensorboard("cache_miss_s", start_time)
         return data_torch

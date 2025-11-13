@@ -1,4 +1,5 @@
 import logging
+import time
 from pathlib import Path
 
 from colorama import Back, Fore, Style
@@ -57,8 +58,18 @@ class Train(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         # Instantiate the model and dataset
+        pre_setup_dataset = time.monotonic()
         dataset = setup_dataset(config, tensorboardx_logger)
+        post_setup_dataset = time.monotonic()
+        tensorboardx_logger.add_text(
+            "training_diagnostics/dataset_setup_duration_sec", f"{post_setup_dataset - pre_setup_dataset}s", 0
+        )
+        pre_setup_model = time.monotonic()
         model = setup_model(config, dataset["train"])
+        post_setup_model = time.monotonic()
+        tensorboardx_logger.add_text(
+            "training_diagnostics/model_setup_duration_sec", f"{post_setup_model - pre_setup_model}s", 0
+        )
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"
@@ -71,23 +82,58 @@ class Train(Verb):
         # the user has requested an iterable dataset. But we don't want to support that
         # for training right now.
         if isinstance(dataset, dict) and "validate" in dataset:
+            pre_setup_train_data_loaders = time.monotonic()
             train_data_loader, _ = dist_data_loader(dataset["train"], config, False)
+            post_setup_train_data_loaders = time.monotonic()
+            tensorboardx_logger.add_text(
+                "training_diagnostics/train_data_loader_setup_duration_sec",
+                f"{post_setup_train_data_loaders - pre_setup_train_data_loaders}s",
+                0,
+            )
+            pre_setup_validation_data_loader = time.monotonic()
             validation_data_loader, _ = dist_data_loader(dataset["validate"], config, False)
+            post_setup_validation_data_loader = time.monotonic()
+            tensorboardx_logger.add_text(
+                "training_diagnostics/validation_data_loader_setup_duration_sec",
+                f"{post_setup_validation_data_loader - pre_setup_validation_data_loader}s",
+                0,
+            )
 
         # if `validate` isn't in the dataset dict, then we assume the user wants to
         # use percentage-based splits on the `train` dataset. Or the user has an
         # iterable dataset - but we don't support training with iterable datasets.
         else:
+            pre_setup_data_loaders = time.monotonic()
             data_loaders = dist_data_loader(dataset["train"], config, ["train", "validate"])
+            post_setup_data_loaders = time.monotonic()
+            tensorboardx_logger.add_text(
+                "training_diagnostics/data_loaders_setup_duration_sec",
+                f"{post_setup_data_loaders - pre_setup_data_loaders}s",
+                0,
+            )
             train_data_loader, _ = data_loaders["train"]
             validation_data_loader, _ = data_loaders.get("validate", (None, None))
 
         # Create trainer, a pytorch-ignite `Engine` object
+        pre_train_engine_setup = time.monotonic()
         trainer = create_trainer(model, config, results_dir, tensorboardx_logger)
+        post_train_engine_setup = time.monotonic()
+        tensorboardx_logger.add_text(
+            "training_diagnostics/train_engine_setup_duration_sec",
+            f"{post_train_engine_setup - pre_train_engine_setup}s",
+            0,
+        )
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:
+            pre_validation_engine_setup = time.monotonic()
             create_validator(model, config, results_dir, tensorboardx_logger, validation_data_loader, trainer)
+            post_validation_engine_setup = time.monotonic()
+            tensorboardx_logger.add_text(
+                "training_diagnostics/validation_engine_setup_duration_sec",
+                f"{post_validation_engine_setup - pre_validation_engine_setup}s",
+                0,
+            )
 
         monitor = GpuMonitor(tensorboard_logger=tensorboardx_logger)
 
