@@ -93,7 +93,7 @@ class Visualize(Verb):
         if self.config["data_set"]["filename_column_name"]:
             self.filename_column_name = self.config["data_set"]["filename_column_name"]
         else:
-            self.filename_column_name = "filename"
+            self.filename_column_name = "filename_data"
 
         if self.config["visualize"]["display_images"]:
             fields += [self.filename_column_name]
@@ -668,8 +668,8 @@ class Visualize(Verb):
             sampled_ids = []
             filenames = []
 
-        base_dir = Path(self.umap_results.original_config["general"]["data_dir"])
-        crop_to = self.umap_results.original_config["data_set"]["crop_to"]
+        crop_to = self.config["data_set"]["crop_to"]
+        base_dir = Path(self.config["general"]["data_dir"])
 
         # Defining a Fallback Image to Display in case of errors
         # Matching Shape is important because otherwise Haloviews'
