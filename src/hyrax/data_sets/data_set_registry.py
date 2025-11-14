@@ -272,7 +272,16 @@ class HyraxDataset:
             )
             raise RuntimeError(msg)
 
-        return self._metadata_table[idxs][columns].as_array()
+        result = self._metadata_table[idxs][columns].as_array()
+
+        # Convert masked arrays to regular arrays with NaN for masked values
+        import numpy as np
+        import numpy.ma as ma
+
+        if ma.isMaskedArray(result):
+            result = ma.filled(result, np.nan)
+
+        return result
 
 
 def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:
