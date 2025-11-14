@@ -47,7 +47,7 @@ class HyraxDataset:
 
     """
 
-    def __init__(self, config: dict, metadata_table=None):
+    def __init__(self, config: dict, metadata_table=None, object_id_column_name=None):
         """
         .. py:method:: __init__
 
@@ -89,6 +89,9 @@ class HyraxDataset:
             An Astropy Table with
             1. the metadata columns desired for visualization AND
             2. in the order your data will be enumerated.
+        object_id_column_name : Optional[str], optional
+            The name of the column containing object IDs. If None, uses the default
+            from config or creates one from the ids() method.
         """
         import numpy as np
 
@@ -99,9 +102,11 @@ class HyraxDataset:
         # we use your required .ids() method to create the column
         if self._metadata_table is not None:
             colnames = self._metadata_table.colnames
-            if "object_id" not in colnames:
-                # Note: See https://github.com/lincc-frameworks/hyrax/issues/374
-                # for iterable dataset support discussion.
+            if (
+                (object_id_column_name is None)
+                and ("object_id" not in colnames)
+                and (self._config["data_set"]["object_id_column_name"] not in colnames)
+            ):
                 ids = np.array(list(self.ids()))
                 self._metadata_table.add_column(ids, name="object_id")
 
@@ -272,7 +277,16 @@ class HyraxDataset:
             )
             raise RuntimeError(msg)
 
-        return self._metadata_table[idxs][columns].as_array()
+        result = self._metadata_table[idxs][columns].as_array()
+
+        # Convert masked arrays to regular arrays with NaN for masked values
+        import numpy as np
+        import numpy.ma as ma
+
+        if ma.isMaskedArray(result):
+            result = ma.filled(result, np.nan)
+
+        return result
 
 
 def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:
