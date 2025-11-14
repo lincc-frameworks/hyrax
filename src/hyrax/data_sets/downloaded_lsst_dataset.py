@@ -119,7 +119,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         # Initialize tensor caching from mixin
         self._init_tensor_cache(config)
 
-    def get_objectId(self, idx):
+    def get_objectId(self, idx):  # noqa: N802
         """Get object ID for a given index based on naming strategy."""
         if self.use_object_id:
             if isinstance(self.catalog, Table):
@@ -128,11 +128,19 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
                 return str(self.catalog.iloc[idx][self.object_id_column])
         else:
             return str(idx)
-        
-    def ids(self):
-        """Generator yielding object IDs for the entire dataset."""
+
+    def ids(self, log_every=None):
+        """Generator yielding object IDs for the entire dataset. Required by TensorCacheMixin"""
+        log = log_every is not None and isinstance(log_every, int)
+
         for idx in range(len(self.catalog)):
+            if log and idx != 0 and idx % log_every == 0:
+                logger.info(f"Processed {idx} objects")
             yield self.get_objectId(idx)
+
+        # Final log message after completing iteration
+        if log and len(self.catalog) > 0:
+            logger.info(f"Processed {len(self.catalog)} objects")
 
     def _setup_naming_strategy(self):
         """Setup file naming strategy based on catalog columns."""
@@ -808,39 +816,6 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         else:
             # Cutout not downloaded yet, cannot load for cache
             raise FileNotFoundError(f"Cutout file {cutout_path} not found. Download cutouts first.")
-
-    def ids(self, log_every=None):
-        """Iterator over all object IDs, required by TensorCacheMixin."""
-        log = log_every is not None and isinstance(log_every, int)
-
-        if not self.use_object_id:
-            # For datasets without object_id, use index-based IDs
-            for index in range(len(self.catalog)):
-                if log and index != 0 and index % log_every == 0:
-                    logger.info(f"Processed {index} objects")
-                yield str(index)
-            else:
-                if log and len(self.catalog) > 0:
-                    logger.info(f"Processed {len(self.catalog) - 1} objects")
-        else:
-            # For datasets with object_id, iterate over object IDs
-            if isinstance(self.catalog, Table):
-                for index, row in enumerate(self.catalog):
-                    if log and index != 0 and index % log_every == 0:
-                        logger.info(f"Processed {index} objects")
-                    yield str(row[self.object_id_column])
-                else:
-                    if log and len(self.catalog) > 0:
-                        logger.info(f"Processed {len(self.catalog) - 1} objects")
-            else:
-                # pandas/hats catalog
-                for index, (_, row) in enumerate(self.catalog.iterrows()):
-                    if log and index != 0 and index % log_every == 0:
-                        logger.info(f"Processed {index} objects")
-                    yield str(row[self.object_id_column])
-                else:
-                    if log and len(self.catalog) > 0:
-                        logger.info(f"Processed {len(self.catalog) - 1} objects")
 
     def __len__(self):
         """Return length of current catalog, not the full manifest."""

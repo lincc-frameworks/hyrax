@@ -147,7 +147,7 @@ def test_subset_catalog_preserves_manifest_and_loads_correct_cutouts():
             mock.patch.object(DownloadedLSSTDataset, "_initialize_manifest"),
         ):
             # Create DownloadedLSSTDataset with mocked initialization
-            dataset = DownloadedLSSTDataset(config)
+            dataset = DownloadedLSSTDataset(config, data_location=config["general"]["data_dir"])
 
             # Set required attributes after creation
             dataset.catalog = subset_catalog  # Set catalog BEFORE other methods need it
@@ -269,7 +269,7 @@ def test_subset_catalog_with_band_filtering():
             mock.patch.object(DownloadedLSSTDataset, "_initialize_manifest"),
         ):
             # Create DownloadedLSSTDataset with mocked initialization
-            dataset = DownloadedLSSTDataset(config)
+            dataset = DownloadedLSSTDataset(config, data_location=config["general"]["data_dir"])
 
             # Set required attributes after creation
             dataset.catalog = subset_catalog
