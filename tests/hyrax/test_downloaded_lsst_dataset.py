@@ -198,15 +198,15 @@ def test_subset_catalog_preserves_manifest_and_loads_correct_cutouts():
         # Mock the apply_transform method to return tensors as-is for testing
         with mock.patch.object(dataset, "apply_transform", side_effect=lambda x: x):
             # dataset[0] should return cutout for object 1003
-            cutout_0 = dataset[0]
+            cutout_0 = dataset[0]["data"]["image"]
             assert cutout_0.item() == 1003.0, f"dataset[0] should contain object 1003, got {cutout_0.item()}"
 
             # dataset[1] should return cutout for object 1007
-            cutout_1 = dataset[1]
+            cutout_1 = dataset[1]["data"]["image"]
             assert cutout_1.item() == 1007.0, f"dataset[1] should contain object 1007, got {cutout_1.item()}"
 
             # dataset[2] should return cutout for object 1009
-            cutout_2 = dataset[2]
+            cutout_2 = dataset[2]["data"]["image"]
             assert cutout_2.item() == 1009.0, f"dataset[2] should contain object 1009, got {cutout_2.item()}"
 
         # Verify that the manifest contains the expected object IDs in order
@@ -315,7 +315,7 @@ def test_subset_catalog_with_band_filtering():
         # Test that accessing dataset elements returns filtered cutouts
         with mock.patch.object(dataset, "apply_transform", side_effect=lambda x: x):
             # dataset[0] should return cutout for object 2002 with only g and i bands
-            cutout_0 = dataset[0]
+            cutout_0 = dataset[0]["data"]["image"]
             print(f"Cutout 0 shape: {cutout_0.shape}")
             print(f"Cutout 0 values: {cutout_0.flatten()}")
 
@@ -330,7 +330,7 @@ def test_subset_catalog_with_band_filtering():
             )
 
             # dataset[1] should return cutout for object 2004 with band filtering
-            cutout_1 = dataset[1]
+            cutout_1 = dataset[1]["data"]["image"]
             assert cutout_1.shape[0] == 2, f"Expected 2 bands after filtering, got {cutout_1.shape[0]}"
 
             expected_values_1 = torch.tensor([2004.0, 2004.2])  # g and i bands
@@ -340,7 +340,7 @@ def test_subset_catalog_with_band_filtering():
             )
 
             # dataset[2] should return cutout for object 2005 with band filtering
-            cutout_2 = dataset[2]
+            cutout_2 = dataset[2]["data"]["image"]
             assert cutout_2.shape[0] == 2, f"Expected 2 bands after filtering, got {cutout_2.shape[0]}"
 
             expected_values_2 = torch.tensor([2005.0, 2005.2])  # g and i bands
