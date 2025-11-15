@@ -1,6 +1,4 @@
 import logging
-from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -28,6 +26,7 @@ def trained_hyrax(tmp_path):
             "data": {
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path / "data_train"),
+                "fields": ["image"],
                 "primary_id_field": "object_id",
             }
         },
@@ -38,7 +37,7 @@ def trained_hyrax(tmp_path):
 
     # Train the model
     h.train()
-    
+
     return h
 
 
