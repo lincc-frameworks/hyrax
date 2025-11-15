@@ -183,11 +183,16 @@ experiment_name = "notebook"
 # If false, uses result directory string, <timestamp>-train-<uid>, as run name.
 run_name = false
 
+
 [onnx]
 
 # The operator set version to use when exporting a model. See the following for info:
 # https://onnxruntime.ai/docs/reference/compatibility.html#onnx-opset-support
 opset_version = 20
+
+# The directory to find input model files to convert to ONNX. ONNX-ified models
+# will be written to this directory as well.
+input_model_directory = false
 
 
 [model_inputs]
