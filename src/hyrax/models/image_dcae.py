@@ -7,7 +7,6 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as f
-import torch.optim as optim
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
@@ -218,13 +217,10 @@ class ImageDCAE(nn.Module):
 
         return {"loss": loss.item()}
 
-    def _optimizer(self):
-        """Default optimizer configuration."""
-        return optim.Adam(self.parameters(), lr=1e-3)
-
     @staticmethod
     def to_tensor(data_dict):
         """Convert structured data to tensor format."""
+        data_dict = data_dict["data"]
         if "image" in data_dict:
             return data_dict["image"]
         else:
