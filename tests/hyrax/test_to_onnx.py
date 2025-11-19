@@ -41,6 +41,41 @@ def trained_hyrax(tmp_path):
     return h
 
 
+@pytest.fixture
+def trained_hyrax_supervised(tmp_path):
+    """Fixture that creates a trained Hyrax instance with supervised data (image + label)
+    for ONNX export tests"""
+    # Create a Hyrax instance with loopback model configuration
+    h = hyrax.Hyrax()
+    h.config["model"]["name"] = "HyraxLoopback"
+    h.config["train"]["epochs"] = 1
+    h.config["data_loader"]["batch_size"] = 4
+    h.config["general"]["results_dir"] = str(tmp_path)
+    h.config["general"]["dev_mode"] = True
+
+    # Configure dataset with both image and label fields
+    h.config["model_inputs"] = {
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path / "data_train"),
+                "fields": ["image", "label"],
+                "primary_id_field": "object_id",
+            }
+        },
+    }
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
+    # Use numeric labels (0, 1, 2) instead of strings so they can be converted to tensors
+    h.config["data_set"]["HyraxRandomDataset"]["provided_labels"] = [0, 1, 2]
+
+    # Train the model
+    h.train()
+
+    return h
+
+
 def test_to_onnx_successful_export(trained_hyrax):
     """Test successful ONNX export from a trained model"""
     h = trained_hyrax
@@ -62,6 +97,41 @@ def test_to_onnx_successful_export(trained_hyrax):
     assert "_opset_" in onnx_file.name
     assert "_ts_" in onnx_file.name
     assert onnx_file.suffix == ".onnx"
+
+
+def test_to_onnx_supervised_export(trained_hyrax_supervised):
+    """Test ONNX export from a trained supervised model with (image, label) data.
+
+    This test demonstrates the issue where ONNX export fails for supervised models
+    that use (data, label) tuples during training. The current implementation
+    in model_exporters.py assumes sample is a simple tensor, not a tuple.
+
+    The test currently fails at the export stage with:
+    AttributeError: 'tuple' object has no attribute 'numpy'
+
+    This happens because:
+    1. During training, to_tensor() returns (image_tensor, label_tensor) for supervised models
+    2. The export code passes this tuple to model(sample) which works fine
+    3. But then it tries to call sample.numpy() which fails because sample is a tuple
+
+    Even if we fix that, ONNX tracing will prune the label input if it's not used
+    in the forward pass, creating a model that only accepts data (not data+label).
+    """
+    import pytest
+
+    h = trained_hyrax_supervised
+
+    # Find the training results directory
+    train_dir = find_most_recent_results_dir(h.config, "train")
+    assert train_dir is not None, "Training results directory should exist"
+
+    # Export to ONNX using the verb - this should fail with AttributeError
+    to_onnx_verb = ToOnnx(h.config)
+
+    # The export currently fails because model_exporters.py expects sample to be
+    # a tensor, but for supervised models it's a tuple (data, label).
+    with pytest.raises(AttributeError, match="'tuple' object has no attribute 'numpy'"):
+        to_onnx_verb.run(str(train_dir))
 
 
 def test_to_onnx_missing_input_directory(tmp_path):
