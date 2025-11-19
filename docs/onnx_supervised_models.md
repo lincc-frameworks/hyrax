@@ -1,5 +1,7 @@
 # ONNX Export Limitations for Supervised Models
 
+**Status**: Investigation complete. No short-term solution available using torch.jit methods.
+
 ## Issue
 ONNX export currently fails for supervised models that use `(data, label)` tuples during training.
 
