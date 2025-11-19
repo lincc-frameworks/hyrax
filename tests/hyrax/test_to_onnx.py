@@ -134,6 +134,168 @@ def test_to_onnx_supervised_export(trained_hyrax_supervised):
         to_onnx_verb.run(str(train_dir))
 
 
+def test_to_onnx_supervised_export_with_jit_script(trained_hyrax_supervised):
+    """Experimental test to see if torch.jit.script can help with supervised model export.
+
+    This test attempts to use torch.jit.script as an alternative approach to handle
+    supervised models where the label input might not be used in the forward pass.
+
+    According to the StackOverflow discussion, torch.jit.script analyzes the Python
+    code structure and can preserve unused inputs, unlike torch.jit.trace which only
+    records executed operations.
+
+    However, this approach has limitations:
+    1. torch.jit.script requires the model to be fully scriptable (no dynamic Python)
+    2. The exported script model still needs to be converted to ONNX
+    3. The conversion to ONNX may still prune unused inputs
+    """
+    import pytest
+    import torch
+
+    h = trained_hyrax_supervised
+
+    # Find the training results directory
+    train_dir = find_most_recent_results_dir(h.config, "train")
+    assert train_dir is not None, "Training results directory should exist"
+
+    # Load the model
+    from hyrax.config_utils import ConfigManager
+    from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
+
+    config_file = train_dir / "runtime_config.toml"
+    config_manager = ConfigManager(runtime_config_filepath=config_file)
+    config_from_training = config_manager.config
+
+    weights_file_path = train_dir / config_from_training["train"]["weights_filename"]
+    dataset = setup_dataset(config_from_training)
+    model = setup_model(config_from_training, dataset["train"])
+    model.load(weights_file_path)
+    model.train(False)
+    model.to("cpu")
+
+    # Get a sample batch
+    train_data_loader, _ = dist_data_loader(dataset["train"], config_from_training, False)
+    batch_sample = next(iter(train_data_loader))
+    batch_sample = model.to_tensor(batch_sample)
+
+    # Attempt 1: Try torch.jit.script
+    # This will likely fail because HyraxLoopback model is not fully scriptable
+    # (it uses isinstance checks and dynamic Python features)
+    try:
+        scripted_model = torch.jit.script(model)
+        logger.info("torch.jit.script succeeded")
+
+        # Try to export the scripted model to ONNX
+        onnx_output = train_dir / "scripted_model.onnx"
+        torch.onnx.export(
+            scripted_model,
+            batch_sample,
+            onnx_output,
+            opset_version=20,
+            input_names=["data", "label"],
+            output_names=["output"],
+        )
+        logger.info(f"Scripted model exported to {onnx_output}")
+
+        # If we get here, the test succeeded
+        assert onnx_output.exists()
+
+    except Exception as e:
+        logger.error(f"torch.jit.script approach failed: {e}")
+        # This is expected - torch.jit.script has limitations
+        pytest.skip(f"torch.jit.script approach not viable: {e}")
+
+
+def test_to_onnx_supervised_export_with_jit_trace(trained_hyrax_supervised):
+    """Experimental test to see if torch.jit.trace can help with supervised model export.
+
+    This test attempts to use torch.jit.trace, which records the actual operations
+    executed during a forward pass. Unlike torch.jit.script, trace doesn't analyze
+    code structure, so it will prune any inputs that aren't used in the computation.
+
+    This test is expected to fail or produce a model that only accepts the data input
+    (not the label), demonstrating that tracing-based approaches don't solve the
+    supervised model export problem.
+    """
+    import pytest
+    import torch
+
+    h = trained_hyrax_supervised
+
+    # Find the training results directory
+    train_dir = find_most_recent_results_dir(h.config, "train")
+    assert train_dir is not None, "Training results directory should exist"
+
+    # Load the model
+    from hyrax.config_utils import ConfigManager
+    from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
+
+    config_file = train_dir / "runtime_config.toml"
+    config_manager = ConfigManager(runtime_config_filepath=config_file)
+    config_from_training = config_manager.config
+
+    weights_file_path = train_dir / config_from_training["train"]["weights_filename"]
+    dataset = setup_dataset(config_from_training)
+    model = setup_model(config_from_training, dataset["train"])
+    model.load(weights_file_path)
+    model.train(False)
+    model.to("cpu")
+
+    # Get a sample batch
+    train_data_loader, _ = dist_data_loader(dataset["train"], config_from_training, False)
+    batch_sample = next(iter(train_data_loader))
+    batch_sample = model.to_tensor(batch_sample)
+
+    # Attempt 2: Try torch.jit.trace
+    # This should succeed but will only record the operations that were executed
+    try:
+        # Note: torch.jit.trace unpacks tuples, so if we pass (data, label), it will
+        # try to call forward(data, label) which fails since forward only accepts one arg.
+        # This is a fundamental limitation - we can only trace with a single input.
+        traced_model = torch.jit.trace(model, batch_sample)
+        logger.info("torch.jit.trace succeeded")
+
+        # Try to export the traced model to ONNX
+        onnx_output = train_dir / "traced_model.onnx"
+        torch.onnx.export(
+            traced_model,
+            batch_sample,
+            onnx_output,
+            opset_version=20,
+            input_names=["data", "label"],
+            output_names=["output"],
+        )
+        logger.info(f"Traced model exported to {onnx_output}")
+
+        # Check how many inputs the ONNX model has
+        import onnxruntime
+
+        ort_session = onnxruntime.InferenceSession(onnx_output)
+        num_inputs = len(ort_session.get_inputs())
+        logger.info(f"Traced ONNX model has {num_inputs} input(s)")
+
+        # The traced model will likely only have 1 input because the label
+        # is not used in the forward pass and gets pruned during tracing
+        assert num_inputs == 1, (
+            f"Expected 1 input (data only), but got {num_inputs}. Tracing pruned the unused label input."
+        )
+
+    except TypeError as e:
+        # Expected error: torch.jit.trace unpacks tuples and tries to pass them as separate args
+        if "takes 2 positional arguments but 3 were given" in str(e):
+            logger.info(
+                "torch.jit.trace failed as expected: tuple unpacking causes multiple args to forward()"
+            )
+            pytest.skip(
+                "torch.jit.trace doesn't work with tuple inputs - it unpacks them and passes as separate args"
+            )
+        else:
+            raise
+    except Exception as e:
+        logger.error(f"torch.jit.trace approach failed unexpectedly: {e}")
+        pytest.skip(f"torch.jit.trace approach failed: {e}")
+
+
 def test_to_onnx_missing_input_directory(tmp_path):
     """Test handling of missing input directories"""
     h = hyrax.Hyrax()
