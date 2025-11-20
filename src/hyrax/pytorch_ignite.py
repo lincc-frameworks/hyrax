@@ -717,6 +717,17 @@ def create_trainer(
         logger.debug(f"Epoch {trainer.state.epoch} run time: {trainer.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Epoch {trainer.state.epoch} metrics: {trainer.state.output}")
 
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def log_epoch_metrics(trainer):
+        if hasattr(model, "log_epoch_metrics"):
+            epoch_number = trainer.state.epoch
+            epoch_metrics = model.log_epoch_metrics()
+            for m in epoch_metrics:
+                tensorboardx_logger.add_scalar(
+                    f"training/training/epoch/{m}", epoch_metrics[m], global_step=epoch_number
+                )
+                mlflow.log_metrics({f"training/epoch/{m}": epoch_metrics[m]}, step=epoch_number)
+
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
 
