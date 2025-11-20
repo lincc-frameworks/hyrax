@@ -69,13 +69,13 @@ class ToOnnx(Verb):
         # Use the config in the model directory to load the dataset(s) and create
         # The data loader instance to provide a data sample to the ONNX exporter.
         dataset = setup_dataset(config_from_training)
-        model = setup_model(config_from_training, dataset["train"])
+        model = setup_model(config_from_training, dataset["infer"])
         # Load the trained weights and send the model to the CPU for ONNX export.
         model.load(weights_file_path)
         model.train(False)
 
         # Create an instance of the dataloader so that we can request a sample batch.
-        train_data_loader, _ = dist_data_loader(dataset["train"], config_from_training, False)
+        infer_data_loader, _ = dist_data_loader(dataset["infer"], config_from_training, False)
 
         # Generate the `context` dictionary that will be provided to the ONNX exporter.
         context = {
@@ -84,7 +84,7 @@ class ToOnnx(Verb):
         }
 
         # Get a sample of input data.
-        batch_sample = next(iter(train_data_loader))
+        batch_sample = next(iter(infer_data_loader))
         batch_sample = model.to_tensor(batch_sample)
 
         export_to_onnx(model, batch_sample, config, context)
