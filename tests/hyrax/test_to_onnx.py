@@ -26,6 +26,14 @@ def trained_hyrax(tmp_path):
             "data": {
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path / "data_train"),
+                "fields": ["image", "label"],
+                "primary_id_field": "object_id",
+            }
+        },
+        "infer": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path / "data_train"),
                 "fields": ["image"],
                 "primary_id_field": "object_id",
             }
