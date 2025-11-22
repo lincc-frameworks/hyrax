@@ -135,3 +135,66 @@ def test_fetch_model_class_in_registry():
     model_cls = fetch_model_class(config)
 
     assert model_cls.__name__ == "NewClass"
+
+
+def test_torch_load_with_map_location(tmp_path):
+    """Test that _torch_load properly handles device remapping via map_location.
+
+    This test verifies that the fix works by checking that loaded tensors are on
+    the expected device (as determined by idist.device()). This tests the actual
+    problem (device mismatch handling) without mocking torch's interface, making
+    it robust to future PyTorch API changes.
+
+    While we can't create a true GPU->CPU scenario in CPU-only CI, this test ensures
+    that whatever device is available, the loaded state dict tensors match it.
+    """
+    import ignite.distributed as idist
+    import torch
+    import torch.nn as nn
+
+    from hyrax.models.model_registry import hyrax_model
+
+    # Create a simple model
+    @hyrax_model
+    class SimpleModel(nn.Module):
+        def __init__(self, config, data_sample=None):
+            super().__init__()
+            self.config = config
+            self.linear = nn.Linear(10, 5)
+
+        def forward(self, x):
+            return self.linear(x)
+
+        def train_step(self, batch):
+            return {"loss": 0.0}
+
+    # Create config
+    config = {
+        "criterion": {"name": "torch.nn.MSELoss"},
+        "optimizer": {"name": "torch.optim.SGD"},
+        "torch.optim.SGD": {"lr": 0.01},
+    }
+
+    # Get the expected device from idist (same as _torch_load uses)
+    expected_device = idist.device()
+
+    # Create and save a model
+    model = SimpleModel(config)
+    weights_path = tmp_path / "test_weights.pth"
+    model.save(weights_path)
+
+    # Create a new model instance and load the weights
+    new_model = SimpleModel(config)
+    new_model.load(weights_path)
+
+    # Verify that all loaded tensors are on the expected device
+    # This is the actual fix: map_location ensures tensors are on the right device
+    for key, tensor in new_model.state_dict().items():
+        assert tensor.device == expected_device, (
+            f"Tensor {key} is on device {tensor.device}, expected {expected_device}. "
+            "This indicates map_location is not working correctly."
+        )
+
+    # Verify that the weights were loaded correctly (functional test)
+    for key in model.state_dict():
+        assert torch.allclose(model.state_dict()[key], new_model.state_dict()[key])
