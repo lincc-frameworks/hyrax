@@ -1,3 +1,4 @@
+import datetime
 import logging
 from pathlib import Path
 
@@ -16,7 +17,8 @@ def export_to_onnx(model, sample, config, ctx):
     model : ML framework model
         The model that was just trained using the ML framework. i.e. PyTorch
     sample : Tensor
-        A single sample from the training data loader. This is used to check the
+        This sample is the result of running a batch of data through the data
+        loader and the model's `to_tensor` function. It is used to compare the
         output of the ONNX model against the output of the PyTorch model.
     config : dict
         The parsed config file as a nested dict
@@ -27,7 +29,8 @@ def export_to_onnx(model, sample, config, ctx):
     # build the output ONNX file path
     model_filename = Path(config["train"]["weights_filename"]).stem
     onnx_opset_version = config["onnx"]["opset_version"]
-    onnx_model_filename = f"{model_filename}_opset_{onnx_opset_version}.onnx"
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    onnx_model_filename = f"{model_filename}_opset_{onnx_opset_version}_ts_{timestamp}.onnx"
     onnx_output_filepath = ctx["results_dir"] / onnx_model_filename
 
     # use the "ml_framework" context value to determine how to convert to ONNX.
@@ -48,6 +51,13 @@ def export_to_onnx(model, sample, config, ctx):
     # Check the ONNX model against the PyTorch model. Note that `sample` was
     # converted to numpy array when the model was converted to ONNX
     ort_session = onnxruntime.InferenceSession(onnx_output_filepath)
+    logger.debug("ONNX inputs:", [(i.name, i.shape, i.type) for i in ort_session.get_inputs()])
+    logger.debug("Sample info: ", [(type(s), s.shape) for s in sample])
+
+    # ! This falls apart if there are multiple inputs for the model. The code here
+    # ! assumes that the model uses only 1 input. This will be updated when we find
+    # ! a good way to identify the returned portions of sample that need to be fed
+    # ! into the ONNX model.
     ort_inputs = {ort_session.get_inputs()[0].name: sample}
     ort_outs = ort_session.run(None, ort_inputs)
 

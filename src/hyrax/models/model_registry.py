@@ -37,6 +37,9 @@ def _torch_criterion(self: nn.Module):
 
     # Load the class and get any parameters from the config dictionary
     criterion_name = config["criterion"]["name"]
+    if not criterion_name:
+        logger.warning("No criterion specified in config or self.criterion in model.")
+        return None
     criterion_cls = get_or_load_class(criterion_name)
 
     arguments = {}
@@ -44,12 +47,12 @@ def _torch_criterion(self: nn.Module):
         arguments = config[criterion_name]
 
     # Print some debugging info about the criterion function and parameters used
-    log_string = f"Using criterion: {criterion_name} "
+    log_string = f"Setting model's self.criterion from config: {criterion_name} "
     if arguments:
         log_string += f"with arguments: {arguments}."
     else:
         log_string += "with default arguments."
-    logger.debug(log_string)
+    logger.info(log_string)
 
     return criterion_cls(**arguments)
 
@@ -62,6 +65,10 @@ def _torch_optimizer(self: nn.Module):
 
     # Load the class and get any parameters from the config dictionary
     optimizer_name = config["optimizer"]["name"]
+    if not optimizer_name:
+        logger.warning("No optimizer specified in config or self.optimizer in model.")
+        return None
+
     optimizer_cls = get_or_load_class(optimizer_name)
 
     arguments = {}
@@ -69,12 +76,12 @@ def _torch_optimizer(self: nn.Module):
         arguments = config[optimizer_name]
 
     # Print some debugging info about the optimizer function and parameters used
-    log_string = f"Using optimizer: {optimizer_name} "
+    log_string = f"Setting model's self.optimizer from config: {optimizer_name} "
     if arguments:
         log_string += f"with arguments: {arguments}."
     else:
         log_string += "with default arguments."
-    logger.debug(log_string)
+    logger.info(log_string)
 
     return optimizer_cls(self.parameters(), **arguments)
 
@@ -91,15 +98,33 @@ def hyrax_model(cls):
     if issubclass(cls, nn.Module):
         cls.save = _torch_save
         cls.load = _torch_load
-        cls._criterion = _torch_criterion if not hasattr(cls, "_criterion") else cls._criterion
-        cls._optimizer = _torch_optimizer if not hasattr(cls, "_optimizer") else cls._optimizer
 
     original_init = cls.__init__
 
     def wrapped_init(self, config, *args, **kwargs):
         original_init(self, config, *args, **kwargs)
-        self.criterion = self._criterion()
-        self.optimizer = self._optimizer()
+
+        if not hasattr(self, "optimizer"):
+            self.optimizer = _torch_optimizer(self)
+        else:
+            if config["optimizer"]["name"]:
+                logger.warning(
+                    "Both model and config define an optimizer. "
+                    "Hyrax will use self.optimizer defined in the model."
+                )
+            opt_name = f"{type(self.optimizer).__module__}.{type(self.optimizer).__qualname__}"
+            logger.info(f"Using self.optimizer defined in model: {opt_name}")
+
+        if not hasattr(self, "criterion"):
+            self.criterion = _torch_criterion(self)
+        else:
+            if config["criterion"]["name"]:
+                logger.warning(
+                    "Both model and config define a criterion. "
+                    "Hyrax will use self.criterion defined in the model."
+                )
+            crit_name = f"{type(self.criterion).__module__}.{type(self.criterion).__qualname__}"
+            logger.info(f"Using self.criterion defined in model: {crit_name}")
 
     cls.__init__ = wrapped_init
 
@@ -172,10 +197,19 @@ def fetch_model_class(runtime_config: dict) -> type[nn.Module]:
         If no model was specified in the runtime configuration.
     """
 
-    model_name = runtime_config["model"]["name"]
+    model_name = runtime_config["model"]["name"] if runtime_config["model"]["name"] else None
     model_cls = None
 
     if not model_name:
+        model_list = "\n".join([f"  - {model}" for model in sorted(MODEL_REGISTRY.keys())])
+        logger.error(
+            "No model name was provided in the configuration. "
+            "You must specify a model to use before running Hyrax.\n\n"
+            "To set a model, use: h.set_config('model.name', '<model_name>')\n"
+            "<model_name> can be one of the following registered models or a path to a custom model class "
+            "e.g. 'HyraxCNN' or 'my_package.my_module.MyModelClass'.\n\n"
+            f"Currently registered models:\n{model_list}"
+        )
         raise RuntimeError(
             "A model class name or path must be provided. "
             "e.g. 'HyraxCNN' or 'my_package.my_module.MyModelClass'."

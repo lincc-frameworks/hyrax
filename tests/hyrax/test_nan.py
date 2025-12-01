@@ -35,10 +35,19 @@ def loopback_hyrax_nan(tmp_path_factory, request):
 
     h.config["general"]["dev_mode"] = True
     h.config["model_inputs"] = {
-        "data": {
-            "dataset_class": request.param,
-            "data_location": str(tmp_path_factory.mktemp("data")),
-            "primary_id_field": "object_id",
+        "train": {
+            "data": {
+                "dataset_class": request.param,
+                "data_location": str(tmp_path_factory.mktemp("data")),
+                "primary_id_field": "object_id",
+            },
+        },
+        "infer": {
+            "data": {
+                "dataset_class": request.param,
+                "data_location": str(tmp_path_factory.mktemp("data")),
+                "primary_id_field": "object_id",
+            },
         },
     }
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
@@ -57,7 +66,7 @@ def loopback_hyrax_nan(tmp_path_factory, request):
     h.config["infer"]["model_weights_file"] = str(weights_file)
 
     dataset = h.prepare()
-    return h, dataset
+    return h, dataset["infer"]
 
 
 def test_nan_handling(loopback_hyrax_nan):
