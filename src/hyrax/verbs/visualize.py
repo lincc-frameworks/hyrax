@@ -80,14 +80,20 @@ class Visualize(Verb):
 
         from hyrax.data_sets.inference_dataset import InferenceDataSet
 
-        fields = ["object_id"]
+        if self.config["data_set"]["object_id_column_name"]:
+            self.object_id_column_name = self.config["data_set"]["object_id_column_name"]
+        else:
+            self.object_id_column_name = "object_id"
+
+        fields = [self.object_id_column_name]
+
         fields += self.config["visualize"]["fields"]
         self.cmap = self.config["visualize"]["cmap"]
 
         if self.config["data_set"]["filename_column_name"]:
             self.filename_column_name = self.config["data_set"]["filename_column_name"]
         else:
-            self.filename_column_name = "filename"
+            self.filename_column_name = "filename_data"
 
         if self.config["visualize"]["display_images"]:
             fields += [self.filename_column_name]
@@ -95,9 +101,7 @@ class Visualize(Verb):
         # If no input directory is specified, read from config.
         if input_dir is None:
             logger.info("UMAP directory not specified at runtime. Reading from config values.")
-            input_dir = (
-                self.config["results"]["inference_dir"] if self.config["results"]["inference_dir"] else None
-            )
+            input_dir = self.config["results"]["inference_dir"]
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")
@@ -109,12 +113,12 @@ class Visualize(Verb):
                 logger.warning(f"Field {field} is unavailable for this dataset")
                 fields.remove(field)
 
-        if "object_id" not in fields:
+        if self.object_id_column_name not in fields:
             msg = "Umap dataset must support object_id field"
             raise RuntimeError(msg)
 
         self.data_fields = fields.copy()
-        self.data_fields.remove("object_id")
+        self.data_fields.remove(self.object_id_column_name)
 
         self.tree = KDTree(self.umap_results)
 
@@ -509,7 +513,7 @@ class Visualize(Verb):
         from holoviews import Table
 
         # Basic table with x/y pairs
-        key_dims = ["object_id"]
+        key_dims = [self.object_id_column_name]
         value_dims = ["x", "y"] + self.data_fields
 
         if not len(self.points_id):
@@ -578,11 +582,11 @@ class Visualize(Verb):
             logger.error("No points selected")
 
         df = pd.DataFrame(self.points, columns=["x", "y"])
-        df["object_id"] = self.points_id
+        df[self.object_id_column_name] = self.points_id
         meta = self.umap_results.metadata(self.points_idx, self.data_fields)
         meta_df = pd.DataFrame(meta, columns=self.data_fields)
 
-        cols = ["object_id", "x", "y"] + self.data_fields
+        cols = [self.object_id_column_name, "x", "y"] + self.data_fields
         result = pd.concat([df.reset_index(drop=True), meta_df.reset_index(drop=True)], axis=1)
         return result.reindex(columns=cols)
 
@@ -664,8 +668,8 @@ class Visualize(Verb):
             sampled_ids = []
             filenames = []
 
-        base_dir = Path(self.umap_results.original_config["general"]["data_dir"])
-        crop_to = self.umap_results.original_config["data_set"]["crop_to"]
+        crop_to = self.config["data_set"]["crop_to"]
+        base_dir = Path(self.config["general"]["data_dir"])
 
         # Defining a Fallback Image to Display in case of errors
         # Matching Shape is important because otherwise Haloviews'
@@ -733,7 +737,7 @@ class Visualize(Verb):
                     title = f"{sampled_ids[i]}"
 
                 except Exception as e:
-                    logger.warning(f"Could not load FITS file: {e}")
+                    logger.warning(f"Could not load file: {e}")
                     with open("./hyrax_visualize.log", "a") as f:
                         f.write(f"Could not load FITS file: {e}\n")
                     arr = placeholder_arr

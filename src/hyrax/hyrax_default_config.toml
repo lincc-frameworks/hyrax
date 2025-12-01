@@ -104,6 +104,32 @@ latent_dim = 64
 # The activation function of the final layer.
 final_layer = "tanh"
 
+[model.SimCLR]
+# The dimension of the projection head for SimCLR
+projection_dimension = 128
+
+# The scalar temperature parameter for its loss function, NTXentLoss, for SimCLR
+temperature = 0.5
+
+# The probability of applying horizontal flip augmentation for SimCLR
+horizontal_flip_probability = 0.5
+
+# The parameters for color jitter augmentation for SimCLR
+# [brightness, contrast, saturation, hue]
+color_jitter_params = [0.8, 0.8, 0.8, 0.2]
+
+# The probability of applying color jitter augmentation for SimCLR
+color_jitter_probability = 0.8
+
+# The probability of applying grayscale augmentation for SimCLR
+grayscale_probability = 0.2
+
+# The kernel size of Gaussian blur augmentation for SimCLR
+gaussian_blur_kernel_size = 9
+
+# The sigma range used in Gaussian blur augmentation for SimCLR
+gaussian_blur_sigma_range = [0.1, 2.0]
+
 
 [model.HyraxCNN]
 # The number of classes to predict as the output of the model. i.e. 2 would be a
@@ -157,11 +183,16 @@ experiment_name = "notebook"
 # If false, uses result directory string, <timestamp>-train-<uid>, as run name.
 run_name = false
 
+
 [onnx]
 
 # The operator set version to use when exporting a model. See the following for info:
 # https://onnxruntime.ai/docs/reference/compatibility.html#onnx-opset-support
 opset_version = 20
+
+# The directory to find input model files to convert to ONNX. ONNX-ified models
+# will be written to this directory as well.
+input_model_directory = false
 
 
 [model_inputs]
