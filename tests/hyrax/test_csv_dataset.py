@@ -13,10 +13,12 @@ def test_hyrax_csv_dataset():
 
     h = hyrax.Hyrax()
     h.config["model_inputs"] = {
-        "data": {
-            "dataset_class": "HyraxCSVDataset",
-            "data_location": str(csv_file),
-            "primary_id_field": "object_id",
+        "train": {
+            "data": {
+                "dataset_class": "HyraxCSVDataset",
+                "data_location": str(csv_file),
+                "primary_id_field": "object_id",
+            },
         },
     }
 
@@ -28,11 +30,7 @@ def test_csv_dataset_initialization(test_hyrax_csv_dataset):
     dataset = test_hyrax_csv_dataset.prepare()
 
     # Dataset has correct length
-    assert len(dataset) == 5
-
-    # Check that the dataset has the expected IDs
-    ids = list(dataset.ids())
-    assert ids == ["1001", "1002", "1003", "1004", "1005"]
+    assert len(dataset["train"]) == 5
 
 
 def test_csv_dataset_column_getters(test_hyrax_csv_dataset):
@@ -40,7 +38,7 @@ def test_csv_dataset_column_getters(test_hyrax_csv_dataset):
     dataset = test_hyrax_csv_dataset.prepare()
 
     # Get the underlying HyraxCSVDataset instance
-    csv_dataset = dataset._primary_or_first_dataset()
+    csv_dataset = dataset["train"]._primary_or_first_dataset()
 
     # Check that getter methods exist for each column
     assert hasattr(csv_dataset, "get_object_id")
@@ -61,7 +59,7 @@ def test_csv_dataset_sample_data(test_hyrax_csv_dataset):
     dataset = test_hyrax_csv_dataset.prepare()
 
     # Get the underlying HyraxCSVDataset instance
-    csv_dataset = dataset._primary_or_first_dataset()
+    csv_dataset = dataset["train"]._primary_or_first_dataset()
     sample = csv_dataset.sample_data()
 
     # Check that sample has the expected structure

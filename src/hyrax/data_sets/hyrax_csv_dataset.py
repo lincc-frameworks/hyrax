@@ -19,12 +19,16 @@ class HyraxCSVDataset(HyraxDataset):
 
     Example model_inputs configuration:
     {
-        "data": {
-            "dataset_class": "HyraxCSVDataset",
-            "data_location": </path/to/data.csv>,
-            "fields": ["<column1>", "<column2>", ...],
-            "primary_id_field": <column name that contains a unique ID>,
+        "train": {
+            "data": {
+                "dataset_class": "HyraxCSVDataset",
+                "data_location": </path/to/data.csv>,
+                "fields": ["<column1>", "<column2>", ...],
+                "primary_id_field": <column name that contains a unique ID>,
             },
+        },
+        "validate": { <similar to above> },
+        "infer": { <similar to above> },
     }
     """
 
