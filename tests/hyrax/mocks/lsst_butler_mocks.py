@@ -19,7 +19,11 @@ Usage:
     tract_info = skymap.findTract(sphere_point)
 """
 
+import threading
+import unittest.mock as mock
+
 import numpy as np
+import pytest
 
 
 class MockBox2I:
@@ -348,6 +352,9 @@ class MockButler:
     This mock simulates getting skymaps and image exposures.
     """
 
+    initialized_thread_ids = []
+    initialized_thread_ids_lock = threading.Lock()
+
     def __init__(self, repo=None, collections=None):
         """Initialize mock butler.
 
@@ -357,6 +364,17 @@ class MockButler:
         """
         self._repo = repo
         self._collections = collections
+
+        # Ensure only one Mock Butler per thread
+        thread_id = threading.current_thread().ident
+        if thread_id in MockButler.initialized_thread_ids:
+            msg = f"Cannot make two butlers on one thread tid:{thread_id}, "
+            msg += f"initialized_tids {MockButler.initialized_thread_ids}."
+            raise RuntimeError(msg)
+        else:
+            with MockButler.initialized_thread_ids_lock:
+                MockButler.initialized_thread_ids.append(thread_id)
+
         # Store mock data that can be retrieved
         self._data = {}
 
@@ -426,14 +444,35 @@ class MockGeom:
 _mock_degrees = MockGeom.degrees(1.0)
 
 
-def create_mock_butler_environment():
-    """Create and return a complete mock LSST Butler environment.
+@pytest.fixture
+def mock_lsst_environment():
+    """Fixture providing a complete mock LSST environment.
 
-    Returns:
-        dict with 'butler' and 'geom' keys containing mock objects
+    This fixture patches the lsst.daf.butler and lsst.geom modules
+    to use our mock implementations.
     """
-    return {
-        "butler": MockButler(),
-        "geom": MockGeom,
-        "degrees": _mock_degrees,
-    }
+    # Create mock modules
+    mock_butler_module = mock.MagicMock()
+    mock_butler_module.Butler = MockButler
+
+    mock_geom_module = mock.MagicMock()
+    mock_geom_module.Box2I = MockGeom.Box2I
+    mock_geom_module.Box2D = MockGeom.Box2D
+    mock_geom_module.SpherePoint = MockGeom.SpherePoint
+    mock_geom_module.degrees = MockGeom.degrees(1.0)
+
+    # Add modules to sys.modules before importing
+    with mock.patch.dict(
+        "sys.modules",
+        {
+            "lsst": mock.MagicMock(),
+            "lsst.daf": mock.MagicMock(),
+            "lsst.daf.butler": mock_butler_module,
+            "lsst.geom": mock_geom_module,
+        },
+    ):
+        yield {
+            "butler": mock_butler_module,
+            "geom": mock_geom_module,
+            "degrees": _mock_degrees,
+        }

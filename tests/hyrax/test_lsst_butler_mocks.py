@@ -6,6 +6,7 @@ to test LSSTDataset and DownloadedLSSTDataset without requiring actual
 LSST Science Pipelines or a Butler repository.
 """
 
+import threading
 import unittest.mock as mock
 
 import numpy as np
@@ -28,6 +29,7 @@ def mock_lsst_environment():
     # Create mock modules
     mock_butler_module = mock.MagicMock()
     mock_butler_module.Butler = MockButler
+    MockButler.initialized_thread_ids = []
 
     mock_geom_module = mock.MagicMock()
     mock_geom_module.Box2I = MockGeom.Box2I
@@ -129,6 +131,30 @@ def test_mock_butler_basic_operations(mock_lsst_environment):
     arr = image.getArray()
     assert isinstance(arr, np.ndarray)
     assert arr.shape == (10000, 10000)
+
+
+def test_multiple_butler_per_thread_fails(mock_lsst_environment):
+    """Test that mock butler can only be created once per thread"""
+    # Create a mock butler
+    _ = MockButler(repo="/fake/repo", collections="fake_collection")
+
+    with pytest.raises(RuntimeError):
+        # Create a second mock butler on the same thread
+        MockButler(repo="/fake/repo", collections="fake_collection")
+
+
+def test_one_butler_per_thread_succeeds(mock_lsst_environment):
+    """Test that when several threads each make a single butler there are no crashes"""
+    threads = [
+        threading.Thread(target=MockButler, kwargs={"repo": "/fake/repo", "collections": "fake_collection"})
+        for _ in range(5)
+    ]
+
+    for thread in threads:
+        thread.start()
+
+    for thread in threads:
+        thread.join()
 
 
 def test_mock_geom_operations(mock_lsst_environment):
