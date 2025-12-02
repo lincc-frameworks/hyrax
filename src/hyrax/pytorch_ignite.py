@@ -199,7 +199,7 @@ def dist_data_loader(
 
     Parameters
     ----------
-    dataset : HyraxDataset
+    dataset : hyrax.data_sets.HyraxDataset
         A Hyrax dataset instance
     config : dict
         Hyrax runtime configuration
