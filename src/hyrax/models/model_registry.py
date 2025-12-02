@@ -1,4 +1,6 @@
+import inspect
 import logging
+import textwrap
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,7 +17,12 @@ MODEL_REGISTRY: dict[str, type[nn.Module]] = {}
 def _torch_save(self: nn.Module, save_path: Path):
     import torch
 
-    torch.save(self.state_dict(), save_path)
+    to_save = {
+        "model_state_dict": self.state_dict(),
+        "to_tensor": textwrap.dedent(inspect.getsource(self.to_tensor)),
+    }
+
+    torch.save(to_save, save_path)
 
 
 def _torch_load(self: nn.Module, load_path: Path):
@@ -25,8 +32,21 @@ def _torch_load(self: nn.Module, load_path: Path):
     # Use ignite's device detection which handles distributed training and device availability
     # This allows models trained on GPU to be loaded on CPU-only machines
     device = idist.device()
-    state_dict = torch.load(load_path, weights_only=True, map_location=device)
+    state = torch.load(load_path, weights_only=True, map_location=device)
+    state_dict = state["model_state_dict"]
     self.load_state_dict(state_dict, assign=True)
+
+    # Attach the to_tensor method to the model
+    to_tensor = state.get("to_tensor", None)
+    if to_tensor is not None:
+        # Execute the source code to get the function object
+        local_vars = {}
+        exec(to_tensor, globals(), local_vars)
+        func = local_vars.get("to_tensor")
+        if func is not None:
+            self.to_tensor = staticmethod(func)
+        else:
+            logger.warning("Could not find to_tensor function in saved state.")
 
 
 def _torch_criterion(self: nn.Module):
