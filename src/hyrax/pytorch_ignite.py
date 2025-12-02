@@ -694,7 +694,7 @@ def create_trainer(
     )
 
     if config["train"]["resume"]:
-        prev_checkpoint = torch.load(config["train"]["resume"], map_location=device)
+        prev_checkpoint = torch.load(config["train"]["resume"], map_location=device, weights_only=False)
         Checkpoint.load_objects(to_load=to_save, checkpoint=prev_checkpoint)
 
     @trainer.on(Events.STARTED)
