@@ -190,11 +190,13 @@ def test_torch_load_with_map_location(tmp_path):
     # Verify that all loaded tensors are on the expected device
     # This is the actual fix: map_location ensures tensors are on the right device
     for key, tensor in new_model.state_dict().items():
-        assert tensor.device == expected_device, (
+        assert tensor.device.type == expected_device.type, (
             f"Tensor {key} is on device {tensor.device}, expected {expected_device}. "
             "This indicates map_location is not working correctly."
         )
 
     # Verify that the weights were loaded correctly (functional test)
     for key in model.state_dict():
-        assert torch.allclose(model.state_dict()[key], new_model.state_dict()[key])
+        assert torch.allclose(
+            model.state_dict()[key].to(expected_device), new_model.state_dict()[key].to(expected_device)
+        )

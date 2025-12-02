@@ -5,7 +5,7 @@ import pickle
 import warnings
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 import psutil
@@ -35,7 +35,7 @@ class Umap(Verb):
 
     # Should there be a version of this on the base class which uses a dict on the Verb
     # superclass to build the call to run based on what the subclass verb defined in setup_parser
-    def run_cli(self, args: Optional[Namespace] = None):
+    def run_cli(self, args: Namespace | None = None):
         """Stub CLI implementation"""
         logger.info("umap run from cli")
         if args is None:
@@ -45,7 +45,7 @@ class Umap(Verb):
         # self.run (args) call.
         return self.run(input_dir=args.input_dir)
 
-    def run(self, input_dir: Optional[Union[Path, str]] = None):
+    def run(self, input_dir: Union[Path, str] | None = None):
         """
         Create a umap of a particular inference run
 
@@ -68,7 +68,7 @@ class Umap(Verb):
             warnings.simplefilter(action="ignore", category=FutureWarning)
             return self._run(input_dir)
 
-    def _run(self, input_dir: Optional[Union[Path, str]] = None):
+    def _run(self, input_dir: Union[Path, str] | None = None):
         """See run()"""
         import multiprocessing as mp
 

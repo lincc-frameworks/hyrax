@@ -1,7 +1,7 @@
 import logging
 import unittest.mock as mock
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 import pytest
@@ -35,7 +35,7 @@ class FakeFitsFS:
     more filesystem operations without a really good reason.
     """
 
-    def __init__(self, test_files: dict, filter_catalog: Optional[dict] = None):
+    def __init__(self, test_files: dict, filter_catalog: dict | None = None):
         self.patchers: list[mock._patch[Any]] = []
 
         self.test_files = test_files

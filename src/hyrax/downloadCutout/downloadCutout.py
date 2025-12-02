@@ -19,8 +19,8 @@ import tempfile
 import time
 import urllib.request
 import urllib.response
-from collections.abc import Generator
-from typing import IO, Any, Callable, Optional, Union, cast
+from collections.abc import Callable, Generator
+from typing import IO, Any, Union, cast
 
 import numpy as np
 
@@ -522,9 +522,7 @@ class Rect:
 
 
 @export
-def read_rects(
-    file: Union[str, IO], default: Optional[Rect] = None, type: Optional[str] = None
-) -> list[Rect]:
+def read_rects(file: Union[str, IO], default: Rect | None = None, type: str | None = None) -> list[Rect]:
     """
     Read a file to get a list of `Rect` objects.
 
@@ -988,7 +986,7 @@ _all_filters = dict(
 )
 
 
-def parse_filter_opt(s: Optional[Union[str, list]]) -> Union[str, list]:
+def parse_filter_opt(s: Union[str, list] | None) -> Union[str, list]:
     """
     Interpret a filter name.
     The argument may be `ALLFILTERS`.or None
@@ -1021,8 +1019,8 @@ def parse_filter_opt(s: Optional[Union[str, list]]) -> Union[str, list]:
 @export
 def download(
     rects: Union[Rect, list[Rect]],
-    user: Optional[str] = None,
-    password: Optional[str] = None,
+    user: str | None = None,
+    password: str | None = None,
     *,
     onmemory: bool = True,
     **kwargs__download,
@@ -1093,15 +1091,15 @@ def download(
 
 def _download(
     rects: list[Rect],
-    user: Optional[str],
-    password: Optional[str],
+    user: str | None,
+    password: str | None,
     *,
     onmemory: bool,
     chunksize: int = 990,
     retries: int = 3,
     retrywait: int = 30,
     **kwargs__download_chunk,
-) -> Optional[list[list]]:
+) -> list[list] | None:
     """
     Cut `rects` out of the sky. Implements configurable request size, retries and exponential backoff.
 
@@ -1218,15 +1216,14 @@ def _download_chunk(
     rects: list[tuple[Rect, Any]],
     user: str,
     password: str,
-    manifest: Optional[dict[Rect, str]],
+    manifest: dict[Rect, str] | None,
     *,
     onmemory: bool,
-    request_hook: Optional[
-        Callable[[urllib.request.Request, datetime.datetime, datetime.datetime, int, int], Any]
-    ] = None,
-    rect_hook: Optional[Callable[[Rect, str], Any]] = None,
+    request_hook: Callable[[urllib.request.Request, datetime.datetime, datetime.datetime, int, int], Any]
+    | None = None,
+    rect_hook: Callable[[Rect, str], Any] | None = None,
     **kwargs_urlopen,
-) -> Optional[list]:
+) -> list | None:
     """
     Cut `rects` out of the sky.
 

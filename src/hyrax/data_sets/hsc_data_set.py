@@ -7,7 +7,6 @@ import os
 import re
 import resource
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from schwimmbad import MultiPool
@@ -48,7 +47,7 @@ class HSCDataSet(FitsImageDataSet):
 
         super().__init__(config, data_location)
 
-    def _read_filter_catalog(self, filter_catalog_path: Optional[Path]):
+    def _read_filter_catalog(self, filter_catalog_path: Path | None):
         from astropy.table import Table
 
         try:
@@ -138,7 +137,7 @@ class HSCDataSet(FitsImageDataSet):
         self._prune_objects(self.filters_ref, self.cutout_shape)
 
     def _scan_file_names(
-        self, filters: Optional[list[str]], filter_obj_ids: Optional[list[str]] = None
+        self, filters: list[str] | None, filter_obj_ids: list[str] | None = None
     ) -> files_dict:
         """Class initialization helper
 
@@ -282,7 +281,7 @@ class HSCDataSet(FitsImageDataSet):
         except OSError:
             return (0, 0)
 
-    def _prune_objects(self, filters_ref: list[str], cutout_shape: Optional[tuple[int, int]]):
+    def _prune_objects(self, filters_ref: list[str], cutout_shape: tuple[int, int] | None):
         """Class initialization helper. Prunes objects from the list of objects.
 
         1) Removes any objects which do not have all the filters specified in filters_ref
