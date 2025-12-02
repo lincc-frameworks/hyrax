@@ -1,9 +1,37 @@
+from hyrax.config_utils import find_most_recent_results_dir
+
+
 def test_train(loopback_hyrax):
     """
     Simple test that training succeeds with the loopback
     model in use.
     """
     h, _ = loopback_hyrax
+    h.train()
+
+
+def test_train_resume(loopback_hyrax, tmp_path):
+    """
+    Ensure that training can be resumed from a checkpoint
+    when using the loopback model.
+    """
+    checkpoint_filename = "checkpoint_epoch_1.pt"
+
+    h, _ = loopback_hyrax
+    # set results directory to a temporary path
+    h.config["general"]["results_dir"] = str(tmp_path)
+
+    # First, run initial training to create a saved model file
+    _ = h.train()
+
+    # find the model file in the most recent results directory
+    results_dir = find_most_recent_results_dir(h.config, "train")
+    checkpoint_path = results_dir / checkpoint_filename
+
+    # Now, set the resume config to point to this checkpoint
+    h.config["train"]["resume"] = str(checkpoint_path)
+
+    # Resume training
     h.train()
 
 

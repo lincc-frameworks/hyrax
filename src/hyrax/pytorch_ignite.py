@@ -694,7 +694,10 @@ def create_trainer(
     )
 
     if config["train"]["resume"]:
-        prev_checkpoint = torch.load(config["train"]["resume"], map_location=device)
+        # Load checkpoint with weights_only=False because pytorch-ignite checkpoints
+        # contain optimizer and trainer state objects, not just model weights.
+        # This is different from loading just model weights, which would use weights_only=True.
+        prev_checkpoint = torch.load(config["train"]["resume"], map_location=device, weights_only=False)
         Checkpoint.load_objects(to_load=to_save, checkpoint=prev_checkpoint)
 
     @trainer.on(Events.STARTED)
