@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 
@@ -7,7 +7,7 @@ import numpy as np
 class VectorDB(ABC):
     """Interface for a vector database"""
 
-    def __init__(self, config: Optional[dict] = None, context: Optional[dict] = None):
+    def __init__(self, config: dict | None = None, context: dict | None = None):
         """
         .. py:method:: __init__
 

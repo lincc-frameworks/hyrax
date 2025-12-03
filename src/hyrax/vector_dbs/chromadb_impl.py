@@ -1,6 +1,6 @@
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Optional, Union
+from typing import Union
 
 import chromadb
 import numpy as np
@@ -38,7 +38,7 @@ def _query_for_nn(results_dir: str, shard_name: str, vectors: list[np.ndarray], 
     return collection.query(query_embeddings=vectors, n_results=k)
 
 
-def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]], include: Optional[list[str]]):
+def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]], include: list[str] | None):
     """The query function for the ProcessPoolExecutor to query a shard for the
     vector associated with a given id.
 

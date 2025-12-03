@@ -7,7 +7,7 @@ import random
 import re
 from importlib import util as importlib_util
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 import tomlkit
 from tomlkit.toml_document import TOMLDocument
@@ -176,7 +176,7 @@ class ConfigManager:
 
     def __init__(
         self,
-        runtime_config_filepath: Optional[Union[Path, str]] = None,
+        runtime_config_filepath: Union[Path, str] | None = None,
         default_config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH,
     ):
         self.hyrax_default_config: TOMLDocument = ConfigManager.read_runtime_config(default_config_filepath)
@@ -537,7 +537,7 @@ def create_results_dir(config: dict, postfix: str) -> Path:
     return directory
 
 
-def find_most_recent_results_dir(config: dict, verb: str) -> Optional[Path]:
+def find_most_recent_results_dir(config: dict, verb: str) -> Path | None:
     """Find the most recent results directory corresponding to a particular verb
     This is a best effort search in the currently configured results root.
 

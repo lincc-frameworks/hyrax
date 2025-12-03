@@ -1,20 +1,20 @@
 [project]
 name = "hyrax"
-license = {file = "LICENSE"}
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 authors = [
     { name = "LINCC Frameworks", email = "mtauraso@uw.edu" }
 ]
 classifiers = [
     "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Operating System :: OS Independent",
     "Programming Language :: Python",
 ]
 dynamic = ["version"]
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = [
     "astropy", # Used to load fits files of sources to query HSC cutout server
     # Pin to the current version of pytorch ignite so workarounds to 
@@ -65,7 +65,7 @@ examples = [
 ]
 
 dev = [
-    "asv==0.6.5", # Used to compute performance benchmarks
+    "asv[virtualenv]==0.6.5", # Used to compute performance benchmarks
     "jupyter", # Clears output from Jupyter notebooks
     "matplotlib", # For example notebooks
     "pre-commit", # Used to run checks before finalizing a git commit
@@ -107,18 +107,9 @@ markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
 ]
 
-[tool.black]
-line-length = 110
-target-version = ["py39"]
-
-[tool.isort]
-profile = "black"
-line_length = 110
-
 [tool.ruff]
 line-length = 110
-target-version = "py39"
-
+target-version = "py310"
 [tool.ruff.lint]
 select = [
     # pycodestyle
@@ -150,7 +141,6 @@ select = [
     # Numpy v2.0 compatibility
     "NPY201",
 ]
-
 ignore = [
     "UP006", # Allow non standard library generics in type hints
     "UP007", # Allow Union in type hints
@@ -159,7 +149,9 @@ ignore = [
     "SIM117", # Allow nested with
     "UP015", # Allow redundant open parameters
     "UP028", # Allow yield in for loop
+    "B905", # Allow zip without `strict`
 ]
+
 
 [tool.coverage.run]
 omit=["src/hyrax/_version.py"]

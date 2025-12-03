@@ -1,7 +1,7 @@
 import logging
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -28,11 +28,11 @@ class DatabaseConnection(Verb):
             help="Directory of existing vector database.",
         )
 
-    def run_cli(self, args: Optional[Namespace] = None):
+    def run_cli(self, args: Namespace | None = None):
         """Stub CLI implementation"""
         logger.error("Database connection is not supported from the command line.")
 
-    def run(self, database_dir: Optional[Union[Path, str]] = None):
+    def run(self, database_dir: Union[Path, str] | None = None):
         """Create a connection to the vector database for interactive queries.
 
         Parameters

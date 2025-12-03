@@ -1,6 +1,6 @@
 import logging
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 from colorama import Back, Fore, Style
 
@@ -180,7 +180,7 @@ class Infer(Verb):
         """
         from hyrax.config_utils import find_most_recent_results_dir
 
-        weights_file: Optional[Union[str, Path]] = (
+        weights_file: Union[str, Path] | None = (
             config["infer"]["model_weights_file"] if config["infer"]["model_weights_file"] else None
         )
 

@@ -2,7 +2,7 @@ import logging
 import time
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 from tensorboardX import SummaryWriter
@@ -39,7 +39,7 @@ class SaveToDatabase(Verb):
             help="Directory of existing vector database, if adding more vectors.",
         )
 
-    def run_cli(self, args: Optional[Namespace] = None):
+    def run_cli(self, args: Namespace | None = None):
         """Stub CLI implementation"""
         logger.info("Creating vector db index from cli")
         if args is None:
@@ -47,9 +47,7 @@ class SaveToDatabase(Verb):
 
         return self.run(input_dir=args.input_dir, output_dir=args.output_dir)
 
-    def run(
-        self, input_dir: Optional[Union[Path, str]] = None, output_dir: Optional[Union[Path, str]] = None
-    ):
+    def run(self, input_dir: Union[Path, str] | None = None, output_dir: Union[Path, str] | None = None):
         """Insert inference results into vector database.
 
         Parameters

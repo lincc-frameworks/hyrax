@@ -1,6 +1,5 @@
 import logging
 from abc import ABC
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +24,7 @@ class Verb(ABC):  # noqa: B024
 # Verbs with no class are assumed to have a function in hyrax.py which
 # performs their function. All other verbs should be defined by named classes
 # in hyrax.verbs and use the @hyrax_verb decorator
-VERB_REGISTRY: dict[str, Optional[type[Verb]]] = {
+VERB_REGISTRY: dict[str, type[Verb] | None] = {
     "train": None,
     "infer": None,
     "download": None,
@@ -68,7 +67,7 @@ def is_verb_class(cli_name: str) -> bool:
     return cli_name in VERB_REGISTRY and VERB_REGISTRY.get(cli_name) is not None
 
 
-def fetch_verb_class(cli_name: str) -> Optional[type[Verb]]:
+def fetch_verb_class(cli_name: str) -> type[Verb] | None:
     """Gives the class object for the named verb
 
     Parameters
