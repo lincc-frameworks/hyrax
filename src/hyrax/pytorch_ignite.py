@@ -1,8 +1,9 @@
 import functools
 import logging
 import warnings
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Callable, Optional, Union
+from typing import Any, Union
 
 import ignite.distributed as idist
 import numpy as np
@@ -66,7 +67,7 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     return is_iterable
 
 
-def setup_dataset(config: dict, tensorboardx_logger: Optional[SummaryWriter] = None) -> Dataset:
+def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None) -> Dataset:
     """This function creates an instance of the requested dataset specified in the
     runtime configuration. There are two modes encapsulated here:
 
@@ -168,7 +169,7 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
 
 
-def load_collate_function(data_loader_kwargs: dict) -> Optional[Callable]:
+def load_collate_function(data_loader_kwargs: dict) -> Callable | None:
     """Load a collate function if one is specified in the config. Otherwise return None.
     Returning None will cause the DataLoader to use PyTorch's default collate function.
 

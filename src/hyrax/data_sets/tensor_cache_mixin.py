@@ -4,7 +4,6 @@ from abc import ABC, abstractmethod
 from collections.abc import Generator, Iterable
 from concurrent.futures import Executor
 from threading import Thread
-from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +63,7 @@ class TensorCacheMixin(ABC):
         pass
 
     @abstractmethod
-    def ids(self, log_every: Optional[int] = None) -> Generator[str, None, None]:
+    def ids(self, log_every: int | None = None) -> Generator[str, None, None]:
         """
         Iterator over all object IDs. Must be implemented by subclasses.
 

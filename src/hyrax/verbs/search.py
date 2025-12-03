@@ -1,6 +1,5 @@
 import logging
 from argparse import ArgumentParser, Namespace
-from typing import Optional
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -29,7 +28,7 @@ class Search(Verb):
 
     # Should there be a version of this on the base class which uses a dict on the Verb
     # superclass to build the call to run based on what the subclass verb defined in setup_parser
-    def run_cli(self, args: Optional[Namespace] = None):
+    def run_cli(self, args: Namespace | None = None):
         """Stub CLI implementation"""
         logger.info("Search run from cli")
         if args is None:

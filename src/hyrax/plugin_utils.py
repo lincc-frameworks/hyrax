@@ -1,11 +1,11 @@
 import importlib
 from importlib import util as importlib_util
-from typing import Any, Optional, TypeVar, Union
+from typing import Any, TypeVar, Union
 
 T = TypeVar("T")
 
 
-def get_or_load_class(class_name: str, registry: Optional[dict[str, T]] = None) -> Union[T, Any]:
+def get_or_load_class(class_name: str, registry: dict[str, T] | None = None) -> Union[T, Any]:
     """Given a configuration dictionary and a registry dictionary, attempt to return
     the requested class either from the registry or by dynamically importing it.
 

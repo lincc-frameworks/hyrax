@@ -15,8 +15,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  PYTHON_VERSION: "3.10"
-  ASV_VERSION: "0.6.4"
+  PYTHON_VERSION: "3.11"
+  ASV_VERSION: "0.6.5"
   WORKING_DIR: ${{github.workspace}}/benchmarks
   ARTIFACTS_DIR: ${{github.workspace}}/artifacts
 
@@ -39,7 +39,7 @@ jobs:
       run: |
         echo "Workflow Run ID: ${{github.run_id}}"
     - name: Install dependencies
-      run: pip install "asv[virtualenv]==${{env.ASV_VERSION}}" lf-asv-formatter
+      run: pip install asv[virtualenv]==${{env.ASV_VERSION}} lf-asv-formatter
     - name: Make artifacts directory
       run: mkdir -p ${{env.ARTIFACTS_DIR}}
     - name: Save pull request number
