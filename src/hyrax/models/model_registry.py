@@ -1,6 +1,6 @@
+import importlib
 import inspect
 import logging
-import textwrap
 from pathlib import Path
 from typing import Any, cast
 
@@ -17,12 +17,16 @@ MODEL_REGISTRY: dict[str, type[nn.Module]] = {}
 def _torch_save(self: nn.Module, save_path: Path):
     import torch
 
-    to_save = {
-        "model_state_dict": self.state_dict(),
-        "to_tensor": textwrap.dedent(inspect.getsource(self.to_tensor)),
-    }
+    # save the model weights
+    torch.save(self.state_dict(), save_path)
 
-    torch.save(to_save, save_path)
+    # Save the to_tensor static method in a .py file alongside the model weights
+    with open(save_path.parent / "to_tensor.py", "w") as f:
+        try:
+            f.write(inspect.getsource(self.to_tensor))
+        except (OSError, TypeError) as e:
+            logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
+            f.write("# Source code for model.to_tensor could not be retrieved.\n")
 
 
 def _torch_load(self: nn.Module, load_path: Path):
@@ -33,25 +37,23 @@ def _torch_load(self: nn.Module, load_path: Path):
     # This allows models trained on GPU to be loaded on CPU-only machines
     device = idist.device()
     state = torch.load(load_path, weights_only=True, map_location=device)
-    state_dict = state["model_state_dict"]
-    self.load_state_dict(state_dict, assign=True)
 
-    # Attach the saved `to_tensor`` method to the model.
-    self.to_tensor_source = state.get("to_tensor", None)
-    if self.to_tensor_source is not None:
-        # Create an empty namespace that we can use to exec the source code. This
-        # prevents any accidental leakage of variables from our current scope.
-        namespace = {}
-        # Provide `globals()` so that any imports required by the to_tensor
-        # function are available (hopefully). The assumption is that any imports
-        # required by to_tensor were defined at the top level of the model class
-        # or are defined in the to_tensor source itself.
-        exec(self.to_tensor_source, globals(), namespace)
+    self.load_state_dict(state, assign=True)
 
-        if "to_tensor" in namespace:
-            self.to_tensor = namespace["to_tensor"]
+    # Monkey patch the to_tensor static method from the saved .py file
+    # We prefer to use the .py file, because that allows using Python's import system
+    # and allows us to inspect and save the function again as needed.
+    to_tensor_source_path = load_path.parent / "to_tensor.py"
+    if to_tensor_source_path.exists():
+        spec = importlib.util.spec_from_file_location("to_tensor", to_tensor_source_path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)  # type: ignore
+        to_tensor = module.to_tensor
+
+        if isinstance(to_tensor, staticmethod):
+            self.to_tensor = to_tensor
         else:
-            logger.info("No `to_tensor` function found when loading model weights.")
+            self.to_tensor = staticmethod(to_tensor)
 
 
 def _torch_criterion(self: nn.Module):

@@ -20,6 +20,7 @@ class DummyModel(nn.Module):
         return x
 
 
+@staticmethod
 def to_tensor(x):
     """A simple to_tensor method that will patch the default one on DummyModel"""
     return x * 2
@@ -36,12 +37,16 @@ def test_patch_to_tensor(tmp_path):
     model = DummyModel(config=h.config, data_sample=None)
 
     # manually update the to_tensor static method to be something simple
-    model.to_tensor = staticmethod(to_tensor)
+    # don't wrap this with staticmethod(...) because that would be a double wrapping.
+    model.to_tensor = to_tensor
 
-    # call model.save() to put the weights and to_tensor method into a state dict
+    # call model.save() to persist the model weights and to_tensor function.
     model.save(tmp_path / "model_weights.pth")
 
-    # create a new instance of the HyraxLoopback model and call .load() with the correct path
+    # verify that the to_tensor file was written
+    assert (tmp_path / "to_tensor.py").exists()
+
+    # create a new instance of the dummy model and call .load() with the correct path
     new_model = DummyModel(config=h.config, data_sample=None)
 
     # verify that the new model's to_tensor method is the default one
