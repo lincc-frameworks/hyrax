@@ -36,17 +36,22 @@ def _torch_load(self: nn.Module, load_path: Path):
     state_dict = state["model_state_dict"]
     self.load_state_dict(state_dict, assign=True)
 
-    # Attach the to_tensor method to the model
-    to_tensor = state.get("to_tensor", None)
-    if to_tensor is not None:
-        # Execute the source code to get the function object
-        local_vars = {}
-        exec(to_tensor, globals(), local_vars)
-        func = local_vars.get("to_tensor")
-        if func is not None:
-            self.to_tensor = staticmethod(func)
+    # Attach the saved `to_tensor`` method to the model.
+    self.to_tensor_source = state.get("to_tensor", None)
+    if self.to_tensor_source is not None:
+        # Create an empty namespace that we can use to exec the source code. This
+        # prevents any accidental leakage of variables from our current scope.
+        namespace = {}
+        # Provide `globals()` so that any imports required by the to_tensor
+        # function are available (hopefully). The assumption is that any imports
+        # required by to_tensor were defined at the top level of the model class
+        # or are defined in the to_tensor source itself.
+        exec(self.to_tensor_source, globals(), namespace)
+
+        if "to_tensor" in namespace:
+            self.to_tensor = namespace["to_tensor"]
         else:
-            logger.warning("Could not find to_tensor function in saved state.")
+            logger.info("No `to_tensor` function found when loading model weights.")
 
 
 def _torch_criterion(self: nn.Module):
