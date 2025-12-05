@@ -387,6 +387,7 @@ n_components = 2
 # See official documentation for details.
 n_neighbors = 15
 
+
 [visualize]
 
 # List of metadata field names to use in visualizer. Must be available as metadata in your dataset
@@ -408,3 +409,9 @@ torch_tensor_bands = [3]
 # Whether to rasterize plot. Will break coloring (Haloviews Bug)
 # Helpful to reduce lag in large datasets. 
 rasterize_plot = false
+
+
+[engine]
+
+# The directory containing the ONNX model used for inference in production
+model_directory = false
