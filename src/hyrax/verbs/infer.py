@@ -35,7 +35,6 @@ class Infer(Verb):
         config : dict
             The parsed config file as a nested dict
         """
-        import inspect
 
         import numpy as np
         from tensorboardX import SummaryWriter
@@ -95,12 +94,7 @@ class Infer(Verb):
         # Log Results directory
         logger.info(f"Saving inference results at: {results_dir}")
 
-        with open(results_dir / "to_tensor.py", "w") as f:
-            try:
-                f.write(inspect.getsource(model.to_tensor))
-            except (OSError, TypeError) as e:
-                logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
-                f.write("# Source code for model.to_tensor could not be retrieved.\n")
+        model.save(results_dir / "inference_weights.pth")
 
         data_writer = InferenceDataSetWriter(dataset, results_dir)
 
