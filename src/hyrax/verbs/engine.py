@@ -22,11 +22,11 @@ class Engine(Verb):
             help="Directory containing the ONNX model.",
         )
 
-    def run_cli(self):
+    def run_cli(self, args=None):
         """CLI stub for Engine verb"""
         logger.info("`engine` run from CLI.")
 
-        self.run(model_directory=self.args.model_directory)
+        self.run(model_directory=args.model_directory if args else None)
 
     def run(self, model_directory: str = None):
         """
