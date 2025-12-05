@@ -93,7 +93,7 @@ class Engine(Verb):
             end_idx = min(start_idx + batch_size, len(infer_dataset))
             batch = [infer_dataset[i] for i in range(start_idx, end_idx)]
 
-            # ~ Here is where we would can process the batch with any custom
+            # ~ Here is where we can process the batch with any custom
             # collate functions as well as a default collate function.
             # This is left as a TODO until we do the work in DataProvider to maintain
             # a map of collate functions for each dataset.
