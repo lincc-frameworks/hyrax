@@ -35,7 +35,7 @@ class Engine(Verb):
         [x] Implement a simple strategy for reading in batches of data samples
         [ ] Process the samples with any custom collate functions as well as a default collate function
         [ ] Pass the collated batch to the appropriate to_tensor function
-        [ ] Send the that output to the ONNX-ified model
+        [ ] Send that output to the ONNX-ified model
         [ ] Persist the results of inference.
         """
         from pathlib import Path
