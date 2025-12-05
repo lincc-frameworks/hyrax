@@ -23,11 +23,6 @@ def _torch_save(self: nn.Module, save_path: Path):
 
     # Save the to_tensor static method in a .py file alongside the model weights
     with open(save_path.parent / "to_tensor.py", "w") as f:
-        if self.to_tensor.__name__ != "to_tensor":
-            logger.warning(
-                "It is highly recommended to name your to_tensor method 'to_tensor'. "
-                f"Currently it is {self.to_tensor.__name__}."
-            )
         try:
             f.write(textwrap.dedent(inspect.getsource(self.to_tensor)))
         except (OSError, TypeError) as e:
