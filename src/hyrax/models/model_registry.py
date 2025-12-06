@@ -1,14 +1,11 @@
-import importlib
-import inspect
 import logging
-import textwrap
 from pathlib import Path
 from typing import Any, cast
 
 import torch.nn as nn
 from torch import Tensor, as_tensor
 
-from hyrax.plugin_utils import get_or_load_class, update_registry
+from hyrax.plugin_utils import get_or_load_class, load_to_tensor, save_to_tensor, update_registry
 
 logger = logging.getLogger(__name__)
 
@@ -20,14 +17,7 @@ def _torch_save(self: nn.Module, save_path: Path):
 
     # save the model weights
     torch.save(self.state_dict(), save_path)
-
-    # Save the to_tensor static method in a .py file alongside the model weights
-    with open(save_path.parent / "to_tensor.py", "w") as f:
-        try:
-            f.write(textwrap.dedent(inspect.getsource(self.to_tensor)))
-        except (OSError, TypeError) as e:
-            logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
-            f.write("# Source code for model.to_tensor could not be retrieved.\n")
+    save_to_tensor(self.to_tensor, save_path)
 
 
 def _torch_load(self: nn.Module, load_path: Path):
@@ -41,35 +31,17 @@ def _torch_load(self: nn.Module, load_path: Path):
 
     self.load_state_dict(state, assign=True)
 
-    # Monkey patch the to_tensor static method from the saved .py file
-    # We prefer to use the .py file, because that allows using Python's import system
-    # and allows us to inspect and save the function again as needed.
-    to_tensor_source_path = load_path.parent / "to_tensor.py"
-    if to_tensor_source_path.exists():
-        spec = importlib.util.spec_from_file_location("to_tensor", to_tensor_source_path)
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)  # type: ignore
+    to_tensor = load_to_tensor(load_path)
 
-        to_tensor = None
-        # We expect people to name their functions "to_tensor"
-        if hasattr(module, "to_tensor"):
-            to_tensor = module.to_tensor
-        # If using the Hyrax default, it will be called "default_to_tensor"
-        elif hasattr(module, "default_to_tensor"):
-            to_tensor = module.default_to_tensor
-
-        # If neither to_tensor or default_to_tensor was found, log a warning,
-        # and use the existing model's to_tensor method.
-        if not to_tensor:
-            logger.warning(
-                f"Could not find to_tensor function in {to_tensor_source_path}. "
-                "Using the model's existing to_tensor method."
-            )
+    if not to_tensor:
+        logger.warning(
+            f"Could not find to_tensor function in {load_path}. Using the model's existing to_tensor method."
+        )
+    else:
+        if isinstance(to_tensor, staticmethod):
+            self.to_tensor = to_tensor
         else:
-            if isinstance(to_tensor, staticmethod):
-                self.to_tensor = to_tensor
-            else:
-                self.to_tensor = staticmethod(to_tensor)
+            self.to_tensor = staticmethod(to_tensor)
 
 
 def _torch_criterion(self: nn.Module):

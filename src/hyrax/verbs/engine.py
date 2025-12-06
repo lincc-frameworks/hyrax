@@ -1,5 +1,7 @@
 import logging
 
+from hyrax.plugin_utils import load_to_tensor
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -70,7 +72,7 @@ class Engine(Verb):
         # can use it here with very few dependencies.
 
         # from hyrax.plugin_utils import load_module_by_path
-        to_tensor_fn = None  # load_module_by_path(...)
+        to_tensor_fn = load_to_tensor(input_directory)
 
         # ~ Load the ONNX model from the input directory.
         onnx_file_name = input_directory / "model.onnx"
