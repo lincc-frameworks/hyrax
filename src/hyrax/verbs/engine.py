@@ -124,7 +124,7 @@ class Engine(Verb):
             # which will contain the required data - then remove the "object_id" key.
             if "object_id" not in collated_batch:
                 msg = "Dataset dictionary should be returning object_ids to avoid ordering errors. "
-                msg = f"Could not determine object IDs from batch. Batch has keys {collated_batch.keys()}"
+                msg += f"Could not determine object IDs from batch. Batch has keys {collated_batch.keys()}"
                 raise RuntimeError(msg)
 
             # ~ We may not need to do the list comprehension for batch_results, it's
