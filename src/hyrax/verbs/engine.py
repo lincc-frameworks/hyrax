@@ -91,7 +91,7 @@ class Engine(Verb):
         # ~ Initialize the InferenceDatasetWriter to persist results of inference
         # Note that the inference_dataset.py module takes a dependency on
         # torch.utils.data.Dataset, but InferenceDatasetWrite only uses Dataset
-        # as a type hint. So we may need to separate InfereceDataset and IDWriter
+        # as a type hint. So we may need to separate InferenceDataset and IDWriter
         # to remove that dependency.
         result_dir = create_results_dir(config, "engine")
         self.results_writer = InferenceDatasetWriter(dataset, result_dir)
