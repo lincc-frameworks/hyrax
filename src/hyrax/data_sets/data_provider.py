@@ -555,3 +555,80 @@ class DataProvider:
         dataset_to_use = self.primary_dataset if self.primary_dataset else keys[0]
 
         return self.prepped_datasets[dataset_to_use]
+
+    def collate(self, batch: list[dict]) -> dict:
+        """Custom collate function to be used outside the context of a PyTorch
+        DataLoader.
+
+        This function takes a list of data samples (each sample is a dictionary)
+        and combines them into a single batch dictionary.
+
+        Parameters
+        ----------
+        batch : list of dict
+            A list of data samples, where each sample is a dictionary.
+
+        Returns
+        -------
+        dict
+            A dictionary where each key corresponds to a field and the value is
+            a list of values for that field across the batch.
+        """
+
+        batch_dict: dict[str, dict[str, list], list] = {}
+
+        # Aggregate values per friendly_name -> field -> list(values)
+        for sample in batch:
+            for friendly_name, fields in sample.items():
+                # Here we should check the self.custom_collate_function dictionary
+                # If we discover that friendly_name maps to a particular custom
+                # collation function (i.e. one defined on the dataset), we should
+                # include just the samples for that dataset in the batch passed to the custom
+                # collate function. For now, we will skip that functionality.
+
+                # Special handling for "object_id" for the time being. "object_id"
+                # hangs on the edge of the data dictionary so that it can be consumed
+                # during `infer`, specifically `_save_batch`. Originally it was
+                # there to protect against missing ids. We have much more control
+                # now with DataProvider, and should remove the special logic for
+                # "object_id" from the assorted places it's used.
+                if friendly_name == "object_id":
+                    val = fields[""] if isinstance(fields, dict) and "" in fields else fields
+                    batch_dict.setdefault("object_id", []).append(str(val))
+                    continue
+
+                if friendly_name not in batch_dict:
+                    batch_dict[friendly_name] = {}
+
+                for field, value in fields.items():
+                    batch_dict[friendly_name].setdefault(field, []).append(value)
+
+        # Convert object_id list -> numpy array of strings
+        if "object_id" in batch_dict:
+            batch_dict["object_id"] = np.asarray(batch_dict["object_id"], dtype=str)
+
+        # Try to convert lists of values into numpy arrays (stack when possible)
+        for friendly_name, fields in batch_dict.items():
+            if friendly_name == "object_id":
+                continue
+            for field, values in list(fields.items()):
+                # If all values are numpy arrays and have identical shapes -> stack
+                if all(isinstance(v, np.ndarray) for v in values):
+                    shapes = [v.shape for v in values]
+                    if all(s == shapes[0] for s in shapes):
+                        try:
+                            batch_dict[friendly_name][field] = np.stack(values, axis=0)
+                            continue
+                        except Exception as err:
+                            logger.warning(
+                                f"Could not stack numpy arrays for field '{field}' "
+                                f"in dataset '{friendly_name}'. Consider implementing "
+                                "a custom collation function for this dataset."
+                            )
+                            raise RuntimeError(
+                                f"Could not stack numpy arrays for field '{field}' "
+                                f"in dataset '{friendly_name}'. Consider implementing "
+                                "a custom collation function for this dataset."
+                            ) from err
+
+        return batch_dict
