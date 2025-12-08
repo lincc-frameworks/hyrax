@@ -575,7 +575,7 @@ class DataProvider:
             a list of values for that field across the batch.
         """
 
-        batch_dict: dict[str, Union(dict[str, list[Any]], list)] = {}
+        batch_dict: dict[str, Union[dict[str, list[Any]], list]] = {}
 
         # Aggregate values per friendly_name -> field -> list(values)
         for sample in batch:
