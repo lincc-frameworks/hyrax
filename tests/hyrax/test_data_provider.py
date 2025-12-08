@@ -576,3 +576,37 @@ def test_primary_id_field_reused_when_already_in_fields():
 
     # The top-level object_id should match the dataset's object_id (reused value)
     assert data["object_id"] == data["test_dataset"]["object_id"]
+
+
+def test_collate_function(data_provider):
+    """Test that the default collate function in DataProvider
+    correctly collates a batch of data samples into a batch dictionary.
+    """
+
+    import numpy as np
+
+    dp = data_provider
+
+    # Create a batch of samples
+    batch_size = len(dp)
+    batch = [dp[i] for i in range(batch_size)]
+
+    # Collate the batch
+    collated_batch = dp.collate(batch)
+
+    # Verify the structure of the collated batch
+    assert isinstance(collated_batch, dict)
+    expected_fields = ["object_id", "image", "label"]
+    for field in expected_fields:
+        assert field in collated_batch["random_0"]
+        assert len(collated_batch["random_0"].keys()) == len(expected_fields)
+        assert len(collated_batch["random_0"][field]) == batch_size
+
+    expected_fields = ["image"]
+    for field in expected_fields:
+        assert field in collated_batch["random_1"]
+        assert len(collated_batch["random_1"].keys()) == len(expected_fields)
+        assert len(collated_batch["random_1"][field]) == batch_size
+
+    # assert that the object_id key is a numpy array
+    assert isinstance(collated_batch["object_id"], np.ndarray)
