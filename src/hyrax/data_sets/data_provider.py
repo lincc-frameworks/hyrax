@@ -582,8 +582,8 @@ class DataProvider:
             for friendly_name, fields in sample.items():
                 # Here we should check the self.custom_collate_function dictionary
                 # If we discover that friendly_name maps to a particular custom
-                # collation function (i.e. one defined on the dataset) we should
-                # the batch include _just_ the samples for that dataset to the custom
+                # collation function (i.e. one defined on the dataset), we should
+                # include just the samples for that dataset in the batch passed to the custom
                 # collate function. For now, we will skip that functionality.
 
                 # Special handling for "object_id".
