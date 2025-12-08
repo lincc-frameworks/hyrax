@@ -95,14 +95,9 @@ class Engine(Verb):
             end_idx = min(start_idx + batch_size, len(infer_dataset))
             batch = [infer_dataset[i] for i in range(start_idx, end_idx)]
 
-            # ~ Here is where we can process the batch with any custom
-            # collate functions as well as a default collate function.
-            # This is left as a TODO until we do the work in DataProvider to maintain
-            # a map of collate functions for each dataset.
-            collated_batch = batch  # default_collate_function(batch)
-
-            # Since the DataProvider also maintains the model_inputs definition
-            # It is the logical place to put a default collate function.
+            # ~ Here we convert the batch from a list of dictionaries into a
+            # dictionary of lists by using the DataProvider.collate function.
+            collated_batch = infer_dataset.collate(batch)
 
             # ~ Pass the collated batch to the to_tensor function
             prepared_batch = to_tensor_fn(collated_batch)
