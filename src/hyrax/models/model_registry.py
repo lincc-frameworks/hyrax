@@ -31,7 +31,7 @@ def _torch_load(self: nn.Module, load_path: Path):
 
     self.load_state_dict(state, assign=True)
 
-    to_tensor = load_to_tensor(load_path)
+    to_tensor = load_to_tensor(load_path.parent)
 
     if not to_tensor:
         logger.warning(

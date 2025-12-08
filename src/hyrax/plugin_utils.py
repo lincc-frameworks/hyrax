@@ -147,7 +147,7 @@ def load_to_tensor(load_path: Path):
     Parameters
     ----------
     load_path : str
-        The path to load the to_tensor function from.
+        The directory containing the `to_tensor.py` module to load.
 
     Returns
     -------
@@ -155,7 +155,7 @@ def load_to_tensor(load_path: Path):
         The loaded to_tensor function.
     """
     to_tensor = None
-    to_tensor_path = load_path.parent / "to_tensor.py"
+    to_tensor_path = load_path / "to_tensor.py"
     if to_tensor_path.exists():
         spec = importlib_util.spec_from_file_location("to_tensor_module", to_tensor_path)
         to_tensor_module = importlib_util.module_from_spec(spec)
