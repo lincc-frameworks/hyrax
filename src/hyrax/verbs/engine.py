@@ -1,8 +1,5 @@
 import logging
 
-import numpy as np
-
-from hyrax.plugin_utils import load_to_tensor
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -37,7 +34,7 @@ class Engine(Verb):
         [x] Prepare all the datasets requested
         [x] Implement a simple strategy for reading in batches of data samples
         [ ] Process the samples with any custom collate functions as well as a default collate function
-        [ ] Pass the collated batch to the appropriate to_tensor function
+        [x] Pass the collated batch to the appropriate to_tensor function
         [ ] Send that output to the ONNX-ified model
         [x] Persist the results of inference.
         """
@@ -50,6 +47,7 @@ class Engine(Verb):
             find_most_recent_results_dir,
         )
         from hyrax.data_sets.inference_dataset import InferenceDatasetWriter
+        from hyrax.plugin_utils import load_to_tensor
         from hyrax.pytorch_ignite import setup_dataset
 
         config = self.config
@@ -72,11 +70,6 @@ class Engine(Verb):
                 return
 
         # ~ Here we load the appropriate to_tensor function from onnx output.
-        # There is code in `model_registry` that loads the module from a path
-        # We should move that logic into (maybe) `plugin_utils.py` so that we
-        # can use it here with very few dependencies.
-
-        # from hyrax.plugin_utils import load_module_by_path
         to_tensor_fn = load_to_tensor(input_directory)
 
         # ~ Load the ONNX model from the input directory.
@@ -102,7 +95,6 @@ class Engine(Verb):
         # to remove that dependency.
         result_dir = create_results_dir(config, "engine")
         self.results_writer = InferenceDatasetWriter(dataset, result_dir)
-        self.write_index = 0
 
         # Work through the dataset in steps of `batch_size`
         for start_idx in range(0, len(infer_dataset), batch_size):
@@ -125,28 +117,18 @@ class Engine(Verb):
             ort_inputs = {ort_session.get_inputs()[0].name: prepared_batch}
             onnx_results = ort_session.run(None, ort_inputs)  # infer with ONNX
 
-            # Finally, we would persist the results of inference.
-            self._save_batch(collated_batch, onnx_results)
+            # ~ Finally, we persist the results of inference.
+            # For now, collated_batch will always have an "object_id" key that
+            # is a list of strings. However, we should move to a state where the
+            # object ids are taken from the primary dataset's "primary_id_field",
+            # which will contain the required data - then remove the "object_id" key.
+            if "object_id" not in collated_batch:
+                msg = "Dataset dictionary should be returning object_ids to avoid ordering errors. "
+                msg = f"Could not determine object IDs from batch. Batch has keys {collated_batch.keys()}"
+                raise RuntimeError(msg)
+
+            # ~ We may not need to do the list comprehension for batch_results, it's
+            # possible that ONNX will already return it in this form.
+            self.results_writer.write_batch(collated_batch["object_id"], [t for t in onnx_results])
 
         self.results_writer.write_index()
-
-    def _save_batch(self, batch: dict, batch_results: np.ndarray):
-        """Receive and write results tensors to results_dir immediately
-        This function writes a single numpy binary file for each object.
-        """
-        batch_len = len(batch_results)
-
-        # For now, batch will always have an "object_id" key that is a list of strings.
-        # However, we should move to a state where the object ids are taken from the
-        # primary dataset's "primary_id_field", which will contain the same data as
-        # the "object_id" key - then we can remove the "object_id" key.
-        if "object_id" not in batch:
-            msg = "Dataset dictionary should be returning object_ids to avoid ordering errors. "
-            msg = f"Could not determine object IDs from batch. Batch has keys {batch.keys()}"
-            raise RuntimeError(msg)
-
-        # Save results from this batch in a numpy file as a structured array
-        # ~ We may not need to do the list comprehension for batch_results, it's
-        # possible that ONNX will already return it in this form.
-        self.results_writer.write_batch(batch["object_id"], [t for t in batch_results])
-        self.write_index += batch_len
