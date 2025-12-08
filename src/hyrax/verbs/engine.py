@@ -94,7 +94,7 @@ class Engine(Verb):
         # as a type hint. So we may need to separate InferenceDataset and IDWriter
         # to remove that dependency.
         result_dir = create_results_dir(config, "engine")
-        self.results_writer = InferenceDatasetWriter(dataset, result_dir)
+        self.results_writer = InferenceDatasetWriter(infer_dataset, result_dir)
 
         # Work through the dataset in steps of `batch_size`
         for start_idx in range(0, len(infer_dataset), batch_size):
