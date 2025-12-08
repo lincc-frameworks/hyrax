@@ -588,7 +588,7 @@ def test_collate_function(data_provider):
     dp = data_provider
 
     # Create a batch of samples
-    batch_size = 3
+    batch_size = len(dp)
     batch = [dp[i] for i in range(batch_size)]
 
     # Collate the batch
@@ -599,7 +599,14 @@ def test_collate_function(data_provider):
     expected_fields = ["object_id", "image", "label"]
     for field in expected_fields:
         assert field in collated_batch["random_0"]
+        assert len(collated_batch["random_0"].keys()) == len(expected_fields)
         assert len(collated_batch["random_0"][field]) == batch_size
+
+    expected_fields = ["image"]
+    for field in expected_fields:
+        assert field in collated_batch["random_1"]
+        assert len(collated_batch["random_1"].keys()) == len(expected_fields)
+        assert len(collated_batch["random_1"][field]) == batch_size
 
     # assert that the object_id key is a numpy array
     assert isinstance(collated_batch["object_id"], np.ndarray)

@@ -594,11 +594,7 @@ class DataProvider:
 
                 if friendly_name not in batch_dict:
                     batch_dict[friendly_name] = {}
-                # If the value for a friendly_name is not a dict, store it under a
-                # special empty-field key so we still preserve it.
-                if not isinstance(fields, dict):
-                    batch_dict[friendly_name].setdefault("", []).append(fields)
-                    continue
+
                 for field, value in fields.items():
                     batch_dict[friendly_name].setdefault(field, []).append(value)
 
@@ -629,17 +625,5 @@ class DataProvider:
                                 f"in dataset '{friendly_name}'. Consider implementing "
                                 "a custom collation function for this dataset."
                             ) from err
-
-                # Try a general conversion to numpy array (useful for scalars / uniform lists)
-                try:
-                    arr = np.asarray(values)
-                    # Keep object-dtype arrays as lists for predictability
-                    if arr.dtype != object:
-                        batch_dict[friendly_name][field] = arr
-                    else:
-                        batch_dict[friendly_name][field] = values
-                except Exception:
-                    # If anything goes wrong, leave as list
-                    batch_dict[friendly_name][field] = values
 
         return batch_dict
