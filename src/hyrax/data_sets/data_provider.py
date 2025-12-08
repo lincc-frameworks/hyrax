@@ -1,6 +1,6 @@
 import copy
 import logging
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 
@@ -575,7 +575,7 @@ class DataProvider:
             a list of values for that field across the batch.
         """
 
-        batch_dict: dict[str, Union[dict[str, list[Any]], list]] = {}
+        batch_dict: dict[str, dict[str, list], list] = {}
 
         # Aggregate values per friendly_name -> field -> list(values)
         for sample in batch:
@@ -586,7 +586,12 @@ class DataProvider:
                 # include just the samples for that dataset in the batch passed to the custom
                 # collate function. For now, we will skip that functionality.
 
-                # Special handling for "object_id".
+                # Special handling for "object_id" for the time being. "object_id"
+                # hangs on the edge of the data dictionary so that it can be consumed
+                # during `infer`, specifically `_save_batch`. Originally it was
+                # there to protect against missing ids. We have much more control
+                # now with DataProvider, and should remove the special logic for
+                # "object_id" from the assorted places it's used.
                 if friendly_name == "object_id":
                     val = fields[""] if isinstance(fields, dict) and "" in fields else fields
                     batch_dict.setdefault("object_id", []).append(str(val))
