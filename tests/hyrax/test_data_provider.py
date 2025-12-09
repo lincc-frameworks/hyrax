@@ -666,8 +666,6 @@ def test_custom_collate_function_exception_handling():
     """Test that custom collate function exceptions are caught and
     re-raised with helpful error messages.
     """
-    import numpy as np
-
     from hyrax import Hyrax
     from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
 
