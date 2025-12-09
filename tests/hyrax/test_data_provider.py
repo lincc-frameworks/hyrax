@@ -671,7 +671,6 @@ def test_custom_collate_function_exception_handling():
     from hyrax import Hyrax
     from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
 
-    @staticmethod
     def bad_collate(batch):
         """A custom collate function that raises an exception."""
         raise ValueError("Intentional error in custom collate")
@@ -729,7 +728,6 @@ def test_custom_collate_function_missing_data_key():
     from hyrax import Hyrax
     from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
 
-    @staticmethod
     def bad_collate_no_data_key(batch):
         """A custom collate function that returns a dict without 'data' key."""
         # Return a dictionary that's missing the required 'data' key
