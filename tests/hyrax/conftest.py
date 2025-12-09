@@ -232,6 +232,9 @@ def custom_collate_data_provider(multimodal_config):
 
     from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
 
+    # Save original state
+    original_collate = getattr(HyraxRandomDataset, "collate", None)
+
     @staticmethod
     def collate(batch):
         """Contrived custom collate function that will return collated image
@@ -259,4 +262,11 @@ def custom_collate_data_provider(multimodal_config):
     h = hyrax.Hyrax()
     h.config["model_inputs"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config["train"])
-    return dp
+
+    yield dp
+
+    # Cleanup
+    if original_collate is None:
+        delattr(HyraxRandomDataset, "collate")
+    else:
+        HyraxRandomDataset.collate = original_collate
