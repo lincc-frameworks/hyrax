@@ -259,4 +259,6 @@ def custom_collate_data_provider(multimodal_config):
     h = hyrax.Hyrax()
     h.config["model_inputs"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config["train"])
-    return dp
+
+    yield dp
+    delattr(HyraxRandomDataset, "collate")

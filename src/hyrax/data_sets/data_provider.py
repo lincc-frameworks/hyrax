@@ -626,12 +626,32 @@ class DataProvider:
             custom_collate_fn = self.custom_collate_functions[friendly_name]
 
             # Pass the list of data samples to the collation
-            custom_collated_data = custom_collate_fn(samples)
+            try:
+                custom_collated_data = custom_collate_fn(samples)
+            except Exception as err:
+                logger.error(
+                    f"Error occurred while collating batch for dataset '{friendly_name}' "
+                    "using its custom collate function."
+                )
+                raise RuntimeError(
+                    f"Error occurred while collating batch for dataset '{friendly_name}' "
+                    "using its custom collate function."
+                ) from err
 
-            # Add the collated data to the batch dictionary
             # ! By convention, the returned dictionary from a custom collate function
             # ! should contain a "data" key (the default friendly name). Only "data"
             # ! is used here; any other keys in the returned dictionary are ignored.
+            if "data" not in custom_collated_data:
+                logger.error(
+                    f"Custom collate function for dataset '{friendly_name}' did not return "
+                    "a 'data' key in the result."
+                )
+                raise RuntimeError(
+                    f"Custom collate function for dataset '{friendly_name}' did not return "
+                    "a 'data' key in the result."
+                )
+
+            # Add the collated data to the batch dictionary
             batch_dict[friendly_name] = custom_collated_data["data"]
 
         # Try to convert lists of values into numpy arrays. We skip the "object_id"
