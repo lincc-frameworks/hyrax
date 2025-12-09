@@ -660,3 +660,115 @@ def test_custom_collate_function_applied(custom_collate_data_provider):
 
     # assert that the object_id key is a numpy array
     assert isinstance(collated_batch["object_id"], np.ndarray)
+
+
+def test_custom_collate_function_exception_handling():
+    """Test that custom collate function exceptions are caught and
+    re-raised with helpful error messages.
+    """
+    import numpy as np
+
+    from hyrax import Hyrax
+    from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
+
+    @staticmethod
+    def bad_collate(batch):
+        """A custom collate function that raises an exception."""
+        raise ValueError("Intentional error in custom collate")
+
+    # Temporarily replace the collate method
+    original_collate = HyraxRandomDataset.collate
+    HyraxRandomDataset.collate = bad_collate
+
+    try:
+        h = Hyrax()
+        multimodal_config = {
+            "random_0": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./test_data",
+                "fields": ["image"],
+                "primary_id_field": "object_id",
+                "dataset_config": {
+                    "shape": [2, 3, 3],
+                    "size": 5,
+                    "seed": 42,
+                },
+            }
+        }
+        h.config["model_inputs"] = multimodal_config
+
+        dp = DataProvider(h.config, multimodal_config)
+        dp.prepare_datasets()
+
+        batch = [dp[i] for i in range(2)]
+
+        # This should raise a RuntimeError with our custom message
+        with pytest.raises(RuntimeError) as excinfo:
+            dp.collate(batch)
+
+        error_message = str(excinfo.value)
+        assert "Custom collate function for dataset 'random_0' failed" in error_message
+        assert "Ensure the collate function accepts a list of dicts with 'data' keys" in error_message
+
+        # Check that the original exception is chained
+        assert excinfo.value.__cause__ is not None
+        assert isinstance(excinfo.value.__cause__, ValueError)
+        assert "Intentional error in custom collate" in str(excinfo.value.__cause__)
+
+    finally:
+        # Restore the original collate method
+        HyraxRandomDataset.collate = original_collate
+
+
+def test_custom_collate_function_missing_data_key():
+    """Test that custom collate functions that return a dictionary
+    without a 'data' key are caught with a helpful error message.
+    """
+    import numpy as np
+
+    from hyrax import Hyrax
+    from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
+
+    @staticmethod
+    def bad_collate_no_data_key(batch):
+        """A custom collate function that returns a dict without 'data' key."""
+        # Return a dictionary that's missing the required 'data' key
+        return {"wrong_key": np.array([1, 2, 3])}
+
+    # Temporarily replace the collate method
+    original_collate = HyraxRandomDataset.collate
+    HyraxRandomDataset.collate = bad_collate_no_data_key
+
+    try:
+        h = Hyrax()
+        multimodal_config = {
+            "random_0": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./test_data",
+                "fields": ["image"],
+                "primary_id_field": "object_id",
+                "dataset_config": {
+                    "shape": [2, 3, 3],
+                    "size": 5,
+                    "seed": 42,
+                },
+            }
+        }
+        h.config["model_inputs"] = multimodal_config
+
+        dp = DataProvider(h.config, multimodal_config)
+        dp.prepare_datasets()
+
+        batch = [dp[i] for i in range(2)]
+
+        # This should raise a RuntimeError about missing 'data' key
+        with pytest.raises(RuntimeError) as excinfo:
+            dp.collate(batch)
+
+        error_message = str(excinfo.value)
+        assert "Custom collate function for dataset 'random_0' returned" in error_message
+        assert "without the required 'data' key" in error_message
+
+    finally:
+        # Restore the original collate method
+        HyraxRandomDataset.collate = original_collate

@@ -626,7 +626,21 @@ class DataProvider:
             custom_collate_fn = self.custom_collate_functions[friendly_name]
 
             # Pass the list of data samples to the collation
-            custom_collated_data = custom_collate_fn(samples)
+            try:
+                custom_collated_data = custom_collate_fn(samples)
+            except Exception as err:
+                raise RuntimeError(
+                    f"Custom collate function for dataset '{friendly_name}' failed. "
+                    f"Ensure the collate function accepts a list of dicts with 'data' keys "
+                    f"and returns a dict with 'data' key."
+                ) from err
+
+            # Validate the returned structure
+            if "data" not in custom_collated_data:
+                raise RuntimeError(
+                    f"Custom collate function for dataset '{friendly_name}' returned "
+                    f"a dictionary without the required 'data' key."
+                )
 
             # Add the collated data to the batch dictionary
             # ! By convention, the returned dictionary from a custom collate function
