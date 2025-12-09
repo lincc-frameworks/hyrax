@@ -119,6 +119,10 @@ class DataProvider:
         self.all_metadata_fields = {}
         self.requested_fields = {}
 
+        # This dictionary maintains a mapping of friendly name to callable collate
+        # functions defined on the requested dataset class.
+        self.custom_collate_functions = {}
+
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
 
@@ -241,6 +245,11 @@ class DataProvider:
             # Instantiate the dataset class
             dataset_cls = fetch_dataset_class(dataset_class)
             dataset_instance = dataset_cls(config=dataset_specific_config, data_location=data_location)
+
+            # If the dataset instance has a `collate` method, store it for use in
+            # the DataLoader.collate function.
+            if hasattr(dataset_instance, "collate") and callable(dataset_instance.collate):
+                self.custom_collate_functions[friendly_name] = dataset_instance.collate
 
             # Store the prepared dataset instance in the `self.prepped_datasets`
             self.prepped_datasets[friendly_name] = dataset_instance
@@ -576,16 +585,11 @@ class DataProvider:
         """
 
         batch_dict: dict[str, dict[str, list], list] = {}
+        custom_collate: dict[str, list] = {}
 
         # Aggregate values per friendly_name -> field -> list(values)
         for sample in batch:
             for friendly_name, fields in sample.items():
-                # Here we should check the self.custom_collate_function dictionary
-                # If we discover that friendly_name maps to a particular custom
-                # collation function (i.e. one defined on the dataset), we should
-                # include just the samples for that dataset in the batch passed to the custom
-                # collate function. For now, we will skip that functionality.
-
                 # Special handling for "object_id" for the time being. "object_id"
                 # hangs on the edge of the data dictionary so that it can be consumed
                 # during `infer`, specifically `_save_batch`. Originally it was
@@ -595,6 +599,15 @@ class DataProvider:
                 if friendly_name == "object_id":
                     val = fields[""] if isinstance(fields, dict) and "" in fields else fields
                     batch_dict.setdefault("object_id", []).append(str(val))
+                    continue
+
+                # If we find that `friendly_name` is in self.custom_collate_functions
+                # we accumulate the samples from that dataset and hand off to
+                # the appropriate custom collate function after the for loop.
+                if friendly_name in self.custom_collate_functions:
+                    # ! By convention, the dataset's custom collate function will
+                    # ! expect the friendly name to be "data".
+                    custom_collate.setdefault(friendly_name, []).append({"data": fields})
                     continue
 
                 if friendly_name not in batch_dict:
@@ -607,10 +620,34 @@ class DataProvider:
         if "object_id" in batch_dict:
             batch_dict["object_id"] = np.asarray(batch_dict["object_id"], dtype=str)
 
-        # Try to convert lists of values into numpy arrays (stack when possible)
+        # Handle custom collate functions for datasets that define them
+        for friendly_name, samples in custom_collate.items():
+            # Get the collate function from the mapping dictionary
+            custom_collate_fn = self.custom_collate_functions[friendly_name]
+
+            # Pass the list of data samples to the collation
+            custom_collated_data = custom_collate_fn(samples)
+
+            # Add the collated data to the batch dictionary
+            # ! By convention, the returned dictionary will contain two keys,
+            # ! "data" (the default friendly name) and "object_id". Only keep
+            # ! "data", but we assign it to the friendly name by `model_inputs`.
+            batch_dict[friendly_name] = custom_collated_data["data"]
+
+        # Try to convert lists of values into numpy arrays. We skip the "object_id"
+        # key since it's already been handled, as well as any keys that are in the
+        # self.custom_collate_function dictionary because those should have been
+        # handled by the corresponding dataset class custom collate function.
         for friendly_name, fields in batch_dict.items():
             if friendly_name == "object_id":
                 continue
+
+            # ! Assuming what is returned from custom_collate is already correctly
+            # ! numpy formatted. This is a big assumption. We should provide some
+            # ! pre-packaged tests for users developing custom collate functions.
+            if friendly_name in self.custom_collate_functions:
+                continue
+
             for field, values in list(fields.items()):
                 # If all values are numpy arrays and have identical shapes -> stack
                 if all(isinstance(v, np.ndarray) for v in values):
