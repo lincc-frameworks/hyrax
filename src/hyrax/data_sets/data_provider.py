@@ -629,9 +629,9 @@ class DataProvider:
             custom_collated_data = custom_collate_fn(samples)
 
             # Add the collated data to the batch dictionary
-            # ! By convention, the returned dictionary will contain two keys,
-            # ! "data" (the default friendly name) and "object_id". Only keep
-            # ! "data", but we assign it to the friendly name by `model_inputs`.
+            # ! By convention, the returned dictionary from a custom collate function
+            # ! should contain a "data" key (the default friendly name). Only "data"
+            # ! is used here; any other keys in the returned dictionary are ignored.
             batch_dict[friendly_name] = custom_collated_data["data"]
 
         # Try to convert lists of values into numpy arrays. We skip the "object_id"
