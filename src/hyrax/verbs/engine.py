@@ -33,7 +33,7 @@ class Engine(Verb):
         [x] Read in the user config
         [x] Prepare all the datasets requested
         [x] Implement a simple strategy for reading in batches of data samples
-        [ ] Process the samples with any custom collate functions as well as a default collate function
+        [x] Process the samples with any custom collate functions as well as a default collate function
         [x] Pass the collated batch to the appropriate to_tensor function
         [ ] Send that output to the ONNX-ified model
         [x] Persist the results of inference.
