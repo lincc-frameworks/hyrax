@@ -70,7 +70,7 @@ class HyraxCNN(nn.Module):
         # will unpack the tuple and only pass the first element to the `forward` method.
         # But for inference the entire tuple is passed in, so we need to handle
         # both cases.
-        if isinstance(x, tuple):
+        if isinstance(x, (tuple, list)):
             x, _ = x
 
         x = self.pool(F.relu(self.conv1(x)))
@@ -98,8 +98,24 @@ class HyraxCNN(nn.Module):
         inputs, labels = batch
 
         self.optimizer.zero_grad()
-        outputs = self(inputs)
+        outputs = self(batch)
         loss = self.criterion(outputs, labels)
         loss.backward()
         self.optimizer.step()
         return {"loss": loss.item()}
+
+    @staticmethod
+    def to_tensor(data_dict) -> tuple:
+        """Note this function works exclusively with numpy data types and returns
+        a tuple of numpy data types. It will not convert to torch Tensors!!!"""
+
+        data = data_dict.get("data")
+
+        if "image" in data:
+            image = data["image"]
+
+        label = []
+        if "label" in data:
+            label = data["label"]
+
+        return (image, label)

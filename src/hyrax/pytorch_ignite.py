@@ -22,7 +22,7 @@ from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from tensorboardX import SummaryWriter
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler
+from torch.utils.data import DataLoader, Dataset, Sampler, default_convert
 
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
@@ -224,8 +224,11 @@ def dist_data_loader(
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
     data_loader_kwargs = dict(config["data_loader"])
-    # Load the collate function if one is specified in the config
-    data_loader_kwargs["collate_fn"] = load_collate_function(data_loader_kwargs)
+
+    # ! Modify this to first check if a collate function is specified in the config
+    # ! and only override it if it is not!!!
+    # data_loader_kwargs["collate_fn"] = load_collate_function(data_loader_kwargs)
+    data_loader_kwargs["collate_fn"] = dataset.collate
 
     # Handle case where no split is needed.
     if isinstance(split, bool):
@@ -450,17 +453,25 @@ def _handle_nan_zero(batch):
     return batch
 
 
+# ! Need to go through and clean up the variables here. I think `device` and `engine`
+# ! are not used, but we'll need to double check before pulling out all the wiring.
 def _inner_loop(func, to_tensor, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
-    # If we have a dict of lists, we need to decode the dict
-    # This will give us either a tensor of the whole batch or a tuple
-    if isinstance(batch, dict):
-        batch = to_tensor(batch)
+    # Pass the collated batch through the model's to_tensor function
+    batch = to_tensor(batch)
 
+    # ! Nan handling will be moved to DataProvider in the near future
     batch = _handle_nans(batch, config)
 
-    # Send the batch to the device
-    batch = batch.to(device) if isinstance(batch, torch.Tensor) else tuple(i.to(device) for i in batch)
+    # Set default device so default_convert will put tensors directly on the right device
+    torch.set_default_device(idist.device())
+
+    # Convert the data to pytorch Tensors with torch's `default_convert`.
+    # Note - The `_inner_loop` function is called during the `train` and `infer`
+    # verbs when the model is a torch model. Thus we _always_ want the batch to
+    # be Tensors.
+    batch = default_convert(batch)
+
     return func(batch)
 
 
