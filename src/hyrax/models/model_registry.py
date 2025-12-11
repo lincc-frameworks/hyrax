@@ -2,8 +2,8 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
+import numpy as np
 import torch.nn as nn
-from torch import Tensor, as_tensor
 
 from hyrax.plugin_utils import get_or_load_class, load_to_tensor, save_to_tensor, update_registry
 
@@ -144,33 +144,21 @@ def hyrax_model(cls):
     cls.__init__ = wrapped_init
 
     def default_to_tensor(data_dict):
-        data = data_dict.get("data")
-        if data is None:
+        if "data" not in data_dict:
             msg = "Hyrax couldn't find a 'data' key in the data dictionaries from your dataset.\n"
             msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"
             msg += "value(s) from the dictionary your dataset is returning:\n\n"
             msg += f"class {cls.__name__}:\n\n"
             msg += "    @staticmethod\n"
-            msg += "    def to_tensor(data_dict) -> Tensor:\n"
+            msg += "    def to_tensor(data_dict) -> Tuple[npt.NDArray, ...]:\n"
             msg += "        <Your implementation goes here>\n\n"
             raise RuntimeError(msg)
 
-        if "image" in data and not isinstance(data["image"], Tensor):
-            data["image"] = as_tensor(data["image"])
-        if isinstance(data.get("image"), Tensor):
-            if "label" in data:
-                return (data["image"], data["label"])
-            else:
-                return data["image"]
-        else:
-            msg = "Hyrax couldn't find an image in the data dictionaries from your dataset.\n"
-            msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"
-            msg += "value(s) from the dictionary your dataset is returning:\n\n"
-            msg += f"class {cls.__name__}:\n\n"
-            msg += "    @staticmethod\n"
-            msg += "    def to_tensor(data_dict) -> Tensor:\n"
-            msg += "        <Your implementation goes here>\n\n"
-            raise RuntimeError(msg)
+        data = data_dict.get("data")
+        image = data.get("image", np.array([]))
+        label = data.get("label", np.array([]))
+
+        return (image, label)
 
     if not hasattr(cls, "to_tensor"):
         cls.to_tensor = staticmethod(default_to_tensor)

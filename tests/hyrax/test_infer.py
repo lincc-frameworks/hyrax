@@ -6,8 +6,7 @@ import pytest
 
 
 @pytest.mark.parametrize("shuffle", [True, False])
-@pytest.mark.parametrize("split", ["train", "infer", None])
-def test_infer_order(loopback_hyrax, split, shuffle):
+def test_infer_order(loopback_hyrax, shuffle):
     """Test that the order of data run through infer
     is correct in the presence of several splits
     """

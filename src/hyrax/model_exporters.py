@@ -130,5 +130,9 @@ def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):
         dynamic_axes=dynamic_axes,
     )
 
-    # return the output of the model as numpy array
-    return sample_out.detach().numpy()
+    # Make sure that the output is on the CPU
+    if sample_out.device.type != "cpu":
+        sample_out = sample_out.to("cpu")
+
+    # Return the output of the model as numpy array
+    return sample_out.numpy()

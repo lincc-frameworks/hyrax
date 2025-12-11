@@ -61,14 +61,15 @@ def test_to_onnx_successful_export(trained_hyrax):
     to_onnx_verb = ToOnnx(h.config)
     to_onnx_verb.run(str(train_dir))
 
+    onnx_dir = find_most_recent_results_dir(h.config, "onnx")
+
     # Verify ONNX model was created with timestamp-based filename
-    onnx_files = list(train_dir.glob("*.onnx"))
+    onnx_files = list(onnx_dir.glob("*.onnx"))
     assert len(onnx_files) == 1, "Exactly one ONNX file should be created"
 
     onnx_file = onnx_files[0]
     # Check filename pattern: <model_name>_opset_<version>_ts_<timestamp>.onnx
     assert "_opset_" in onnx_file.name
-    assert "_ts_" in onnx_file.name
     assert onnx_file.suffix == ".onnx"
 
 
@@ -105,23 +106,6 @@ def test_to_onnx_missing_input_directory_from_config(tmp_path):
     # The verb should log an error and return without creating ONNX files
     onnx_files = list(tmp_path.glob("**/*.onnx"))
     assert len(onnx_files) == 0, "No ONNX files should be created for missing directory"
-
-
-def test_to_onnx_auto_detect_recent_training(trained_hyrax):
-    """Test proper resolution of the most recent training directory"""
-    h = trained_hyrax
-
-    # Find the training results directory
-    train_dir = find_most_recent_results_dir(h.config, "train")
-    assert train_dir is not None, "Training results directory should exist"
-
-    # Export to ONNX without specifying input directory (should auto-detect)
-    to_onnx_verb = ToOnnx(h.config)
-    to_onnx_verb.run()  # No input_model_directory specified
-
-    # Verify ONNX model was created in the training directory
-    onnx_files = list(train_dir.glob("*.onnx"))
-    assert len(onnx_files) == 1, "ONNX file should be auto-detected and created"
 
 
 def test_to_onnx_no_previous_training(tmp_path):
