@@ -1,6 +1,7 @@
 # ruff: noqa: D101, D102
 import logging
 
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
@@ -145,10 +146,9 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        cifar_data = data_dict.get("data", {})
+        data = data_dict.get("data", {})
 
-        if "image" in cifar_data:
-            image = cifar_data["image"]
+        image = data.get("image", np.ndarray([]))
 
         return image
 

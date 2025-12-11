@@ -58,7 +58,7 @@ def export_to_onnx(model, sample, config, ctx):
 
     # Create the inputs array for the ONNX model
     ort_inputs = {}
-    # ! May nee to change this if-statement, if we find that to_tensor should return
+    # ! May need to change this if-statement, if we find that to_tensor should return
     # ! something other than a tuple for multiple inputs.
     if isinstance(sample, tuple):
         for i in range(len(sample)):

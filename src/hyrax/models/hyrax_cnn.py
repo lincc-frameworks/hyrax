@@ -4,6 +4,7 @@
 # https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html#define-a-convolutional-neural-network
 import logging
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
@@ -106,16 +107,15 @@ class HyraxCNN(nn.Module):
 
     @staticmethod
     def to_tensor(data_dict) -> tuple:
-        """Note this function works exclusively with numpy data types and returns
-        a tuple of numpy data types. It will not convert to torch Tensors!!!"""
+        """Does NOT convert to PyTorch Tensors.
+        This works exclusively with numpy data types and returns
+        a tuple of numpy data types."""
 
-        data = data_dict.get("data")
+        if "data" not in data_dict:
+            raise RuntimeError("Unable to find `data` key in data_dict")
 
-        if "image" in data:
-            image = data["image"]
-
-        label = []
-        if "label" in data:
-            label = data["label"]
+        data = data_dict["data"]
+        image = data.get("image", np.ndarray([]))
+        label = data.get("label", np.ndarray([]))
 
         return (image, label)

@@ -688,7 +688,7 @@ class DataProvider:
                                 "a custom collation function for this dataset."
                             ) from err
                 # if values is a list of numpy scalars convert to numpy array
-                if all(isinstance(v, np.generic) for v in values):
+                if isinstance(values, list):
                     batch_dict[friendly_name][field] = np.array(values)
 
         return batch_dict

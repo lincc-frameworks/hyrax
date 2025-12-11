@@ -68,7 +68,7 @@ def test_to_onnx_successful_export(trained_hyrax):
     assert len(onnx_files) == 1, "Exactly one ONNX file should be created"
 
     onnx_file = onnx_files[0]
-    # Check filename pattern: <model_name>_opset_<version>_ts_<timestamp>.onnx
+    # Check filename pattern: <model_name>_opset_<version>.onnx (opset version only)
     assert "_opset_" in onnx_file.name
     assert onnx_file.suffix == ".onnx"
 
