@@ -1,10 +1,10 @@
 # ruff: noqa: D101, D102
 import logging
 
+import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
-from torch import Tensor, as_tensor
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
@@ -138,7 +138,7 @@ class HyraxAutoencoder(nn.Module):
         return {"loss": loss.item()}
 
     @staticmethod
-    def to_tensor(data_dict) -> tuple[Tensor]:
+    def to_tensor(data_dict) -> tuple:
         """This function converts structured data to the input tensor we need to run
 
         Parameters
@@ -146,10 +146,9 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        cifar_data = data_dict.get("data", {})
+        data = data_dict.get("data", {})
 
-        if "image" in cifar_data:
-            image = as_tensor(cifar_data["image"])
+        image = data.get("image", np.ndarray([]))
 
         return image
 

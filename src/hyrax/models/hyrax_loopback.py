@@ -31,7 +31,7 @@ class HyraxLoopback(nn.Module):
 
     def forward(self, x):
         """We simply return our input"""
-        if isinstance(x, tuple):
+        if isinstance(x, (tuple, list)):
             # if x is a tuple, extract the first element (it should be a tensor)
             x, _ = x
         return x

@@ -1,3 +1,4 @@
+import numpy as np
 import torch.nn as nn
 
 from hyrax.models.model_registry import hyrax_model
@@ -107,7 +108,8 @@ def test_patch_to_tensor_over_default(tmp_path):
     # verify that the new model's to_tensor method is the default one
     input_data = {"data": {"image": 3}}
     output_data = new_model.to_tensor(input_data)
-    assert output_data == 3
+    assert output_data[0] == 3
+    assert isinstance(output_data[1], np.ndarray)
 
     # now load the saved weights and to_tensor method into the new model
     new_model.load(tmp_path / "model_weights.pth")

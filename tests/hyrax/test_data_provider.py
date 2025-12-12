@@ -601,12 +601,14 @@ def test_collate_function(data_provider):
         assert field in collated_batch["random_0"]
         assert len(collated_batch["random_0"].keys()) == len(expected_fields)
         assert len(collated_batch["random_0"][field]) == batch_size
+        assert isinstance(collated_batch["random_0"][field], np.ndarray)
 
     expected_fields = ["image"]
     for field in expected_fields:
         assert field in collated_batch["random_1"]
         assert len(collated_batch["random_1"].keys()) == len(expected_fields)
         assert len(collated_batch["random_1"][field]) == batch_size
+        assert isinstance(collated_batch["random_1"][field], np.ndarray)
 
     # assert that the object_id key is a numpy array
     assert isinstance(collated_batch["object_id"], np.ndarray)

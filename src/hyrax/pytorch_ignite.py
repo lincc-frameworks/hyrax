@@ -22,7 +22,7 @@ from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from tensorboardX import SummaryWriter
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler
+from torch.utils.data import DataLoader, Dataset, Sampler, default_convert
 
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
@@ -224,8 +224,14 @@ def dist_data_loader(
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
     data_loader_kwargs = dict(config["data_loader"])
-    # Load the collate function if one is specified in the config
-    data_loader_kwargs["collate_fn"] = load_collate_function(data_loader_kwargs)
+
+    # If the dataset is a DataProvider instance, use its collate function.
+    # Else use the collate function defined in the config, or None (Torch's default)
+    if isinstance(dataset, DataProvider):
+        collation_func = dataset.collate
+    else:
+        collation_func = load_collate_function(data_loader_kwargs)
+    data_loader_kwargs["collate_fn"] = collation_func
 
     # Handle case where no split is needed.
     if isinstance(split, bool):
@@ -382,21 +388,28 @@ def _handle_nans(batch, config):
 @_handle_nans.register(torch.Tensor)
 def _handle_nans_tensor(batch, config):
     """The implementation of _handle_nans when expecting `batch` to be a tensor."""
-    return _handle_nans_logic(batch, config)
+    return _handle_nans_logic_torch(batch, config)
 
 
+@_handle_nans.register(np.ndarray)
+def _handle_nans_numpy(batch, config):
+    return _handle_nans_logic_numpy(batch, config)
+
+
+# Register tuples and lists because we're not sure yet which will be returned
+# from to_tensor.
 @_handle_nans.register(tuple)
+@_handle_nans.register(list)
 def _handle_nans_tuple(batch, config):
     """This is the tuple-specific implementation of _handle_nans. Each tensor element
     of the tuple will have nan-handling applied. Non-tensor elements are returned unchanged."""
     # Process each element in the tuple
     handled_elements = []
     for element in batch:
-        # Only apply nan handling to tensor elements. For now this is fine, because
-        # all of the nan-handling logic utilizes torch functions. This is an area
-        # we will need to refactor later, when we support more than just PyTorch.
         if isinstance(element, torch.Tensor):
-            handled_elements.append(_handle_nans_logic(element, config))
+            handled_elements.append(_handle_nans_logic_torch(element, config))
+        elif isinstance(element, np.ndarray):
+            handled_elements.append(_handle_nans_logic_numpy(element, config))
         else:
             # Keep non-tensor elements unchanged (e.g., labels, metadata)
             handled_elements.append(element)
@@ -404,7 +417,7 @@ def _handle_nans_tuple(batch, config):
     return tuple(handled_elements)
 
 
-def _handle_nans_logic(batch, config):
+def _handle_nans_logic_torch(batch, config):
     from torch import any, isnan
 
     if config["data_set"]["nan_mode"] is False:
@@ -420,16 +433,16 @@ def _handle_nans_logic(batch, config):
         quantile = config["data_set"]["nan_quantile"]
         if quantile < 0.0 or quantile > 1.0:
             raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
-        return _handle_nan_quantile(batch, quantile)
+        return _handle_nan_quantile_torch(batch, quantile)
     elif config["data_set"]["nan_mode"] == "zero":
-        return _handle_nan_zero(batch)
+        return _handle_nan_zero_torch(batch)
     else:
         msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
         msg += "The supported modes are 'quantile' and 'zero'."
         raise NotImplementedError(msg)
 
 
-def _handle_nan_quantile(batch, quantile):
+def _handle_nan_quantile_torch(batch, quantile):
     from torch import any, isnan
 
     if any(isnan(batch)):
@@ -441,7 +454,7 @@ def _handle_nan_quantile(batch, quantile):
     return batch
 
 
-def _handle_nan_zero(batch):
+def _handle_nan_zero_torch(batch):
     from torch import any, isnan
 
     if any(isnan(batch)):
@@ -450,17 +463,62 @@ def _handle_nan_zero(batch):
     return batch
 
 
+def _handle_nans_logic_numpy(batch, config):
+    if config["data_set"]["nan_mode"] is False:
+        if np.any(np.isnan(batch)):
+            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
+            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
+            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
+            msg += "to get started."
+            logger.warning(msg)
+        return batch
+
+    if config["data_set"]["nan_mode"] == "quantile":
+        quantile = config["data_set"]["nan_quantile"]
+        if quantile < 0.0 or quantile > 1.0:
+            raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
+        return _handle_nan_quantile_numpy(batch, quantile)
+    elif config["data_set"]["nan_mode"] == "zero":
+        return _handle_nan_zero_numpy(batch)
+    else:
+        msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
+        msg += "The supported modes are 'quantile' and 'zero'."
+        raise NotImplementedError(msg)
+
+
+def _handle_nan_quantile_numpy(batch, quantile):
+    if np.any(np.isnan(batch)):
+        flat_batch = np.reshape(batch, (batch.shape[0], -1))
+        batch_quantile = np.nanquantile(flat_batch, q=quantile, axis=-1)
+        for i, val in enumerate(batch_quantile):
+            batch[i] = np.nan_to_num(batch[i], nan=val)
+
+    return batch
+
+
+def _handle_nan_zero_numpy(batch):
+    if np.any(np.isnan(batch)):
+        batch = np.nan_to_num(batch, nan=0.0)
+
+    return batch
+
+
+# ! Need to go through and clean up the variables here. I think `device` and `engine`
+# ! are not used, but we'll need to double check before pulling out all the wiring.
 def _inner_loop(func, to_tensor, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
-    # If we have a dict of lists, we need to decode the dict
-    # This will give us either a tensor of the whole batch or a tuple
-    if isinstance(batch, dict):
-        batch = to_tensor(batch)
+    # Pass the collated batch through the model's to_tensor function
+    batch = to_tensor(batch)
 
+    # ! Nan handling will be moved to DataProvider in the near future
     batch = _handle_nans(batch, config)
 
-    # Send the batch to the device
-    batch = batch.to(device) if isinstance(batch, torch.Tensor) else tuple(i.to(device) for i in batch)
+    # Convert the data to pytorch Tensors with torch's `default_convert`.
+    # Note - The `_inner_loop` function is called during the `train` and `infer`
+    # verbs when the model is a torch model. Thus we _always_ want the batch to
+    # be Tensors.
+    batch = default_convert(batch)
+
     return func(batch)
 
 

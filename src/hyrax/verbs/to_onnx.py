@@ -31,7 +31,11 @@ class ToOnnx(Verb):
         """Export the model to ONNX format and save it to the specified path."""
         from pathlib import Path
 
-        from hyrax.config_utils import ConfigManager, find_most_recent_results_dir
+        from hyrax.config_utils import (
+            ConfigManager,
+            create_results_dir,
+            find_most_recent_results_dir,
+        )
         from hyrax.model_exporters import export_to_onnx
         from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
 
@@ -54,6 +58,8 @@ class ToOnnx(Verb):
             if not input_directory:
                 logger.error("No previous training results directory found for ONNX export.")
                 return
+
+        output_dir = create_results_dir(config, "onnx")
 
         # grab the config file from the input directory, and render it.
         config_file = input_directory / "runtime_config.toml"
@@ -79,7 +85,7 @@ class ToOnnx(Verb):
 
         # Generate the `context` dictionary that will be provided to the ONNX exporter.
         context = {
-            "results_dir": input_directory,
+            "results_dir": output_dir,
             "ml_framework": "pytorch",
         }
 
