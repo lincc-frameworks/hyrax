@@ -517,6 +517,7 @@ def _inner_loop(func, to_tensor, device, config, engine, batch):
     # Note - The `_inner_loop` function is called during the `train` and `infer`
     # verbs when the model is a torch model. Thus we _always_ want the batch to
     # be Tensors.
+    torch.set_default_device(idist.device().type)
     batch = default_convert(batch)
 
     return func(batch)

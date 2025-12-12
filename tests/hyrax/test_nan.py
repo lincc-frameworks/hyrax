@@ -133,7 +133,7 @@ def test_nan_handling_off_returns_input(loopback_hyrax_nan):
     def to_tensor(data_dict):
         data = data_dict.get("data", {})
         if "image" in data and "label" in data:
-            image = tensor(data["image"])
+            image = data["image"]
             label = data["label"]
             return (image, label)
 

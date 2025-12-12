@@ -135,4 +135,4 @@ def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):
         sample_out = sample_out.to("cpu")
 
     # Return the output of the model as numpy array
-    return sample_out.numpy()
+    return sample_out.detach().numpy()
