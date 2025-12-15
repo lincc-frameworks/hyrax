@@ -1,11 +1,16 @@
 import importlib
+import inspect
+import logging
+import textwrap
 from importlib import util as importlib_util
-from typing import Any, Optional, TypeVar, Union
+from pathlib import Path
+from typing import Any, TypeVar, Union
 
+logger = logging.getLogger(__name__)
 T = TypeVar("T")
 
 
-def get_or_load_class(class_name: str, registry: Optional[dict[str, T]] = None) -> Union[T, Any]:
+def get_or_load_class(class_name: str, registry: dict[str, T] | None = None) -> Union[T, Any]:
     """Given a configuration dictionary and a registry dictionary, attempt to return
     the requested class either from the registry or by dynamically importing it.
 
@@ -116,3 +121,50 @@ def update_registry(registry: dict, name: str, class_type: type):
     """
 
     registry.update({name: class_type})
+
+
+def save_to_tensor(to_tensor_fn, save_path: Path):
+    """Save a to_tensor function to a specified path.
+
+    Parameters
+    ----------
+    to_tensor_fn : function
+        The to_tensor function to save.
+    save_path : str
+        The path to save the to_tensor function to.
+    """
+    with open(save_path.parent / "to_tensor.py", "w") as f:
+        try:
+            f.write(textwrap.dedent(inspect.getsource(to_tensor_fn)))
+        except (OSError, TypeError) as e:
+            logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
+            f.write("# Source code for model.to_tensor could not be retrieved.\n")
+
+
+def load_to_tensor(load_path: Path):
+    """Load a to_tensor function from a specified path.
+
+    Parameters
+    ----------
+    load_path : str
+        The directory containing the `to_tensor.py` module to load.
+
+    Returns
+    -------
+    function
+        The loaded to_tensor function.
+    """
+    to_tensor = None
+    to_tensor_path = load_path / "to_tensor.py"
+    if to_tensor_path.exists():
+        spec = importlib_util.spec_from_file_location("to_tensor_module", to_tensor_path)
+        to_tensor_module = importlib_util.module_from_spec(spec)
+        spec.loader.exec_module(to_tensor_module)  # type: ignore
+        if hasattr(to_tensor_module, "to_tensor"):
+            to_tensor = to_tensor_module.to_tensor
+        else:
+            logger.warning(f"No to_tensor function found in {to_tensor_path}")
+    else:
+        logger.warning(f"to_tensor.py file not found at {to_tensor_path}")
+
+    return to_tensor

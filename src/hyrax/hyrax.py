@@ -1,7 +1,7 @@
 import logging
 import sys
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 
 class Hyrax:
@@ -12,7 +12,7 @@ class Hyrax:
     CLI functions in hyrax_cli are implemented by calling this class
     """
 
-    def __init__(self, *, config_file: Optional[Union[Path, str]] = None, setup_logging: bool = True):
+    def __init__(self, *, config_file: Union[Path, str] | None = None, setup_logging: bool = True):
         """
         .. py:method:: __init__
 

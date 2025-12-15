@@ -57,7 +57,7 @@ import logging
 import time
 from collections.abc import Generator
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 import numpy.typing as npt
@@ -174,7 +174,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Datase
         self.cutout_shape = self.config["data_set"]["crop_to"] if self.config["data_set"]["crop_to"] else None
         self.set_crop_transform()
 
-    def _read_filter_catalog(self, filter_catalog_path: Optional[Path]):
+    def _read_filter_catalog(self, filter_catalog_path: Path | None):
         from astropy.table import Table
 
         if filter_catalog_path is None:

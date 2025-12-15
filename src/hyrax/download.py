@@ -2,7 +2,7 @@ import itertools
 import logging
 from pathlib import Path
 from threading import Thread
-from typing import Optional, Union
+from typing import Union
 
 import toml
 from astropy.io import fits
@@ -464,8 +464,8 @@ resuming the correct download? Deleting the manifest and cutout files will start
         locations: Table,
         path: Path,
         offset: int = 0,
-        default: Optional[dC.Rect] = None,
-        fields: Optional[list[str]] = None,
+        default: dC.Rect | None = None,
+        fields: list[str] | None = None,
     ) -> list[dC.Rect]:
         """Create the rects we will need to pass to the downloader.
         One Rect per location in our list of sky locations.

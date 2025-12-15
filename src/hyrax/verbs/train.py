@@ -32,7 +32,6 @@ class Train(Verb):
         Returns the trained model.
 
         """
-        import inspect
 
         import mlflow
         from tensorboardX import SummaryWriter
@@ -112,12 +111,6 @@ class Train(Verb):
 
         # Save the trained model
         model.save(results_dir / config["train"]["weights_filename"])
-        with open(results_dir / "to_tensor.py", "w") as f:
-            try:
-                f.write(inspect.getsource(model.to_tensor))
-            except (OSError, TypeError) as e:
-                logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
-                f.write("# Source code for model.to_tensor could not be retrieved.\n")
         monitor.stop()
 
         logger.info("Finished Training")

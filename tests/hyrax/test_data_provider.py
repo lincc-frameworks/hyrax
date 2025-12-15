@@ -576,3 +576,89 @@ def test_primary_id_field_reused_when_already_in_fields():
 
     # The top-level object_id should match the dataset's object_id (reused value)
     assert data["object_id"] == data["test_dataset"]["object_id"]
+
+
+def test_collate_function(data_provider):
+    """Test that the default collate function in DataProvider
+    correctly collates a batch of data samples into a batch dictionary.
+    """
+
+    import numpy as np
+
+    dp = data_provider
+
+    # Create a batch of samples
+    batch_size = len(dp)
+    batch = [dp[i] for i in range(batch_size)]
+
+    # Collate the batch
+    collated_batch = dp.collate(batch)
+
+    # Verify the structure of the collated batch
+    assert isinstance(collated_batch, dict)
+    expected_fields = ["object_id", "image", "label"]
+    for field in expected_fields:
+        assert field in collated_batch["random_0"]
+        assert len(collated_batch["random_0"].keys()) == len(expected_fields)
+        assert len(collated_batch["random_0"][field]) == batch_size
+        assert isinstance(collated_batch["random_0"][field], np.ndarray)
+
+    expected_fields = ["image"]
+    for field in expected_fields:
+        assert field in collated_batch["random_1"]
+        assert len(collated_batch["random_1"].keys()) == len(expected_fields)
+        assert len(collated_batch["random_1"][field]) == batch_size
+        assert isinstance(collated_batch["random_1"][field], np.ndarray)
+
+    # assert that the object_id key is a numpy array
+    assert isinstance(collated_batch["object_id"], np.ndarray)
+
+
+def test_finds_custom_collate_function(custom_collate_data_provider):
+    """Test that DataProvider correctly identifies datasets
+    that have custom collate functions defined.
+    """
+
+    dp = custom_collate_data_provider
+
+    assert "random_0" in dp.custom_collate_functions
+    assert callable(dp.custom_collate_functions["random_0"])
+    assert "random_1" in dp.custom_collate_functions
+    assert callable(dp.custom_collate_functions["random_1"])
+
+
+def test_custom_collate_function_applied(custom_collate_data_provider):
+    """Test that DataProvider correctly applies custom collate functions
+    for datasets that define them in the DataProvider.collate method.
+    """
+
+    import numpy as np
+
+    dp = custom_collate_data_provider
+
+    # Create a batch of samples
+    batch_size = len(dp)
+    batch = [dp[i] for i in range(batch_size)]
+
+    # Collate the batch
+    collated_batch = dp.collate(batch)
+
+    # Verify the structure of the collated batch for random_0
+    assert isinstance(collated_batch, dict)
+
+    # Note: expected fields includes "image_mask" which is added by the custom
+    # collate function.
+    expected_fields = ["object_id", "image", "label", "image_mask"]
+    for field in expected_fields:
+        assert field in collated_batch["random_0"]
+        assert len(collated_batch["random_0"][field]) == batch_size
+
+    # Verify the structure of the collated batch for random_1. Note that "image_mask"
+    # is also added by the custom collate function.
+    expected_fields = ["image", "image_mask"]
+    for field in expected_fields:
+        assert field in collated_batch["random_1"]
+        assert len(collated_batch["random_1"][field]) == batch_size
+
+    # assert that the object_id key is a numpy array
+    assert isinstance(collated_batch["object_id"], np.ndarray)

@@ -2,7 +2,7 @@ import logging
 import random
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import numpy.typing as npt
 import torch
@@ -25,16 +25,16 @@ class Visualize(Verb):
         """CLI not implemented for this verb"""
         pass
 
-    def run_cli(self, args: Optional[Namespace] = None):
+    def run_cli(self, args: Namespace | None = None):
         """CLI not implemented for this verb"""
         logger.error("Running visualize from the cli is unimplemented")
 
     def run(
         self,
-        input_dir: Optional[Union[Path, str]] = None,
+        input_dir: Union[Path, str] | None = None,
         *,
         return_verb: bool = False,
-        make_lupton_rgb_opts: Optional[dict] = None,
+        make_lupton_rgb_opts: dict | None = None,
         **kwargs,
     ):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.

@@ -1,8 +1,8 @@
 # ruff: noqa: D102, B027
 import logging
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from types import MethodType
-from typing import Any, Callable
+from typing import Any
 
 import numpy.typing as npt
 from torchvision.transforms.v2 import CenterCrop, Lambda

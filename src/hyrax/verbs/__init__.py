@@ -10,6 +10,7 @@ from hyrax.verbs.lookup import Lookup
 from hyrax.verbs.save_to_database import SaveToDatabase
 from hyrax.verbs.model import Model
 from hyrax.verbs.to_onnx import ToOnnx
+from hyrax.verbs.engine import Engine
 from hyrax.verbs.verb_registry import Verb
 from hyrax.verbs.verb_registry import all_class_verbs, all_verbs, fetch_verb_class, is_verb_class
 
@@ -29,4 +30,5 @@ __all__ = [
     "DatabaseConnection",
     "Model",
     "ToOnnx",
+    "Engine",
 ]

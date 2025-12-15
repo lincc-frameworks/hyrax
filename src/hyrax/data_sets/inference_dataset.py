@@ -2,7 +2,7 @@ import logging
 from collections.abc import Generator
 from multiprocessing import get_context
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 import numpy.typing as npt
@@ -24,8 +24,8 @@ class InferenceDataSet(HyraxDataset, Dataset):
     def __init__(
         self,
         config,
-        results_dir: Optional[Union[Path, str]] = None,
-        verb: Optional[str] = None,
+        results_dir: Union[Path, str] | None = None,
+        verb: str | None = None,
     ):
         """Initialize an InferenceDataSet object.
 
@@ -75,7 +75,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         # Initializes our first element. This primes the cache for sequential access
         # as well as giving us a sample element for shape()
-        self.cached_batch_num: Optional[int] = None
+        self.cached_batch_num: int | None = None
 
         self.shape_element = self._load_from_batch_file(
             self.batch_index["batch_num"][0], self.batch_index["id"][0]
@@ -271,9 +271,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         return self.cached_batch[np.isin(self.cached_batch["id"], ids)]
 
-    def _resolve_results_dir(
-        self, config, results_dir: Optional[Union[Path, str]], verb: Optional[str]
-    ) -> Path:
+    def _resolve_results_dir(self, config, results_dir: Union[Path, str] | None, verb: str | None) -> Path:
         """Initialize an inference results directory as a data source. Accepts an override of what
         directory to use"""
 

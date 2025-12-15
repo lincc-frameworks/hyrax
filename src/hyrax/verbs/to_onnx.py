@@ -31,7 +31,11 @@ class ToOnnx(Verb):
         """Export the model to ONNX format and save it to the specified path."""
         from pathlib import Path
 
-        from hyrax.config_utils import ConfigManager, find_most_recent_results_dir
+        from hyrax.config_utils import (
+            ConfigManager,
+            create_results_dir,
+            find_most_recent_results_dir,
+        )
         from hyrax.model_exporters import export_to_onnx
         from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
 
@@ -55,6 +59,8 @@ class ToOnnx(Verb):
                 logger.error("No previous training results directory found for ONNX export.")
                 return
 
+        output_dir = create_results_dir(config, "onnx")
+
         # grab the config file from the input directory, and render it.
         config_file = input_directory / "runtime_config.toml"
         config_manager = ConfigManager(runtime_config_filepath=config_file)
@@ -69,22 +75,22 @@ class ToOnnx(Verb):
         # Use the config in the model directory to load the dataset(s) and create
         # The data loader instance to provide a data sample to the ONNX exporter.
         dataset = setup_dataset(config_from_training)
-        model = setup_model(config_from_training, dataset["train"])
+        model = setup_model(config_from_training, dataset["infer"])
         # Load the trained weights and send the model to the CPU for ONNX export.
         model.load(weights_file_path)
         model.train(False)
 
         # Create an instance of the dataloader so that we can request a sample batch.
-        train_data_loader, _ = dist_data_loader(dataset["train"], config_from_training, False)
+        infer_data_loader, _ = dist_data_loader(dataset["infer"], config_from_training, False)
 
         # Generate the `context` dictionary that will be provided to the ONNX exporter.
         context = {
-            "results_dir": input_directory,
+            "results_dir": output_dir,
             "ml_framework": "pytorch",
         }
 
         # Get a sample of input data.
-        batch_sample = next(iter(train_data_loader))
+        batch_sample = next(iter(infer_data_loader))
         batch_sample = model.to_tensor(batch_sample)
 
         export_to_onnx(model, batch_sample, config, context)

@@ -1,7 +1,7 @@
 import logging
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Optional, Union
+from typing import Union
 
 import numpy as np
 
@@ -31,7 +31,7 @@ class Lookup(Verb):
             "-r", "--results-dir", type=str, required=False, help="Directory containing inference results."
         )
 
-    def run_cli(self, args: Optional[Namespace] = None):
+    def run_cli(self, args: Namespace | None = None):
         """Entrypoint to Lookup from the CLI.
 
         Parameters
@@ -52,7 +52,7 @@ class Lookup(Verb):
             logger.info("Inference result found")
             print(vector)
 
-    def run(self, id: str, results_dir: Optional[Union[Path, str]] = None) -> Optional[np.ndarray]:
+    def run(self, id: str, results_dir: Union[Path, str] | None = None) -> np.ndarray | None:
         """Lookup the latent-space representation of a particular ID
 
         Requires the relevant dataset to be configured, and for inference to have been run.

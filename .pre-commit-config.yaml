@@ -56,7 +56,7 @@ repos:
         always_run: true
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.14.2
+    rev: v0.14.7
     hooks:
       - id: ruff
         name: Lint code using ruff; sort and organize imports 
@@ -64,7 +64,7 @@ repos:
         args: ["--fix"]
   - repo: https://github.com/astral-sh/ruff-pre-commit
     # Ruff version.
-    rev: v0.14.2
+    rev: v0.14.7
     hooks:
       - id: ruff-format
         name: Format code using ruff
