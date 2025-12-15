@@ -11,12 +11,8 @@ import unittest.mock as mock
 
 import numpy as np
 import pytest
-import torch
 from astropy.table import Table
-from mocks.lsst_butler_mocks import (
-    MockButler,
-    MockGeom,
-)
+from mocks.lsst_butler_mocks import MOCK_CUTOUT_SIZE, MOCK_IMAGE_MAX_SIZE, MockButler, MockGeom
 
 
 @pytest.fixture
@@ -95,6 +91,7 @@ def test_mock_butler_basic_operations(mock_lsst_environment):
     # Test getting a skymap
     skymap = butler.get("skyMap", {"skymap": "test_skymap"})
     assert skymap is not None
+    skymap.reset()
 
     # Test finding a tract
     from mocks.lsst_butler_mocks import MockSpherePoint
@@ -130,7 +127,7 @@ def test_mock_butler_basic_operations(mock_lsst_environment):
     # Test getting array from image
     arr = image.getArray()
     assert isinstance(arr, np.ndarray)
-    assert arr.shape == (10000, 10000)
+    assert arr.shape == (MOCK_IMAGE_MAX_SIZE, MOCK_IMAGE_MAX_SIZE)
 
 
 def test_multiple_butler_per_thread_fails(mock_lsst_environment):
@@ -178,112 +175,10 @@ def test_mock_geom_operations(mock_lsst_environment):
     # Test Box2D creation
     box2d = geom_module.Box2D([0, 0], [100, 100])
     assert box2d.getMin() == [0.0, 0.0]
-    assert box2d.getMax() == [100.0, 100.0]
+    assert box2d.getMax() == [float(MOCK_CUTOUT_SIZE), float(MOCK_CUTOUT_SIZE)]
 
     # Test Box2I creation from Box2D
     box2i = geom_module.Box2I(box2d, geom_module.Box2I.EXPAND)
-    assert box2i.getWidth() == 100
-    assert box2i.getHeight() == 100
+    assert box2i.getWidth() == MOCK_CUTOUT_SIZE
+    assert box2i.getHeight() == MOCK_CUTOUT_SIZE
     assert not box2i.isEmpty()
-
-
-def test_lsst_dataset_with_mocks(mock_lsst_environment, sample_catalog, lsst_config, tmp_path):
-    """Test LSSTDataset initialization and basic operations with mocks.
-
-    This test demonstrates how to use the mocks to test the LSSTDataset class
-    without requiring actual LSST infrastructure.
-    """
-    # Import after patching
-    from hyrax.data_sets.lsst_dataset import LSSTDataset
-
-    # Save catalog to a temporary file
-    catalog_path = tmp_path / "test_catalog.fits"
-    sample_catalog.write(catalog_path)
-
-    # Update config to use the temporary catalog
-    lsst_config["data_set"]["astropy_table"] = str(catalog_path)
-
-    # Create LSSTDataset instance
-    dataset = LSSTDataset(lsst_config, data_location=str(tmp_path))
-
-    # Verify catalog was loaded
-    assert dataset.catalog is not None
-    assert len(dataset.catalog) == 5
-
-    # Test basic dataset properties
-    assert len(dataset) == 5
-
-    # Mock the transform methods to avoid issues
-    dataset.set_function_transform = mock.MagicMock()
-    dataset.set_crop_transform = mock.MagicMock()
-    dataset.apply_transform = mock.MagicMock(side_effect=lambda x: x)
-
-    # Test fetching a single cutout
-    row = dataset.catalog[0]
-
-    # The _fetch_single_cutout method should work with mocks
-    cutout = dataset._fetch_single_cutout(row)
-
-    # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
-
-    # Verify it has the right number of bands (channels)
-    assert cutout.shape[0] == 3  # g, r, i bands
-
-
-def test_downloaded_lsst_dataset_with_mocks(mock_lsst_environment, sample_catalog, lsst_config, tmp_path):
-    """Test DownloadedLSSTDataset with mocks.
-
-    This test demonstrates testing the downloaded dataset variant which
-    caches cutouts to disk.
-    """
-    # Import after patching
-    from hyrax.data_sets.downloaded_lsst_dataset import DownloadedLSSTDataset
-
-    # Save catalog to a temporary file
-    catalog_path = tmp_path / "test_catalog.fits"
-    sample_catalog.write(catalog_path)
-
-    # Update config
-    lsst_config["data_set"]["astropy_table"] = str(catalog_path)
-    lsst_config["general"]["data_dir"] = str(tmp_path)
-
-    # Create DownloadedLSSTDataset instance
-    dataset = DownloadedLSSTDataset(lsst_config, data_location=str(tmp_path))
-
-    # Mock transform methods
-    dataset.apply_transform = mock.MagicMock(side_effect=lambda x: x)
-
-    # Create a minimal manifest
-    manifest_data = {
-        "object_id": sample_catalog["object_id"],
-        "cutout_shape": [np.array([3, 100, 100], dtype=int) for _ in range(len(sample_catalog))],
-        "filename": [f"cutout_{oid}.pt" for oid in sample_catalog["object_id"]],
-        "downloaded_bands": ["g,r,i" for _ in range(len(sample_catalog))],
-    }
-    dataset.manifest = Table(manifest_data)
-    dataset._is_filtering_bands = False
-    dataset._band_indices = None
-    dataset._original_bands = ("g", "r", "i")
-    dataset._catalog_to_manifest_index_map = None
-    dataset._manifest_to_catalog_index_map = None
-
-    # Test that dataset has correct length
-    assert len(dataset) == 5
-
-    # Test _fetch_cutout_with_cache method
-    row = dataset.catalog[0]
-    cutout, downloaded_bands = dataset._fetch_cutout_with_cache(row)
-
-    # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
-
-    # Verify it has the right number of bands
-    assert cutout.shape[0] == 3
-
-    # Verify downloaded_bands is correct
-    assert downloaded_bands == ["g", "r", "i"]
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

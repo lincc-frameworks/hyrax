@@ -389,15 +389,16 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         return np.argmax([len(str(id)) for id in object_ids])
 
     def _get_available_bands_from_manifest(self, manifest):
-        """Get available bands by checking first 10 successful downloads for consistency."""
+        """Best effort to get available bands by looking at first 10 successful downloads for consistency."""
         if len(manifest) == 0:
             return None, None
 
         successful_entries = []
 
-        # Find first 10 successful downloads (check last up to 12 entries, but handle small manifests)
-        start_idx = max(0, len(manifest) - 12)
-        for i in range(start_idx, len(manifest)):
+        # Attempt to find first 10 successful downloads.
+        # For long manifests (e.g. 1 million undownloaded cutouts), avoid iterating too far to find these 10.
+        give_up_idx = min(len(manifest), 1000)
+        for i in range(give_up_idx):
             if len(successful_entries) >= 10:
                 break
 
@@ -480,15 +481,15 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         """
         manifest_idx = self._get_manifest_index_for_catalog_index(idx)
 
-        with self._manifest_lock():
-            cutout_path = self.manifest["filename"].get(manifest_idx, None)
+        with self._manifest_lock:
+            cutout_path = str(self.manifest["filename"][manifest_idx])
 
         # Make our return value mask downloader state from the caller. We just return
         # "None" because the file either isn't there or its an edge case.
-        if cutout_path == "" or cutout_path == "Attempted" or cutout_path is None:
+        if cutout_path == "" or cutout_path == "Attempted" or cutout_path is None or cutout_path == "--":
             return None
 
-        return Path(cutout_path)
+        return self.download_dir / cutout_path
 
     def _update_manifest_entry(self, idx, cutout_shape=None, filename="Attempted", downloaded_bands=None):
         """
@@ -710,6 +711,12 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         """Generate cutout using cached patch fetching with NaN filling for failed bands."""
         from torch import from_numpy
 
+        if not self._butler_available():
+            msg = "Attempted to fetch an un-downloaded cutout without access to a butler \n"
+            msg += "Please download all cutouts in the catalog, or truncate the catalog to reflect\n"
+            msg += "Only the downloaded cutouts."
+            raise RuntimeError(msg)
+
         # Get tract and patch info (using parent's methods)
         tract_info, patch_info = self._get_tract_patch(row)
         box_i = self._parse_box(patch_info, row)
@@ -880,7 +887,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
                 continue
 
             # Check manifest status
-            filename = self.manifest["filename"][manifest_idx]
+            filename = self._get_cutout_path_from_manifest(catalog_idx)
 
             # Skip if already attempted and failed (unless force_retry is True)
             if filename == "Attempted" and not force_retry:

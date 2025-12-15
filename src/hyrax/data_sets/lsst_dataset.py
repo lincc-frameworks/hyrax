@@ -30,9 +30,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
         """
 
-        try:
-            import lsst.daf.butler as _butler  # noqa: F401
-
+        if self._butler_available():
             self._butler_config = {
                 "repo": config["data_set"]["butler_repo"],
                 "collections": config["data_set"]["butler_collection"],
@@ -41,8 +39,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
             self._threaded_butler = {}
             self._threaded_butler_update_lock = threading.Lock()
-
-        except ImportError:
+        else:
             msg = "Did not detect a Butler. You may need to run on the RSP"
             msg += ""
             logger.info(msg)
@@ -79,6 +76,13 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         self.set_function_transform()
         self.set_crop_transform()
 
+    def _butler_available(self):
+        try:
+            import lsst.daf.butler as _butler  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
     def _get_butler_thread_safe(self):
         """Thread safe butler creation
 
@@ -108,6 +112,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             with self._threaded_butler_update_lock:
                 repo = self._butler_config["repo"]
                 collections = self._butler_config["collections"]
+                # xcxc
                 our_butler = butler.Butler(repo, collections=collections)
                 self._threaded_butler[thread_ident] = our_butler
 
