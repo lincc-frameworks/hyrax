@@ -513,11 +513,17 @@ def _inner_loop(func, to_tensor, device, config, engine, batch):
     # ! Nan handling will be moved to DataProvider in the near future
     batch = _handle_nans(batch, config)
 
-    # Convert the data to pytorch Tensors with torch's `default_convert`.
-    # Note - The `_inner_loop` function is called during the `train` and `infer`
-    # verbs when the model is a torch model. Thus we _always_ want the batch to
-    # be Tensors.
-    batch = default_convert(batch)
+    # Convert the data to numpy and place it on the device explicitly.
+    # This allows us to control when the tensor makes it on to the device without setting 
+    # torch.default_device. Thus user code will default to making 'cpu' tensors unless the user 
+    # explicitly specifies a different device.
+    #
+    # The hope is that even in the presence of user code in datasets that might manipulate tensors 
+    # with torch primitives, functionally all of the tensors get clocked out the the GPU by this 
+    # line of code.
+    # 
+    # We use torch.from_numpy() over torch.tensor() to avoid the copy of data that occurs in the latter.
+    batch = torch.from_numpy(batch).to(device)
 
     return func(batch)
 

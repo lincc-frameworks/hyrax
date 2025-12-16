@@ -25,12 +25,9 @@ class HyraxCifarBase:
         )
         self.cifar = CIFAR10(root=self.data_location, train=True, download=True, transform=transform)
         metadata_table = Table(
-            {
-                "object_id": np.array([index for index in range(len(self.cifar))]),
-                "label": np.array([self.cifar[index][1] for index in range(len(self.cifar))]),
-            }
+            {"label": np.array([self.cifar[index][1] for index in range(len(self.cifar))])}
         )
-        super().__init__(config, metadata_table, object_id_column_name="object_id")
+        super().__init__(config, metadata_table)
 
     def get_image(self, idx):
         """Get the image at the given index as a NumPy array."""

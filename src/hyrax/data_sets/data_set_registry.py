@@ -5,7 +5,6 @@ from types import MethodType
 from typing import Any
 
 import numpy.typing as npt
-from torchvision.transforms.v2 import CenterCrop, Lambda
 
 from hyrax.plugin_utils import get_or_load_class, update_registry
 
@@ -90,30 +89,26 @@ class HyraxDataset:
             An Astropy Table with
             1. the metadata columns desired for visualization AND
             2. in the order your data will be enumerated.
-        object_id_column_name : Optional[string], optional
-            Required if metadata_table is specified. A string with the
-            column name you would like to use as object identifiers.
-            object identifiers in your table MUST be unique.
+        object_id_column_name : Optional[str], optional
+            The name of the column containing object IDs. If None, uses the default
+            from config or creates one from the ids() method.
         """
+        import numpy as np
 
         self._config = config
         self._metadata_table = metadata_table
 
-        if metadata_table is not None:
-            self._object_id_column_name = object_id_column_name
-            if object_id_column_name is None:
-                msg = "Metadata table was provided without an object_id_column_name.\n"
-                msg += "Please ensure object_id_column_name is passed up to the HyraxDataset constructor.\n"
-                raise RuntimeError(msg)
-
-            # xcxc remove
-            # If your metadata does not contain an object_id field
-            # we use your required .ids() method to create the column
-            # if self._metadata_table is not None and self._object_id_column_name is None:
-            #     colnames = self._metadata_table.colnames
-            #     if "object_id" not in colnames:
-            #         ids = np.array(list(self.ids()))
-            #         self._metadata_table.add_column(ids, name="object_id")
+        # If your metadata does not contain an object_id field
+        # we use your required .ids() method to create the column
+        if self._metadata_table is not None:
+            colnames = self._metadata_table.colnames
+            if (
+                (object_id_column_name is None)
+                and ("object_id" not in colnames)
+                and (self._config["data_set"]["object_id_column_name"] not in colnames)
+            ):
+                ids = np.array(list(self.ids()))
+                self._metadata_table.add_column(ids, name="object_id")
 
             def _make_getter(column):
                 def getter(self, idx, _col=column):
@@ -336,12 +331,16 @@ class HyraxImageDataset:
     """
 
     def set_function_transform(self):
+        from torchvision.transforms.v2 import Lambda
+
         function_name = self.config["data_set"]["transform"]
         if function_name:
             transform_func = self._get_np_function(function_name)
             self._update_transform(Lambda(lambd=transform_func))
 
     def set_crop_transform(self, cutout_shape=None):
+        from torchvision.transforms.v2 import CenterCrop
+
         if cutout_shape is None:
             cutout_shape = self.config["data_set"]["crop_to"] if self.config["data_set"]["crop_to"] else None
 

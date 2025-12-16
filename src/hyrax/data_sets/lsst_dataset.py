@@ -64,14 +64,14 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         self.sh_deg = config["data_set"]["semi_height_deg"]
         self.sw_deg = config["data_set"]["semi_width_deg"]
 
-        oid_column_name = (
+        self.oid_column_name = (
             config["data_set"]["object_id_column_name"]
             if config["data_set"]["object_id_column_name"]
             else self._detect_object_id_column_name()
         )
 
         # TODO: Metadata from the catalog
-        super().__init__(config, self.catalog, oid_column_name)
+        super().__init__(config, self.catalog, self.oid_column_name)
 
         self.set_function_transform()
         self.set_crop_transform()

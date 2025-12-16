@@ -90,7 +90,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
 
         # Examine LSSTDataset's catalog for the object ids we need throughout to manage in-progress downloads.
         # self._detect_object_id_column_name()
-        self.catalog_object_ids = set(self.catalog[self._object_id_column_name])
+        self.catalog_object_ids = set(self.catalog[self.oid_column_name])
 
         # Manifest management
         self._manifest_lock = threading.Lock()
@@ -300,8 +300,8 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
                 raise ValueError(f"Existing manifest missing required column: {col}")
 
         # Create object_id sets for comparison
-        current_object_ids = set(self.catalog[self._object_id_column_name])
-        existing_object_ids = set(existing_manifest[self._object_id_column_name])
+        current_object_ids = set(self.catalog[self.oid_column_name])
+        existing_object_ids = set(existing_manifest[self.oid_column_name])
 
         # Check if current catalog is a subset of existing manifest
         new_object_ids = current_object_ids - existing_object_ids
@@ -329,7 +329,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
 
             # Populate object ids into new manifest rows
             new_rows = Table()
-            new_rows[self._object_id_column_name] = new_object_ids
+            new_rows[self.oid_column_name] = new_object_ids
 
             # Add other manifest columns to new manifest rows
             self._add_manifest_columns_to_table(new_rows)
@@ -349,14 +349,14 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         # Create object_id to manifest index lookup
         manifest_lookup = {}
         for manifest_idx in range(len(self.manifest)):
-            obj_id = self.manifest[manifest_idx][self._object_id_column_name]
+            obj_id = self.manifest[manifest_idx][self.oid_column_name]
             manifest_lookup[obj_id] = manifest_idx
 
         # Build catalog index to manifest index mapping and reverse mapping
         self._catalog_to_manifest_index_map = {}
         self._manifest_to_catalog_index_map = {}
         for catalog_idx in range(len(self.catalog)):
-            catalog_obj_id = self.catalog[catalog_idx][self._object_id_column_name]
+            catalog_obj_id = self.catalog[catalog_idx][self.oid_column_name]
 
             if catalog_obj_id in manifest_lookup:
                 manifest_idx = manifest_lookup[catalog_obj_id]
@@ -456,7 +456,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         No guarantees are made about the file itself.
 
         """
-        object_id = self.catalog[idx][self._object_id_column_name]
+        object_id = self.catalog[idx][self.oid_column_name]
         return self.download_dir / f"cutout_{object_id}.pt"
 
     def _get_cutout_path_from_manifest(self, idx):

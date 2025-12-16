@@ -118,7 +118,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Datase
         # inside _init_from_path()
         logger.debug("Preparing Metadata")
         metadata = self._prepare_metadata()
-        super().__init__(config, metadata, object_id_column_name=self.object_id_column_name)
+        super().__init__(config, metadata)
 
         self._before_preload()
 
