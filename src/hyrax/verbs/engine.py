@@ -73,7 +73,7 @@ class Engine(Verb):
         to_tensor_fn = load_to_tensor(input_directory)
 
         # ~ Load the ONNX model from the input directory.
-        onnx_file_name = input_directory / "example_model_opset_20.onnx"
+        onnx_file_name = input_directory / "model.onnx"
         ort_session = onnxruntime.InferenceSession(onnx_file_name)
 
         # ~ For now we use `setup_dataset` to get our datasets back. Later we can
