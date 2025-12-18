@@ -29,6 +29,7 @@ class ToOnnx(Verb):
 
     def run(self, input_model_directory: str = None):
         """Export the model to ONNX format and save it to the specified path."""
+        import shutil
         from pathlib import Path
 
         from hyrax.config_utils import (
@@ -65,6 +66,12 @@ class ToOnnx(Verb):
         config_file = input_directory / "runtime_config.toml"
         config_manager = ConfigManager(runtime_config_filepath=config_file)
         config_from_training = config_manager.config
+
+        # copy the to_tensor.py file from the input directory to the output directory
+        to_tensor_src = input_directory / "to_tensor.py"
+        to_tensor_dst = output_dir / "to_tensor.py"
+        if to_tensor_src.exists():
+            shutil.copy(to_tensor_src, to_tensor_dst)
 
         # Use the config file to locate and assemble the trained weight file path
         weights_file_path = input_directory / config_from_training["train"]["weights_filename"]

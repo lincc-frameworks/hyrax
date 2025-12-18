@@ -548,6 +548,7 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
     config : dict
         The runtime config in use
     """
+    torch.set_default_device(device.type)
     return Engine(_create_process_func(funcname, device, model, config))
 
 
