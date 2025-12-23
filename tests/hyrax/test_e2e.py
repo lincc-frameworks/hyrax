@@ -79,6 +79,24 @@ def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     h.config["model"]["name"] = model_class_name
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 128
+    h.config["data_set"]["preload_cache"] = False
+
+    h.config["model_inputs"] = {
+        "train":{
+            "data":{
+                "dataset_class": dataset_class_name,
+                "data_location": str(tmp_dataset_path),
+                "primary_id_field": "object_id",
+            }
+        },
+        "infer":{
+            "data":{
+                "dataset_class": dataset_class_name,
+                "data_location": str(tmp_dataset_path),
+                "primary_id_field": "object_id",
+            }
+        }
+    }
 
     return h
 

@@ -146,6 +146,9 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
+        # Should not be necessary, makes e2e tests pass.
+        import numpy as np
+
         data = data_dict.get("data", {})
 
         image = data.get("image", np.ndarray([]))
