@@ -83,10 +83,10 @@ def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):
     ----------
     model : torch.nn.Module
         The PyTorch model to be converted to ONNX format.
-    sample : NumPy array or list of NumPy arrays
+    sample : np.ndarray or list of np.ndarray
         A sample of input data to the model. This is used to trace the model
         during the export process.
-    output_filepath : Path
+    output_filepath : pathlib.Path
         The file path where the ONNX model will be saved.
     opset_version : int
         The ONNX opset version to use for the export.
@@ -160,10 +160,10 @@ def _export_pytorch_to_onnx_v2(model, sample, output_filepath, opset_version):
     ----------
     model : torch.nn.Module
         The PyTorch model to be converted to ONNX format.
-    sample : NumPy array or list of NumPy arrays
+    sample : np.ndarray or list of np.ndarray
         A sample of input data to the model. This is used to trace the model
         during the export process.
-    output_filepath : Path
+    output_filepath : pathlib.Path
         The file path where the ONNX model will be saved.
     opset_version : int
         The ONNX opset version to use for the export.

@@ -128,9 +128,9 @@ def save_to_tensor(to_tensor_fn, save_path: Path):
 
     Parameters
     ----------
-    to_tensor_fn : function
+    to_tensor_fn : collections.abc.Callable
         The to_tensor function to save.
-    save_path : str
+    save_path : pathlib.Path
         The path to save the to_tensor function to.
     """
     with open(save_path.parent / "to_tensor.py", "w") as f:
@@ -146,12 +146,12 @@ def load_to_tensor(load_path: Path):
 
     Parameters
     ----------
-    load_path : str
+    load_path : pathlib.Path
         The directory containing the `to_tensor.py` module to load.
 
     Returns
     -------
-    function
+    collections.abc.Callable or None
         The loaded to_tensor function.
     """
     to_tensor = None

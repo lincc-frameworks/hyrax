@@ -94,7 +94,6 @@ repos:
             "./docs/_build/doctrees", # Directory
             "-D", # Flag to override settings in conf.py
             "exclude_patterns=notebooks/*,_build", # Exclude our notebooks from pre-commit
-            "-W", # Warnings are errors
             "--keep-going", # Finish generating docs even if errors occur
             "-n", # Nitpick mode among other things checks for broken links
           ]

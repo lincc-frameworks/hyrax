@@ -9,27 +9,33 @@ from hyrax.data_sets.data_set_registry import HyraxDataset
 
 class HyraxCSVDataset(HyraxDataset):
     """A Hyrax Dataset for CSV files.
+
     This class reads a CSV file using pandas with memory mapping enabled.
     It dynamically creates getter methods for each column in the CSV file,
     allowing users to request data from specific columns.
 
-    Note: Column names found in the CSV file are used to create the getter methods.
+    Note
+    ----
+    Column names found in the CSV file are used to create the getter methods.
     If a column name contains characters that are invalid for method names,
     those characters are replaced with underscores.
 
-    Example model_inputs configuration:
-    {
-        "train": {
-            "data": {
-                "dataset_class": "HyraxCSVDataset",
-                "data_location": </path/to/data.csv>,
-                "fields": ["<column1>", "<column2>", ...],
-                "primary_id_field": <column name that contains a unique ID>,
+    Examples
+    --------
+    Example model_inputs configuration::
+
+        {
+            "train": {
+                "data": {
+                    "dataset_class": "HyraxCSVDataset",
+                    "data_location": "</path/to/data.csv>",
+                    "fields": ["<column1>", "<column2>", ...],
+                    "primary_id_field": "<column name that contains a unique ID>",
+                },
             },
-        },
-        "validate": { <similar to above> },
-        "infer": { <similar to above> },
-    }
+            "validate": { "<similar to above>" },
+            "infer": { "<similar to above>" },
+        }
     """
 
     def __init__(self, config: dict, data_location: Path = None):
