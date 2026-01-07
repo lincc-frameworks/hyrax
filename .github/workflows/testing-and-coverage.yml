@@ -30,7 +30,7 @@ jobs:
       run: |
         sudo apt-get update
         # Try to see what uv would resolve
-        uv pip compile pyproject.toml --extra dev --python-version ${{ matrix.python-version }} > resolved-deps.txt || true
+        uv pip compile pyproject.toml --extra dev --python-version ${{ matrix.python-version }} -v > resolved-deps.txt || true
         cat resolved-deps.txt
     - name: Install dependencies
       run: |
