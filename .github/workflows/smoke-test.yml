@@ -38,7 +38,6 @@ jobs:
         cat resolved-deps.txt
     - name: Install dependencies
       run: |
-        sudo apt-get update
         uv pip install --system -e .[dev]
         if [ -f requirements.txt ]; then uv pip install --system -r requirements.txt; fi
     - name: List dependencies
