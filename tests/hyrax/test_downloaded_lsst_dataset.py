@@ -213,7 +213,7 @@ def test_interrupted_download(mock_lsst_environment, lsst_config, tmp_path):  # 
 
 
 def test_interrupted_download_completes(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
-    """ "
+    """
     Test LSSTDataset can handle an interrupted download, and that the download can finish after.
     """
     with mock_lsst_environment():
@@ -430,7 +430,7 @@ def test_failed_band_download(mock_lsst_environment, lsst_config, tmp_path):  # 
 def test_catalog_ordering(mock_lsst_environment, lsst_config, tmp_path, sample_catalog):  # noqa: F811
     """
     Test that after a download the ordering of a new dataset object is given in the same order
-    of the catalog that is provided, regarless of the catalog ordering or content of the downloading
+    of the catalog that is provided, regardless of the catalog ordering or content of the downloading
     object.
 
     We do this by creating a download dir and then examining order between the original download object
@@ -488,7 +488,7 @@ def test_catalog_ordering(mock_lsst_environment, lsst_config, tmp_path, sample_c
         _ = filtered_dataset[catalog_truncation_index + 1]
 
     # Data and ID of all objects should be in the correct index
-    # given the permutatio to the catalog that the filtered dataset is using
+    # given the permutation to the catalog that the filtered dataset is using
     for index, value in enumerate(catalog_permutation):
         # index indexes the filtered dataset
         # value is the index in the original dataset

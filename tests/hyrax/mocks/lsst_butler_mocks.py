@@ -413,14 +413,14 @@ class MockButler:
         fail_prob : float, optional
             How often should a butler get fail randomly, by default 0.0
         band_fail_prob : dict, optional
-            How often should a butler get that does not fail becuase of fail_prob fail for a particular
+            How often should a butler get that does not fail because of fail_prob fail for a particular
             band access. Given by providing a dictionary of band -> probability. For example
             band_fail_prob={"g": 0.1} would cause gets to g band to fail 10% of the time, by default {}
         fail_after_n : int, optional
             Continually fail after the provided number of calls to butler get. The default of 0 disables get
             failures for this reason, but leaves probalistic failures configured above intact.
         band_fail_after_n : dict, optional
-            Contiually fail particular band(s) after the provided number of calls to butler.get in the
+            Continually fail particular band(s) after the provided number of calls to butler.get in the
             particular band. Dictionary provided has bands as keys and counts as values.
             Counts of zero mean no failures for that band
         """
