@@ -81,21 +81,24 @@ def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     h.config["data_loader"]["batch_size"] = 128
     h.config["data_set"]["preload_cache"] = False
 
+    if dataset_class_name == "HyraxCifarIterableDataSet":
+        h.config["data_loader"]["collate_fn"] = "hyrax.data_sets.iterable_dataset_collate"
+
     h.config["model_inputs"] = {
-        "train":{
-            "data":{
+        "train": {
+            "data": {
                 "dataset_class": dataset_class_name,
                 "data_location": str(tmp_dataset_path),
                 "primary_id_field": "object_id",
             }
         },
-        "infer":{
-            "data":{
+        "infer": {
+            "data": {
                 "dataset_class": dataset_class_name,
                 "data_location": str(tmp_dataset_path),
                 "primary_id_field": "object_id",
             }
-        }
+        },
     }
 
     return h

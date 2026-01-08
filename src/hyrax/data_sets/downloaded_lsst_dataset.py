@@ -111,22 +111,12 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         self._build_catalog_to_manifest_index_map()
 
         # Initialize tensor caching from mixin
-        # xcxc need to refactor this to work
+        # TODO: Tensor Cache mixin refactor
         self._init_tensor_cache(config)
 
-    # xcxc these three functions (get_objectID, ids, and _setup_naming_strategy all probably need to go)
-    # IDs ones need to go because IDs are going to be responsibility of the DataProvider probably
-    # _setup_naming_strategy because we won't need it anymore either with object_ids being not important
-    # to handle in this class.
     def get_objectId(self, idx):  # noqa: N802
         """Get object ID for a given index based on naming strategy."""
-        if self.use_object_id:
-            if isinstance(self.catalog, Table):
-                return str(self.catalog[idx][self.object_id_column])
-            else:
-                return str(self.catalog.iloc[idx][self.object_id_column])
-        else:
-            return str(idx)
+        return str(self.catalog[idx][self.object_id_column])
 
     def ids(self, log_every=None):
         """Generator yielding object IDs for the entire dataset. Required by TensorCacheMixin"""
@@ -145,22 +135,24 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         """Setup file naming strategy based on catalog columns."""
         catalog_columns = self.catalog.colnames if hasattr(self.catalog, "colnames") else self.catalog.columns
 
-        self.use_object_id = False
+        use_object_id = False
         if self._config["data_set"]["object_id_column_name"]:
-            self.use_object_id = True
+            use_object_id = True
             self.object_id_column = self._config["data_set"]["object_id_column_name"]
         elif "object_id" in catalog_columns:
-            self.use_object_id = True
+            use_object_id = True
             self.object_id_column = "object_id"
         elif "objectId" in catalog_columns:
-            self.use_object_id = True
+            use_object_id = True
             self.object_id_column = "objectId"
         else:
             self.object_id_column = "objectId"
 
-        if not self.use_object_id:
-            dataset_length = len(self.catalog)
-            self.padding_length = max(4, len(str(dataset_length)))
+        if not use_object_id:
+            msg = "Could not find the object ID for your catalog. You must have a column which uniquely "
+            msg += "identifies your objects in order to track downloads. Please set the column name in "
+            msg += "the hyrax config['data_set']['object_id_column_name']."
+            raise RuntimeError(msg)
 
     def _initialize_manifest(self):
         """Create new manifest or load/merge with existing manifest, with band filtering validation.
@@ -202,12 +194,9 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
 
             self.manifest = Table()
 
-            # Copy only the data columns
-            # xcxc this is copying over all the astro data from LSSTDataset's catalog
-            # We probably don't need that, and its going to make merge ops less performant if we
-            # ever have to copy the catalog, which we will...
-            #
-            # xcxc for now the manifest is simply the catalog plus extra columns.
+            # For now the manifest is simply the catalog plus extra columns.
+            # TODO: See about copying fewer columns over to the manifest. Perhaps we only need
+            # The object id column
             for col_name in self.catalog.colnames:
                 self.manifest[col_name] = self.catalog[col_name]
 
@@ -286,11 +275,6 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         New entries are added to the end of existing_manifest with a state indicating
         they have not been downloaded.
         """
-
-        # Verify object_id merging is possible
-        # if not self.use_object_id:
-        #    raise ValueError("Cannot merge manifests without object_id")
-
         # Check required columns exist in existing manifest
         existing_cols = existing_manifest.colnames
         required_cols = ["cutout_shape", "filename", "downloaded_bands"]
@@ -600,7 +584,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
             logger.info(f"Synced {synced_count} manifest entries with filesystem")
             self.save_manifest_now()
 
-    # TODO xcxc Could pull out butler downloader (and attendant multithreading) as a mixin?
+    # TODO: Pull out butler downloader (and attendant multithreading) as a mixin?
     @staticmethod
     @functools.lru_cache(maxsize=128)
     def _request_patch_cached(tract_index, patch_index, butler, skymap_name, bands_tuple):
@@ -654,20 +638,6 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
                     logger.debug(f"Applied band filtering to cached cutout {idx}: {cutout.shape}")
 
                 return self.apply_transform(cutout)
-
-        # For main thread, use parent's method (original caching)
-        # import threading
-
-        # xcxc believe this was in because of butler lifecycle issues. Now that we make butlers
-        # on-demand per thread for all threads this should be fine.
-        #
-        # xcxc TEST THIS!
-        #
-        # if threading.current_thread() is threading.main_thread():
-        #     cutout = super()._fetch_single_cutout(row)
-        #     # When using parent method, assume all original bands were successful
-        #     downloaded_bands = list(self._original_bands) if self._is_filtering_bands else list(self.BANDS)
-        # else:
 
         # For worker threads, use our cached method
         cutout, downloaded_bands = self._fetch_cutout_with_cache(row)
@@ -761,7 +731,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         # Return cutout and downloaded bands info for manifest tracking
         return data_torch, downloaded_bands
 
-    # xcxc todo reimplement cache mixin
+    # TODO: Reimplement cache mixin
     def _load_tensor_for_cache(self, object_id: str):
         """Implementation of TensorCacheMixin abstract method."""
         # Find the catalog index for this object_id
@@ -809,7 +779,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         # Use pre-built mapping for efficiency
         return self._catalog_to_manifest_index_map.get(catalog_idx)
 
-    # xcxc Could remove in lieu of LSSTDataset get_image if butler gets are
+    # TODO: Could remove in lieu of LSSTDataset get_image if butler gets are
     # a mixin
     def get_image(self, idxs):
         """Fetch image cutout(s) for given index or indices, using caching and band filtering.
@@ -839,7 +809,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
 
         return cutouts
 
-    # xcxc Could remove in lieu of LSSTDataset __getitem__ if butler gets are
+    # TODO: Could remove in lieu of LSSTDataset __getitem__ if butler gets are
     # a mixin
     def __getitem__(self, idxs) -> dict:
         """Modified to pass index for saving cutouts.

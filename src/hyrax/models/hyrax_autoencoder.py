@@ -146,8 +146,8 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
-        # Should not be necessary, makes e2e tests pass.
-        import numpy as np
+        # Necessary for e2e tests to pass since this function ends up written out as a file and
+        # must stand alone from imports when loaded for inference
 
         data = data_dict.get("data", {})
 

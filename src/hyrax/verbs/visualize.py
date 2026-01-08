@@ -101,7 +101,9 @@ class Visualize(Verb):
         # If no input directory is specified, read from config.
         if input_dir is None:
             logger.info("UMAP directory not specified at runtime. Reading from config values.")
-            input_dir = self.config["results"]["inference_dir"] if self.config["results"]["inference_dir"] else None
+            input_dir = (
+                self.config["results"]["inference_dir"] if self.config["results"]["inference_dir"] else None
+            )
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")

@@ -112,7 +112,6 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             with self._threaded_butler_update_lock:
                 repo = self._butler_config["repo"]
                 collections = self._butler_config["collections"]
-                # xcxc
                 our_butler = butler.Butler(repo, collections=collections)
                 self._threaded_butler[thread_ident] = our_butler
 
@@ -137,10 +136,6 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             raise RuntimeError(msg)
 
         return object_id_column_name
-        # xcxc todo check and remove this since self.use_object_id is no more
-        # if not self.use_object_id:
-        #     dataset_length = len(self.catalog)
-        #     self.padding_length = max(4, len(str(dataset_length)))
 
     def _load_catalog(self, data_set_config):
         """
@@ -229,9 +224,6 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         """
 
         return {"data": {"image": self.get_image(idxs)}}
-
-    # def __getitems__(self, idxs):
-    #     return __getitem__(self, idxs)
 
     def _parse_box(self, patch, row):
         """
