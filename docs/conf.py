@@ -14,8 +14,8 @@ sys.path.insert(0, os.path.abspath("../src/"))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "hyrax"
-copyright = "2025, LINCC Frameworks"
+project = "Hyrax"
+copyright = "2026, LINCC Frameworks"
 author = "LINCC Frameworks"
 release = version("hyrax")
 # for example take major/minor
@@ -29,6 +29,7 @@ extensions = ["sphinx.ext.mathjax", "sphinx.ext.napoleon", "sphinx.ext.viewcode"
 extensions.append("autoapi.extension")
 extensions.append("nbsphinx")
 extensions.append("sphinx_tabs.tabs")
+extensions.append("sphinx_design")
 
 # -- sphinx-copybutton configuration ----------------------------------------
 extensions.append("sphinx_copybutton")
