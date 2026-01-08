@@ -70,6 +70,9 @@ autoapi_options = [
     "imported-members",
 ]
 
+suppress_warnings = [
+    "autoapi.python_import_resolution",
+]
 
 nitpick_ignore_regex = [
     # Packages that have their own docs

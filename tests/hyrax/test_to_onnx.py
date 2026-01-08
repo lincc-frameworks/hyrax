@@ -69,7 +69,7 @@ def test_to_onnx_successful_export(trained_hyrax):
 
     onnx_file = onnx_files[0]
     # Check filename pattern: <model_name>_opset_<version>.onnx (opset version only)
-    assert "_opset_" in onnx_file.name
+    assert "model" in onnx_file.name
     assert onnx_file.suffix == ".onnx"
 
 

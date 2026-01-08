@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 import onnx
 import onnxruntime
@@ -26,10 +25,8 @@ def export_to_onnx(model, sample, config, ctx):
     """
 
     # build the output ONNX file path
-    model_filename = Path(config["train"]["weights_filename"]).stem
     onnx_opset_version = config["onnx"]["opset_version"]
-    onnx_model_filename = f"{model_filename}_opset_{onnx_opset_version}.onnx"
-    onnx_output_filepath = ctx["results_dir"] / onnx_model_filename
+    onnx_output_filepath = ctx["results_dir"] / "model.onnx"
 
     # use the "ml_framework" context value to determine how to convert to ONNX.
     sample_out = None
@@ -78,10 +75,21 @@ def export_to_onnx(model, sample, config, ctx):
 
 
 def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):
-    """Specific implementation to convert PyTorch model to ONNX format. This
-    function will also:
-    -  Run `sample` through the model before converting the model to ONNX
-    -  Convert `sample` to a numpy array
+    """Specific implementation to convert PyTorch model to ONNX format. This uses
+    the older (torch<2.9) export capabilities. And only supports up the opset
+    version 20.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The PyTorch model to be converted to ONNX format.
+    sample : np.ndarray or list of np.ndarray
+        A sample of input data to the model. This is used to trace the model
+        during the export process.
+    output_filepath : pathlib.Path
+        The file path where the ONNX model will be saved.
+    opset_version : int
+        The ONNX opset version to use for the export.
     """
 
     # deferred import to reduce start up time
@@ -106,18 +114,22 @@ def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):
     input_names = []
     dynamic_axes = {}
 
-    # ! Currently `sample` is either a tuple or bare numpy array. But after it
-    # ! goes through `default_convert` above, it becomes a list of Tensors.
+    # torch_sample is returned from default_convert as either a single Tensor or
+    # a list of Tensors.
     if isinstance(torch_sample, list):
         for i in range(len(torch_sample)):
             # For supervised models, the label or target should be empty
-            # so we will not include those in the input names.
+            # so we will not include those in the input names. Any labels should
+            # be the last element in the list.
             if len(torch_sample[i]):
                 input_names.append(f"input_{i}")
                 dynamic_axes[f"input_{i}"] = {0: "batch_size"}
     else:
         input_names.append("input")
         dynamic_axes["input"] = {0: "batch_size"}
+
+    # Output is assumed to always have a dynamic batch size.
+    dynamic_axes["output"] = {0: "batch_size"}
 
     # export the model to ONNX format
     export(
@@ -128,6 +140,7 @@ def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):
         input_names=input_names,
         output_names=["output"],
         dynamic_axes=dynamic_axes,
+        dynamo=False,  # newer versions of torch will use dynamo by default
     )
 
     # Make sure that the output is on the CPU
@@ -135,4 +148,65 @@ def _export_pytorch_to_onnx(model, sample, output_filepath, opset_version):
         sample_out = sample_out.to("cpu")
 
     # Return the output of the model as numpy array
-    return sample_out.numpy()
+    return sample_out.detach().numpy()
+
+
+def _export_pytorch_to_onnx_v2(model, sample, output_filepath, opset_version):
+    """Currently unused.
+    Specific implementation to convert PyTorch model to ONNX format using
+    torch Dynamo export capabilities.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The PyTorch model to be converted to ONNX format.
+    sample : np.ndarray or list of np.ndarray
+        A sample of input data to the model. This is used to trace the model
+        during the export process.
+    output_filepath : pathlib.Path
+        The file path where the ONNX model will be saved.
+    opset_version : int
+        The ONNX opset version to use for the export.
+    """
+
+    # deferred import to reduce start up time
+    import torch
+    from torch.onnx import export
+    from torch.utils.data.dataloader import default_convert
+
+    # set model in eval mode and move it to the CPU to prep for export to ONNX.
+    model.train(False)
+    model.to("cpu")
+
+    # set the default device to CPU and convert the sample to torch Tensors
+    torch.set_default_device("cpu")
+    torch_sample = default_convert(sample)
+
+    # Run a single sample through the model. We'll check this against the output
+    # from the ONNX version to make sure it's the same, i.e. `np.assert_allclose`.
+    sample_out = model(torch_sample)
+    # Make sure that the output is on the CPU, detached, and as a numpy array
+    sample_out = sample_out.to("cpu").detach().numpy()
+
+    dynamic_shapes = []
+    batch = torch.export.Dim("batch")
+
+    # TODO: This should be built dynamically based on the structure of torch_sample.
+    dynamic_shapes = [[{0: batch}, {0: batch}, {}]]
+
+    export(
+        model,
+        (torch_sample,),  # exporter expects a tuple of inputs for `forward`
+        output_filepath,
+        opset_version=opset_version,
+        dynamo=True,
+        dynamic_shapes=dynamic_shapes,
+        verbose=True,
+        report=True,
+        dump_exported_program=True,
+        artifacts_dir=output_filepath.parent,
+        input_names=["input"],
+        output_names=["output"],
+    )
+
+    return sample_out

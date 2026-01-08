@@ -35,7 +35,7 @@ class Engine(Verb):
         [x] Implement a simple strategy for reading in batches of data samples
         [x] Process the samples with any custom collate functions as well as a default collate function
         [x] Pass the collated batch to the appropriate to_tensor function
-        [ ] Send that output to the ONNX-ified model
+        [x] Send that output to the ONNX-ified model
         [x] Persist the results of inference.
         """
         from pathlib import Path
@@ -46,7 +46,7 @@ class Engine(Verb):
             create_results_dir,
             find_most_recent_results_dir,
         )
-        from hyrax.data_sets.inference_dataset import InferenceDatasetWriter
+        from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
         from hyrax.plugin_utils import load_to_tensor
         from hyrax.pytorch_ignite import setup_dataset
 
@@ -94,7 +94,7 @@ class Engine(Verb):
         # as a type hint. So we may need to separate InferenceDataset and IDWriter
         # to remove that dependency.
         result_dir = create_results_dir(config, "engine")
-        self.results_writer = InferenceDatasetWriter(infer_dataset, result_dir)
+        self.results_writer = InferenceDataSetWriter(infer_dataset, result_dir)
 
         # Work through the dataset in steps of `batch_size`
         for start_idx in range(0, len(infer_dataset), batch_size):
@@ -108,9 +108,21 @@ class Engine(Verb):
             # ~ Pass the collated batch to the to_tensor function
             prepared_batch = to_tensor_fn(collated_batch)
 
-            # Then we would send that output to the ONNX-ified model.
-            ort_inputs = {ort_session.get_inputs()[0].name: prepared_batch}
-            onnx_results = ort_session.run(None, ort_inputs)  # infer with ONNX
+            # Create the inputs array for the ONNX model using the expected inputs
+            # from the loaded ONNX model and the type and shape of the prepared batch.
+            ort_inputs = {}
+            if isinstance(prepared_batch, tuple):
+                for i in range(len(prepared_batch)):
+                    # For a supervised model, we expect that at least one of the
+                    # element in the prepared batch will be empty, so we only
+                    # add non-empty inputs.
+                    if len(prepared_batch[i]):
+                        ort_inputs[ort_session.get_inputs()[i].name] = prepared_batch[i]
+            else:
+                ort_inputs = {ort_session.get_inputs()[0].name: prepared_batch}
+
+            # Run the ONNX model with the prepared batch as input
+            onnx_results = ort_session.run(None, ort_inputs)
 
             # ~ Finally, we persist the results of inference.
             # For now, collated_batch will always have an "object_id" key that
@@ -122,8 +134,10 @@ class Engine(Verb):
                 msg += f"Could not determine object IDs from batch. Batch has keys {collated_batch.keys()}"
                 raise RuntimeError(msg)
 
-            # ~ We may not need to do the list comprehension for batch_results, it's
-            # possible that ONNX will already return it in this form.
-            self.results_writer.write_batch(collated_batch["object_id"], [t for t in onnx_results])
+            # Save the output of the onnx model per batch. Onnx results are
+            # returned as a 1-element list containing a numpy array with first
+            # dimension as batch size.
+            self.results_writer.write_batch(collated_batch["object_id"], [i for i in onnx_results[0]])
 
+        # Write the final index file for the inference results.
         self.results_writer.write_index()

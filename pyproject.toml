@@ -51,6 +51,7 @@ dependencies = [
     "tqdm", # Used to show progress bars
     "qdrant-client", # Vector database for similarity search
     "colorama", # Used to color terminal output
+    "numba==0.63.1",
 ]
 
 [project.scripts]

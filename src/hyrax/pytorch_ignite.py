@@ -200,7 +200,7 @@ def dist_data_loader(
 
     Parameters
     ----------
-    dataset : hyrax.data_sets.HyraxDataset
+    dataset : hyrax.data_sets.data_set_registry.HyraxDataset
         A Hyrax dataset instance
     config : dict
         Hyrax runtime configuration
@@ -558,6 +558,7 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
     config : dict
         The runtime config in use
     """
+    torch.set_default_device(device.type)
     return Engine(_create_process_func(funcname, device, model, config))
 
 
@@ -655,7 +656,7 @@ def create_validator(
         The tensorboard logger object
     validation_data_loader : DataLoader
         The data loader for the validation data
-    trainer : Engine
+    trainer : pytorch-ignite.Engine
         The engine object that will be used to train the model. We will use specific
         hooks in the trainer to determine when to run the validation engine.
 

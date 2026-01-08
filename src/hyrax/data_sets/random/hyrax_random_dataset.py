@@ -47,7 +47,7 @@ class HyraxRandomDatasetBase:
         - ``provided_labels``: A list of possible labels to randomly select from.
           If this is provided, the dataset will randomly select a label for each data sample.
         - ``metadata_fields``: A list of metadata field names. Used to create a metadata
-            table with columns corresponding to each field name. All data is numeric.
+          table with columns corresponding to each field name. All data is numeric.
         - ``number_invalid_values``: The number of invalid values to insert into the data.
         - ``invalid_value_type``: The type of invalid value to insert into the data.
           Valid values are "nan", "inf", "-inf", "none", or a float value.
@@ -157,8 +157,10 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
     """
 
     def __getitem__(self, idx: int) -> dict:
-        """Get a data sample by index. The returned dictionary will contain the
-        following keys
+        """Get a data sample by index.
+
+        The returned dictionary will contain the following keys:
+
         - ``index``: The index of the data sample.
         - ``object_id``: The ID of the data sample.
         - ``image``: The data sample as a numpy array.
@@ -216,12 +218,14 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
 
     def __iter__(self):
         """Yield the next data sample. The returned dictionary will have the
-        following form
-        - ``data``: A dictionary containing the following keys
-        -- ``index``: The index of the data sample.
-        -- ``object_id``: The value will be the same as ``index`` for this dataset.
-        -- ``image``: The data sample as a numpy array.
-        -- ``label``: The label of the data sample (if provided).
+        following form:
+
+        - ``data``: A dictionary containing:
+
+          - ``index``: The index of the data sample.
+          - ``object_id``: The value will be the same as ``index`` for this dataset.
+          - ``image``: The data sample as a numpy array.
+          - ``label``: The label of the data sample (if provided).
 
         Returns
         -------

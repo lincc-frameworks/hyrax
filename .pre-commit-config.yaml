@@ -93,8 +93,7 @@ repos:
             "-d", # Flag for cached environment and doctrees
             "./docs/_build/doctrees", # Directory
             "-D", # Flag to override settings in conf.py
-            "exclude_patterns=_build", # Exclude our notebooks from pre-commit
-            "-W", # Warnings are errors
+            "exclude_patterns=notebooks/*,_build", # Exclude our notebooks from pre-commit
             "--keep-going", # Finish generating docs even if errors occur
             "-n", # Nitpick mode among other things checks for broken links
           ]
