@@ -5,15 +5,10 @@ Hyrax
 A low-code solution for rapid experimentation with machine learning in astronomy
 --------------------------------------------------------------------------------
 
-Large astronomical surveys generate unprecedented volumes of data that demand
-machine learning for analysis and discovery.
-The challenge for users lies in the substantial infrastructure and effort required
-to acquire data and utilize machine learning at scale.
-
-Hyrax is an extensible platform that covers the entire machine learning
-workflow in astronomy.
-It enables easy experimentation with models and analysis of results while saving
-users from writing boilerplate code.
+Hyrax is an extensible platform that handles much of the boilerplate code that
+is often required for a machine learning project in astronomy.
+Hyrax users are able to focus on the science work of model development and
+results analysis instead of infrastructrue.
 
 
 .. figure:: _static/hyrax_box.png
@@ -37,6 +32,21 @@ users from writing boilerplate code.
        :link-type: doc
 
        Scientific machine learning with Hyrax
+
+.. grid:: 1 1 2 2
+
+   .. grid-item-card:: Core Concepts
+       :link: core_concepts
+       :link-type: doc
+
+       Deep dives to get the most out of Hyrax
+
+   .. grid-item-card:: API Reference
+       :link: reference_and_faq
+       :link-type: doc
+
+       Detailed description of the Hyrax API
+
 
 .. toctree::
    :hidden:
