@@ -23,7 +23,7 @@ repos:
         entry: jupyter nbconvert --clear-output
     # Prevents committing directly branches named 'main' and 'master'.
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v6.0.0
+    rev: v4.4.0
     hooks:
       - id: no-commit-to-branch
         name: Prevent main branch commits
@@ -41,7 +41,7 @@ repos:
         description: Verify that pyproject.toml adheres to the established schema.
     # Verify that GitHub workflows are well formed
   - repo: https://github.com/python-jsonschema/check-jsonschema
-    rev: 0.34.1
+    rev: 0.28.0
     hooks:
       - id: check-github-workflows
         args: ["--verbose"]

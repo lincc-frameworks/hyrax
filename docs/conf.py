@@ -54,7 +54,7 @@ add_module_names = False
 
 autoapi_type = "python"
 autoapi_dirs = ["../src/hyrax", "../src/hyrax_cli"]
-autoapi_ignore = ["*/__main__.py", "*3d_viz*"]  # , "*downloadCutout*"]
+autoapi_ignore = ["*/__main__.py", "*/_version.py", "*3d_viz*"]  # , "*downloadCutout*"]
 autoapi_add_toc_tree_entry = False
 autoapi_member_order = "bysource"
 # Useful for tracking down sphinx errors in autodoc's generated files from a sphinx warning

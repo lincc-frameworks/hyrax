@@ -134,15 +134,7 @@ class HyraxDataset:
         bool
             True if underlying dataset is iterable
         """
-        #        from torch.utils.data import Dataset, IterableDataset
-
         return hasattr(cls, "__iter__")
-
-        # if issubclass(cls, (Dataset, IterableDataset)):
-        #     # All torch IterableDatasets are also Datasets
-        #     return issubclass(cls, IterableDataset)
-        # else:
-        #     return hasattr(cls, "__iter__")
 
     @classmethod
     def is_map(cls):
@@ -411,7 +403,7 @@ def iterable_dataset_collate(batch: list[dict]) -> dict:
     Raises
     ------
     RuntimeError
-        If internal dictionary logic fails. This usually means an error in the structure of the input 
+        If internal dictionary logic fails. This usually means an error in the structure of the input
         dictionary.
     """
     import numpy as np
