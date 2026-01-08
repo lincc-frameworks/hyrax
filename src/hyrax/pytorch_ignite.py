@@ -519,7 +519,7 @@ def _inner_loop(func, to_tensor, device, config, engine, batch):
     # explicitly specifies a different device.
     #
     # The hope is that even in the presence of user code in datasets that might manipulate tensors
-    # with torch primitives, functionally all of the tensors get clocked out the the GPU by this
+    # with torch primitives, functionally all of the tensors get clocked out to the GPU by this
     # line of code.
     #
     # We use torch.from_numpy() over torch.tensor() to avoid the copy of data that occurs in the latter.
