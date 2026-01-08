@@ -116,7 +116,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
 
     def get_objectId(self, idx):  # noqa: N802
         """Get object ID for a given index based on naming strategy."""
-        return str(self.catalog[idx][self.object_id_column])
+        return str(self.catalog[idx][self.oid_column_name])
 
     def ids(self, log_every=None):
         """Generator yielding object IDs for the entire dataset. Required by TensorCacheMixin"""
@@ -346,8 +346,6 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
                 manifest_idx = manifest_lookup[catalog_obj_id]
                 self._catalog_to_manifest_index_map[catalog_idx] = manifest_idx
                 self._manifest_to_catalog_index_map[manifest_idx] = catalog_idx
-            # else:
-            #    raise ValueError(f"Object ID {catalog_obj_id} from catalog not found in manifest")
 
     def _add_manifest_columns_to_table(self, table):
         """Add cutout_shape, filename, and downloaded_bands columns to manifest."""
