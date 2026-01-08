@@ -4,7 +4,6 @@ import sys
 import numpy as np
 import pytest
 from astropy.table import Table
-from torch import from_numpy
 from torch.utils.data import Dataset, IterableDataset
 
 import hyrax
@@ -70,7 +69,7 @@ class RandomDataset(HyraxDataset, Dataset):
         super().__init__(config, metadata_table)
 
     def __getitem__(self, idx):
-        return from_numpy(self.data[idx])
+        return np.array(self.data[idx])
 
     def __len__(self):
         return len(self.data)
@@ -90,7 +89,7 @@ class RandomIterableDataset(RandomDataset, IterableDataset):
 
     def __iter__(self):
         for item in self.data:
-            yield from_numpy(item)
+            yield item
 
 
 @pytest.fixture(scope="function", params=["HyraxRandomDataset", "HyraxRandomIterableDataset"])
@@ -145,6 +144,9 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["data_set"]["validate_size"] = 0.2
     h.config["data_set"]["test_size"] = 0.2
     h.config["data_set"]["train_size"] = 0.6
+
+    if request.param == "HyraxRandomIterableDataset":
+        h.config["data_loader"]["collate_fn"] = "hyrax.data_sets.iterable_dataset_collate"
 
     weights_file = results_dir / "fakeweights"
     with open(weights_file, "a"):

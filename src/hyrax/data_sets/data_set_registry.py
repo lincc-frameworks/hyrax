@@ -134,13 +134,7 @@ class HyraxDataset:
         bool
             True if underlying dataset is iterable
         """
-        from torch.utils.data import Dataset, IterableDataset
-
-        if issubclass(cls, (Dataset, IterableDataset)):
-            # All torch IterableDatasets are also Datasets
-            return issubclass(cls, IterableDataset)
-        else:
-            return hasattr(cls, "__iter__")
+        return hasattr(cls, "__iter__")
 
     @classmethod
     def is_map(cls):
@@ -388,3 +382,70 @@ class HyraxImageDataset:
             msg = f"{transform_str} is not a valid numpy function.\n"
             msg += "The string passed to the transform variable needs to be a numpy function"
             raise RuntimeError(msg) from err
+
+
+def iterable_dataset_collate(batch: list[dict]) -> dict:
+    """
+    Collate function used for iterable datasets since they do not work with DataProviders default collate
+
+    Enable with h.config["data_loader"]["collate_fn"] = "hyrax.data_sets.iterable_dataset_collate"
+
+    Parameters
+    ----------
+    batch : list[dict]
+        The batch of data dictionaries returned from the iterble dataset
+
+    Returns
+    -------
+    dict
+        Dict where each non-dict value is a np.array of items, ready for further hyrax processing.
+
+    Raises
+    ------
+    RuntimeError
+        If internal dictionary logic fails. This usually means an error in the structure of the input
+        dictionary.
+    """
+    import numpy as np
+
+    # Assume that all lists in the dict have the same key structure
+    retval = batch[0]
+
+    # Use the first dict to lay down some empty lists
+    def dict_to_lists(dict_to_convert):
+        newdict = {}
+        for key, value in dict_to_convert.items():
+            if isinstance(value, dict):
+                newdict[key] = dict_to_lists(value)
+            else:
+                newdict[key] = []
+        return newdict
+
+    retval = dict_to_lists(retval)
+
+    # Go through each item in the batch, append to the lists
+    def append_dict(dict_of_lists, dict_item):
+        for key, value in dict_item.items():
+            if isinstance(value, dict):
+                append_dict(dict_of_lists[key], value)
+            else:
+                dict_of_lists[key].append(value)
+
+        return dict_of_lists
+
+    for item in batch:
+        append_dict(retval, item)
+
+    # Convert all the lists to ndarrays
+    def convert_dict(dict_of_lists):
+        for key, value in dict_of_lists.items():
+            if isinstance(value, dict):
+                dict_of_lists[key] = convert_dict(value)
+            elif isinstance(value, list):
+                dict_of_lists[key] = np.array(value)
+            else:
+                raise RuntimeError("HyraxRandomIterableDataset found non-list value")
+        return dict_of_lists
+
+    retval = convert_dict(retval)
+    return retval
