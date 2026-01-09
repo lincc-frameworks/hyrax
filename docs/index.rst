@@ -57,4 +57,5 @@ results analysis instead of infrastructrue.
    Common workflows <common_workflows>
    Science examples <science_examples>
    Scaling and Deployment <scaling_and_deployment>
+   Sample Jupyter notebooks <notebooks>
    Reference and FAQ <reference_and_faq>
