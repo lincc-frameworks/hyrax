@@ -53,6 +53,7 @@ results analysis instead of infrastructrue.
 
    Getting started <getting_started>
    Core concepts <core_concepts>
+   Hyrax verbs <verbs>
    Common workflows <common_workflows>
    Science examples <science_examples>
    Scaling and Deployment <scaling_and_deployment>
