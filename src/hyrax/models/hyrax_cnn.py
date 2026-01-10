@@ -66,13 +66,7 @@ class HyraxCNN(nn.Module):
         return int((numerator / stride) + 1)
 
     def forward(self, x):
-        # This check is inefficient - we assume that the example CNN will be primarily
-        # used with the CIFAR10 dataset. During training, the `train_step` method
-        # will unpack the tuple and only pass the first element to the `forward` method.
-        # But for inference the entire tuple is passed in, so we need to handle
-        # both cases.
-        if isinstance(x, (tuple, list)):
-            x, _ = x
+        x, _ = x  # Unpack data and ignore labels
 
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
@@ -96,7 +90,7 @@ class HyraxCNN(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        inputs, labels = batch
+        _, labels = batch
 
         self.optimizer.zero_grad()
         outputs = self(batch)
@@ -111,11 +105,13 @@ class HyraxCNN(nn.Module):
         This works exclusively with numpy data types and returns
         a tuple of numpy data types."""
 
+        import numpy as np
+
         if "data" not in data_dict:
             raise RuntimeError("Unable to find `data` key in data_dict")
 
         data = data_dict["data"]
-        image = data.get("image", np.ndarray([]))
-        label = data.get("label", np.ndarray([]))
+        image = np.asarray(data["image"], dtype=np.float32)
+        label = np.asarray(data.get("label", []), dtype=np.int64)
 
         return (image, label)

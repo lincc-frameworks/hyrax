@@ -22,7 +22,7 @@ results analysis instead of infrastructrue.
 .. grid:: 1 1 2 2
 
    .. grid-item-card:: Getting Started
-       :link: pre_executed/train_model
+       :link: getting_started
        :link-type: doc
 
        Installation and first steps with Hyrax
@@ -51,7 +51,7 @@ results analysis instead of infrastructrue.
 .. toctree::
    :hidden:
 
-   Getting started <pre_executed/train_model>
+   Getting started <getting_started>
    Core concepts <core_concepts>
    Common workflows <common_workflows>
    Science examples <science_examples>
