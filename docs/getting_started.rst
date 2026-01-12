@@ -56,9 +56,11 @@ from the PyTorch CIFAR10 tutorial.
 Defining the dataset
 ~~~~~~~~~~~~~~~~~~~~~~
 
-We'll also need to tell Hyrax what data should be used for training.
-Again, we'll use a built-in option here and tell Hyrax to use the CIFAR10 dataset.
-You can learn more about the dataset at the offical site:
+We'll also need to tell Hyrax what data should be used for training, in this case
+the CIFAR10 dataset.
+Hyrax has a built in dataset class for working with CIFAR10 data, so we'll configure
+that here.
+You can learn more about the CIFAR10 at the offical site:
 https://www.cs.toronto.edu/~kriz/cifar.html
 
 .. code-block:: python
@@ -77,24 +79,22 @@ https://www.cs.toronto.edu/~kriz/cifar.html
 
     h.set_config("model_inputs", model_inputs_definition)
 
-This may appear overwhelming at first, especially for a simple case, but being
-explicite about the dataset configuration allows for great flexibility down the
-line when working with more complex data.
+This may appear overwhelming, especially for a simple case, but being explicit
+about the dataset configuration will allow for great flexibility down the line
+when working with more complex data.
 
 Training the model
 ~~~~~~~~~~~~~~~~~~
 
-With a model and dataset specified, we're ready to train the model.
+Now that we have the model and data specified, we're ready for training.
 We'll use the ``train`` verb to kick off the training process.
 
 .. code-block:: python
 
    h.train()
 
-By default this will train for 10 epochs using the training dataset we defined
-previously.
-Once it finishes, the trained model weights will be saved in a timestamped directory
-with a name similar to ``/<date-time>-train-<4-random-characters>``.
+Once the training is complete, the model weights will be saved in a timestamped
+directory with a name similar to ``/YYYYmmdd-HHMMSS-train-xxxx``.
 
 
 Testing the model

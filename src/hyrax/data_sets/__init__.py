@@ -24,8 +24,8 @@ with the hyrax ``download`` verb. It contains additional integrity checks and is
 the ``download`` and ``rebuild_manifest`` verbs. In future this class and the downloader may become a
 separate package.
 
-:doc:`HyraxCifarDataset <hyrax_cifar_data_set/index>` and
-:doc:`HyraxCifarIterableDataset <hyrax_cifar_data_set/index>` give access to the standard
+:doc:`HyraxCifarDataset <hyrax_cifar_dataset/index>` and
+:doc:`HyraxCifarIterableDataset <hyrax_cifar_dataset/index>` give access to the standard
 `CIFAR10 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ labeled image dataset, automatically downloading the
 dataset if it is not present. These datasets are useful for testing hyrax and occasionally individual models,
 but they are not astronomical datasets.
