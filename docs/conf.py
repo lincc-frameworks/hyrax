@@ -103,6 +103,7 @@ nitpick_ignore_regex = [
     (r"^py:.*", r"^pd\..*"),
     (r"^py:.*", r"^threading\..*"),
     (r"^py:.*", r"^enum\..*"),
+    (r"^py:class", r"^butler$"),
     # Types and idiomatic ways we document types
     (r"^py:.*", r"^T$"),
     (r"^py:class", r"^[oO]ptional[:]?$"),
@@ -125,6 +126,8 @@ nitpick_ignore_regex = [
     (r"^py:.*", r"^dim_dict$"),
     (r"^py:.*", r"^dC.Rect$"),
     (r"^py:.*", r"^hyrax.downloadCutout.downloadCutout.Rect$"),
+    (r"^py:.*", "VERSION_TUPLE"),
+    (r"^py:.*", "COMMIT_ID"),
 ]
 
 html_theme = "sphinx_book_theme"

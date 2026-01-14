@@ -131,7 +131,7 @@ class HyraxRandomDatasetBase:
         # Create a metadata_table that is used when visualizing data
         metadata_table = Table(meta)
 
-        super().__init__(config, metadata_table)
+        super().__init__(config, metadata_table, "object_id")
 
         self.data_location = data_location
 
@@ -165,6 +165,7 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         - ``object_id``: The ID of the data sample.
         - ``image``: The data sample as a numpy array.
         - ``label``: The label of the data sample (if provided).
+
 
         Parameters
         ----------

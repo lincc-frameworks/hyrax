@@ -1,7 +1,6 @@
 # ruff: noqa: D101, D102
 import logging
 
-import numpy as np
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
@@ -146,6 +145,10 @@ class HyraxAutoencoder(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
+        # Necessary for e2e tests to pass since this function ends up written out as a file and
+        # must stand alone from imports when loaded for inference
+        import numpy as np  # noqa: F811
+
         data = data_dict.get("data", {})
 
         image = data.get("image", np.ndarray([]))

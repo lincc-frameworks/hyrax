@@ -22,7 +22,7 @@ from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from tensorboardX import SummaryWriter
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler, default_convert
+from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
@@ -513,11 +513,21 @@ def _inner_loop(func, to_tensor, device, config, engine, batch):
     # ! Nan handling will be moved to DataProvider in the near future
     batch = _handle_nans(batch, config)
 
-    # Convert the data to pytorch Tensors with torch's `default_convert`.
-    # Note - The `_inner_loop` function is called during the `train` and `infer`
-    # verbs when the model is a torch model. Thus we _always_ want the batch to
-    # be Tensors.
-    batch = default_convert(batch)
+    # Convert the data to numpy and place it on the device explicitly.
+    # This allows us to control when the tensor makes it on to the device without setting
+    # torch.default_device. Thus user code will default to making 'cpu' tensors unless the user
+    # explicitly specifies a different device.
+    #
+    # The hope is that even in the presence of user code in datasets that might manipulate tensors
+    # with torch primitives, functionally all of the tensors get clocked out to the GPU by this
+    # line of code.
+    #
+    # We use torch.from_numpy() over torch.tensor() to avoid the copy of data that occurs in the latter.
+
+    if isinstance(batch, tuple):
+        batch = tuple(torch.from_numpy(i).to(device) for i in batch)
+    else:
+        batch = torch.from_numpy(batch).to(device)
 
     return func(batch)
 

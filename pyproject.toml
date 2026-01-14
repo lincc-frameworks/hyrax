@@ -77,11 +77,14 @@ dev = [
     "ruff", # Used for static linting of files
     "sphinx",
     "sphinx-autoapi",
+    "sphinx-book-theme",
+    "sphinx-design",
     "nbsphinx",
     "sphinx-tabs",
     "sphinx-copybutton",
     "sphinx-togglebutton",
     "sphinx-rtd-theme",
+    "lsdb", # Used to test lsst dataset classes
 ]
 
 [build-system]

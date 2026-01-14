@@ -1,5 +1,6 @@
 import functools
 import logging
+import threading
 from pathlib import Path
 
 from torch.utils.data import Dataset
@@ -15,8 +16,9 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
     """
 
     BANDS = ["u", "g", "r", "i", "z", "y"]
+    object_id_autodetect_names = ["object_id", "objectId"]
 
-    def __init__(self, config, data_location):
+    def __init__(self, config, data_location=None):
         """
         .. py:method:: __init__
 
@@ -27,19 +29,21 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         - config["data_set"]["astropy_table"]: path to any file readable by Astropy Table
 
         """
-        try:
-            import lsst.daf.butler as butler
 
-            self.butler = butler.Butler(
-                config["data_set"]["butler_repo"], collections=config["data_set"]["butler_collection"]
-            )
-            self.skymap = self.butler.get("skyMap", {"skymap": config["data_set"]["skymap"]})
-        except ImportError:
+        if self._butler_available():
+            self._butler_config = {
+                "repo": config["data_set"]["butler_repo"],
+                "collections": config["data_set"]["butler_collection"],
+                "skymap": config["data_set"]["skymap"],
+            }
+
+            self._threaded_butler = {}
+            self._threaded_butler_update_lock = threading.Lock()
+        else:
             msg = "Did not detect a Butler. You may need to run on the RSP"
             msg += ""
             logger.info(msg)
-            self.butler = None
-            self.skymap = None
+            self._butler_config = None
 
         # Set filters from config if provided, otherwise use class default
         if "filters" in config["data_set"] and config["data_set"]["filters"]:
@@ -60,10 +64,78 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         self.sh_deg = config["data_set"]["semi_height_deg"]
         self.sw_deg = config["data_set"]["semi_width_deg"]
 
+        self.oid_column_name = (
+            config["data_set"]["object_id_column_name"]
+            if config["data_set"]["object_id_column_name"]
+            else self._detect_object_id_column_name()
+        )
+
+        # TODO: Metadata from the catalog
+        super().__init__(config, self.catalog, self.oid_column_name)
+
         self.set_function_transform()
         self.set_crop_transform()
 
-        super().__init__(config, metadata_table=self.catalog, object_id_column_name="NOT A REAL COLUMN")
+    def _butler_available(self):
+        try:
+            import lsst.daf.butler as _butler  # noqa: F401
+        except ImportError:
+            return False
+        return True
+
+    def _get_butler_thread_safe(self):
+        """Thread safe butler creation
+
+        This function ensures that there is one and only one butler created per thread
+        and that threads always use their assigned butler.
+
+        This is necessary because child classes of this one use butlers, and butler
+        objects are not safe for multithreaded access.
+
+        Returns
+        -------
+        butler
+            The butler assigned to the current thread.
+        """
+        import lsst.daf.butler as butler
+
+        thread_ident = threading.current_thread().ident
+
+        # Try to get the correct butler for this thread.
+        our_butler = self._threaded_butler.get(thread_ident, None)
+
+        # If we can't get the right butler, grab the lock
+        # (ensuring nobody else is creating one) and make our butler
+        # This process relies on thread idents being unique, and there only being one
+        # LSSTDataset or derived class in runtime at once.
+        if our_butler is None:
+            with self._threaded_butler_update_lock:
+                repo = self._butler_config["repo"]
+                collections = self._butler_config["collections"]
+                our_butler = butler.Butler(repo, collections=collections)
+                self._threaded_butler[thread_ident] = our_butler
+
+        return our_butler
+
+    def _detect_object_id_column_name(self):
+        """Setup file naming strategy based on catalog columns."""
+        catalog_columns = self.catalog.colnames if hasattr(self.catalog, "colnames") else self.catalog.columns
+
+        # Autodetect ID column
+        for object_id_name in LSSTDataset.object_id_autodetect_names:
+            if object_id_name in catalog_columns:
+                object_id_column_name = object_id_name
+                break
+        else:
+            msg = "Must provide an Object ID column in your catalog. This ID must be unique and is used to\n"
+            msg += "track in-progress downloads. It need not be a Rubin generated objectId, but could be.\n"
+            msg += "You can configure the name of your object ID column with \n"
+            msg += "config['data_set']['object_id_column_name']. \n"
+            msg += "If nothing is configured, a column named 'object_id' or 'objectId' will be used\n"
+            msg += "automatically if present in your catalog.\n"
+            raise RuntimeError(msg)
+
+        return object_id_column_name
 
     def _load_catalog(self, data_set_config):
         """
@@ -78,6 +150,8 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
     def _load_hats_catalog(self, hats_path):
         """Load catalog from HATS format using LSDB."""
+        from astropy.table import Table
+
         try:
             import lsdb
         except ImportError as e:
@@ -85,7 +159,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             raise ImportError(msg) from e
 
         # We compute the entire catalog so we have a nested frame which we can access
-        return lsdb.read_hats(hats_path).compute()
+        return Table.from_pandas(lsdb.read_hats(hats_path).compute())
 
     def _load_astropy_catalog(self, table_path):
         """Load catalog from astropy table format or pickled astropy table."""
@@ -97,6 +171,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         table_path = Path(table_path)
 
         # Check if it's a pickle file
+        # Loading a pickle file is significantly faster than Table.read()
         if table_path.suffix.lower() in [".pkl", ".pickle"]:
             with open(table_path, "rb") as f:
                 table = pickle.load(f)
@@ -125,25 +200,14 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             Single cutout tensor or list of cutout tensors.
         """
 
-        from astropy.table import Table
-        from nested_pandas import NestedFrame
-
-        # Handle different catalog types
-        if isinstance(self.catalog, Table):
-            # Astropy table - extract rows directly
-            if isinstance(idxs, (list, tuple)):
-                rows = [self.catalog[idx] for idx in idxs]
-                cutouts = [self._fetch_single_cutout(row) for row in rows]
-                return cutouts
-            else:
-                row = self.catalog[idxs]
-                return self._fetch_single_cutout(row)
+        # Astropy table - extract rows directly
+        if isinstance(idxs, (list, tuple)):
+            rows = [self.catalog[idx] for idx in idxs]
+            cutouts = [self._fetch_single_cutout(row) for row in rows]
+            return cutouts
         else:
-            # NestedFrame (HATS catalog)
-            frame = self.catalog.iloc[idxs]
-            frame = frame if isinstance(frame, NestedFrame) else NestedFrame(frame).T
-            cutouts = [self._fetch_single_cutout(row) for _, row in frame.iterrows()]
-            return cutouts if len(cutouts) > 1 else cutouts[0]
+            row = self.catalog[idxs]
+            return self._fetch_single_cutout(row)
 
     def __getitem__(self, idxs):
         """Get default data fields for the this dataset.
@@ -160,9 +224,6 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         """
 
         return {"data": {"image": self.get_image(idxs)}}
-
-    # def __getitems__(self, idxs):
-    #     return __getitem__(self, idxs)
 
     def _parse_box(self, patch, row):
         """
@@ -227,7 +288,8 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         This function only returns the single principle tract and patch in the case of overlap.
         """
         radec = self._parse_sphere_point(row)
-        tract_info = self.skymap.findTract(radec)
+        skymap = self._get_butler_thread_safe().get("skyMap", {"skymap": self._butler_config["skymap"]})
+        tract_info = skymap.findTract(radec)
         return (tract_info, tract_info.findPatch(radec))
 
     # super basic patch caching
@@ -253,7 +315,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             }
 
             # pull from butler
-            image = self.butler.get("deep_coadd", butler_dict)
+            image = self._get_butler_thread_safe().get("deep_coadd", butler_dict)
             data.append(image.getImage())
         return data
 
