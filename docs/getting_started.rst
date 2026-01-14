@@ -21,9 +21,16 @@ dependencies with other packages you have installed.
 First Steps
 -----------
 
-Some kind of preamble that talks about the CiFAR10 dataset and what we're going to do.
-Similar to the classic PyTorch CIFAR example:
-https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html#training-an-image-classifier
+This getting started example uses Hyrax to train a small convolutional neural network to classify CIFAR data.
+It is based on the PyTorch example here: https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
+
+As part of this example we will:
+
+#. Create a Hyrax instance
+#. Specify a model and a dataset
+#. Train the model
+#. Predict with the model
+#. Evaluate the results
 
 Create a hyrax instance
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -45,7 +52,7 @@ Specify a model
 
 We'll need to let Hyrax know which model to use for training.
 Here we'll tell Hyrax to use the built-in HyraxCNN model that is based on the
-<simple CNN architecture|https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html#define-a-convolutional-neural-network>
+`simple CNN architecture <https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html#define-a-convolutional-neural-network>`__
 from the PyTorch CIFAR10 tutorial.
 
 .. code-block:: python
@@ -97,11 +104,13 @@ Once the training is complete, the model weights will be saved in a timestamped
 directory with a name similar to ``/YYYYmmdd-HHMMSS-train-xxxx``.
 
 
-Testing the model
-~~~~~~~~~~~~~~~~~~
+Predicting with the model
+~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Now that we've trained a model, we can evaluate its performance on the test dataset.
-First we'll add to our model input definition to specify the data to use for inference.
+Now that we've trained a model, we can use it to infer classes of samples from
+the CIFAR10 test dataset.
+First we'll add to our model input definition to specify the data to use for
+inference.
 
 .. code-block:: python
    :linenos:
@@ -125,5 +134,62 @@ the data defined above.
 
 .. code-block:: python
 
-   h.infer()
+   inference_results = h.infer()
 
+
+Evaluate the performance
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Let's compare the models predictions to the actual labels from the test dataset.
+The model's prediction is a 10 element vector where the largest value represents the highest confidence class.
+So we'll extract the index of the max value for each prediction and save that as `predicted_classes`.
+We'll also load the original test data to get the true labels for comparison.
+
+.. code-block:: python
+   :linenos:
+
+   import numpy as np
+   import pickle
+
+   # Accumulate the predicted classes
+   predicted_classes = np.zeros(len(inference_results)).astype(int)
+   for i, result in enumerate(inference_results):
+       predicted_classes[i] = np.argmax(result["model_output"])
+
+   # Load the true labels
+   with open("./data/cifar-10-batches-py/test_batch", "rb") as fo:
+       test_data = pickle.load(fo, encoding="bytes")
+
+
+Using scikit-learn's ``confusion_matrix``, we can compute and display the confusion matrix
+to see how well the model performed on each class.
+
+.. code-block:: python
+   :linenos:
+
+   import matplotlib.pyplot as plt
+   from sklearn.metrics import ConfusionMatrixDisplay, confusion_matrix
+
+   y_true = test_data[b"labels"]
+   y_pred = predicted_classes.tolist()
+
+   correct = 0
+   for t, p in zip(y_true, y_pred):
+       correct += t == p
+
+   print("\nAccuracy for test dataset:", correct / len(y_true))
+
+   cm = confusion_matrix(y_true, y_pred)
+   disp = ConfusionMatrixDisplay(confusion_matrix=cm)
+   disp.plot()
+   plt.show()
+
+.. code-block:: output
+
+   >> Accuracy for test dataset: 0.5003
+
+.. figure:: _static/cifar_confusion_matrix.png
+   :width: 80%
+   :alt: Confusion matrix showing model performance on CIFAR10 test dataset.
+
+   The model performs better than chance, with some classes being predicted more accurately.
