@@ -14,7 +14,7 @@ Hyrax is officially supported and tested with Python versions 3.10, 3.11, 3.12, 
 Other versions may work but are not guaranteed to be compatible.
 
 We strongly encourage the use of a virtual environment when working with Hyrax
-because Hyrax depends on several open source pacakges that may have conflicting
+because Hyrax depends on several open source packages that may have conflicting
 dependencies with other packages you have installed.
 
 
@@ -79,7 +79,7 @@ https://www.cs.toronto.edu/~kriz/cifar.html
                 "dataset_class": "HyraxCifarDataset",
                 "data_location": "./data",
                 "fields": ["image", "label"],
-                "primary_field_id": "object_id",
+                "primary_id_field": "object_id",
             },
         }
     }
@@ -120,7 +120,7 @@ inference.
            "dataset_class": "HyraxCifarDataset",
            "data_location": "./data",
            "fields": ["image"],
-           "primary_field_id": "object_id",
+           "primary_id_field": "object_id",
            "dataset_config": {
                "use_training_data": False,
            },

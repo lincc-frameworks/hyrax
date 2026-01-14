@@ -70,7 +70,7 @@ from .random.hyrax_random_dataset import (
 )
 from .inference_dataset import InferenceDataSet
 from .data_set_registry import HyraxDataset, iterable_dataset_collate
-from .hyrax_cifar_data_set import HyraxCifarBase
+from .hyrax_cifar_dataset import HyraxCifarBase
 from .hyrax_csv_dataset import HyraxCSVDataset
 
 __all__ = [

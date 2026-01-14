@@ -4,7 +4,6 @@
 # https://pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html#define-a-convolutional-neural-network
 import logging
 
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
