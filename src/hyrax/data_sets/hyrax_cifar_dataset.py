@@ -51,7 +51,19 @@ class HyraxCifarBase:
 
     def get_object_id(self, idx):
         """Get the object ID for the item."""
-        return idx
+        return f"{idx:06d}"
+
+    def ids(self):
+        """This is the default IDs function you get when you derive from hyrax Dataset
+
+        Returns
+        -------
+        Generator[str]
+            A generator yielding all the string IDs of the dataset.
+
+        """
+        for x in range(len(self)):
+            yield f"{x:06d}"
 
 
 class HyraxCifarDataset(HyraxCifarBase, HyraxDataset, Dataset):
