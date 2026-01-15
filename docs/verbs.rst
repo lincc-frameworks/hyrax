@@ -69,8 +69,11 @@ the ``[]`` operators in python.
 
 ``umap``
 --------
-Run UMAP on the output of inference or a dataset. By default, Hyrax will use the
-most recently generated output from the ``infer`` verb.
+Run UMAP (`Uniform Manifold Approximation and Projection`_) on the
+output of inference or a dataset. By default, Hyrax will use the most
+recently generated output from the ``infer`` verb.
+
+.. _`Uniform Manifold Approximation and Projection`: https://umap-learn.readthedocs.io
 
 .. tabs::
 
@@ -95,7 +98,7 @@ most recently generated output from the ``infer`` verb.
 
 ``visualize``
 -------------
-Interactively visualize embedded space produced by UMAP.
+Interactively visualize the embedded space produced by the ``umap`` verb.
 Due to the fact that the visualization is interactive, it is not available in the CLI.
 
 .. code-block:: python
