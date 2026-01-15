@@ -1,12 +1,15 @@
 import copy
 import logging
+import time
 from typing import Any
 
 import numpy as np
 
 from hyrax.data_sets.data_set_registry import DATASET_REGISTRY, fetch_dataset_class
+from hyrax.tensorboardx_logger import getTensorboardLogger
 
 logger = logging.getLogger(__name__)
+tensorboardx_logger = getTensorboardLogger()
 
 
 def generate_data_request_from_config(config):
@@ -126,9 +129,17 @@ class DataProvider:
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
 
+        # Tensorboard and timing setup
+        self.tensorboardx_logger = None
+        self.tensorboard_start_ns = time.monotonic_ns()
+
         self.prepare_datasets()
 
         self.pull_up_primary_dataset_methods()
+
+        # Required because of circular import.
+        from hyrax.data_sets.data_cache import DataCache
+        self.data_cache = DataCache(config, self)
 
     def pull_up_primary_dataset_methods(self):
         """If a primary dataset is defined, we will pull up some of its methods
@@ -419,6 +430,13 @@ class DataProvider:
         dict
             A dictionary containing the requested data from the prepared datasets.
         """
+        start_time = time.monotonic_ns()
+        prefix = self.__class__.__name__
+        cached_data = self.data_cache.try_fetch(idx)
+        if cached_data is not None:
+            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
+            return cached_data
+
         returned_data: dict[str, dict[str, Any]] = {}
 
         for friendly_name, fields in self.requested_fields.items():
@@ -438,7 +456,11 @@ class DataProvider:
 
             returned_data["object_id"] = object_id
 
+        self.data_cache.insert_into_cache(idx, returned_data)
+        tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
         return returned_data
+
+
 
     # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
     # ^ we should be able to remove most or all of this method and the metadata_fields method.

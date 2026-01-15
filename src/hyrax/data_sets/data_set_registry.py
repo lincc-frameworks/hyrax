@@ -121,8 +121,6 @@ class HyraxDataset:
                 if not hasattr(self, method_name):
                     setattr(self, method_name, MethodType(_make_getter(col), self))
 
-        self.tensorboardx_logger = None
-
     @classmethod
     def is_iterable(cls):
         """

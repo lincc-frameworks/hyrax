@@ -27,6 +27,7 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 from hyrax.plugin_utils import get_or_load_class
+from hyrax.tensorboardx_logger import getTensorboardLogger
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,7 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     return is_iterable
 
 
-def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None) -> Dataset:
+def setup_dataset(config: dict) -> Dataset:
     """This function creates an instance of the requested dataset specified in the
     runtime configuration. There are two modes encapsulated here:
 
@@ -80,8 +81,6 @@ def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None
     ----------
     config : dict
         The runtime configuration
-    tensorboardx_logger : SummaryWriter, optional
-        If Tensorboard is in use, the tensorboard logger so the dataset can log things
 
     Returns
     -------
@@ -119,8 +118,6 @@ def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None
             data_location = data_definition.get("data_location", None)
             ds = dataset_cls(config=config, data_location=data_location)
 
-            ds.tensorboardx_logger = tensorboardx_logger
-
             dataset[set_name] = ds
 
     else:
@@ -128,8 +125,6 @@ def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None
         # and `infer`. It may have additional sub-tables such as `validate`.
         for key, value in data_request.items():
             ds = DataProvider(config, value)
-            for friendly_name in ds.prepped_datasets:
-                ds.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
             dataset[key] = ds
 
     return dataset
@@ -637,7 +632,6 @@ def create_validator(
     model: torch.nn.Module,
     config: dict,
     results_directory: Path,
-    tensorboardx_logger: SummaryWriter,
     validation_data_loader: DataLoader,
     trainer: Engine,
 ) -> Engine:
@@ -652,8 +646,6 @@ def create_validator(
         Hyrax runtime configuration
     results_directory : Path
         The directory where training results will be saved
-    tensorboardx_logger : SummaryWriter
-        The tensorboard logger object
     validation_data_loader : DataLoader
         The data loader for the validation data
     trainer : pytorch-ignite.Engine
@@ -668,6 +660,7 @@ def create_validator(
 
     device = idist.device()
     model = idist.auto_model(model)
+    tensorboardx_logger = getTensorboardLogger()
 
     validator = create_engine("train_step", device, model, config)
     fixup_engine(validator)
@@ -702,8 +695,8 @@ def create_validator(
 
 
 def create_trainer(
-    model: torch.nn.Module, config: dict, results_directory: Path, tensorboardx_logger: SummaryWriter
-) -> Engine:
+    model: torch.nn.Module, config: dict, results_directory: Path
+    ) -> Engine:
     """This function is originally copied from here:
     https://github.com/pytorch-ignite/examples/blob/main/tutorials/intermediate/cifar10-distributed.py#L164
 
@@ -717,8 +710,6 @@ def create_trainer(
         Hyrax runtime configuration
     results_directory : Path
         The directory where training results will be saved
-    tensorboardx_logger : SummaryWriter
-        The tensorboard logger object
 
     Returns
     -------
@@ -729,6 +720,7 @@ def create_trainer(
     model.train()
     model = idist.auto_model(model)
     trainer = create_engine("train_step", device, model, config)
+    tensorboardx_logger = getTensorboardLogger()
     fixup_engine(trainer)
 
     optimizer = extract_model_method(model, "optimizer")

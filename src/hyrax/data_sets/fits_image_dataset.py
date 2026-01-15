@@ -64,14 +64,16 @@ import numpy.typing as npt
 from torch.utils.data import Dataset
 
 from .data_set_registry import HyraxDataset, HyraxImageDataset
-from .tensor_cache_mixin import TensorCacheMixin
+
+from hyrax.tensorboardx_logger import getTensorboardLogger
 
 logger = logging.getLogger(__name__)
+tensorboardx_logger = getTensorboardLogger()
 
 files_dict = dict[str, dict[str, str]]
 
 
-class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Dataset):
+class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
     """
     Dataset for Fits Images, typically cutouts.
     """
@@ -121,9 +123,6 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Datase
         super().__init__(config, metadata)
 
         self._before_preload()
-
-        # Initialize tensor caching from mixin
-        self._init_tensor_cache(config)
 
     def _init_from_path(self, path: Union[Path, str]):
         """__init__ helper. Initialize an HSC data set from a path. This involves several filesystem scan
@@ -349,7 +348,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Datase
             The image at the given index as a PyTorch Tensor.
         """
         object_id = self.get_object_id(idx)
-        return self._object_id_to_tensor(object_id)
+        return self._read_object_id(object_id)
 
     def __getitem__(self, idx: int):
         if idx >= len(self.files) or idx < 0:
@@ -492,6 +491,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Datase
         from astropy.io import fits
 
         start_time = time.monotonic_ns()
+        prefix = self.__class__.__name__
 
         # Read all the files corresponding to this object
         data = []
@@ -500,18 +500,21 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Datase
             file_start_time = time.monotonic_ns()
             raw_data = fits.getdata(filepath, memmap=False)
             data.append(raw_data)
-            self._log_duration_tensorboard("file_read_time_s", file_start_time)
+            #xcxc Need to put the tensorboard logger in a global place where these accessors can live
+            # Can't have everyone go to dataprovider for this.
+            tensorboardx_logger.log_duration_ts(f"{prefix}/file_read_time_s", file_start_time)
 
-        self._log_duration_tensorboard("object_read_time_s", start_time)
+        tensorboardx_logger.log_duration_ts(f"{prefix}/object_read_time_s", start_time)
 
         data_torch = self._convert_to_torch(data)
-        self._log_duration_tensorboard("object_total_read_time_s", start_time)
+        tensorboardx_logger.log_duration_ts(f"{prefix}/object_total_read_time_s", start_time)
         return data_torch
 
     def _convert_to_torch(self, data: list[npt.ArrayLike]):
         from torch import from_numpy
 
         start_time = time.monotonic_ns()
+        prefix = self.__class__.__name__
 
         # Push all the filter data into a tensor object
         data_np = np.array(data)
@@ -520,9 +523,9 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, TensorCacheMixin, Datase
         # Apply our transform stack
         data_torch = self.transform(data_torch) if self.transform is not None else data_torch
 
-        self._log_duration_tensorboard("object_convert_tensor_time_s", start_time)
+        tensorboardx_logger.log_duration_ts(f"{prefix}/object_convert_tensor_time_s", start_time)
         return data_torch
-
+    
     # TODO: Performance Change when files are read/cache pytorch tensors?
     #
     # This function loads from a file every time __getitem__ is called
