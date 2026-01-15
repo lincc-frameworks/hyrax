@@ -21,6 +21,12 @@ dependencies with other packages you have installed.
 First Steps
 -----------
 
+.. raw:: html
+
+   <a href="https://colab.research.google.com/github/lincc-frameworks/hyrax/blob/main/docs/pre_executed/getting_started.ipynb" target="_blank">
+      <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Run in Google Colab"/>
+   </a>
+
 This getting started example uses Hyrax to train a small convolutional neural network to classify CIFAR data.
 It is based on a similar `PyTorch tutorial <https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html>`__.
 We also use the CIFAR10 dataset:
