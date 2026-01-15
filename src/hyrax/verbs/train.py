@@ -45,6 +45,7 @@ class Train(Verb):
             setup_dataset,
             setup_model,
         )
+        from hyrax.tensorboardx_logger import initTensorboardLogger, closeTensorboardLogger
 
         config = self.config
 
@@ -53,10 +54,10 @@ class Train(Verb):
         log_runtime_config(config, results_dir)
 
         # Create a tensorboardX logger
-        tensorboardx_logger = SummaryWriter(log_dir=results_dir)
+        initTensorboardLogger(log_dir=results_dir)
 
         # Instantiate the model and dataset
-        dataset = setup_dataset(config, tensorboardx_logger)
+        dataset = setup_dataset(config)
         model = setup_model(config, dataset["train"])
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
@@ -82,16 +83,15 @@ class Train(Verb):
             validation_data_loader, _ = data_loaders.get("validate", (None, None))
 
         # Create trainer, a pytorch-ignite `Engine` object
-        trainer = create_trainer(model, config, results_dir, tensorboardx_logger)
+        trainer = create_trainer(model, config, results_dir)
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:
-            create_validator(model, config, results_dir, tensorboardx_logger, validation_data_loader, trainer)
+            create_validator(model, config, results_dir, validation_data_loader, trainer)
 
-        monitor = GpuMonitor(tensorboard_logger=tensorboardx_logger)
+        monitor = GpuMonitor()
 
-        results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-        mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
+        mlflow.set_tracking_uri("file://" + str(results_dir / "mlflow"))
 
         # Get experiment_name and cast to string (it's a tomlkit.string by default)
         experiment_name = str(config["train"]["experiment_name"])
@@ -114,7 +114,7 @@ class Train(Verb):
         monitor.stop()
 
         logger.info("Finished Training")
-        tensorboardx_logger.close()
+        closeTensorboardLogger()
 
         return model
 

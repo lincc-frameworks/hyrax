@@ -51,6 +51,7 @@ class Infer(Verb):
             setup_dataset,
             setup_model,
         )
+        from hyrax.tensorboardx_logger import initTensorboardLogger, closeTensorboardLogger
 
         config = self.config
         context = {}
@@ -59,9 +60,9 @@ class Infer(Verb):
         results_dir = create_results_dir(config, "infer")
 
         # Create a tensorboardX logger
-        tensorboardx_logger = SummaryWriter(log_dir=results_dir)
+        initTensorboardLogger()
 
-        dataset = setup_dataset(config, tensorboardx_logger)
+        dataset = setup_dataset(config)
         model = setup_model(config, dataset["infer"])
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL} "
@@ -152,7 +153,7 @@ class Infer(Verb):
         data_writer.write_index()
 
         # Write out our tensorboard stuff
-        tensorboardx_logger.close()
+        closeTensorboardLogger()
 
         # Log completion
         logger.info("Inference Complete.")

@@ -3,6 +3,7 @@ import time
 from dataclasses import dataclass
 from subprocess import PIPE, Popen
 from threading import Thread
+from hyrax.tensorboardx_logger import getTensorboardLogger
 
 
 class GpuMonitor(Thread):
@@ -10,12 +11,12 @@ class GpuMonitor(Thread):
     to Tensorboard.
     """
 
-    def __init__(self, tensorboard_logger, interval_seconds=1):
+    def __init__(self, interval_seconds=1):
         super().__init__()
         self.stopped = False
         self.delay = interval_seconds  # Seconds between calls to GPUtil
         self.start_time = time.time()
-        self.tensorboard_logger = tensorboard_logger
+        self.tensorboard_logger = getTensorboardLogger()
         self.start()
 
     def run(self):
