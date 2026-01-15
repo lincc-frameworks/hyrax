@@ -22,7 +22,10 @@ First Steps
 -----------
 
 This getting started example uses Hyrax to train a small convolutional neural network to classify CIFAR data.
-It is based on the PyTorch example here: https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html
+It is based on a similar `PyTorch tutorial <https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html>`__.
+We also use the CIFAR10 dataset:
+`Learning multiple layers of features from tiny images. <https://www.cs.toronto.edu/~kriz/learning-features-2009-TR.pdf>`__
+Alex Krizhevsky, 2009.
 
 As part of this example we will:
 
@@ -101,7 +104,9 @@ We'll use the ``train`` verb to kick off the training process.
    h.train()
 
 Once the training is complete, the model weights will be saved in a timestamped
-directory with a name similar to ``/YYYYmmdd-HHMMSS-train-xxxx``.
+directory with a name similar to ``/YYYYmmdd-HHMMSS-train-RAND``.
+Note that ``RAND`` is a random four character string to avoid collisions if you
+run multiple training sessions in the same second.
 
 
 Predicting with the model
@@ -140,9 +145,11 @@ the data defined above.
 Evaluate the performance
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Let's compare the models predictions to the actual labels from the test dataset.
-The model's prediction is a 10 element vector where the largest value represents the highest confidence class.
-So we'll extract the index of the max value for each prediction and save that as `predicted_classes`.
+Let's compare the model's predictions to the actual labels from the test dataset.
+The model's prediction is a 10 element vector where the largest value represents
+the highest confidence class.
+So we'll extract the index of the max value for each prediction and save that as
+``predicted_classes``.
 We'll also load the original test data to get the true labels for comparison.
 
 .. code-block:: python
@@ -157,8 +164,8 @@ We'll also load the original test data to get the true labels for comparison.
        predicted_classes[i] = np.argmax(result["model_output"])
 
    # Load the true labels
-   with open("./data/cifar-10-batches-py/test_batch", "rb") as fo:
-       test_data = pickle.load(fo, encoding="bytes")
+   with open("./data/cifar-10-batches-py/test_batch", "rb") as f_in:
+       test_data = pickle.load(f_in, encoding="bytes")
 
 
 Using scikit-learn's ``confusion_matrix``, we can compute and display the confusion matrix
@@ -192,4 +199,5 @@ to see how well the model performed on each class.
    :width: 80%
    :alt: Confusion matrix showing model performance on CIFAR10 test dataset.
 
-   The model performs better than chance, with some classes being predicted more accurately.
+   The model performs much better than chance (which would be 10%) with some
+   classes being predicted more accurately.
