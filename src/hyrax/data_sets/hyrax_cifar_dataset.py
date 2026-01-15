@@ -20,10 +20,19 @@ class HyraxCifarBase:
 
         self.data_location = data_location if data_location else config["general"]["data_dir"]
 
+        self.training_data = config["data_set"]["HyraxCifarDataset"]["use_training_data"]
+
         transform = transforms.Compose(
             [transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))]
         )
-        self.cifar = CIFAR10(root=self.data_location, train=True, download=True, transform=transform)
+
+        self.cifar = CIFAR10(
+            root=self.data_location, train=self.training_data, download=True, transform=transform
+        )
+
+        n_id = len(self.cifar)
+        self.id_width = len(str(n_id))
+
         metadata_table = Table(
             {"label": np.array([self.cifar[index][1] for index in range(len(self.cifar))])}
         )
@@ -45,10 +54,22 @@ class HyraxCifarBase:
 
     def get_object_id(self, idx):
         """Get the object ID for the item."""
-        return idx
+        return f"{idx:0{self.id_width}d}"
+
+    def ids(self):
+        """This is the default IDs function you get when you derive from hyrax Dataset
+
+        Returns
+        -------
+        Generator[str]
+            A generator yielding all the string IDs of the dataset.
+
+        """
+        for x in range(len(self)):
+            yield f"{x:0{self.id_width}d}"
 
 
-class HyraxCifarDataSet(HyraxCifarBase, HyraxDataset, Dataset):
+class HyraxCifarDataset(HyraxCifarBase, HyraxDataset, Dataset):
     """Map style CIFAR 10 dataset for Hyrax
 
     This is simply a version of CIFAR10 that is initialized using Hyrax config with a transformation
@@ -72,7 +93,7 @@ class HyraxCifarDataSet(HyraxCifarBase, HyraxDataset, Dataset):
         }
 
 
-class HyraxCifarIterableDataSet(HyraxCifarBase, HyraxDataset, IterableDataset):
+class HyraxCifarIterableDataset(HyraxCifarBase, HyraxDataset, IterableDataset):
     """Iterable style CIFAR 10 dataset for Hyrax
 
     This is simply a version of CIFAR10 that is initialized using Hyrax config with a transformation

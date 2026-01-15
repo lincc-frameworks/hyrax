@@ -17,8 +17,8 @@ def model_class_name(request):
     scope="module",
     params=[
         ("HSCDataSet", "hsc1k"),
-        ("HyraxCifarDataSet", None),
-        ("HyraxCifarIterableDataSet", None),
+        ("HyraxCifarDataset", None),
+        ("HyraxCifarIterableDataset", None),
         ("FitsImageDataSet", "hsc1k"),
     ],
 )

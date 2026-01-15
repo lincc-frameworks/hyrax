@@ -130,4 +130,4 @@ nitpick_ignore_regex = [
     (r"^py:.*", "COMMIT_ID"),
 ]
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "sphinx_book_theme"
