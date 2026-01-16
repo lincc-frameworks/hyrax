@@ -836,7 +836,7 @@ class HyraxEvents(EventEnum):
     HYRAX_EPOCH_COMPLETED = "HyraxEpochCompleted"
 
 
-def fixup_engine(engine: Engine) -> Engine:
+def fixup_engine(engine: Engine):
     """
     Workaround for this pytorch ignite bug (https://github.com/pytorch/ignite/issues/3372) where
     engine.state.output is not available at EPOCH_COMPLETED or later times (COMPLETED, etc)
