@@ -27,9 +27,9 @@ i.e. <timestamp>-train-<uid>.
 
 The MLFlow server can be run from within a notebook or from the command line.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -44,7 +44,7 @@ The MLFlow server can be run from within a notebook or from the command line.
            # Display the MLFlow UI in an IFrame in the notebook
            IFrame(src="http://localhost:8080", width="100%", height=1000)
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 

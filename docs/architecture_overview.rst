@@ -14,9 +14,9 @@ Hyrax is designed to be used in a Jupyter notebook or from the command line with
 modification. This supports exploration and development in a familiar notebook environment
 and deployment to an HPC or Slurm system for large scale training.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -25,7 +25,7 @@ and deployment to an HPC or Slurm system for large scale training.
            h = Hyrax(config_file = 'my_config.toml')
            h.train()
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 
