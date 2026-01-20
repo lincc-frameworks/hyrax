@@ -56,6 +56,8 @@ instance of this class.
 When we create the Hyrax instance, it will automatically load a default configuration
 file. This file contains default settings for all of the components that Hyrax uses.
 
+.. _getting_started_specify_model:
+
 Specify a model
 ~~~~~~~~~~~~~~~
 
@@ -68,6 +70,8 @@ from the PyTorch CIFAR10 tutorial.
 
    h.set_config('model.name', 'HyraxCNN')
 
+
+.. _getting_started_specify_data:
 
 Defining the dataset
 ~~~~~~~~~~~~~~~~~~~~~~
