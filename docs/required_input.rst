@@ -36,14 +36,14 @@ an example of specifying a built-in dataset for training.
 
 Prepare the data
 ----------------
-To support reusablility, Hyrax encourages the separation of datasets and models.
+To support reusability, Hyrax encourages the separation of datasets and models.
 i.e. the form of the data provided by a dataset class should not be customized for a
 specific model, nor should a model architecture be hardcoded to a specific dataset.
 
 In order to convert the content of a dataset into a form that is suitable for a model,
 Hyrax requires a user-defined function that will prepare the data for the model.
 
-As a contrived example, consider a dataset where each data point is a composed of
+As a contrived example, consider a dataset where each data point is composed of
 three 2d arrays: "science", "mask", and "variance".
 To be flexible, the dataset class that provides data from disk would return each
 array individually.
