@@ -16,9 +16,9 @@ will be used. To specify a different configuration file, use the
 ``-c | --runtime-config`` flag from the CLI
 or pass the path to the configuration file when creating a ``Hyrax`` object.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -30,7 +30,7 @@ or pass the path to the configuration file when creating a ``Hyrax`` object.
            # Train the model specified in the configuration file
            f.train()
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 
@@ -58,9 +58,9 @@ For example, if a file called ``my_config.toml`` had the following contents:
 It could be used to override the default ``log_level`` configuration, while leaving
 the rest of the configuration unchanged.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -72,7 +72,7 @@ the rest of the configuration unchanged.
            # Train the model specified in the configuration file
            f.train()
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 

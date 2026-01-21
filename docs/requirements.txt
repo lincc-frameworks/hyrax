@@ -10,5 +10,4 @@ sphinx-copybutton
 sphinx-book-theme
 sphinx-rtd-theme
 sphinx-design
-sphinx-tabs
 sphinx-togglebutton
