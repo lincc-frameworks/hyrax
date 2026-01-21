@@ -130,7 +130,7 @@ def test_nan_handling_off_returns_input(loopback_hyrax_nan):
     """Ensure that when nan_mode is False, that the original values passed to
     _handle_nans are returned unchanged."""
 
-    def to_tensor(data_dict):
+    def prepare_inputs(data_dict):
         data = data_dict.get("data", {})
         if "image" in data and "label" in data:
             image = data["image"]
@@ -144,7 +144,7 @@ def test_nan_handling_off_returns_input(loopback_hyrax_nan):
 
     # If the sample data is a dictionary, convert it to a tuple
     if isinstance(sample_data, dict):
-        sample_data = to_tensor(sample_data)
+        sample_data = prepare_inputs(sample_data)
 
     output = _handle_nans(sample_data, h.config)
 
@@ -158,7 +158,7 @@ def test_nan_handling_off_returns_input(loopback_hyrax_nan):
 
 def test_nan_handling_tuple_with_three_elements(loopback_hyrax_nan):
     """Test that tuples with more than 2 elements are handled correctly.
-    This simulates the AppleCider use case where to_tensor returns (metadata, image, labels)."""
+    This simulates the AppleCider use case where prepare_inputs returns (metadata, image, labels)."""
     h, dataset = loopback_hyrax_nan
 
     # Create a test tuple with 3 elements: metadata (non-tensor),
