@@ -69,10 +69,17 @@ class ToOnnx(Verb):
         config_manager = ConfigManager(runtime_config_filepath=config_file)
         config_from_training = config_manager.config
 
-        # copy the to_tensor.py file from the input directory to the output directory
+        # copy the prepare_inputs.py file (or to_tensor.py for backward compatibility) 
+        # from the input directory to the output directory
+        prepare_inputs_src = input_directory / "prepare_inputs.py"
+        prepare_inputs_dst = output_dir / "prepare_inputs.py"
         to_tensor_src = input_directory / "to_tensor.py"
         to_tensor_dst = output_dir / "to_tensor.py"
-        if to_tensor_src.exists():
+        
+        if prepare_inputs_src.exists():
+            shutil.copy(prepare_inputs_src, prepare_inputs_dst)
+        elif to_tensor_src.exists():
+            # Backward compatibility: copy to_tensor.py if prepare_inputs.py doesn't exist
             shutil.copy(to_tensor_src, to_tensor_dst)
 
         # Use the config file to locate and assemble the trained weight file path
@@ -100,6 +107,6 @@ class ToOnnx(Verb):
 
         # Get a sample of input data.
         batch_sample = next(iter(infer_data_loader))
-        batch_sample = model.to_tensor(batch_sample)
+        batch_sample = model.prepare_inputs(batch_sample)
 
         export_to_onnx(model, batch_sample, config, context)

@@ -16,7 +16,7 @@ def export_to_onnx(model, sample, config, ctx):
         The model that was just trained using the ML framework. i.e. PyTorch
     sample : Tensor
         This sample is the result of running a batch of data through the data
-        loader and the model's `to_tensor` function. It is used to compare the
+        loader and the model's `prepare_inputs` function. It is used to compare the
         output of the ONNX model against the output of the PyTorch model.
     config : dict
         The parsed config file as a nested dict
@@ -55,7 +55,7 @@ def export_to_onnx(model, sample, config, ctx):
 
     # Create the inputs array for the ONNX model
     ort_inputs = {}
-    # ! May need to change this if-statement, if we find that to_tensor should return
+    # ! May need to change this if-statement, if we find that prepare_inputs should return
     # ! something other than a tuple for multiple inputs.
     if isinstance(sample, tuple):
         for i in range(len(sample)):

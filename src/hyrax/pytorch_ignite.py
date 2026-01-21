@@ -150,14 +150,14 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
 
-    # Pass a single sample of data through the model's to_tensor function
+    # Pass a single sample of data through the model's prepare_inputs function
     # ? I don't think that the `if` portion of this logic is used, should double check
     if isinstance(dataset, dict):
         # If we have multiple datasets, just take the first one
         first_dataset = next(iter(dataset.values()))
-        data_sample = model_cls.to_tensor(first_dataset.sample_data())
+        data_sample = model_cls.prepare_inputs(first_dataset.sample_data())
     else:
-        data_sample = model_cls.to_tensor(dataset.sample_data())
+        data_sample = model_cls.prepare_inputs(dataset.sample_data())
 
     # Provide the data sample for runtime modifications to the model architecture
     return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
@@ -371,10 +371,10 @@ def create_splits(data_set: Dataset, config: dict):
 
 # ! Need to go through and clean up the variables here. I think `device` and `engine`
 # ! are not used, but we'll need to double check before pulling out all the wiring.
-def _inner_loop(func, to_tensor, device, config, engine, batch):
+def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
-    # Pass the collated batch through the model's to_tensor function
-    batch = to_tensor(batch)
+    # Pass the collated batch through the model's prepare_inputs function
+    batch = prepare_inputs(batch)
 
     # Convert the data to numpy and place it on the device explicitly.
     # This allows us to control when the tensor makes it on to the device without setting
@@ -397,8 +397,8 @@ def _inner_loop(func, to_tensor, device, config, engine, batch):
 
 def _create_process_func(funcname, device, model, config):
     inner_step = extract_model_method(model, funcname)
-    to_tensor = extract_model_method(model, "to_tensor")
-    inner_loop = functools.partial(_inner_loop, inner_step, to_tensor, device, config)
+    prepare_inputs = extract_model_method(model, "prepare_inputs")
+    inner_loop = functools.partial(_inner_loop, inner_step, prepare_inputs, device, config)
     return inner_loop
 
 
