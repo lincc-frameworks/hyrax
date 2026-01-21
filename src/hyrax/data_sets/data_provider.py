@@ -45,12 +45,9 @@ def generate_data_request_from_config(config):
             stacklevel=2,
         )
         data_request = copy.deepcopy(config["model_inputs"])
-    elif "data_request" in config:
-        # data_request key exists but is empty
-        data_request = copy.deepcopy(config["data_request"])
-    elif "model_inputs" in config:
-        # model_inputs key exists but is empty
-        data_request = copy.deepcopy(config["model_inputs"])
+    elif "data_request" in config or "model_inputs" in config:
+        # One of the keys exists but is empty - use the empty dict to trigger error below
+        data_request = config.get("data_request") or config.get("model_inputs")
     else:
         # Neither key exists, create fallback from old [data_set] table
         data_request = {
