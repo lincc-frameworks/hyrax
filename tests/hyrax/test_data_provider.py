@@ -73,6 +73,8 @@ def test_generate_data_request_model_inputs_deprecated():
         "b": {"c": "bar"},
     }
     h.config["model_inputs"] = model_inputs
+    # Explicitly remove data_request to ensure clean test conditions
+    h.config.pop("data_request", None)
 
     # DeprecationWarnings are filtered by default, so we need to capture them explicitly
     with warnings.catch_warnings(record=True) as w:
@@ -91,6 +93,7 @@ def test_generate_data_request_model_inputs_deprecated():
 def test_generate_data_request_passes_data_request():
     """Test that generate_data_request passes the data_request
     dict from the config, unchanged, without deprecation warning."""
+    import warnings
 
     h = Hyrax()
     data_request = {
@@ -98,9 +101,16 @@ def test_generate_data_request_passes_data_request():
         "b": {"c": "bar"},
     }
     h.config["data_request"] = data_request
+    # Explicitly remove model_inputs to ensure clean test conditions
+    h.config.pop("model_inputs", None)
 
-    # Should NOT trigger deprecation warning
-    ret_val = generate_data_request_from_config(h.config)
+    # Verify no deprecation warning is issued
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ret_val = generate_data_request_from_config(h.config)
+
+        # Assert no warnings were raised
+        assert len(w) == 0, f"Expected no warnings, but got: {[str(x.message) for x in w]}"
 
     assert ret_val == data_request
 
@@ -118,6 +128,34 @@ def test_generate_data_request_empty_data_request(caplog):
 
     error_message = str(execinfo.value)
     assert "The [data_request] table in the configuration is empty." in error_message
+
+
+def test_generate_data_request_both_keys_present():
+    """Test that when both data_request and model_inputs are present,
+    data_request takes priority and no deprecation warning is issued."""
+    import warnings
+
+    h = Hyrax()
+    data_request = {
+        "train": {"data": {"dataset_class": "DataRequestDataset"}},
+    }
+    model_inputs = {
+        "train": {"data": {"dataset_class": "ModelInputsDataset"}},
+    }
+    h.config["data_request"] = data_request
+    h.config["model_inputs"] = model_inputs
+
+    # Verify no deprecation warning is issued when data_request takes priority
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ret_val = generate_data_request_from_config(h.config)
+
+        # Assert no warnings were raised
+        assert len(w) == 0, f"Expected no warnings, but got: {[str(x.message) for x in w]}"
+
+    # Assert data_request is returned, not model_inputs
+    assert ret_val == data_request
+    assert ret_val != model_inputs
 
 
 def test_data_provider(data_provider):
