@@ -31,15 +31,13 @@ def generate_data_request_from_config(config):
     """
 
     # Support both 'data_request' (new) and 'model_inputs' (deprecated)
-    if "data_request" in config:
+    # Priority: use data_request if it has content, otherwise check model_inputs
+    has_data_request = "data_request" in config and config["data_request"]
+    has_model_inputs = "model_inputs" in config and config["model_inputs"]
+
+    if has_data_request:
         data_request = copy.deepcopy(config["data_request"])
-    elif "model_inputs" in config:
-        warnings.warn(
-            "The [model_inputs] configuration key is deprecated and will be removed in a future version. "
-            "Please use [data_request] instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+    elif has_model_inputs:
         warnings.warn(
             "The [model_inputs] configuration key is deprecated and will be removed in a future version. "
             "Please use [data_request] instead.",
@@ -47,11 +45,35 @@ def generate_data_request_from_config(config):
             stacklevel=2,
         )
         data_request = copy.deepcopy(config["model_inputs"])
+    elif "data_request" in config:
+        # data_request key exists but is empty
+        data_request = copy.deepcopy(config["data_request"])
+    elif "model_inputs" in config:
+        # model_inputs key exists but is empty
+        data_request = copy.deepcopy(config["model_inputs"])
+    else:
+        # Neither key exists, create fallback from old [data_set] table
+        data_request = {
+            "train": {
+                "data": {
+                    "dataset_class": config["data_set"]["name"],
+                    "data_location": config["general"]["data_dir"],
+                    "primary_id_field": "object_id",
+                },
+            },
+            "infer": {
+                "data": {
+                    "dataset_class": config["data_set"]["name"],
+                    "data_location": config["general"]["data_dir"],
+                    "primary_id_field": "object_id",
+                },
+            },
+        }
 
-        # Check if data_request is empty and provide helpful error message
-        if not data_request:
-            available_datasets = sorted(DATASET_REGISTRY.keys())
-            error_msg = """The [data_request] table in your configuration is empty.
+    # Check if data_request is empty and provide helpful error message
+    if not data_request:
+        available_datasets = sorted(DATASET_REGISTRY.keys())
+        error_msg = """The [data_request] table in your configuration is empty.
 
 You must provide dataset definitions for training and/or inference:
   - For training: provide "train" and optionally "validate" dataset definitions
@@ -71,33 +93,16 @@ Example configuration:
   primary_id_field = "object_id"
 
 """
-            if available_datasets:
-                error_msg += "Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
-                error_msg += "\n\n"
-            error_msg += """For more information and examples, see the documentation at:
+        if available_datasets:
+            error_msg += "Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
+            error_msg += "\n\n"
+        error_msg += """For more information and examples, see the documentation at:
   https://hyrax.readthedocs.io/en/latest/notebooks/model_input_1.html"""
-            logger.error(error_msg)
-            raise RuntimeError(
-                "The [data_request] table in the configuration is empty. "
-                "Check the preceding error log for details and help."
-            )
-    else:
-        data_request = {
-            "train": {
-                "data": {
-                    "dataset_class": config["data_set"]["name"],
-                    "data_location": config["general"]["data_dir"],
-                    "primary_id_field": "object_id",
-                },
-            },
-            "infer": {
-                "data": {
-                    "dataset_class": config["data_set"]["name"],
-                    "data_location": config["general"]["data_dir"],
-                    "primary_id_field": "object_id",
-                },
-            },
-        }
+        logger.error(error_msg)
+        raise RuntimeError(
+            "The [data_request] table in the configuration is empty. "
+            "Check the preceding error log for details and help."
+        )
 
     return data_request
 

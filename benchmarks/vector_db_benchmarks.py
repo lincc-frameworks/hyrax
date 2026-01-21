@@ -24,7 +24,7 @@ class VectorDBInsertBenchmarks:
 
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
-        self.h.config["model_inputs"] = {
+        self.h.config["data_request"] = {
             "train": {
                 "data": {
                     "dataset_class": "HyraxRandomDataset",
@@ -98,7 +98,7 @@ class VectorDBSearchBenchmarks:
 
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
-        self.h.config["model_inputs"] = {
+        self.h.config["data_request"] = {
             "train": {
                 "data": {
                     "dataset_class": "HyraxRandomDataset",

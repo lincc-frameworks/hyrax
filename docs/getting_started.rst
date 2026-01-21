@@ -86,7 +86,7 @@ https://www.cs.toronto.edu/~kriz/cifar.html
 .. code-block:: python
    :linenos:
 
-   model_inputs_definition = {
+   data_request_definition = {
         "train": {
             "data": {
                 "dataset_class": "HyraxCifarDataset",
@@ -97,7 +97,7 @@ https://www.cs.toronto.edu/~kriz/cifar.html
         }
     }
 
-    h.set_config("model_inputs", model_inputs_definition)
+    h.set_config("data_request", data_request_definition)
 
 This may appear overwhelming, especially for a simple case, but being explicit
 about the dataset configuration will allow for great flexibility down the line
@@ -130,7 +130,7 @@ inference.
 .. code-block:: python
    :linenos:
 
-   model_inputs_definition["infer"] = {
+   data_request_definition["infer"] = {
        "data": {
            "dataset_class": "HyraxCifarDataset",
            "data_location": "./data",
@@ -142,7 +142,7 @@ inference.
        },
    }
 
-   h.set_config("model_inputs", model_inputs_definition)
+   h.set_config("data_request", data_request_definition)
 
 Then we'll use Hyrax's ``infer`` verb to load the trained model weights and process
 the data defined above.

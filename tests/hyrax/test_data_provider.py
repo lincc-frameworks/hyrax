@@ -9,11 +9,12 @@ from hyrax.data_sets.data_provider import DataProvider, generate_data_request_fr
 
 def test_generate_data_request_from_config():
     """Test that we support generating a data request dictionary
-    outside of the `model_inputs` table."""
+    outside of the `data_request` table."""
 
     h = Hyrax()
     config = dict(h.config)
     config.pop("model_inputs", None)
+    config.pop("data_request", None)
 
     config["data_set"]["name"] = "HyraxRandomDataset"
     config["general"]["data_dir"] = "./data"
@@ -59,7 +60,64 @@ def test_generate_data_request_empty_model_inputs(caplog):
             generate_data_request_from_config(h.config)
 
     error_message = str(execinfo.value)
-    assert "The [model_inputs] table in the configuration is empty." in error_message
+    assert "The [data_request] table in the configuration is empty." in error_message
+
+
+def test_generate_data_request_model_inputs_deprecated():
+    """Test that using model_inputs config key triggers a deprecation warning."""
+    import warnings
+
+    h = Hyrax()
+    model_inputs = {
+        "a": "foo",
+        "b": {"c": "bar"},
+    }
+    h.config["model_inputs"] = model_inputs
+
+    # DeprecationWarnings are filtered by default, so we need to capture them explicitly
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ret_val = generate_data_request_from_config(h.config)
+
+        assert len(w) == 1
+        assert issubclass(w[-1].category, DeprecationWarning)
+        assert "model_inputs" in str(w[-1].message)
+        assert "deprecated" in str(w[-1].message)
+        assert "data_request" in str(w[-1].message)
+
+    assert ret_val == model_inputs
+
+
+def test_generate_data_request_passes_data_request():
+    """Test that generate_data_request passes the data_request
+    dict from the config, unchanged, without deprecation warning."""
+
+    h = Hyrax()
+    data_request = {
+        "a": "foo",
+        "b": {"c": "bar"},
+    }
+    h.config["data_request"] = data_request
+
+    # Should NOT trigger deprecation warning
+    ret_val = generate_data_request_from_config(h.config)
+
+    assert ret_val == data_request
+
+
+def test_generate_data_request_empty_data_request(caplog):
+    """Test that generate_data_request raises an error with a helpful message
+    when data_request is empty."""
+
+    h = Hyrax()
+    h.config["data_request"] = {}
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(RuntimeError) as execinfo:
+            generate_data_request_from_config(h.config)
+
+    error_message = str(execinfo.value)
+    assert "The [data_request] table in the configuration is empty." in error_message
 
 
 def test_data_provider(data_provider):
