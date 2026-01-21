@@ -5,12 +5,16 @@ import importlib
 import logging
 import random
 import re
+from contextlib import suppress
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any, Union
 
 import tomlkit
+from pydantic import ValidationError
 from tomlkit.toml_document import TOMLDocument
+
+from hyrax.config_schemas import BaseConfigModel, DataRequestDefinition
 
 DEFAULT_CONFIG_FILEPATH = Path(__file__).parent.resolve() / "hyrax_default_config.toml"
 DEFAULT_USER_CONFIG_FILEPATH = Path.cwd() / "hyrax_config.toml"
@@ -236,6 +240,12 @@ class ConfigManager:
             The value to set the key to.
         """
         keys = parse_dotted_key(key)
+        if key == "data_request":
+            with suppress(ValidationError):
+                value = self._coerce_data_request(value)
+        elif isinstance(value, BaseConfigModel):
+            value = value.model_dump()
+
         d = self.config
         for k in keys[:-1]:
             d = d[k]
@@ -243,6 +253,16 @@ class ConfigManager:
 
         self.config = self._render_config(self.config, self.original_config)
         self.original_config = copy.deepcopy(self.config)
+
+    @staticmethod
+    def _coerce_data_request(value: Any) -> dict:
+        """Validate and normalize data_request into a plain dictionary."""
+
+        if isinstance(value, DataRequestDefinition):
+            return value.as_dict(exclude_unset=True)
+
+        validated = DataRequestDefinition.model_validate(value)
+        return validated.as_dict(exclude_unset=True)
 
     @staticmethod
     def read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:
