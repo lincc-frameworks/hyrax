@@ -36,7 +36,9 @@ class ModelInputsConfig(BaseConfigModel):
     def unwrap_data_key(cls, value: Any) -> Any:
         """Allow configurations specified under a ``data`` wrapper."""
 
-        if isinstance(value, dict) and "data" in value and len(value) == 1:
+        if isinstance(value, dict) and "data" in value and len(value) == 1 and isinstance(
+            value["data"], dict
+        ):
             return value["data"]
         return value
 
@@ -69,10 +71,9 @@ class ModelInputsDefinition(BaseConfigModel):
         """Capture arbitrary dataset keys beyond train/validate/infer."""
 
         known = {"train", "validate", "infer"}
-        extra: dict[str, Any] = {}
-        for key in list(values.keys()):
-            if key not in known:
-                extra[key] = values.pop(key)
+        extra = {k: v for k, v in values.items() if k not in known}
+        for key in extra:
+            values.pop(key)
         values.setdefault("other_datasets", {})
         values["other_datasets"].update(extra)
         return values
