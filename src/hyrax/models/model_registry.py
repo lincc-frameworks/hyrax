@@ -229,10 +229,13 @@ def hyrax_model(cls):
             raise RuntimeError(msg)
 
         # Create deprecated to_tensor wrapper that calls prepare_inputs
+        # Capture the prepare_inputs method in the closure
+        prepare_inputs_func = cls.prepare_inputs.__func__
+
         @staticmethod
         @deprecated("Use prepare_inputs instead.")
         def deprecated_to_tensor(data_dict):
-            return cls.prepare_inputs.__func__(data_dict)
+            return prepare_inputs_func(data_dict)
 
         cls.to_tensor = deprecated_to_tensor
 
@@ -268,10 +271,13 @@ def hyrax_model(cls):
         cls.prepare_inputs = staticmethod(default_prepare_inputs)
 
         # Create deprecated to_tensor wrapper
+        # Capture default_prepare_inputs in the closure
+        default_func = default_prepare_inputs
+
         @staticmethod
         @deprecated("Use prepare_inputs instead.")
         def deprecated_to_tensor_default(data_dict):
-            return default_prepare_inputs(data_dict)
+            return default_func(data_dict)
 
         cls.to_tensor = deprecated_to_tensor_default
 
