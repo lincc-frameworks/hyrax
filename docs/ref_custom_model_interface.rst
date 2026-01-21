@@ -32,7 +32,6 @@ This is the main method that evaluates your model. ``batch`` will consistently b
 the first index is the configured batch size, and the remaining indexes have the structure and data type(s)
 of the ``data_sample`` passed to ``__init__``.
 
-
 ``forward()`` ought return a tensor that is the output of your model, with the same batch multiplicity and 
 order in the first tensor index as the ``batch`` that was passed in.
 
@@ -100,25 +99,51 @@ the g, r, and, i band flux data, you would write the following function:
         return np.moveaxis(gri, 1, 0)
 
 It is important that all imports you need to run ``to_tensor`` are imported from inside the function body as 
-shown above. This is required for onnx export of the model to work.
+shown above. This is unfortunately required for onnx export of the model to work, and is assumed by some 
+verbs.
 
+Optionally Configurable Training
+--------------------------------
 
+Hyrax offers several automatic member variables to your class. You can access these variables in class 
+methods, but they are initialized for your class by the framework. The purpose is to expose various pluggable 
+aspects of machine learning training to hyrax configuration so that initializing many different types of 
+training can be scripted in an HPC or batch context by only changing configuration, not the code of the model.
 
+``self.criterion``
+..................
 
-Optional Interfaces
--------------------
+In this variable Hyrax provides a ``torch.nn`` which can be used as a loss function. The 
+class name of the criterion is controlled by ``config["criterion"]["name"]``, and the default is 
+``torch.nn.CrosEntropyLoss``.  Other configuration variables under criterion are used as keyword arguments
+to the constructor. Note that Hyrax makes this varible available; however, it is only used in training if 
+explicitly referenced in the ``train_step`` method
 
-self.criterion
+``self.optimizer``
+..................
 
-self.optimizer
-
-
+In this variable Hyrax provides a torch optimizer, which can be used to train your model.
+The class name of the optimizer is contrlled by ``config["optimizer"]["name"]``, and the default is 
+``torch.optim.SGD``. This optimizer is also only used for training if explicitly referenced in the 
+``train_step`` method
 
 Best Practices
 --------------
 
-Preflight your model in ``__init__``, by checking ``sample_data``. It is far eaiser to debug mismatches 
-between model and data in ``__init__`` than debugging a crash deep in pytorch during training or inference.
+Preflight your model in ``__init__``, by running the model on ``sample_data``. It is far 
+easier to debug mismatches between model and data in ``__init__`` than during model training. Model/data 
+mismatches are the most common cause of errors during the initial setup of a training run.
 
 Return key values that will tell you about training success or model quality in ``train_step``, so that they
-show up in your tensorboard and MLflow dashboards.
+show up in your tensorboard and MLflow dashboards. This allows you to see how your model is changing during 
+training and extract insights which can help you get to the highest quality model.
+
+Prefer configuring hyperparameters (or other variations in training) over hardcoding. By allowing 
+hyperparameters to your model, or small variations in how it is trained to be configured you make running 
+a grid of hyperparameter values a matter of running Hyrax several times with slightly different 
+configurations. It is possible to automate this process using frameworks like Optuna.
+
+.. insert optuna training example
+
+.. Use version control for your model classes?
+
