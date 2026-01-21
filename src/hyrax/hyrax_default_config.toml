@@ -200,7 +200,7 @@ input_model_directory = false
 
 
 [model_inputs]
-# DEPRECATED: Use [data_request] instead. This will be removed in a future version.
+# DEPRECATED: Use [data_request] instead. This will be removed in the next major release.
 
 
 [data_set]
