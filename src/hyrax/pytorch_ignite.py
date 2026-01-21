@@ -124,7 +124,7 @@ def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None
             dataset[set_name] = ds
 
     else:
-        # We know that `model_inputs` will always have at least 2 sub-tables, `train`
+        # We know that `data_request` will always have at least 2 sub-tables, `train`
         # and `infer`. It may have additional sub-tables such as `validate`.
         for key, value in data_request.items():
             ds = DataProvider(config, value)

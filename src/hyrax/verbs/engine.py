@@ -78,7 +78,7 @@ class Engine(Verb):
 
         # ~ For now we use `setup_dataset` to get our datasets back. Later we can
         # optimize this, because we know that we'll only need the `infer` part
-        # of the model_inputs dictionary. And we can assume that we'll be working
+        # of the data_request dictionary. And we can assume that we'll be working
         # with map-style datasets. But for now, this gets us going.
         dataset = setup_dataset(config)
 

@@ -1,5 +1,6 @@
 import copy
 import logging
+import warnings
 from typing import Any
 
 import numpy as np
@@ -11,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def generate_data_request_from_config(config):
     """This function handles the backward compatibility issue of defining the requested
-    dataset in the `[data_set]` table in the config. If a `[model_inputs]` table
+    dataset in the `[data_set]` table in the config. If a `[data_request]` table
     is not defined, we will assemble a `data_request` dictionary from the values
     defined elsewhere in the configuration file.
 
@@ -29,27 +30,42 @@ def generate_data_request_from_config(config):
         A dictionary where keys are dataset names and values are lists of fields
     """
 
-    if "model_inputs" in config:
+    # Support both 'data_request' (new) and 'model_inputs' (deprecated)
+    if "data_request" in config:
+        data_request = copy.deepcopy(config["data_request"])
+    elif "model_inputs" in config:
+        warnings.warn(
+            "The [model_inputs] configuration key is deprecated and will be removed in a future version. "
+            "Please use [data_request] instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        warnings.warn(
+            "The [model_inputs] configuration key is deprecated and will be removed in a future version. "
+            "Please use [data_request] instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         data_request = copy.deepcopy(config["model_inputs"])
 
-        # Check if model_inputs is empty and provide helpful error message
+        # Check if data_request is empty and provide helpful error message
         if not data_request:
             available_datasets = sorted(DATASET_REGISTRY.keys())
-            error_msg = """The [model_inputs] table in your configuration is empty.
+            error_msg = """The [data_request] table in your configuration is empty.
 
 You must provide dataset definitions for training and/or inference:
   - For training: provide "train" and optionally "validate" dataset definitions
   - For inference: provide "infer" dataset definition
 
 Example configuration:
-  [model_inputs.train]
-  [model_inputs.train.data]
+  [data_request.train]
+  [data_request.train.data]
   dataset_class = "HyraxRandomDataset"
   data_location = "./data"
   primary_id_field = "object_id"
 
-  [model_inputs.infer]
-  [model_inputs.infer.data]
+  [data_request.infer]
+  [data_request.infer.data]
   dataset_class = "HyraxRandomDataset"
   data_location = "./data"
   primary_id_field = "object_id"
@@ -62,7 +78,7 @@ Example configuration:
   https://hyrax.readthedocs.io/en/latest/notebooks/model_input_1.html"""
             logger.error(error_msg)
             raise RuntimeError(
-                "The [model_inputs] table in the configuration is empty. "
+                "The [data_request] table in the configuration is empty. "
                 "Check the preceding error log for details and help."
             )
     else:
@@ -88,7 +104,7 @@ Example configuration:
 
 class DataProvider:
     """This class presents itself as a PyTorch Dataset, but acts like a GraphQL
-    gateway that fetches data from multiple datasets based on the `model_inputs`
+    gateway that fetches data from multiple datasets based on the `data_request`
     dictionary provided during initialization.
 
     This class allows for flexible data retrieval from multiple dataset classes,
@@ -221,12 +237,12 @@ class DataProvider:
         return True
 
     def prepare_datasets(self):
-        """Instantiate each of the requested datasets based on the ``model_inputs``
+        """Instantiate each of the requested datasets based on the ``data_request``
         configuration dictionary. Store the prepared instances in the
         ``self.prepped_datasets`` dictionary."""
 
         if len(self.data_request) == 0:
-            raise RuntimeError("No datasets were requested in `model_inputs`.")
+            raise RuntimeError("No datasets were requested in `data_request`.")
 
         for friendly_name, dataset_definition in self.data_request.items():
             dataset_class = dataset_definition.get("dataset_class")
@@ -331,12 +347,12 @@ class DataProvider:
 
         .. code-block:: toml
 
-            [model_inputs]
-            [model_inputs.my_dataset]
+            [data_request]
+            [data_request.my_dataset]
             dataset_class = "MyDataset"
             data_location = "/path/to/data"
             fields = ["field1", "field2"]
-            [model_inputs.my_dataset.dataset_config]
+            [data_request.my_dataset.dataset_config]
             param1 = "value1"
             param2 = "value2"
 

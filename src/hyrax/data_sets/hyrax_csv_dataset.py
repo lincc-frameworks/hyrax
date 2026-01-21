@@ -22,7 +22,7 @@ class HyraxCSVDataset(HyraxDataset):
 
     Examples
     --------
-    Example model_inputs configuration::
+    Example data_request configuration::
 
         {
             "train": {
