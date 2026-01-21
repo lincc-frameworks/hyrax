@@ -76,10 +76,18 @@ def _torch_load(self: nn.Module, load_path: Path):
     if prepare_inputs_fn:
         if isinstance(prepare_inputs_fn, staticmethod):
             self.prepare_inputs = prepare_inputs_fn
+            prepare_inputs_func = prepare_inputs_fn.__func__
         else:
             self.prepare_inputs = staticmethod(prepare_inputs_fn)
-        # Also set to_tensor as a deprecated wrapper for backward compatibility
-        self.to_tensor = self.prepare_inputs
+            prepare_inputs_func = prepare_inputs_fn
+
+        # Create deprecated wrapper for to_tensor
+        @deprecated("Use prepare_inputs instead.")
+        def to_tensor_wrapper(data_dict):
+            return prepare_inputs_func(data_dict)
+
+        self.to_tensor = staticmethod(to_tensor_wrapper)
+
     elif to_tensor_fn:
         # Backward compatibility: if only to_tensor is found, use it for both
         logger.warning(
