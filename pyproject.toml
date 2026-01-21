@@ -43,6 +43,7 @@ dependencies = [
     "pynvml", # Used to gather GPU usage information
     "umap-learn", # Used to map latent spaces down to 2d
     "pooch", # Used to download data files
+    "pydantic>=2,<3", # Used for typed configuration schemas
     "onnx", # Used to export models to ONNX format
     "onnxruntime", # Used to run ONNX models
     "onnxscript", # Used to convert PyTorch models to ONNX format
