@@ -80,7 +80,8 @@ class Engine(Verb):
         elif to_tensor_fn:
             # Backward compatibility: use to_tensor if prepare_inputs is not found
             logger.warning(
-                "Using deprecated to_tensor function. Please update to prepare_inputs for future compatibility."
+                "Using deprecated to_tensor function. "
+                "Please update to prepare_inputs for future compatibility."
             )
             prepare_inputs_fn = to_tensor_fn
         else:

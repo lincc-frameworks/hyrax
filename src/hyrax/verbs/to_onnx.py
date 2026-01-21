@@ -69,13 +69,13 @@ class ToOnnx(Verb):
         config_manager = ConfigManager(runtime_config_filepath=config_file)
         config_from_training = config_manager.config
 
-        # copy the prepare_inputs.py file (or to_tensor.py for backward compatibility) 
+        # copy the prepare_inputs.py file (or to_tensor.py for backward compatibility)
         # from the input directory to the output directory
         prepare_inputs_src = input_directory / "prepare_inputs.py"
         prepare_inputs_dst = output_dir / "prepare_inputs.py"
         to_tensor_src = input_directory / "to_tensor.py"
         to_tensor_dst = output_dir / "to_tensor.py"
-        
+
         if prepare_inputs_src.exists():
             shutil.copy(prepare_inputs_src, prepare_inputs_dst)
         elif to_tensor_src.exists():
