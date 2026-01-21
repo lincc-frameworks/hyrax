@@ -79,8 +79,9 @@ class ToOnnx(Verb):
         if prepare_inputs_src.exists():
             shutil.copy(prepare_inputs_src, prepare_inputs_dst)
         elif to_tensor_src.exists():
-            # Backward compatibility: copy to_tensor.py if prepare_inputs.py doesn't exist
+            # Backward compatibility: copy to_tensor.py as both files for migration
             shutil.copy(to_tensor_src, to_tensor_dst)
+            shutil.copy(to_tensor_src, prepare_inputs_dst)  # Help migration to new name
 
         # Use the config file to locate and assemble the trained weight file path
         weights_file_path = input_directory / config_from_training["train"]["weights_filename"]

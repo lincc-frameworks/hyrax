@@ -84,8 +84,7 @@ class Engine(Verb):
         to_tensor_fn = load_to_tensor(input_directory)
 
         if prepare_inputs_fn:
-            # Use the new prepare_inputs function
-            pass
+            logger.debug("Using prepare_inputs function from model directory.")
         elif to_tensor_fn:
             # Backward compatibility: use to_tensor if prepare_inputs is not found
             logger.warning(
