@@ -34,7 +34,7 @@ class Engine(Verb):
         [x] Prepare all the datasets requested
         [x] Implement a simple strategy for reading in batches of data samples
         [x] Process the samples with any custom collate functions as well as a default collate function
-        [x] Pass the collated batch to the appropriate to_tensor function
+        [x] Pass the collated batch to the appropriate prepare_inputs function
         [x] Send that output to the ONNX-ified model
         [x] Persist the results of inference.
         """
@@ -47,12 +47,12 @@ class Engine(Verb):
             find_most_recent_results_dir,
         )
         from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
-        from hyrax.plugin_utils import load_to_tensor
+        from hyrax.plugin_utils import load_prepare_inputs, load_to_tensor
         from hyrax.pytorch_ignite import setup_dataset
 
         config = self.config
 
-        # ~ Find the directory that contains the ONNX model, to_tensor.py, etc.
+        # ~ Find the directory that contains the ONNX model, prepare_inputs.py or to_tensor.py, etc.
         if model_directory:
             input_directory = Path(model_directory)
             if not input_directory.exists():
@@ -69,8 +69,23 @@ class Engine(Verb):
                 logger.error("No previous training results directory found for ONNX export.")
                 return
 
-        # ~ Here we load the appropriate to_tensor function from onnx output.
+        # ~ Here we load the appropriate prepare_inputs function from onnx output.
+        # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
+        prepare_inputs_fn = load_prepare_inputs(input_directory)
         to_tensor_fn = load_to_tensor(input_directory)
+
+        if prepare_inputs_fn:
+            # Use the new prepare_inputs function
+            pass
+        elif to_tensor_fn:
+            # Backward compatibility: use to_tensor if prepare_inputs is not found
+            logger.warning(
+                "Using deprecated to_tensor function. Please update to prepare_inputs for future compatibility."
+            )
+            prepare_inputs_fn = to_tensor_fn
+        else:
+            logger.error("No prepare_inputs or to_tensor function found in the model directory.")
+            return
 
         # ~ Load the ONNX model from the input directory.
         onnx_file_name = input_directory / "model.onnx"
@@ -105,8 +120,8 @@ class Engine(Verb):
             # dictionary of lists by using the DataProvider.collate function.
             collated_batch = infer_dataset.collate(batch)
 
-            # ~ Pass the collated batch to the to_tensor function
-            prepared_batch = to_tensor_fn(collated_batch)
+            # ~ Pass the collated batch to the prepare_inputs function
+            prepared_batch = prepare_inputs_fn(collated_batch)
 
             # Create the inputs array for the ONNX model using the expected inputs
             # from the loaded ONNX model and the type and shape of the prepared batch.

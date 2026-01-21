@@ -181,7 +181,7 @@ class HyraxAutoencoderV2(nn.Module):
         return {"loss": loss.item()}
 
     @staticmethod
-    def to_tensor(data_dict) -> tuple[Tensor]:
+    def prepare_inputs(data_dict) -> tuple[Tensor]:
         """This function converts structured data to the input tensor we need to run
 
         Parameters

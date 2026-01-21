@@ -218,7 +218,7 @@ class ImageDCAE(nn.Module):
         return {"loss": loss.item()}
 
     @staticmethod
-    def to_tensor(data_dict):
+    def prepare_inputs(data_dict):
         """Convert structured data to tensor format."""
         data_dict = data_dict["data"]
         if "image" in data_dict:
