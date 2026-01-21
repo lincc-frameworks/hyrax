@@ -79,15 +79,18 @@ items in the batch. This loss is logged to MLflow and tensorboard.
 Optional Methods
 ................
 
-``@staticmethod to_tensor(data_dict)``
-......................................
+``@staticmethod prepare_inputs(data_dict)``
+...........................................
 This function is optional. It exists to allow model writers flexibility on how they present scientific data 
 to their model, and to allow dataset authors to make datasets without constraining model authors to a 
 particular ML architecture.
 
-Defining ``to_tensor`` is necessary when a dataset returns a dictionary as the individual datum, rather than 
-a ``Torch.tensor``.  ``to_tensor`` takes a batch of whatever is returned by the Dataset class, and returns 
+Defining ``prepare_inputs`` is necessary when a dataset returns a dictionary as the individual datum, rather than 
+a ``Torch.tensor``.  ``prepare_inputs`` takes a batch of whatever is returned by the Dataset class, and returns 
 a batch of ``Torch.tensor`` appropriate to send to the model's ``forward`` function
+
+.. note::
+   The older function name ``to_tensor`` is deprecated but still supported for backward compatibility. Please use ``prepare_inputs`` in new code.
 
 For example, we can consider a dataset that returns a dictionary of telescope data for a particular object. 
 In our example ``flux_*`` are 2d images of calibrated fluxes, ``spectrum`` is a list of fluxes at different
@@ -105,12 +108,12 @@ python dictionary below:
     "mag_g": <numpy.float32>,
     }
 
-The model's ``to_tensor`` function will recieve a batch dictionary, where each key will have a list of the 
+The model's ``prepare_inputs`` function will recieve a batch dictionary, where each key will have a list of the 
 relevant data as shown below:
 
 .. code-block:: python
 
-    # What to_tensor recieves from hyrax
+    # What prepare_inputs recieves from hyrax
     {
     "flux_g": [ <Torch Tensor>, <Torch Tensor>, <Torch Tensor>, ...],
     "flux_r": [ <Torch Tensor>, <Torch Tensor>, <Torch Tensor>, ...],
@@ -119,7 +122,7 @@ relevant data as shown below:
     "mag_g": [ <numpy.float32>, <numpy.float32>, <numpy.float32>, ...],
     }
 
-``to_tensor`` must return a list of ``Torch.tensor`` objects that your ``forward`` function can accept as 
+``prepare_inputs`` must return a list of ``Torch.tensor`` objects that your ``forward`` function can accept as 
 it's ``x`` input. See the example below, which stacks the g, r, and i fluxes into a single tensor:
 
 .. code-block:: python
@@ -130,7 +133,7 @@ it's ``x`` input. See the example below, which stacks the g, r, and i fluxes int
     class MyModel:
 
         @staticmethod
-        def to_tensor(batch_dict):
+        def prepare_inputs(batch_dict):
             """
             Accepts a dictionary of tensor batches for individual telescope filters.
             Returns a batch of stacked tensor with the first index corresponding to the 
@@ -147,11 +150,11 @@ it's ``x`` input. See the example below, which stacks the g, r, and i fluxes int
 
             return stacked_images
 
-Note that ``to_tensor`` must be defined with ``@staticmethod`` as in the example. The function does not have
+Note that ``prepare_inputs`` must be defined with ``@staticmethod`` as in the example. The function does not have
 access to the model's data members through the typical ``self`` argument in python.
 
-Another possible use of ``to_tensor`` is to remove or otherwise adjust the input data of your model in ways 
-that are not easily done with a ``torch.transform``. Below is an example ``to_tensor`` function which removes 
+Another possible use of ``prepare_inputs`` is to remove or otherwise adjust the input data of your model in ways 
+that are not easily done with a ``torch.transform``. Below is an example ``prepare_inputs`` function which removes 
 NaN values from input data, replacing them with the value zero. 
 
 .. code-block:: python
@@ -162,7 +165,7 @@ NaN values from input data, replacing them with the value zero.
     class MyModel:
 
         @staticmethod
-        def to_tensor(batch_dict):
+        def prepare_inputs(batch_dict):
             """
             Accepts a batch of tensors which may contain NaN values. Replaces those values with zero.
             """
@@ -229,7 +232,7 @@ Map style datasets
 ..............................
 Return a single item in your dataset given a zero-based index. This function may return either a 
 ``torch.Tensor`` or a dictionary of named data values that could be converted into a ``torch.Tensor`` by the
-model's ``to_tensor`` method (see above).  
+model's ``prepare_inputs`` method (see above).  
 
 In situations where there is tight coupling between the model and data, or only one real way to pack the 
 data into a tensor for ML applications, we recommend returning a ``torch.Tensor``.  If there are multiple ways
@@ -237,8 +240,8 @@ to pack the data, and it is primarily a question of model architecture, we recom
 route.
 
 In situations where a dataset's ``__getitem__`` returns a dictionary, and the model has not defined a 
-``to_tensor`` function, Hyrax will use the ``"image"`` and ``"label"`` keys in the dictionary to give the 
-model a tensor and an optional label. If these keys do not exist, Hyrax will prompt that a ``to_tensor`` 
+``prepare_inputs`` function, Hyrax will use the ``"image"`` and ``"label"`` keys in the dictionary to give the 
+model a tensor and an optional label. If these keys do not exist, Hyrax will prompt that a ``prepare_inputs`` 
 function must be defined on the model before training or inference can proceed.
 
 ``__len__(self)``
