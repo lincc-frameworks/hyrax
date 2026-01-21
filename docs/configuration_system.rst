@@ -13,4 +13,20 @@ Config variables are inherited from a hierarchy of sources, similar to ``python`
 
 A core design principle of ``hyrax`` is "code by config", meaning that all runtime parameters should be set through configuration files rather than hard-coded values. This approach enhances flexibility, reproducibility, and ease of experimentation, as users can modify configurations without altering the underlying codebase. This also facilitates sharing and collaboration, as configurations can be easily shared and adapted for different use cases while keeping fundamental models and datasets consistent.
 
+Typed configuration schemas
+--------------------------
+
+Hyrax is introducing typed configuration models using Pydantic for safer validation and
+better documentation. The first of these models formalizes the ``[model_inputs]`` table
+used to describe datasets for training, validation, and inference. Two key schemas are
+now available in :mod:`hyrax.config_schemas`:
+
+* ``ModelInputsConfig`` – defines per-dataset settings (``dataset_class``, ``data_location``,
+  ``fields``, ``primary_id_field``, and ``dataset_config``).
+* ``ModelInputsDefinition`` – wraps the full ``model_inputs`` table, supporting
+  ``train``, ``validate``, ``infer``, and additional dataset keys.
+
+These models are passive definitions that can be imported by downstream modules or
+third-party integrations to validate configuration structures before runtime.
+
 After training is completed, ``hyrax`` will write out all of the variables (combined from all the various source configs) used at runtime in the runtime directory as a ``runtime_config.toml`` file, so that the user can see what variables were actually used in one place.

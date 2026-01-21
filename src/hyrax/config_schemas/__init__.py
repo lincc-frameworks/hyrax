@@ -7,5 +7,6 @@ incremental adoption in downstream modules and tests.
 """
 
 from .base import BaseConfigModel
+from .model_inputs import ModelInputsConfig, ModelInputsDefinition
 
-__all__ = ["BaseConfigModel"]
+__all__ = ["BaseConfigModel", "ModelInputsConfig", "ModelInputsDefinition"]
