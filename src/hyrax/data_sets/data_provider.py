@@ -66,6 +66,10 @@ def _handle_nans_tuple(batch, config):
 
 
 def _handle_nans_logic_numpy(batch, config):
+    # Skip non-numeric arrays (e.g., strings, objects)
+    if not np.issubdtype(batch.dtype, np.floating):
+        return batch
+
     if config["data_set"]["nan_mode"] is False:
         if np.any(np.isnan(batch)):
             msg = "Input data contains NaN values. This may mean your model output is all NaNs."
@@ -106,8 +110,11 @@ def _handle_nan_zero_numpy(batch):
 
 
 def _handle_nans_logic_torch(batch, config):
-    import torch
     from torch import any, isnan
+
+    # Skip non-floating point tensors (e.g., integer, string tensors)
+    if not batch.is_floating_point():
+        return batch
 
     if config["data_set"]["nan_mode"] is False:
         if any(isnan(batch)):
