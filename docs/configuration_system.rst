@@ -17,16 +17,17 @@ Typed configuration schemas
 --------------------------
 
 Hyrax is introducing typed configuration models using Pydantic for safer validation and
-better documentation. The first of these models formalizes the ``[model_inputs]`` table
+better documentation. The first of these models formalizes the ``[data_request]`` table
 used to describe datasets for training, validation, and inference. Two key schemas are
 now available in :mod:`hyrax.config_schemas`:
 
-* ``ModelInputsConfig`` – defines per-dataset settings (``dataset_class``, ``data_location``,
+* ``DataRequestConfig`` – defines per-dataset settings (``dataset_class``, ``data_location``,
   ``fields``, ``primary_id_field``, and ``dataset_config``).
-* ``ModelInputsDefinition`` – wraps the full ``model_inputs`` table, supporting
+* ``DataRequestDefinition`` – wraps the full ``data_request`` table, supporting
   ``train``, ``validate``, ``infer``, and additional dataset keys.
 
-These models are passive definitions that can be imported by downstream modules or
-third-party integrations to validate configuration structures before runtime.
+These models provide validation and type safety for dataset configuration structures.
+Backward compatibility for the legacy ``[model_inputs]`` table name is maintained at
+the configuration loading layer.
 
 After training is completed, ``hyrax`` will write out all of the variables (combined from all the various source configs) used at runtime in the runtime directory as a ``runtime_config.toml`` file, so that the user can see what variables were actually used in one place.

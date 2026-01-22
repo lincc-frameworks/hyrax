@@ -15,12 +15,12 @@ from .datasets import (
     HyraxRandomDatasetConfig,
     LSSTDatasetConfig,
 )
-from .model_inputs import ModelInputsConfig, ModelInputsDefinition
+from .data_request import DataRequestConfig, DataRequestDefinition
 
 __all__ = [
     "BaseConfigModel",
-    "ModelInputsConfig",
-    "ModelInputsDefinition",
+    "DataRequestConfig",
+    "DataRequestDefinition",
     "HyraxRandomDatasetConfig",
     "HyraxCifarDatasetConfig",
     "LSSTDatasetConfig",

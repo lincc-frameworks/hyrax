@@ -1,8 +1,8 @@
 """
-Pydantic models describing the structure of the ``model_inputs`` configuration.
+Pydantic models describing the structure of the ``data_request`` configuration.
 
-These schemas are passive type definitions only and are not yet wired into the
-runtime configuration loading logic.
+These schemas validate and enforce the structure of dataset requests used throughout
+the Hyrax framework.
 """
 
 from __future__ import annotations
@@ -22,8 +22,8 @@ from .datasets import (
 )
 
 
-class ModelInputsConfig(BaseConfigModel):
-    """Per-dataset configuration used within ``model_inputs``."""
+class DataRequestConfig(BaseConfigModel):
+    """Per-dataset configuration used within ``data_request``."""
 
     dataset_class: str = Field(..., description="Fully qualified dataset class name.")
     data_location: str | None = Field(None, description="Path or URI describing where the dataset is stored.")
@@ -103,13 +103,13 @@ class ModelInputsConfig(BaseConfigModel):
         return self.model_dump(exclude_unset=exclude_unset)
 
 
-class ModelInputsDefinition(BaseConfigModel):
-    """Typed representation of the full ``model_inputs`` table."""
+class DataRequestDefinition(BaseConfigModel):
+    """Typed representation of the full ``data_request`` table."""
 
-    train: ModelInputsConfig | None = Field(None, description="Dataset configuration used for training.")
-    validate: ModelInputsConfig | None = Field(None, description="Dataset configuration used for validation.")
-    infer: ModelInputsConfig | None = Field(None, description="Dataset configuration used for inference.")
-    other_datasets: dict[str, ModelInputsConfig] = Field(
+    train: DataRequestConfig | None = Field(None, description="Dataset configuration used for training.")
+    validate: DataRequestConfig | None = Field(None, description="Dataset configuration used for validation.")
+    infer: DataRequestConfig | None = Field(None, description="Dataset configuration used for inference.")
+    other_datasets: dict[str, DataRequestConfig] = Field(
         default_factory=dict,
         description="Additional dataset definitions keyed by friendly name.",
     )

@@ -14,7 +14,7 @@ import tomlkit
 from pydantic import ValidationError
 from tomlkit.toml_document import TOMLDocument
 
-from hyrax.config_schemas import BaseConfigModel, ModelInputsDefinition
+from hyrax.config_schemas import BaseConfigModel, DataRequestDefinition
 
 DEFAULT_CONFIG_FILEPATH = Path(__file__).parent.resolve() / "hyrax_default_config.toml"
 DEFAULT_USER_CONFIG_FILEPATH = Path.cwd() / "hyrax_config.toml"
@@ -240,9 +240,9 @@ class ConfigManager:
             The value to set the key to.
         """
         keys = parse_dotted_key(key)
-        if key == "model_inputs":
+        if key == "data_request":
             with suppress(ValidationError):
-                value = self._coerce_model_inputs(value)
+                value = self._coerce_data_request(value)
         elif isinstance(value, BaseConfigModel):
             value = value.model_dump()
 
@@ -255,13 +255,13 @@ class ConfigManager:
         self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
-    def _coerce_model_inputs(value: Any) -> dict:
-        """Validate and normalize model_inputs into a plain dictionary."""
+    def _coerce_data_request(value: Any) -> dict:
+        """Validate and normalize data_request into a plain dictionary."""
 
-        if isinstance(value, ModelInputsDefinition):
+        if isinstance(value, DataRequestDefinition):
             return value.as_dict(exclude_unset=True)
 
-        validated = ModelInputsDefinition.model_validate(value)
+        validated = DataRequestDefinition.model_validate(value)
         return validated.as_dict(exclude_unset=True)
 
     @staticmethod

@@ -5,7 +5,7 @@ from typing import Any
 import numpy as np
 from pydantic import ValidationError
 
-from hyrax.config_schemas import BaseConfigModel, ModelInputsDefinition
+from hyrax.config_schemas import BaseConfigModel, DataRequestDefinition
 from hyrax.data_sets.data_set_registry import DATASET_REGISTRY, fetch_dataset_class
 
 logger = logging.getLogger(__name__)
@@ -33,13 +33,13 @@ def generate_data_request_from_config(config):
 
     if "model_inputs" in config:
         model_inputs = config["model_inputs"]
-        if isinstance(model_inputs, ModelInputsDefinition):
+        if isinstance(model_inputs, DataRequestDefinition):
             data_request = model_inputs.as_dict(exclude_unset=True)
         elif isinstance(model_inputs, BaseConfigModel):
             data_request = model_inputs.model_dump()
         else:
             try:
-                validated = ModelInputsDefinition.model_validate(model_inputs)
+                validated = DataRequestDefinition.model_validate(model_inputs)
                 data_request = validated.as_dict(exclude_unset=True)
             except ValidationError:
                 data_request = copy.deepcopy(model_inputs)
