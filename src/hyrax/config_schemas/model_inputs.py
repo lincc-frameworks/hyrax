@@ -7,7 +7,7 @@ runtime configuration loading logic.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Union
 
 from pydantic import Field, model_validator
 
@@ -44,16 +44,7 @@ class ModelInputsConfig(BaseConfigModel):
         HyraxCSVDatasetConfig,
     )
 
-    dataset_config: (
-        HyraxRandomDatasetConfig
-        | HyraxCifarDatasetConfig
-        | LSSTDatasetConfig
-        | DownloadedLSSTDatasetConfig
-        | HSCDataSetConfig
-        | HyraxCSVDatasetConfig
-        | dict[str, Any]
-        | None
-    ) = Field(
+    dataset_config: Union[*_DATASET_SCHEMAS, dict[str, Any], None] = Field(
         None,
         description=(
             "Dataset-specific configuration. If the dataset_class is a known built-in dataset, "
