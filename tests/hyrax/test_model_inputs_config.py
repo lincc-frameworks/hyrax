@@ -1,7 +1,12 @@
 import pytest
 from pydantic import ValidationError
 
-from hyrax.config_schemas import ModelInputsConfig, ModelInputsDefinition
+from hyrax.config_schemas import (
+    HyraxCifarDatasetConfig,
+    HyraxRandomDatasetConfig,
+    ModelInputsConfig,
+    ModelInputsDefinition,
+)
 
 
 def test_model_inputs_config_basic_fields():
@@ -65,3 +70,34 @@ def test_model_inputs_definition_rejects_missing_dataset_class():
     """dataset_class is required."""
     with pytest.raises(ValidationError):
         ModelInputsConfig(data_location="/tmp/data")
+
+
+def test_dataset_config_typed_mapping_random():
+    """dataset_config coerces to typed config for random dataset."""
+    cfg = ModelInputsConfig(
+        dataset_class="HyraxRandomDataset",
+        dataset_config={"size": 10, "shape": [1, 2], "seed": 123},
+    )
+
+    assert isinstance(cfg.dataset_config, HyraxRandomDatasetConfig)
+    assert cfg.dataset_config.size == 10
+    assert cfg.dataset_config.shape == [1, 2]
+    assert cfg.dataset_config.seed == 123
+
+
+def test_dataset_config_typed_mapping_cifar():
+    """dataset_config coerces to typed config for cifar dataset."""
+    cfg = ModelInputsConfig(
+        dataset_class="HyraxCifarDataset",
+        dataset_config={"use_training_data": False},
+    )
+
+    assert isinstance(cfg.dataset_config, HyraxCifarDatasetConfig)
+    assert cfg.dataset_config.use_training_data is False
+
+
+def test_dataset_config_unknown_dataset_allows_dict():
+    """Unknown dataset_class leaves dataset_config as plain dict."""
+    cfg = ModelInputsConfig(dataset_class="MyCustomDataset", dataset_config={"foo": "bar"})
+
+    assert cfg.dataset_config == {"foo": "bar"}
