@@ -7,6 +7,7 @@ from hyrax.config_schemas import (
     ModelInputsConfig,
     ModelInputsDefinition,
 )
+from hyrax.config_utils import ConfigManager
 
 
 def test_model_inputs_config_basic_fields():
@@ -29,9 +30,7 @@ def test_model_inputs_config_basic_fields():
 
 def test_model_inputs_config_unwraps_data_key():
     """Support legacy wrapped 'data' key."""
-    cfg = ModelInputsConfig(
-        data={"dataset_class": "HyraxCifarDataset", "primary_id_field": "oid"}
-    )
+    cfg = ModelInputsConfig(data={"dataset_class": "HyraxCifarDataset", "primary_id_field": "oid"})
     assert cfg.dataset_class == "HyraxCifarDataset"
     assert cfg.primary_id_field == "oid"
 
@@ -64,6 +63,28 @@ def test_model_inputs_definition_as_dict_shape():
     assert as_dict["train"]["data"]["dataset_class"] == "TrainDS"
     assert as_dict["train"]["data"]["fields"] == ["a"]
     assert as_dict["custom"]["data"]["dataset_class"] == "ExtraDS"
+
+
+def test_config_manager_set_config_accepts_model_inputs_definition():
+    """ConfigManager.set_config should accept pydantic model for model_inputs."""
+
+    cm = ConfigManager()
+    definition = ModelInputsDefinition(
+        train={
+            "dataset_class": "HyraxRandomDataset",
+            "fields": ["image"],
+            "dataset_config": {"size": 10, "shape": [1, 2, 3], "seed": 123},
+        },
+        infer={"dataset_class": "HyraxRandomDataset", "fields": ["image"]},
+    )
+
+    cm.set_config("model_inputs", definition)
+
+    rendered = cm.config["model_inputs"]
+    assert rendered["train"]["data"]["dataset_class"] == "HyraxRandomDataset"
+    assert rendered["train"]["data"]["fields"] == ["image"]
+    assert rendered["train"]["data"]["dataset_config"]["shape"] == [1, 2, 3]
+    assert rendered["infer"]["data"]["dataset_class"] == "HyraxRandomDataset"
 
 
 def test_model_inputs_definition_rejects_missing_dataset_class():
