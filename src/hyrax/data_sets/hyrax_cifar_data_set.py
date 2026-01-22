@@ -4,6 +4,9 @@ Sphinx/autoapi references ``hyrax.data_sets.hyrax_cifar_data_set``; this module
 re-exports the current implementation from ``hyrax_cifar_dataset``.
 """
 
-from hyrax.data_sets.hyrax_cifar_dataset import HyraxCifarDataSet
+from hyrax.data_sets.hyrax_cifar_dataset import HyraxCifarDataset
 
-__all__ = ["HyraxCifarDataSet"]
+# For backward compatibility
+HyraxCifarDataSet = HyraxCifarDataset
+
+__all__ = ["HyraxCifarDataset", "HyraxCifarDataSet"]
