@@ -874,6 +874,9 @@ class DataProvider:
         # This handles NaN values according to config["data_set"]["nan_mode"]
         for friendly_name, fields in batch_dict.items():
             if friendly_name == "object_id":
+                # object_id is stored as a top-level string array (see creation above
+                # where dtype=str) and is not floating point data, so NaN handling
+                # does not apply here.
                 continue
 
             # Skip custom collated data as it may have already handled NaNs
