@@ -37,8 +37,15 @@ def test_generate_data_request_passes_model_inputs():
 
     h = Hyrax()
     model_inputs = {
-        "a": "foo",
-        "b": {"c": "bar"},
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./data",
+                "primary_id_field": "object_id",
+                "fields": ["image"],
+                "dataset_config": {"shape": [1, 2, 3], "seed": 1},
+            }
+        }
     }
     h.config["model_inputs"] = model_inputs
 

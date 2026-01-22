@@ -12,6 +12,8 @@ from typing import Any, Union
 import tomlkit
 from tomlkit.toml_document import TOMLDocument
 
+from hyrax.config_schemas import BaseConfigModel, ModelInputsDefinition
+
 DEFAULT_CONFIG_FILEPATH = Path(__file__).parent.resolve() / "hyrax_default_config.toml"
 DEFAULT_USER_CONFIG_FILEPATH = Path.cwd() / "hyrax_config.toml"
 # There are only a couple of configuration keys where we would expect to find an
@@ -235,7 +237,13 @@ class ConfigManager:
         value : Any
             The value to set the key to.
         """
+        if isinstance(value, BaseConfigModel):
+            value = value.model_dump()
+
         keys = parse_dotted_key(key)
+        if keys and keys[0] == "model_inputs":
+            value = self._coerce_model_inputs(value)
+
         d = self.config
         for k in keys[:-1]:
             d = d[k]
@@ -243,6 +251,16 @@ class ConfigManager:
 
         self.config = self._render_config(self.config, self.original_config)
         self.original_config = copy.deepcopy(self.config)
+
+    @staticmethod
+    def _coerce_model_inputs(value: Any) -> dict:
+        """Validate and normalize model_inputs into a plain dictionary."""
+
+        if isinstance(value, ModelInputsDefinition):
+            return value.as_dict()
+
+        validated = ModelInputsDefinition.model_validate(value)
+        return validated.as_dict()
 
     @staticmethod
     def read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:
