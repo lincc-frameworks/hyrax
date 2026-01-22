@@ -10,9 +10,8 @@ from pathlib import Path
 from typing import Any, Union
 
 import tomlkit
-from tomlkit.toml_document import TOMLDocument
-
 from pydantic import ValidationError
+from tomlkit.toml_document import TOMLDocument
 
 from hyrax.config_schemas import BaseConfigModel, ModelInputsDefinition
 

@@ -26,9 +26,7 @@ class ModelInputsConfig(BaseConfigModel):
     """Per-dataset configuration used within ``model_inputs``."""
 
     dataset_class: str = Field(..., description="Fully qualified dataset class name.")
-    data_location: str | None = Field(
-        None, description="Path or URI describing where the dataset is stored."
-    )
+    data_location: str | None = Field(None, description="Path or URI describing where the dataset is stored.")
     fields: list[str] | None = Field(
         None, description="Subset of columns/fields to request from the dataset."
     )
@@ -66,8 +64,11 @@ class ModelInputsConfig(BaseConfigModel):
     def unwrap_data_key(cls, value: Any) -> Any:
         """Allow configurations specified under a ``data`` wrapper."""
 
-        if isinstance(value, dict) and "data" in value and len(value) == 1 and isinstance(
-            value["data"], dict
+        if (
+            isinstance(value, dict)
+            and "data" in value
+            and len(value) == 1
+            and isinstance(value["data"], dict)
         ):
             return value["data"]
         return value
@@ -105,15 +106,9 @@ class ModelInputsConfig(BaseConfigModel):
 class ModelInputsDefinition(BaseConfigModel):
     """Typed representation of the full ``model_inputs`` table."""
 
-    train: ModelInputsConfig | None = Field(
-        None, description="Dataset configuration used for training."
-    )
-    validate: ModelInputsConfig | None = Field(
-        None, description="Dataset configuration used for validation."
-    )
-    infer: ModelInputsConfig | None = Field(
-        None, description="Dataset configuration used for inference."
-    )
+    train: ModelInputsConfig | None = Field(None, description="Dataset configuration used for training.")
+    validate: ModelInputsConfig | None = Field(None, description="Dataset configuration used for validation.")
+    infer: ModelInputsConfig | None = Field(None, description="Dataset configuration used for inference.")
     other_datasets: dict[str, ModelInputsConfig] = Field(
         default_factory=dict,
         description="Additional dataset definitions keyed by friendly name.",

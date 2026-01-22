@@ -30,9 +30,7 @@ def test_model_inputs_config_basic_fields():
 
 def test_model_inputs_config_unwraps_data_key():
     """Support legacy wrapped 'data' key."""
-    cfg = ModelInputsConfig(
-        data={"dataset_class": "HyraxCifarDataset", "primary_id_field": "oid"}
-    )
+    cfg = ModelInputsConfig(data={"dataset_class": "HyraxCifarDataset", "primary_id_field": "oid"})
     assert cfg.dataset_class == "HyraxCifarDataset"
     assert cfg.primary_id_field == "oid"
 

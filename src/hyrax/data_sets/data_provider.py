@@ -3,7 +3,6 @@ import logging
 from typing import Any
 
 import numpy as np
-
 from pydantic import ValidationError
 
 from hyrax.config_schemas import BaseConfigModel, ModelInputsDefinition

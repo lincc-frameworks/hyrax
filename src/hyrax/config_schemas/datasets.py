@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from pydantic import Field, model_validator
 
 from .base import BaseConfigModel
@@ -30,7 +28,7 @@ class HyraxRandomDatasetConfig(BaseConfigModel):
     )
 
     @model_validator(mode="after")
-    def validate_invalid_value_type(self) -> "HyraxRandomDatasetConfig":
+    def validate_invalid_value_type(self) -> HyraxRandomDatasetConfig:
         if isinstance(self.invalid_value_type, str):
             allowed = {"nan", "inf", "-inf", "none"}
             if self.invalid_value_type.lower() not in allowed:
@@ -69,7 +67,7 @@ class LSSTDatasetConfig(BaseConfigModel):
     skymap: str | None = Field(None, description="Butler skymap name.")
 
     @model_validator(mode="after")
-    def ensure_catalog_source(self) -> "LSSTDatasetConfig":
+    def ensure_catalog_source(self) -> LSSTDatasetConfig:
         if not (self.hats_catalog or self.astropy_table):
             msg = "Either 'hats_catalog' or 'astropy_table' must be provided."
             raise ValueError(msg)
@@ -87,9 +85,7 @@ class HSCDataSetConfig(BaseConfigModel):
     """Configuration for :class:`HSCDataSet`."""
 
     filters: list[str] | bool = Field(False, description="Filters to include; false for all.")
-    filter_catalog: str | bool = Field(
-        False, description="Path to filter catalog; false to disable."
-    )
+    filter_catalog: str | bool = Field(False, description="Path to filter catalog; false to disable.")
     object_id_column_name: str | bool = Field(
         False, description="Override object ID column name; false for default."
     )
