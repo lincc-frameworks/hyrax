@@ -75,15 +75,19 @@ class ModelInputsConfig(BaseConfigModel):
         cfg = value.get("dataset_config")
 
         mapping: dict[str, type[BaseConfigModel]] = {
-            "HyraxRandomDataset": HyraxRandomDatasetConfig,
-            "HyraxRandomIterableDataset": HyraxRandomDatasetConfig,
-            "HyraxCifarDataset": HyraxCifarDatasetConfig,
-            "HyraxCifarIterableDataset": HyraxCifarDatasetConfig,
-            "LSSTDataset": LSSTDatasetConfig,
-            "DownloadedLSSTDataset": DownloadedLSSTDatasetConfig,
-            "HSCDataSet": HSCDataSetConfig,
-            "HyraxCSVDataset": HyraxCSVDatasetConfig,
+            cls.__name__: schema
+            for cls, schema in (
+                (HyraxRandomDatasetConfig, HyraxRandomDatasetConfig),
+                (HyraxCifarDatasetConfig, HyraxCifarDatasetConfig),
+                (LSSTDatasetConfig, LSSTDatasetConfig),
+                (DownloadedLSSTDatasetConfig, DownloadedLSSTDatasetConfig),
+                (HSCDataSetConfig, HSCDataSetConfig),
+                (HyraxCSVDatasetConfig, HyraxCSVDatasetConfig),
+            )
         }
+        # Iterable variants share the same schema
+        mapping["HyraxRandomIterableDataset"] = HyraxRandomDatasetConfig
+        mapping["HyraxCifarIterableDataset"] = HyraxCifarDatasetConfig
 
         cfg_model = mapping.get(dataset_class)
         if cfg is not None and cfg_model is not None and not isinstance(cfg, cfg_model):
