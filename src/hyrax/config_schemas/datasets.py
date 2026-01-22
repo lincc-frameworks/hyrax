@@ -29,6 +29,7 @@ class HyraxRandomDatasetConfig(BaseConfigModel):
 
     @model_validator(mode="after")
     def validate_invalid_value_type(self) -> HyraxRandomDatasetConfig:
+        """Validate that invalid_value_type is an allowed sentinel string or a float."""
         if isinstance(self.invalid_value_type, str):
             allowed = {"nan", "inf", "-inf", "none"}
             if self.invalid_value_type.lower() not in allowed:
@@ -68,6 +69,7 @@ class LSSTDatasetConfig(BaseConfigModel):
 
     @model_validator(mode="after")
     def ensure_catalog_source(self) -> LSSTDatasetConfig:
+        """Ensure that either hats_catalog or astropy_table is provided."""
         if not (self.hats_catalog or self.astropy_table):
             msg = "Either 'hats_catalog' or 'astropy_table' must be provided."
             raise ValueError(msg)
