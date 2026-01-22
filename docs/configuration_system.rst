@@ -83,20 +83,20 @@ between TOML and the Pydantic models:
   .. code-block:: python
 
      import hyrax
-     from hyrax.config_schemas.data_request import DataRequestDefinition
+     from hyrax.config_schemas.data_request import DataRequestConfig, DataRequestDefinition
 
      h = hyrax.Hyrax()
      h.set_config(
          "data_request",
          DataRequestDefinition(
-             train={
-                 "dataset_class": "HyraxRandomDataset",
-                 "data_location": "./data/train.parquet",
-                 "primary_id_field": "object_id",
-                 "fields": ["object_id", "flux"],
-                 "dataset_config": {"seed": 42, "num_rows": 100},
-             }
-         ).model_dump(),
+             train=DataRequestConfig(
+                 dataset_class="HyraxRandomDataset",
+                 data_location="./data/train.parquet",
+                 primary_id_field="object_id",
+                 fields=["object_id", "flux"],
+                 dataset_config={"seed": 42, "num_rows": 100},
+             )
+         ),
      )
 
 The ``DataRequestDefinition`` model accepts additional dataset keys (e.g., ``validate``
