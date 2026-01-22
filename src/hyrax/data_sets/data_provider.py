@@ -50,6 +50,12 @@ def generate_data_request_from_config(config):
         data_request = config.get("data_request") or config.get("model_inputs")
     else:
         # Neither key exists, create fallback from old [data_set] table
+        warnings.warn(
+            "The [data_set] configuration table is deprecated and will be removed in a future version. "
+            "Please use [data_request] instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         data_request = {
             "train": {
                 "data": {
