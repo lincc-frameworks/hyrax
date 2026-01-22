@@ -76,7 +76,7 @@ between TOML and the Pydantic models:
      from hyrax.config_schemas.data_request import DataRequestDefinition
 
      h = hyrax.Hyrax()
-     h.set_config("data_request", cfg.model_dump())
+     h.set_config("data_request", cfg)
 
 * **Inline construction + ``set_config``**
 
