@@ -240,7 +240,7 @@ class ConfigManager:
             The value to set the key to.
         """
         keys = parse_dotted_key(key)
-        if key == "data_request":
+        if key in ("data_request", "model_inputs"):
             with suppress(ValidationError):
                 value = self._coerce_data_request(value)
         elif isinstance(value, BaseConfigModel):
