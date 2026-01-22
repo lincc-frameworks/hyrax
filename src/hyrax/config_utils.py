@@ -5,13 +5,12 @@ import importlib
 import logging
 import random
 import re
+from contextlib import suppress
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any, Union
 
 import tomlkit
-from contextlib import suppress
-
 from pydantic import ValidationError
 from tomlkit.toml_document import TOMLDocument
 
