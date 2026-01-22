@@ -35,6 +35,15 @@ class ModelInputsConfig(BaseConfigModel):
     primary_id_field: str | None = Field(
         None, description="Name of the primary identifier field in the dataset."
     )
+    _DATASET_SCHEMAS = (
+        HyraxRandomDatasetConfig,
+        HyraxCifarDatasetConfig,
+        LSSTDatasetConfig,
+        DownloadedLSSTDatasetConfig,
+        HSCDataSetConfig,
+        HyraxCSVDatasetConfig,
+    )
+
     dataset_config: (
         HyraxRandomDatasetConfig
         | HyraxCifarDatasetConfig
@@ -75,15 +84,7 @@ class ModelInputsConfig(BaseConfigModel):
         cfg = value.get("dataset_config")
 
         mapping: dict[str, type[BaseConfigModel]] = {
-            schema.__name__.removesuffix("Config"): schema
-            for schema in (
-                HyraxRandomDatasetConfig,
-                HyraxCifarDatasetConfig,
-                LSSTDatasetConfig,
-                DownloadedLSSTDatasetConfig,
-                HSCDataSetConfig,
-                HyraxCSVDatasetConfig,
-            )
+            schema.__name__.removesuffix("Config"): schema for schema in cls._DATASET_SCHEMAS
         }
         # Iterable variants share the same schema
         mapping["HyraxRandomIterableDataset"] = HyraxRandomDatasetConfig

@@ -104,6 +104,6 @@ class HSCDataSetConfig(BaseConfigModel):
 class HyraxCSVDatasetConfig(BaseConfigModel):
     """Configuration for :class:`HyraxCSVDataset`."""
 
-    # No dataset-specific options currently required; present for symmetry with other datasets
-    # and future extension without breaking typed unions.
+    # No dataset-specific options currently required; included to keep typed unions covering
+    # CSV datasets consistent, and allows future extension without changing ModelInputsConfig.
     pass
