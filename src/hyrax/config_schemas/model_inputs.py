@@ -12,6 +12,14 @@ from typing import Any
 from pydantic import Field, model_validator
 
 from .base import BaseConfigModel
+from .datasets import (
+    DownloadedLSSTDatasetConfig,
+    HSCDataSetConfig,
+    HyraxCifarDatasetConfig,
+    HyraxCSVDatasetConfig,
+    HyraxRandomDatasetConfig,
+    LSSTDatasetConfig,
+)
 
 
 class ModelInputsConfig(BaseConfigModel):
@@ -27,8 +35,21 @@ class ModelInputsConfig(BaseConfigModel):
     primary_id_field: str | None = Field(
         None, description="Name of the primary identifier field in the dataset."
     )
-    dataset_config: dict[str, Any] | None = Field(
-        None, description="Dataset-specific configuration to pass through to the class."
+    dataset_config: (
+        HyraxRandomDatasetConfig
+        | HyraxCifarDatasetConfig
+        | LSSTDatasetConfig
+        | DownloadedLSSTDatasetConfig
+        | HSCDataSetConfig
+        | HyraxCSVDatasetConfig
+        | dict[str, Any]
+        | None
+    ) = Field(
+        None,
+        description=(
+            "Dataset-specific configuration. If the dataset_class is a known built-in dataset, "
+            "the schema will be validated against its typed config; otherwise a free-form dictionary."
+        ),
     )
 
     @model_validator(mode="before")
@@ -40,6 +61,34 @@ class ModelInputsConfig(BaseConfigModel):
             value["data"], dict
         ):
             return value["data"]
+        return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def coerce_dataset_config(cls, value: Any) -> Any:
+        """Coerce dataset_config into the appropriate typed model based on dataset_class."""
+
+        if not isinstance(value, dict):
+            return value
+
+        dataset_class = value.get("dataset_class")
+        cfg = value.get("dataset_config")
+
+        mapping: dict[str, type[BaseConfigModel]] = {
+            "HyraxRandomDataset": HyraxRandomDatasetConfig,
+            "HyraxRandomIterableDataset": HyraxRandomDatasetConfig,
+            "HyraxCifarDataset": HyraxCifarDatasetConfig,
+            "HyraxCifarIterableDataset": HyraxCifarDatasetConfig,
+            "LSSTDataset": LSSTDatasetConfig,
+            "DownloadedLSSTDataset": DownloadedLSSTDatasetConfig,
+            "HSCDataSet": HSCDataSetConfig,
+            "HyraxCSVDataset": HyraxCSVDatasetConfig,
+        }
+
+        cfg_model = mapping.get(dataset_class)
+        if cfg is not None and cfg_model is not None and not isinstance(cfg, cfg_model):
+            value["dataset_config"] = cfg_model.model_validate(cfg)
+
         return value
 
     def as_dict(self) -> dict[str, Any]:

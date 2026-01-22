@@ -7,6 +7,24 @@ incremental adoption in downstream modules and tests.
 """
 
 from .base import BaseConfigModel
+from .datasets import (
+    DownloadedLSSTDatasetConfig,
+    HSCDataSetConfig,
+    HyraxCifarDatasetConfig,
+    HyraxCSVDatasetConfig,
+    HyraxRandomDatasetConfig,
+    LSSTDatasetConfig,
+)
 from .model_inputs import ModelInputsConfig, ModelInputsDefinition
 
-__all__ = ["BaseConfigModel", "ModelInputsConfig", "ModelInputsDefinition"]
+__all__ = [
+    "BaseConfigModel",
+    "ModelInputsConfig",
+    "ModelInputsDefinition",
+    "HyraxRandomDatasetConfig",
+    "HyraxCifarDatasetConfig",
+    "LSSTDatasetConfig",
+    "DownloadedLSSTDatasetConfig",
+    "HSCDataSetConfig",
+    "HyraxCSVDatasetConfig",
+]
