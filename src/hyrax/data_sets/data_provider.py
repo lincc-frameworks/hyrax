@@ -35,6 +35,8 @@ try:
         """The implementation of _handle_nans when expecting `batch` to be a tensor."""
         return _handle_nans_logic_torch(batch, config)
 except ImportError:
+    # Torch is an optional dependency; if it is not installed, we simply
+    # skip registering the tensor-specific NaN handler.
     pass
 
 
