@@ -42,16 +42,16 @@ class DataRequestConfig(BaseConfigModel):
         HyraxCSVDatasetConfig,
     )
 
-    DatasetConfigType: ClassVar = (
+    dataset_config: (
         HyraxRandomDatasetConfig
         | HyraxCifarDatasetConfig
         | LSSTDatasetConfig
         | DownloadedLSSTDatasetConfig
         | HSCDataSetConfig
         | HyraxCSVDatasetConfig
-    )
-
-    dataset_config: DatasetConfigType | dict[str, Any] | None = Field(
+        | dict[str, Any]
+        | None
+    ) = Field(
         None,
         description=(
             "Dataset-specific configuration. If the dataset_class is a known built-in dataset, "
