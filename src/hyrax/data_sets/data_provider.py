@@ -34,13 +34,13 @@ def generate_data_request_from_config(config):
     if "model_inputs" in config:
         model_inputs = config["model_inputs"]
         if isinstance(model_inputs, ModelInputsDefinition):
-            data_request = model_inputs.model_dump(exclude_unset=True)
+            data_request = model_inputs.as_dict(exclude_unset=True)
         elif isinstance(model_inputs, BaseConfigModel):
             data_request = model_inputs.model_dump()
         else:
             try:
                 validated = ModelInputsDefinition.model_validate(model_inputs)
-                data_request = validated.model_dump(exclude_unset=True)
+                data_request = validated.as_dict(exclude_unset=True)
             except ValidationError:
                 data_request = copy.deepcopy(model_inputs)
 
