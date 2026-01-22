@@ -68,6 +68,15 @@ between TOML and the Pydantic models:
          }
      )
 
+* **Directly set on a ``Hyrax`` instance**
+
+  .. code-block:: python
+
+     import hyrax
+
+     h = hyrax.Hyrax()
+     h.set_config("data_request", cfg.model_dump())
+
 The ``DataRequestDefinition`` model accepts additional dataset keys (e.g., ``validate``
 or ``infer``) in the same shape as ``train``. If you still use the legacy
 ``[model_inputs]`` table name, Hyrax aliases it internally to ``[data_request]`` so
