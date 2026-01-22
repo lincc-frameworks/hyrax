@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any, Union
 
 import tomlkit
+from contextlib import suppress
+
 from pydantic import ValidationError
 from tomlkit.toml_document import TOMLDocument
 
@@ -240,10 +242,8 @@ class ConfigManager:
         """
         keys = parse_dotted_key(key)
         if key == "model_inputs":
-            try:
+            with suppress(ValidationError):
                 value = self._coerce_model_inputs(value)
-            except ValidationError:
-                pass
         elif isinstance(value, BaseConfigModel):
             value = value.model_dump()
 
