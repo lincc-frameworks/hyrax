@@ -6,9 +6,7 @@ import warnings
 from typing import Any
 
 import numpy as np
-from pydantic import ValidationError
 
-from hyrax.config_schemas import BaseConfigModel, DataRequestDefinition
 from hyrax.data_sets.data_set_registry import DATASET_REGISTRY, fetch_dataset_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
