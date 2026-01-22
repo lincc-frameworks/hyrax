@@ -7,7 +7,7 @@ runtime configuration loading logic.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, ClassVar
 
 from pydantic import Field, model_validator
 
@@ -33,7 +33,7 @@ class ModelInputsConfig(BaseConfigModel):
     primary_id_field: str | None = Field(
         None, description="Name of the primary identifier field in the dataset."
     )
-    _DATASET_SCHEMAS = (
+    _DATASET_SCHEMAS: ClassVar = (
         HyraxRandomDatasetConfig,
         HyraxCifarDatasetConfig,
         LSSTDatasetConfig,
@@ -42,7 +42,7 @@ class ModelInputsConfig(BaseConfigModel):
         HyraxCSVDatasetConfig,
     )
 
-    DatasetConfigType = (
+    DatasetConfigType: ClassVar = (
         HyraxRandomDatasetConfig
         | HyraxCifarDatasetConfig
         | LSSTDatasetConfig
