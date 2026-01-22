@@ -256,7 +256,29 @@ class ConfigManager:
 
     @staticmethod
     def _coerce_data_request(value: Any) -> dict:
-        """Validate and normalize data_request into a plain dictionary."""
+        """Validate and normalize data_request configuration into a plain dictionary.
+
+        This method ensures that the ``data_request`` configuration (which defines
+        datasets for training, validation, and inference) is properly validated against
+        the DataRequestDefinition schema and converted to a dictionary format suitable
+        for internal use.
+
+        Parameters
+        ----------
+        value : Any
+            The data_request value to validate. Can be a DataRequestDefinition instance
+            or a dictionary/object that can be validated as one.
+
+        Returns
+        -------
+        dict
+            The validated data_request as a plain dictionary with unset values excluded.
+
+        Raises
+        ------
+        ValidationError
+            If the value cannot be validated as a DataRequestDefinition.
+        """
 
         if isinstance(value, DataRequestDefinition):
             return value.as_dict(exclude_unset=True)
