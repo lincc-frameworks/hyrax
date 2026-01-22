@@ -76,7 +76,7 @@ def _torch_load(self: nn.Module, load_path: Path):
     if prepare_inputs_fn:
         if isinstance(prepare_inputs_fn, staticmethod):
             self.prepare_inputs = prepare_inputs_fn
-            prepare_inputs_func = prepare_inputs_fn.__func__
+            prepare_inputs_func = prepare_inputs_fn
         else:
             self.prepare_inputs = staticmethod(prepare_inputs_fn)
             prepare_inputs_func = prepare_inputs_fn
