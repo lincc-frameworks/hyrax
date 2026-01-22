@@ -870,11 +870,7 @@ class DataProvider:
                 if isinstance(values, list):
                     batch_dict[friendly_name][field] = np.array(values)
 
-        # Apply NaN handling to all numpy array fields in the batch
-        # This handles NaN values according to config["data_set"]["nan_mode"]
-        for friendly_name, fields in batch_dict.items():
-            if friendly_name == "object_id":
-        # This handles NaN values according to config["data_set"]["nan_mode"],
+        # Apply NaN handling to all numpy array fields in the batch,
         # including data produced by custom collate functions.
         for friendly_name, fields in batch_dict.items():
             if friendly_name == "object_id":
