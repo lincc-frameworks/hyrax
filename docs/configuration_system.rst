@@ -1,7 +1,7 @@
 The ``Hyrax`` Configuration System
 ==================================
 
-``hyrax`` makes extensive use of the config variables to manage the runtime enviroment of training and inference runs. There is a ``hyrax_default_config.toml``  file (full contents listed here), included with ``hyrax``, that contains every variable that ``hyrax`` could need to operate. To create a custom configuration file, simply create a ``.toml`` file and change variables as you see fit, or if you’re running with a custom dataset or model, add your own variables. 
+``hyrax`` makes extensive use of the config variables to manage the runtime environment of training and inference runs. There is a ``hyrax_default_config.toml``  file (full contents listed here), included with ``hyrax``, that contains every variable that ``hyrax`` could need to operate. To create a custom configuration file, simply create a ``.toml`` file and change variables as you see fit, or if you’re running with a custom dataset or model, add your own variables. 
 
 Config variables are inherited from a hierarchy of sources, similar to ``python`` classes. First, ``hyrax`` will prioritize the variables set in the default configuration. Next, it will load the relevant default config of any custom ``hyrax`` packages that the user is utilizing. It determines what packages to include by checking what custom classes are loaded in initially and looking for the relevant default configs. If a package doesn’t have a default, ``hyrax`` will throw a warning. Finally, it will use whatever variables have been declared in the user defined config toml (see here for how to load those through a notebook/script or the CLI).
 
