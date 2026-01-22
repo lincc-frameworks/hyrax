@@ -1,6 +1,4 @@
-import functools
 import logging
-import warnings
 from pathlib import Path
 from typing import Any, cast
 
@@ -19,30 +17,6 @@ from hyrax.plugin_utils import (
 logger = logging.getLogger(__name__)
 
 MODEL_REGISTRY: dict[str, type[nn.Module]] = {}
-
-
-def deprecated(reason: str):
-    """Decorator to mark functions as deprecated.
-
-    Parameters
-    ----------
-    reason : str
-        The reason for deprecation and guidance for what to use instead.
-    """
-
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(*args, **kwargs):
-            warnings.warn(
-                f"{func.__name__} is deprecated. {reason}",
-                category=DeprecationWarning,
-                stacklevel=2,
-            )
-            return func(*args, **kwargs)
-
-        return wrapper
-
-    return decorator
 
 
 def _torch_save(self: nn.Module, save_path: Path):
@@ -76,30 +50,18 @@ def _torch_load(self: nn.Module, load_path: Path):
     if prepare_inputs_fn:
         if isinstance(prepare_inputs_fn, staticmethod):
             self.prepare_inputs = prepare_inputs_fn
-            prepare_inputs_func = prepare_inputs_fn
         else:
             self.prepare_inputs = staticmethod(prepare_inputs_fn)
-            prepare_inputs_func = prepare_inputs_fn
-
-        # Create deprecated wrapper for to_tensor
-        @deprecated("Use prepare_inputs instead.")
-        def to_tensor_wrapper(data_dict):
-            return prepare_inputs_func(data_dict)
-
-        self.to_tensor = staticmethod(to_tensor_wrapper)
-
     elif to_tensor_fn:
-        # Backward compatibility: if only to_tensor is found, use it for both
+        # Backward compatibility: if only to_tensor is found, create prepare_inputs from it
         logger.warning(
             f"Found to_tensor function in {load_path.parent}. "
-            "to_tensor is deprecated, please use prepare_inputs instead."
+            "to_tensor is deprecated, please rename to prepare_inputs."
         )
         if isinstance(to_tensor_fn, staticmethod):
             self.prepare_inputs = to_tensor_fn
-            self.to_tensor = to_tensor_fn
         else:
             self.prepare_inputs = staticmethod(to_tensor_fn)
-            self.to_tensor = staticmethod(to_tensor_fn)
     else:
         logger.warning(
             f"Could not find prepare_inputs or to_tensor function in {load_path}. "
@@ -236,38 +198,18 @@ def hyrax_model(cls):
             msg += "    <Your implementation goes here>\n"
             raise RuntimeError(msg)
 
-        # Create deprecated to_tensor wrapper that calls prepare_inputs
-        # Capture the prepare_inputs method in the closure
-        prepare_inputs_func = cls.prepare_inputs.__func__
-
-        @staticmethod
-        @deprecated("Use prepare_inputs instead.")
-        def deprecated_to_tensor(data_dict):
-            return prepare_inputs_func(data_dict)
-
-        cls.to_tensor = deprecated_to_tensor
-
     elif has_to_tensor:
         # Model only has old to_tensor method - create prepare_inputs that calls it
-        # and mark to_tensor as deprecated
         if not isinstance(vars(cls)["to_tensor"], staticmethod):
-            msg = f"You must implement to_tensor() in {cls.__name__} as\n\n"
+            msg = f"You must rename to_tensor() to prepare_inputs() in {cls.__name__} as\n\n"
             msg += "@staticmethod\n"
-            msg += "def to_tensor(data_dict: dict) -> torch.Tensor:\n"
+            msg += "def prepare_inputs(data_dict: dict) -> torch.Tensor:\n"
             msg += "    <Your implementation goes here>\n"
             raise RuntimeError(msg)
 
-        # Wrap the existing to_tensor with deprecation warning
+        # Create prepare_inputs that calls the original to_tensor implementation
         original_to_tensor = cls.to_tensor.__func__
 
-        @staticmethod
-        @deprecated("Use prepare_inputs instead.")
-        def deprecated_to_tensor_wrapper(data_dict):
-            return original_to_tensor(data_dict)
-
-        cls.to_tensor = deprecated_to_tensor_wrapper
-
-        # Create prepare_inputs that calls the original implementation
         @staticmethod
         def prepare_inputs_from_to_tensor(data_dict):
             return original_to_tensor(data_dict)
@@ -277,17 +219,6 @@ def hyrax_model(cls):
     else:
         # No method defined - use defaults
         cls.prepare_inputs = staticmethod(default_prepare_inputs)
-
-        # Create deprecated to_tensor wrapper
-        # Capture default_prepare_inputs in the closure
-        default_func = default_prepare_inputs
-
-        @staticmethod
-        @deprecated("Use prepare_inputs instead.")
-        def deprecated_to_tensor_default(data_dict):
-            return default_func(data_dict)
-
-        cls.to_tensor = deprecated_to_tensor_default
 
     # Update required methods to include prepare_inputs
     required_methods = ["train_step", "forward", "__init__", "prepare_inputs"]
