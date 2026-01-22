@@ -40,8 +40,10 @@ except ImportError:
     pass
 
 
-# Register tuples and lists because we're not sure yet which will be returned
-# from to_tensor.
+# Register tuples and lists for backward compatibility and edge cases.
+# NaN handling now primarily occurs in DataProvider.collate() on numpy arrays
+# before to_tensor() is called, so tuple/list batches are not expected in
+# the main data flow but may still appear from legacy or unusual inputs.
 @_handle_nans.register(tuple)
 @_handle_nans.register(list)
 def _handle_nans_tuple(batch, config):
