@@ -874,13 +874,10 @@ class DataProvider:
         # This handles NaN values according to config["data_set"]["nan_mode"]
         for friendly_name, fields in batch_dict.items():
             if friendly_name == "object_id":
-                # object_id is stored as a top-level string array (see creation above
-                # where dtype=str) and is not floating point data, so NaN handling
-                # does not apply here.
-                continue
-
-            # Skip custom collated data as it may have already handled NaNs
-            if friendly_name in self.custom_collate_functions:
+        # This handles NaN values according to config["data_set"]["nan_mode"],
+        # including data produced by custom collate functions.
+        for friendly_name, fields in batch_dict.items():
+            if friendly_name == "object_id":
                 continue
 
             # Handle dict of fields (normal case)
@@ -888,7 +885,7 @@ class DataProvider:
                 for field, value in fields.items():
                     if isinstance(value, np.ndarray):
                         batch_dict[friendly_name][field] = _handle_nans(value, self.config)
-            # Handle direct numpy arrays (from custom collate that returns arrays directly)
+            # Handle direct numpy arrays (e.g., from custom collate that returns arrays directly)
             elif isinstance(fields, np.ndarray):
                 batch_dict[friendly_name] = _handle_nans(fields, self.config)
 
