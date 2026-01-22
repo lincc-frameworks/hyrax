@@ -75,14 +75,14 @@ class ModelInputsConfig(BaseConfigModel):
         cfg = value.get("dataset_config")
 
         mapping: dict[str, type[BaseConfigModel]] = {
-            cls.__name__: schema
-            for cls, schema in (
-                (HyraxRandomDatasetConfig, HyraxRandomDatasetConfig),
-                (HyraxCifarDatasetConfig, HyraxCifarDatasetConfig),
-                (LSSTDatasetConfig, LSSTDatasetConfig),
-                (DownloadedLSSTDatasetConfig, DownloadedLSSTDatasetConfig),
-                (HSCDataSetConfig, HSCDataSetConfig),
-                (HyraxCSVDatasetConfig, HyraxCSVDatasetConfig),
+            schema.__name__.removesuffix("Config"): schema
+            for schema in (
+                HyraxRandomDatasetConfig,
+                HyraxCifarDatasetConfig,
+                LSSTDatasetConfig,
+                DownloadedLSSTDatasetConfig,
+                HSCDataSetConfig,
+                HyraxCSVDatasetConfig,
             )
         }
         # Iterable variants share the same schema
