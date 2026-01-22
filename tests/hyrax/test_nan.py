@@ -4,8 +4,8 @@ import torch
 from torch import any, from_numpy, isnan, tensor
 
 import hyrax
+from hyrax.data_sets.data_provider import _handle_nans
 from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
-from hyrax.pytorch_ignite import _handle_nans
 
 
 class RandomNaNDataset(HyraxRandomDataset):
