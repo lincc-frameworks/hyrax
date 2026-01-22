@@ -12,6 +12,8 @@ from typing import Any, Union
 import tomlkit
 from tomlkit.toml_document import TOMLDocument
 
+from pydantic import ValidationError
+
 from hyrax.config_schemas import BaseConfigModel, ModelInputsDefinition
 
 DEFAULT_CONFIG_FILEPATH = Path(__file__).parent.resolve() / "hyrax_default_config.toml"
@@ -237,12 +239,14 @@ class ConfigManager:
         value : Any
             The value to set the key to.
         """
-        if isinstance(value, BaseConfigModel):
-            value = value.model_dump()
-
         keys = parse_dotted_key(key)
-        if keys and keys[0] == "model_inputs":
-            value = self._coerce_model_inputs(value)
+        if key == "model_inputs":
+            try:
+                value = self._coerce_model_inputs(value)
+            except ValidationError:
+                pass
+        elif isinstance(value, BaseConfigModel):
+            value = value.model_dump()
 
         d = self.config
         for k in keys[:-1]:
@@ -257,10 +261,10 @@ class ConfigManager:
         """Validate and normalize model_inputs into a plain dictionary."""
 
         if isinstance(value, ModelInputsDefinition):
-            return value.as_dict()
+            return value.as_dict(exclude_unset=True)
 
         validated = ModelInputsDefinition.model_validate(value)
-        return validated.as_dict()
+        return validated.as_dict(exclude_unset=True)
 
     @staticmethod
     def read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:

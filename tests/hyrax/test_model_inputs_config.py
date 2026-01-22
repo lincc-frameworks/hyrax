@@ -72,7 +72,11 @@ def test_config_manager_set_config_accepts_model_inputs_definition():
 
     cm = ConfigManager()
     definition = ModelInputsDefinition(
-        train={"dataset_class": "HyraxRandomDataset", "fields": ["image"], "dataset_config": {"shape": [1, 2, 3]}},
+        train={
+            "dataset_class": "HyraxRandomDataset",
+            "fields": ["image"],
+            "dataset_config": {"size": 10, "shape": [1, 2, 3], "seed": 123},
+        },
         infer={"dataset_class": "HyraxRandomDataset", "fields": ["image"]},
     )
 

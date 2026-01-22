@@ -35,15 +35,13 @@ def generate_data_request_from_config(config):
     if "model_inputs" in config:
         model_inputs = config["model_inputs"]
         if isinstance(model_inputs, ModelInputsDefinition):
-            # Use as_dict() to ensure we get the legacy data_request shape with the
-            # expected nested {"data": ...} wrapper for each split.
-            data_request = model_inputs.as_dict()
+            data_request = model_inputs.model_dump(exclude_unset=True)
         elif isinstance(model_inputs, BaseConfigModel):
-            # For other config models, assume model_dump already matches the expected shape.
             data_request = model_inputs.model_dump()
         else:
             try:
-                data_request = ModelInputsDefinition.model_validate(model_inputs).as_dict()
+                validated = ModelInputsDefinition.model_validate(model_inputs)
+                data_request = validated.model_dump(exclude_unset=True)
             except ValidationError:
                 data_request = copy.deepcopy(model_inputs)
 
