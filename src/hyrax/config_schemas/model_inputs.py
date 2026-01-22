@@ -97,10 +97,10 @@ class ModelInputsConfig(BaseConfigModel):
 
         return value
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
         """Return the configuration as a plain dictionary."""
 
-        return self.model_dump()
+        return self.model_dump(exclude_unset=exclude_unset)
 
 
 class ModelInputsDefinition(BaseConfigModel):
@@ -127,14 +127,14 @@ class ModelInputsDefinition(BaseConfigModel):
         values["other_datasets"].update(extra)
         return values
 
-    def as_dict(self) -> dict[str, Any]:
+    def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
         """Export as a nested dictionary compatible with existing configs."""
 
         output: dict[str, Any] = {}
         for name in ("train", "validate", "infer"):
             value = getattr(self, name)
             if value is not None:
-                output[name] = {"data": value.as_dict()}
+                output[name] = {"data": value.as_dict(exclude_unset=exclude_unset)}
         for key, cfg in self.other_datasets.items():
-            output[key] = {"data": cfg.as_dict()}
+            output[key] = {"data": cfg.as_dict(exclude_unset=exclude_unset)}
         return output
