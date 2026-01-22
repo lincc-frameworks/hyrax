@@ -2,10 +2,10 @@ import pytest
 from pydantic import ValidationError
 
 from hyrax.config_schemas import (
-    HyraxCifarDatasetConfig,
-    HyraxRandomDatasetConfig,
     DataRequestConfig,
     DataRequestDefinition,
+    HyraxCifarDatasetConfig,
+    HyraxRandomDatasetConfig,
 )
 from hyrax.config_utils import ConfigManager
 

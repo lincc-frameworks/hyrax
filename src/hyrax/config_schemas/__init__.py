@@ -7,6 +7,7 @@ incremental adoption in downstream modules and tests.
 """
 
 from .base import BaseConfigModel
+from .data_request import DataRequestConfig, DataRequestDefinition
 from .datasets import (
     DownloadedLSSTDatasetConfig,
     HSCDataSetConfig,
@@ -15,7 +16,6 @@ from .datasets import (
     HyraxRandomDatasetConfig,
     LSSTDatasetConfig,
 )
-from .data_request import DataRequestConfig, DataRequestDefinition
 
 __all__ = [
     "BaseConfigModel",
