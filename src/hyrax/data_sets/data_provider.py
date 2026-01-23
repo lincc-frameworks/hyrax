@@ -308,10 +308,6 @@ class DataProvider:
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
 
-        # Tensorboard and timing setup
-        self.tensorboardx_logger = None
-        self.tensorboard_start_ns = time.monotonic_ns()
-
         self.prepare_datasets()
 
         self.pull_up_primary_dataset_methods()
