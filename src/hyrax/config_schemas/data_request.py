@@ -7,7 +7,7 @@ the Hyrax framework.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
@@ -33,7 +33,7 @@ class DataRequestConfig(BaseConfigModel):
     primary_id_field: str | None = Field(
         None, description="Name of the primary identifier field in the dataset."
     )
-    _DATASET_SCHEMAS: ClassVar = (
+    _DATASET_SCHEMAS = (
         HyraxRandomDatasetConfig,
         HyraxCifarDatasetConfig,
         LSSTDatasetConfig,
