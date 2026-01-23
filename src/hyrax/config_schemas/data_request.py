@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
-from pydantic import Field, model_validator
+from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from .base import BaseConfigModel
 from .datasets import (
@@ -42,16 +42,8 @@ class DataRequestConfig(BaseConfigModel):
         HyraxCSVDatasetConfig,
     )
 
-    dataset_config: (
-        HyraxRandomDatasetConfig
-        | HyraxCifarDatasetConfig
-        | LSSTDatasetConfig
-        | DownloadedLSSTDatasetConfig
-        | HSCDataSetConfig
-        | HyraxCSVDatasetConfig
-        | dict[str, Any]
-        | None
-    ) = Field(
+    # Changed from union type to Any to prevent automatic Pydantic coercion
+    dataset_config: Any = Field(
         None,
         description=(
             "Dataset-specific configuration. If the dataset_class is a known built-in dataset, "
@@ -84,6 +76,12 @@ class DataRequestConfig(BaseConfigModel):
         dataset_class = value.get("dataset_class")
         cfg = value.get("dataset_config")
 
+        if cfg is None or not isinstance(cfg, dict):
+            return value
+
+        # Extract just the class name from fully-qualified paths
+        class_name = dataset_class.split(".")[-1] if dataset_class and "." in dataset_class else dataset_class
+
         mapping: dict[str, type[BaseConfigModel]] = {
             schema.__name__.removesuffix("Config"): schema for schema in cls._DATASET_SCHEMAS
         }
@@ -91,20 +89,41 @@ class DataRequestConfig(BaseConfigModel):
         mapping["HyraxRandomIterableDataset"] = HyraxRandomDatasetConfig
         mapping["HyraxCifarIterableDataset"] = HyraxCifarDatasetConfig
 
-        cfg_model = mapping.get(dataset_class)
-        if cfg is not None and cfg_model is not None and not isinstance(cfg, cfg_model):
-            value["dataset_config"] = cfg_model.model_validate(cfg)
+        cfg_model = mapping.get(class_name)
+
+        # Only coerce if we have a matching model and all input keys are valid schema fields
+        if cfg_model is not None and not isinstance(cfg, cfg_model):
+            try:
+                # Check if all input keys are valid schema fields
+                model_fields = set(cfg_model.model_fields.keys())
+                input_keys = set(cfg.keys())
+
+                # Only coerce if all input keys are recognized by the schema
+                if input_keys.issubset(model_fields):
+                    value["dataset_config"] = cfg_model.model_validate(cfg)
+                # Otherwise leave as plain dict (unknown keys present)
+            except ValidationError:
+                # If validation fails, leave as plain dict
+                pass
 
         return value
 
     def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
         """Return the configuration as a plain dictionary."""
 
-        return self.model_dump(exclude_unset=exclude_unset)
+        result = self.model_dump(exclude_unset=exclude_unset)
+
+        # If dataset_config is a BaseConfigModel instance, convert it to dict
+        if isinstance(result.get("dataset_config"), BaseConfigModel):
+            result["dataset_config"] = result["dataset_config"].model_dump(exclude_unset=exclude_unset)
+
+        return result
 
 
 class DataRequestDefinition(BaseConfigModel):
     """Typed representation of the full ``data_request`` table."""
+
+    model_config = ConfigDict(protected_namespaces=())
 
     train: DataRequestConfig | None = Field(None, description="Dataset configuration used for training.")
     validate: DataRequestConfig | None = Field(None, description="Dataset configuration used for validation.")
