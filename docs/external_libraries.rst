@@ -16,9 +16,9 @@ The ``name`` configuration under either the ``[model]`` or ``[data_set]`` config
 name used to locate the class starting at the top package level. e.g. if your dataset class is called ``MyDataSet`` and 
 is in a package called ``mydataset``, then you would configure as follows:
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -26,7 +26,7 @@ is in a package called ``mydataset``, then you would configure as follows:
             h = Hyrax()
             h.config["data_set"]["name"] = "mydataset.MyDataSet"
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 

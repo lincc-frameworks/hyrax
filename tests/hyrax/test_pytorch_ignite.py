@@ -39,7 +39,7 @@ class TestSetupDataset:
                 with pytest.raises(RuntimeError) as exc_info:
                     setup_dataset(config)
 
-                assert "dataset_class must be specified in 'model_inputs'." in str(exc_info.value)
+                assert "dataset_class must be specified in 'data_request'." in str(exc_info.value)
 
     def test_setup_dataset_invalid_dataset_class_raises_error(self):
         """Test that providing an invalid dataset_class raises appropriate RuntimeError."""
@@ -158,4 +158,3 @@ class TestSetupDataset:
                     mock_dataset_cls.assert_has_calls([expected_call, expected_call])
                     assert result["train"] == mock_dataset_instance
                     assert result["infer"] == mock_dataset_instance
-

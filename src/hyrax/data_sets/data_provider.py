@@ -1,6 +1,8 @@
 import copy
+import functools
 import logging
 import time
+import warnings
 from typing import Any
 
 import numpy as np
@@ -12,9 +14,163 @@ logger = logging.getLogger(__name__)
 tensorboardx_logger = getTensorboardLogger()
 
 
+@functools.singledispatch
+def _handle_nans(batch, config):
+    """The default _handle_nan function. Will print a warning and return `batch`."""
+    logger.warning(
+        f"Encountered an unhandled batch type, {type(batch)}, while\
+                   attempting to handle NaN values in the data."
+    )
+    return batch
+
+
+@_handle_nans.register(np.ndarray)
+def _handle_nans_numpy(batch, config):
+    return _handle_nans_logic_numpy(batch, config)
+
+
+# Conditionally register torch.Tensor if torch is available
+try:
+    import torch
+
+    @_handle_nans.register(torch.Tensor)
+    def _handle_nans_tensor(batch, config):
+        """The implementation of _handle_nans when expecting `batch` to be a tensor."""
+        return _handle_nans_logic_torch(batch, config)
+except ImportError:
+    # Torch is an optional dependency; if it is not installed, we simply
+    # skip registering the tensor-specific NaN handler.
+    pass
+
+
+# Register tuples and lists for backward compatibility and edge cases.
+# NaN handling now primarily occurs in DataProvider.collate() on numpy arrays
+# before to_tensor() is called, so tuple/list batches are not expected in
+# the main data flow but may still appear from legacy or unusual inputs.
+@_handle_nans.register(tuple)
+@_handle_nans.register(list)
+def _handle_nans_tuple(batch, config):
+    """This is the tuple-specific implementation of _handle_nans. Each tensor element
+    of the tuple will have nan-handling applied. Non-tensor elements are returned unchanged."""
+    # Import torch here to avoid hard dependency
+    try:
+        import torch
+    except ImportError:
+        torch = None
+
+    # Process each element in the tuple
+    handled_elements = []
+    for element in batch:
+        if torch is not None and isinstance(element, torch.Tensor):
+            handled_elements.append(_handle_nans_logic_torch(element, config))
+        elif isinstance(element, np.ndarray):
+            handled_elements.append(_handle_nans_logic_numpy(element, config))
+        else:
+            # Keep non-tensor elements unchanged (e.g., labels, metadata)
+            handled_elements.append(element)
+
+    return tuple(handled_elements)
+
+
+def _handle_nans_logic_numpy(batch, config):
+    # Skip non-numeric arrays (e.g., strings, objects)
+    if not np.issubdtype(batch.dtype, np.floating):
+        return batch
+
+    if config["data_set"]["nan_mode"] is False:
+        if np.any(np.isnan(batch)):
+            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
+            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
+            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
+            msg += "to get started."
+            logger.warning(msg)
+        return batch
+
+    if config["data_set"]["nan_mode"] == "quantile":
+        quantile = config["data_set"]["nan_quantile"]
+        if quantile < 0.0 or quantile > 1.0:
+            raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
+        return _handle_nan_quantile_numpy(batch, quantile)
+    elif config["data_set"]["nan_mode"] == "zero":
+        return _handle_nan_zero_numpy(batch)
+    else:
+        msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
+        msg += "The supported modes are 'quantile' and 'zero'."
+        raise NotImplementedError(msg)
+
+
+def _handle_nan_quantile_numpy(batch, quantile):
+    if np.any(np.isnan(batch)):
+        flat_batch = np.reshape(batch, (batch.shape[0], -1))
+        batch_quantile = np.nanquantile(flat_batch, q=quantile, axis=-1)
+        for i, val in enumerate(batch_quantile):
+            batch[i] = np.nan_to_num(batch[i], nan=val)
+
+    return batch
+
+
+def _handle_nan_zero_numpy(batch):
+    if np.any(np.isnan(batch)):
+        batch = np.nan_to_num(batch, nan=0.0)
+
+    return batch
+
+
+def _handle_nans_logic_torch(batch, config):
+    from torch import any, isnan
+
+    # Skip non-floating point tensors (e.g., integer, string tensors)
+    if not batch.is_floating_point():
+        return batch
+
+    if config["data_set"]["nan_mode"] is False:
+        if any(isnan(batch)):
+            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
+            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
+            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
+            msg += "to get started."
+            logger.warning(msg)
+        return batch
+
+    if config["data_set"]["nan_mode"] == "quantile":
+        quantile = config["data_set"]["nan_quantile"]
+        if quantile < 0.0 or quantile > 1.0:
+            raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
+        return _handle_nan_quantile_torch(batch, quantile)
+    elif config["data_set"]["nan_mode"] == "zero":
+        return _handle_nan_zero_torch(batch)
+    else:
+        msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
+        msg += "The supported modes are 'quantile' and 'zero'."
+        raise NotImplementedError(msg)
+
+
+def _handle_nan_quantile_torch(batch, quantile):
+    import torch
+    from torch import any, isnan
+
+    if any(isnan(batch)):
+        flat_batch = torch.reshape(batch, (batch.shape[0], -1))
+        batch_quantile = torch.nanquantile(flat_batch, q=quantile, dim=-1)
+        for i, val in enumerate(batch_quantile):
+            batch[i] = torch.nan_to_num(batch[i], val)
+
+    return batch
+
+
+def _handle_nan_zero_torch(batch):
+    import torch
+    from torch import any, isnan
+
+    if any(isnan(batch)):
+        batch = torch.nan_to_num(batch, nan=0.0)
+
+    return batch
+
+
 def generate_data_request_from_config(config):
     """This function handles the backward compatibility issue of defining the requested
-    dataset in the `[data_set]` table in the config. If a `[model_inputs]` table
+    dataset in the `[data_set]` table in the config. If a `[data_request]` table
     is not defined, we will assemble a `data_request` dictionary from the values
     defined elsewhere in the configuration file.
 
@@ -32,43 +188,32 @@ def generate_data_request_from_config(config):
         A dictionary where keys are dataset names and values are lists of fields
     """
 
-    if "model_inputs" in config:
+    # Support both 'data_request' (new) and 'model_inputs' (deprecated)
+    # Priority: use data_request if it has content, otherwise check model_inputs
+    has_data_request = "data_request" in config and config["data_request"]
+    has_model_inputs = "model_inputs" in config and config["model_inputs"]
+
+    if has_data_request:
+        data_request = copy.deepcopy(config["data_request"])
+    elif has_model_inputs:
+        warnings.warn(
+            "The [model_inputs] configuration key is deprecated and will be removed in a future version. "
+            "Please use [data_request] instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         data_request = copy.deepcopy(config["model_inputs"])
-
-        # Check if model_inputs is empty and provide helpful error message
-        if not data_request:
-            available_datasets = sorted(DATASET_REGISTRY.keys())
-            error_msg = """The [model_inputs] table in your configuration is empty.
-
-You must provide dataset definitions for training and/or inference:
-  - For training: provide "train" and optionally "validate" dataset definitions
-  - For inference: provide "infer" dataset definition
-
-Example configuration:
-  [model_inputs.train]
-  [model_inputs.train.data]
-  dataset_class = "HyraxRandomDataset"
-  data_location = "./data"
-  primary_id_field = "object_id"
-
-  [model_inputs.infer]
-  [model_inputs.infer.data]
-  dataset_class = "HyraxRandomDataset"
-  data_location = "./data"
-  primary_id_field = "object_id"
-
-"""
-            if available_datasets:
-                error_msg += "Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
-                error_msg += "\n\n"
-            error_msg += """For more information and examples, see the documentation at:
-  https://hyrax.readthedocs.io/en/latest/notebooks/model_input_1.html"""
-            logger.error(error_msg)
-            raise RuntimeError(
-                "The [model_inputs] table in the configuration is empty. "
-                "Check the preceding error log for details and help."
-            )
+    elif "data_request" in config or "model_inputs" in config:
+        # One of the keys exists but is empty - use the empty dict to trigger error below
+        data_request = config.get("data_request") or config.get("model_inputs")
     else:
+        # Neither key exists, create fallback from old [data_set] table
+        warnings.warn(
+            "The [data_set] configuration table is deprecated and will be removed in a future version. "
+            "Please use [data_request] instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         data_request = {
             "train": {
                 "data": {
@@ -86,12 +231,46 @@ Example configuration:
             },
         }
 
+    # Check if data_request is empty and provide helpful error message
+    if not data_request:
+        available_datasets = sorted(DATASET_REGISTRY.keys())
+        error_msg = """The [data_request] table in your configuration is empty.
+
+You must provide dataset definitions for training and/or inference:
+  - For training: provide "train" and optionally "validate" dataset definitions
+  - For inference: provide "infer" dataset definition
+
+Example configuration:
+  [data_request.train]
+  [data_request.train.data]
+  dataset_class = "HyraxRandomDataset"
+  data_location = "./data"
+  primary_id_field = "object_id"
+
+  [data_request.infer]
+  [data_request.infer.data]
+  dataset_class = "HyraxRandomDataset"
+  data_location = "./data"
+  primary_id_field = "object_id"
+
+"""
+        if available_datasets:
+            error_msg += "Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
+            error_msg += "\n\n"
+        error_msg += """For more information and examples, see the documentation at:
+  https://hyrax.readthedocs.io/en/latest/notebooks/model_input_1.html"""
+        logger.error(error_msg)
+        raise RuntimeError(
+            "The [data_request] table in the configuration is empty. "
+            "Check the preceding error log for details and help."
+        )
+
     return data_request
 
 
 class DataProvider:
     """This class presents itself as a PyTorch Dataset, but acts like a GraphQL
-    gateway that fetches data from multiple datasets based on the `model_inputs`
+    gateway that fetches data from multiple datasets based on the `data_request`
     dictionary provided during initialization.
 
     This class allows for flexible data retrieval from multiple dataset classes,
@@ -139,6 +318,7 @@ class DataProvider:
 
         # Required because of circular import.
         from hyrax.data_sets.data_cache import DataCache
+
         self.data_cache = DataCache(config, self)
 
     def pull_up_primary_dataset_methods(self):
@@ -232,12 +412,12 @@ class DataProvider:
         return True
 
     def prepare_datasets(self):
-        """Instantiate each of the requested datasets based on the ``model_inputs``
+        """Instantiate each of the requested datasets based on the ``data_request``
         configuration dictionary. Store the prepared instances in the
         ``self.prepped_datasets`` dictionary."""
 
         if len(self.data_request) == 0:
-            raise RuntimeError("No datasets were requested in `model_inputs`.")
+            raise RuntimeError("No datasets were requested in `data_request`.")
 
         for friendly_name, dataset_definition in self.data_request.items():
             dataset_class = dataset_definition.get("dataset_class")
@@ -342,12 +522,12 @@ class DataProvider:
 
         .. code-block:: toml
 
-            [model_inputs]
-            [model_inputs.my_dataset]
+            [data_request]
+            [data_request.my_dataset]
             dataset_class = "MyDataset"
             data_location = "/path/to/data"
             fields = ["field1", "field2"]
-            [model_inputs.my_dataset.dataset_config]
+            [data_request.my_dataset.dataset_config]
             param1 = "value1"
             param2 = "value2"
 
@@ -459,8 +639,6 @@ class DataProvider:
         self.data_cache.insert_into_cache(idx, returned_data)
         tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
         return returned_data
-
-
 
     # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
     # ^ we should be able to remove most or all of this method and the metadata_fields method.
@@ -712,5 +890,20 @@ class DataProvider:
                 # if values is a list of numpy scalars convert to numpy array
                 if isinstance(values, list):
                     batch_dict[friendly_name][field] = np.array(values)
+
+        # Apply NaN handling to all numpy array fields in the batch,
+        # including data produced by custom collate functions.
+        for friendly_name, fields in batch_dict.items():
+            if friendly_name == "object_id":
+                continue
+
+            # Handle dict of fields (normal case)
+            if isinstance(fields, dict):
+                for field, value in fields.items():
+                    if isinstance(value, np.ndarray):
+                        batch_dict[friendly_name][field] = _handle_nans(value, self.config)
+            # Handle direct numpy arrays (e.g., from custom collate that returns arrays directly)
+            elif isinstance(fields, np.ndarray):
+                batch_dict[friendly_name] = _handle_nans(fields, self.config)
 
         return batch_dict

@@ -28,7 +28,6 @@ extensions = ["sphinx.ext.mathjax", "sphinx.ext.napoleon", "sphinx.ext.viewcode"
 
 extensions.append("autoapi.extension")
 extensions.append("nbsphinx")
-extensions.append("sphinx_tabs.tabs")
 extensions.append("sphinx_design")
 
 # -- sphinx-copybutton configuration ----------------------------------------
@@ -130,4 +129,4 @@ nitpick_ignore_regex = [
     (r"^py:.*", "COMMIT_ID"),
 ]
 
-html_theme = "sphinx_rtd_theme"
+html_theme = "sphinx_book_theme"

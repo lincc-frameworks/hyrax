@@ -195,14 +195,18 @@ opset_version = 20
 input_model_directory = false
 
 
-[model_inputs]
+[data_request]
 # Top-level table that defines the dataset(s) used for training, validation, and inference.
+
+
+[model_inputs]
+# DEPRECATED: Use [data_request] instead. This will be removed in the next major release.
 
 
 [data_set]
 # Warning - using data_set.name to define the dataset class will be deprecated.
-# Please use [model_inputs.<friendly_name>.dataset_class] instead. See usage above.
-name = "HyraxCifarDataSet"
+# Please use [data_request.<friendly_name>.dataset_class] instead. See usage above.
+name = "HyraxCifarDataset"
 
 # Crop pixel dimensions for images, e.g., [100, 100]. If false, scans for the
 # smallest image size in [general].data_dir and uses it.
@@ -280,6 +284,10 @@ semi_width_deg = 0.00472
 # Semi height in degrees of cutouts made from the butler (17 arcsec)
 semi_height_deg = 0.00472
 
+
+[data_set.HyraxCifarDataset]
+# If `true`, download CIFAR10 training set, otherwise download test set.
+use_training_data = true
 
 
 [data_set.HyraxRandomDataset]
