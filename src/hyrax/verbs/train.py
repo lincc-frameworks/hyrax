@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from colorama import Back, Fore, Style
 
@@ -34,7 +33,6 @@ class Train(Verb):
         """
 
         import mlflow
-        from tensorboardX import SummaryWriter
 
         from hyrax.config_utils import create_results_dir, log_runtime_config
         from hyrax.gpu_monitor import GpuMonitor
@@ -45,7 +43,7 @@ class Train(Verb):
             setup_dataset,
             setup_model,
         )
-        from hyrax.tensorboardx_logger import initTensorboardLogger, closeTensorboardLogger
+        from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
 
@@ -54,7 +52,7 @@ class Train(Verb):
         log_runtime_config(config, results_dir)
 
         # Create a tensorboardX logger
-        initTensorboardLogger(log_dir=results_dir)
+        init_tensorboard_logger(log_dir=results_dir)
 
         # Instantiate the model and dataset
         dataset = setup_dataset(config)
@@ -114,7 +112,7 @@ class Train(Verb):
         monitor.stop()
 
         logger.info("Finished Training")
-        closeTensorboardLogger()
+        close_tensorboard_logger()
 
         return model
 

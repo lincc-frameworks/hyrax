@@ -70,12 +70,12 @@ class SaveToDatabase(Verb):
             log_runtime_config,
         )
         from hyrax.data_sets.inference_dataset import InferenceDataSet
-        from hyrax.vector_dbs.vector_db_factory import vector_db_factory
         from hyrax.tensorboardx_logger import (
-            initTensorboardLogger, 
-            getTensorboardLogger, 
-            closeTensorboardLogger,
+            close_tensorboard_logger,
+            get_tensorboard_logger,
+            init_tensorboard_logger,
         )
+        from hyrax.vector_dbs.vector_db_factory import vector_db_factory
 
         config = deepcopy(self.config)
 
@@ -134,8 +134,8 @@ class SaveToDatabase(Verb):
         log_runtime_config(config, vector_db_path)
 
         # Create a tensorboardX logger for metrics
-        initTensorboardLogger(log_dir=vector_db_path)
-        tensorboardx_logger = getTensorboardLogger()
+        init_tensorboard_logger(log_dir=vector_db_path)
+        tensorboardx_logger = get_tensorboard_logger()
 
         # Use the batch_index to get the list of batches.
         batches = np.unique(inference_data_set.batch_index["batch_num"])
@@ -186,7 +186,7 @@ class SaveToDatabase(Verb):
         tensorboardx_logger.add_scalar("vector_db/average_batch_insertion_time", avg_time, 1)
 
         # Close the tensorboard logger
-        closeTensorboardLogger()
+        close_tensorboard_logger()
 
         logger.info(
             f"Vector database insertion complete. Total time: {total_insertion_time:.3f}s "

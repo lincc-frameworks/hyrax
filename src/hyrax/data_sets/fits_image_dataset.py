@@ -63,12 +63,12 @@ import numpy as np
 import numpy.typing as npt
 from torch.utils.data import Dataset
 
-from hyrax.tensorboardx_logger import getTensorboardLogger
+from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 from .data_set_registry import HyraxDataset, HyraxImageDataset
 
 logger = logging.getLogger(__name__)
-tensorboardx_logger = getTensorboardLogger()
+tensorboardx_logger = get_tensorboard_logger()
 
 files_dict = dict[str, dict[str, str]]
 

@@ -8,10 +8,10 @@ from typing import Any
 import numpy as np
 
 from hyrax.data_sets.data_set_registry import DATASET_REGISTRY, fetch_dataset_class
-from hyrax.tensorboardx_logger import getTensorboardLogger
+from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
-tensorboardx_logger = getTensorboardLogger()
+tensorboardx_logger = get_tensorboard_logger()
 
 
 @functools.singledispatch

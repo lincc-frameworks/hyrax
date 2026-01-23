@@ -1,65 +1,104 @@
-# Usage
-#
-# from hyrax.tensorboardx_logger import initTensorboardLogger, getTensorboardLogger
-#
-# initTensorboardLogger(log_dir="runs/exp1")  # configure as needed
-# tb_logger = getTensorboardLogger()
-#
-# ...in code...
-#
-# tb_logger.log_scalar(...)
-# tb_logger.log_duration(...)
-
-import time
 import inspect
-from tensorboardX import SummaryWriter
+import time
 
+from tensorboardX import SummaryWriter
 
 tensorboardx_logger = None
 tensorboard_start_ns = 0
 
-def getTensorboardLogger():
+
+def get_tensorboard_logger():
+    """
+    Get a Tensorboard logging object.
+
+    This is a way for code that just needs to log data to get a handle to the global tensorboard logger.
+    Client code does not need to handle initialization order, it can simply log.
+
+    If there is no tensorboard logger set up, messages will be dropped silently.
+    """
     return HyraxSummaryWriter()
 
-def initTensorboardLogger(**kwargs):
+
+def init_tensorboard_logger(**kwargs):
+    """
+    Initialize a Tensorboard SummaryWriter for use by the whole process.
+
+    Args are those to SummaryWriter's constructor.
+
+    If there already is a Tensorboard Logger initialized for this process, it will
+    be closed by this function call before the new one is initialized.
+
+    This should be called by code that controls overall hyrax execution e.g. a Verb's run() method.
+    """
     global tensorboardx_logger
     global tensorboard_start_ns
 
-    closeTensorboardLogger()
+    close_tensorboard_logger()
     tensorboardx_logger = SummaryWriter(**kwargs)
     tensorboard_start_ns = time.monotonic_ns()
 
-def closeTensorboardLogger():
+
+def close_tensorboard_logger():
+    """
+    Close the existing global tensorboard logger.
+
+    If there is no global tensorboard logger, this does nothing.
+    """
     global tensorboardx_logger
     global tensorboard_start_ns
-    
+
     if tensorboardx_logger is not None:
         tensorboardx_logger.close()
         tensorboardx_logger = None
         tensorboard_start_ns = 0
+
 
 class HyraxSummaryWriter:
     """
     This is a wrapper class around TensorboardX SummaryWriter that allows definition
     of convenience methods for commonly-used logging.
 
+    For client code that just wants to log Typical usage is:
+
+    from hyrax.tensorboardx_logger import get_tensorboard_logger
+    tensorboardx_logger = get_tensorboard_logger()
+
+    ...in code...
+
+    tensorboardx_logger.log_scalar(...)
+    tensorboardx_logger.log_duration(...)
+
+    For code controlling overall process execution (e.g. a hyrax verb run method) usage looks like:
+
+    from hyrax.tensorboardx_logger import init_tensorboard_logger, close_tensorboard_logger
+
+    def run():
+        init_tensorboard_logger(log_dir="some/path/")
+
+        ... do things ...
+
+        close_tensorboard_logger()
+        return
+
+
     __dir__ and __getattr__ pass through function calls to the underlying tensorboardX SummaryWriter if
     it exists. Otherwise empty/noop objects are returned. We don't use inheritance here because we want
-    consumers to not have to think about initialization order concerns, yet have a handle to a pile of 
+    consumers to not have to think about initialization order concerns, yet have a handle to a pile of
     functions that all log to the one true tensorboard instance (if it exists)
 
     All functions defined here need to be noops when global tensorboardx_logger is None.
 
     We have the capacity to place information on instances of this class (e.g. a name prefix)
-    but its not implemented. One major issue is providing continuity of interface with tensorboard's 
+    but its not implemented. One major issue is providing continuity of interface with tensorboard's
     functions that don't recognize a name prefix. For now, the fully qualified tensorboard name of the
     data is the common interface, since that follows what tensorboard functions expect.
 
     """
+
     def log_duration_ts(self, name: str, start_time: int):
         """
         Log a duration to tensorboardX as a time series if configured.
-        
+
         Caller provides the start of the duration in time.monotonic_ns
         End of the duration is assumed to be the moment the function is called.
 
@@ -68,7 +107,7 @@ class HyraxSummaryWriter:
         name : str
             The name of the scalar to log
         start_time : int
-            Start time in nanoseconds from time.monotonic_ns() 
+            Start time in nanoseconds from time.monotonic_ns()
         """
         now = time.monotonic_ns()
         if tensorboardx_logger:
@@ -92,36 +131,39 @@ class HyraxSummaryWriter:
         """
         now = time.monotonic_ns()
         if tensorboardx_logger:
-            since_tensorboard_start_ns = (now - tensorboard_start_ns) if since_tensorboard_start_ns is None \
+            since_tensorboard_start_ns = (
+                (now - tensorboard_start_ns)
+                if since_tensorboard_start_ns is None
                 else since_tensorboard_start_ns
+            )
 
             since_tensorboard_start_us = since_tensorboard_start_ns / 1.0e3
             tensorboardx_logger.add_scalar(name, scalar, since_tensorboard_start_us)
 
     def __dir__(self):
-        methods = [ i for i in dir(HyraxSummaryWriter) \
-                    if inspect.isfunction(getattr(HyraxSummaryWriter, i)) ]
-        
+        methods = [i for i in dir(HyraxSummaryWriter) if inspect.isfunction(getattr(HyraxSummaryWriter, i))]
+
         return sorted(set(methods + dir(SummaryWriter)))
 
     def __getattr__(self, name):
         # Reminder of python behavior:
         # __getattr__ is called when there's an AttributeError looking up
         # an attribute on instances of HyraxSummaryWriter.
-        # 
+        #
         # It's job is to either return an object or raise AttributeError
 
         # If we have a tensorboardX logger, just pass through access there
         if tensorboardx_logger is not None:
             return getattr(tensorboardx_logger, name)
-        
+
         # Otherwise if its a valid access of SummaryWriter's methods or members
         elif name in dir(SummaryWriter):
-
             # Function access returns a noop function
             if inspect.isfunction(getattr(SummaryWriter, name)):
+
                 def noop(*args, **kwargs):
                     pass
+
                 return noop
             # member access returns None
             else:
@@ -129,4 +171,3 @@ class HyraxSummaryWriter:
         # All other access is an AttributeError
         else:
             raise AttributeError(name)
-    

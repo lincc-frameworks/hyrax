@@ -50,7 +50,7 @@ class Infer(Verb):
             setup_dataset,
             setup_model,
         )
-        from hyrax.tensorboardx_logger import closeTensorboardLogger, initTensorboardLogger
+        from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
         context = {}
@@ -59,7 +59,7 @@ class Infer(Verb):
         results_dir = create_results_dir(config, "infer")
 
         # Create a tensorboardX logger
-        initTensorboardLogger(log_dir=results_dir)
+        init_tensorboard_logger(log_dir=results_dir)
 
         dataset = setup_dataset(config)
         model = setup_model(config, dataset["infer"])
@@ -152,7 +152,7 @@ class Infer(Verb):
         data_writer.write_index()
 
         # Write out our tensorboard stuff
-        closeTensorboardLogger()
+        close_tensorboard_logger()
 
         # Log completion
         logger.info("Inference Complete.")

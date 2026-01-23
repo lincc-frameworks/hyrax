@@ -26,7 +26,7 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 from hyrax.plugin_utils import get_or_load_class
-from hyrax.tensorboardx_logger import getTensorboardLogger
+from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
 
@@ -528,7 +528,7 @@ def create_validator(
 
     device = idist.device()
     model = idist.auto_model(model)
-    tensorboardx_logger = getTensorboardLogger()
+    tensorboardx_logger = get_tensorboard_logger()
 
     validator = create_engine("train_step", device, model, config)
     fixup_engine(validator)
@@ -586,7 +586,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     model.train()
     model = idist.auto_model(model)
     trainer = create_engine("train_step", device, model, config)
-    tensorboardx_logger = getTensorboardLogger()
+    tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
 
     optimizer = extract_model_method(model, "optimizer")
