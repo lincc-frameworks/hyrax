@@ -18,7 +18,7 @@ tensorboardx_logger = getTensorboardLogger()
 
 class DataCache:
     """
-    DataCache tracks and manage a caching layer which can be used most effectively if the entirety of a
+    DataCache tracks and manages a caching layer which can be used most effectively if the entirety of a
     training (or inference) epoch fits in system RAM.
 
     Two configs control this functionality:
@@ -88,7 +88,7 @@ class DataCache:
     def _idx_check(self, idx):
         if not isinstance(idx, int):
             msg = f"Only integers are allowed as cache keys to DataCache. Got {type(idx)}"
-            msg += "as an index type."
+            msg += " as an index type."
             raise RuntimeError(msg)
         if idx >= self._max_length:
             msg = f"Requested index {idx}, but DataCache cache has max length of {self._max_length} "
@@ -220,7 +220,7 @@ class DataCache:
         ##
         ## Sadly the logic for this would be inside ThreadPoolExecutor
         ## So we would need to reimplement parts of it, not just wrap
-        ## Job submission like _laxy_map_executor does.
+        ## Job submission like _lazy_map_executor does.
         ##
         return 50
 
@@ -254,7 +254,7 @@ class DataCache:
             while True:
                 for _ in range(max_futures - len(in_progress)):
                     idx = next(idx_iterator)
-                    future = executor.submit(self._resolve_data_func, self, idx)  # type: ignore[attr-defined]
+                    future = executor.submit(self._resolve_data_func, self._data_provider, idx)  # type: ignore[attr-defined]
                     queue.append(future)
                     in_progress.add(future)
 

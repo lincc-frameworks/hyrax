@@ -1,14 +1,14 @@
 # Usage
 #
-# import hyrax.data_logger as data_logger
+# from hyrax.tensorboardx_logger import initTensorboardLogger, getTensorboardLogger
 #
-#  data_logger = data_logger.getLogger(__name__)
+# initTensorboardLogger(log_dir="runs/exp1")  # configure as needed
+# tb_logger = getTensorboardLogger()
 #
-#  ...in code...
+# ...in code...
 #
-#  data_logger.log_scalar(...)
-#  data_logger.log_duration(...)
-#
+# tb_logger.log_scalar(...)
+# tb_logger.log_duration(...)
 
 import time
 import inspect
@@ -44,7 +44,7 @@ class HyraxSummaryWriter:
     of convenience methods for commonly-used logging.
 
     __dir__ and __getattr__ pass through function calls to the underlying tensorboardX SummaryWriter if
-    it exists. Otherwise empty/noop objects are returned. We don't use inheretance here because we want
+    it exists. Otherwise empty/noop objects are returned. We don't use inheritance here because we want
     consumers to not have to think about initialization order concerns, yet have a handle to a pile of 
     functions that all log to the one true tensorboard instance (if it exists)
 
@@ -86,8 +86,8 @@ class HyraxSummaryWriter:
             The name of the scalar to log
         scalar: Any
             The value to log. Really ought to be a number.
-        since_tensorboard_start_us : int, Optional
-            log time in microseconds from the beginning of tensorboard logging.
+        since_tensorboard_start_ns : int, Optional
+            Log time in nanoseconds from the beginning of tensorboard logging.
             If not provided, this will be calculated at the moment this function is called
         """
         now = time.monotonic_ns()
@@ -120,7 +120,7 @@ class HyraxSummaryWriter:
 
             # Function access returns a noop function
             if inspect.isfunction(getattr(SummaryWriter, name)):
-                def noop():
+                def noop(*args, **kwargs):
                     pass
                 return noop
             # member access returns None
