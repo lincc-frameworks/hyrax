@@ -63,9 +63,9 @@ import numpy as np
 import numpy.typing as npt
 from torch.utils.data import Dataset
 
-from .data_set_registry import HyraxDataset, HyraxImageDataset
-
 from hyrax.tensorboardx_logger import getTensorboardLogger
+
+from .data_set_registry import HyraxDataset, HyraxImageDataset
 
 logger = logging.getLogger(__name__)
 tensorboardx_logger = getTensorboardLogger()
@@ -500,17 +500,15 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             file_start_time = time.monotonic_ns()
             raw_data = fits.getdata(filepath, memmap=False)
             data.append(raw_data)
-            #xcxc Need to put the tensorboard logger in a global place where these accessors can live
-            # Can't have everyone go to dataprovider for this.
             tensorboardx_logger.log_duration_ts(f"{prefix}/file_read_time_s", file_start_time)
 
         tensorboardx_logger.log_duration_ts(f"{prefix}/object_read_time_s", start_time)
 
-        data_torch = self._convert_to_torch(data)
+        data_transformed = self._apply_transforms(data)
         tensorboardx_logger.log_duration_ts(f"{prefix}/object_total_read_time_s", start_time)
-        return data_torch
+        return data_transformed
 
-    def _convert_to_torch(self, data: list[npt.ArrayLike]):
+    def _apply_transforms(self, data: list[npt.ArrayLike]):
         from torch import from_numpy
 
         start_time = time.monotonic_ns()
@@ -523,9 +521,12 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         # Apply our transform stack
         data_torch = self.transform(data_torch) if self.transform is not None else data_torch
 
+        # Convert back to numpy for compatibility with Hyrax
+        data_transformed_numpy = data_torch.numpy()
+
         tensorboardx_logger.log_duration_ts(f"{prefix}/object_convert_tensor_time_s", start_time)
-        return data_torch
-    
+        return data_transformed_numpy
+
     # TODO: Performance Change when files are read/cache pytorch tensors?
     #
     # This function loads from a file every time __getitem__ is called

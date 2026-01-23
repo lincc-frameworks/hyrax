@@ -5,7 +5,7 @@ from concurrent.futures import Executor
 from numbers import Number
 from sys import getsizeof
 from threading import Thread
-from typing import Any, Optional
+from typing import Any
 
 import numpy as np
 
@@ -14,6 +14,7 @@ from hyrax.tensorboardx_logger import getTensorboardLogger
 
 logger = logging.getLogger(__name__)
 tensorboardx_logger = getTensorboardLogger()
+
 
 class DataCache:
     """
@@ -92,11 +93,11 @@ class DataCache:
         if idx >= self._max_length:
             msg = f"Requested index {idx}, but DataCache cache has max length of {self._max_length} "
             msg += "given by the length of the primary dataset in model_inputs."
-            raise RuntimeError(msg)
+            raise IndexError(msg)
 
-    def try_fetch(self, idx: int) -> Optional[dict]:
+    def try_fetch(self, idx: int) -> dict | None:
         """
-        Try to fetch a data_dict from the cache. 
+        Try to fetch a data_dict from the cache.
 
         Parameters
         ----------
@@ -140,7 +141,10 @@ class DataCache:
                 tensorboardx_logger.log_scalar_ts(f"{prefix}/cache_bytes", self._data_size_bytes)
 
     @staticmethod
-    def _data_size(data, seen: set[int] = set([])) -> int:
+    def _data_size(data, seen: set[int] | None = None) -> int:
+        if seen is None:
+            seen = set([])
+
         # Handle objects we've seen before
         if id(data) in seen:
             return 0
@@ -167,7 +171,7 @@ class DataCache:
         elif isinstance(data, np.ndarray):
             total_data_size += getsizeof(data)
         # Basic data types are just their own size
-        elif isinstance(data, (np.number, Number, type(None))):
+        elif isinstance(data, (np.number, Number, type(None), np.bool)):
             total_data_size += getsizeof(data)
         # String types are also just their own size
         elif isinstance(data, (np.character, str)):

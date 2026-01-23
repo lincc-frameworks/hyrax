@@ -37,7 +37,6 @@ class Infer(Verb):
         """
 
         import numpy as np
-        from tensorboardX import SummaryWriter
         from torch import Tensor
 
         from hyrax.config_utils import (
@@ -51,7 +50,7 @@ class Infer(Verb):
             setup_dataset,
             setup_model,
         )
-        from hyrax.tensorboardx_logger import initTensorboardLogger, closeTensorboardLogger
+        from hyrax.tensorboardx_logger import closeTensorboardLogger, initTensorboardLogger
 
         config = self.config
         context = {}
@@ -60,7 +59,7 @@ class Infer(Verb):
         results_dir = create_results_dir(config, "infer")
 
         # Create a tensorboardX logger
-        initTensorboardLogger()
+        initTensorboardLogger(log_dir=results_dir)
 
         dataset = setup_dataset(config)
         model = setup_model(config, dataset["infer"])
