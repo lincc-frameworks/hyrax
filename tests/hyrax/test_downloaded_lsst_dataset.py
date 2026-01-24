@@ -7,8 +7,8 @@ LSST Science Pipelines or a Butler repository.
 """
 
 import mocks
-import pytest
 import numpy as np
+import pytest
 from mocks import lsst_config, mock_lsst_environment, sample_catalog, sample_catalog_saved  # noqa: F401
 
 from hyrax.data_sets.downloaded_lsst_dataset import DownloadedLSSTDataset
