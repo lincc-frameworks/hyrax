@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from concurrent.futures import Executor
 from numbers import Number
 from sys import getsizeof
-from threading import Thread
+from threading import Event, Thread
 from typing import Any
 
 import numpy as np
@@ -51,12 +51,9 @@ class DataCache:
 
         """
 
-        # Grab what we need from data_provider
+        # Grab what we need from data_provider, hang on to self so we can call resolve data func
         self._max_length = len(data_provider)
         self._resolve_data_func = data_provider.resolve_data.__func__
-
-        # Need this for the tensorboardX logger, which won't be initialized
-        # when this runs.
         self._data_provider = data_provider
 
         # Save config we need
@@ -76,14 +73,26 @@ class DataCache:
         # vector to hold every possible pointer vs. whatever dict does.
         self._cache_map = {}
 
+        self._preload_thread = None
         if self._preload_cache and self._use_cache:
+            self._preload_thread_should_terminate = Event()
             self._preload_thread = Thread(
                 name="DataCache-preload-tensor-cache",
                 daemon=True,
                 target=self._preload_tensor_cache.__func__,  # type: ignore[attr-defined]
-                args=(self,),
+                args=(self, self._preload_thread_should_terminate),
             )
             self._preload_thread.start()
+
+    def __del__(self):
+        self.stop_preload_thread()
+
+    def stop_preload_thread(self):
+        """Gracefully teardown the preload thread if the data cache is being cleaned up."""
+        if self._preload_thread is not None:
+            self._preload_thread_should_terminate.set()
+            self._preload_thread.join()
+            self._preload_thread = None
 
     def _idx_check(self, idx):
         if not isinstance(idx, int):
@@ -169,7 +178,21 @@ class DataCache:
         # own the data (data.base = None).
         # When they don't own the data (data.base= <some object>) only overhead is reported
         elif isinstance(data, np.ndarray):
-            total_data_size += getsizeof(data)
+            if data.base is None:
+                # Owns its data - count the actual data
+                total_data_size += data.nbytes + getsizeof(data)
+            elif id(data.base) not in seen:
+                # We haven't seen the base object. Add it to seen, and assume for the view we're
+                # examining now that the whole base object is necessary
+                #
+                # We don't recurse here because .nbytes and getsizeof() work across numpy and torch
+                # and we want to keep torch objects *out* of the cache, but we don't mind numpy objects
+                # who's memory is actually owned by torch.
+                seen.add(id(data.base))
+                total_data_size += data.base.nbytes + getsizeof(data.base)
+            else:
+                # Is a view - with a base we've seen before, just add overhead
+                total_data_size += getsizeof(data)
         # Basic data types are just their own size
         elif isinstance(data, (np.number, Number, type(None), np.bool)):
             total_data_size += getsizeof(data)
@@ -184,10 +207,11 @@ class DataCache:
 
         return total_data_size
 
-    def _preload_tensor_cache(self):
+    def _preload_tensor_cache(self, preload_thread_should_terminate: Event):
         """
         Preload all tensors in the dataset using multiple threads.
         """
+        import sys
         from concurrent.futures import ThreadPoolExecutor
 
         logger.info("Preloading Data cache...")
@@ -197,13 +221,25 @@ class DataCache:
             fetched_data = self._lazy_map_executor(executor, range(self._max_length))
 
             start_time = time.monotonic_ns()
-            for idx, data_item in enumerate(fetched_data):
-                self.insert_into_cache(idx, data_item)
+            try:
+                for idx, data_item in enumerate(fetched_data):
+                    self.insert_into_cache(idx, data_item)
 
-                # Output timing every 1k tensors
-                if idx % 1_000 == 0 and idx != 0:
-                    tensorboardx_logger.log_duration_ts(f"{prefix}/preload_1k_obj_s", start_time)
-                    start_time = time.monotonic_ns()
+                    # Output timing every 1k tensors
+                    if idx % 1_000 == 0 and idx != 0:
+                        tensorboardx_logger.log_duration_ts(f"{prefix}/preload_1k_obj_s", start_time)
+                        start_time = time.monotonic_ns()
+            except Exception as e:
+                # If exceptions are coming out of termination ignore them. The timeout is to avoid a race
+                # where exceptions for deallocation of DataCache and DataProvider can occur slightly before
+                # their __del__ methods set this signal.
+                #
+                # We wait until the signal is set or 1 second whichever is shorter when we see a worker
+                # thread exception
+                if not preload_thread_should_terminate.wait(timeout=5):
+                    print("_preload_tensor_cache_error", file=sys.stderr)
+                    print(e, file=sys.stderr)
+                    raise e
 
     @staticmethod
     def _determine_numprocs_preload():

@@ -317,6 +317,9 @@ class DataProvider:
 
         self.data_cache = DataCache(config, self)
 
+    def __del__(self):
+        self.data_cache.stop_preload_thread()
+
     def pull_up_primary_dataset_methods(self):
         """If a primary dataset is defined, we will pull up some of its methods
         to the DataProvider level so that they can be called directly on the
