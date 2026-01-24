@@ -33,7 +33,7 @@ class DataRequestConfig(BaseConfigModel):
     primary_id_field: str | None = Field(
         None, description="Name of the primary identifier field in the dataset."
     )
-    _DATASET_SCHEMAS: ClassVar = (
+    _DATASET_SCHEMAS: ClassVar[tuple[type[BaseConfigModel], ...]] = (
         HyraxRandomDatasetConfig,
         HyraxCifarDatasetConfig,
         LSSTDatasetConfig,
