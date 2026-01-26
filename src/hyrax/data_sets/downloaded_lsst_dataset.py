@@ -394,7 +394,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
 
         # Now find first 5 entries where downloaded_bands has the expected count
         complete_entries = []
-        give_up_idx = min(len(manifest), 1000)  
+        give_up_idx = min(len(manifest), 1000)
 
         for i in range(give_up_idx):
             if len(complete_entries) >= 5:
