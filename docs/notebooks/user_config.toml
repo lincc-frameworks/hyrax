@@ -1,0 +1,2 @@
+[train]
+weights_filename = "model_weights.pth"
