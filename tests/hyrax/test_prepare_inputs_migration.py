@@ -147,11 +147,16 @@ def test_load_model_with_to_tensor_file(tmp_path, caplog):
     save_path = tmp_path / "model.pth"
     model.save(save_path)
 
-    # Manually rename prepare_inputs.py to to_tensor.py to simulate old model
+    # Manually rename prepare_inputs.py to to_tensor.py to simulate old model.
+    # It needs to rename more than the file.  The method name inside must
+    # also be renamed.
     prepare_inputs_file = tmp_path / "prepare_inputs.py"
     to_tensor_file = tmp_path / "to_tensor.py"
     if prepare_inputs_file.exists():
         prepare_inputs_file.rename(to_tensor_file)
+        src = to_tensor_file.read_text()
+        src = src.replace("def prepare_inputs", "def to_tensor")
+        to_tensor_file.write_text(src)
 
     # Create new model instance and load
     new_model = TestModelForLoading(h.config)
