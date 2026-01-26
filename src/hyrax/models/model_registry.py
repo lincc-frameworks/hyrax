@@ -208,7 +208,7 @@ def hyrax_model(cls):
             raise RuntimeError(msg)
 
         # Create prepare_inputs that calls the original to_tensor implementation
-        original_to_tensor = cls.to_tensor.__func__
+        original_to_tensor = cls.to_tensor
 
         @staticmethod
         def prepare_inputs_from_to_tensor(data_dict):
