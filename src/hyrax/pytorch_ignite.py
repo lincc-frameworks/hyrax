@@ -570,6 +570,64 @@ def create_validator(
     return validator
 
 
+def create_tester(
+    model: torch.nn.Module,
+    config: dict,
+    results_directory: Path,
+    tensorboardx_logger: SummaryWriter,
+) -> Engine:
+    """This function creates a Pytorch Ignite engine object that will be used to
+    test the model.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The model to test
+    config : dict
+        Hyrax runtime configuration
+    results_directory : Path
+        The directory where test results will be saved
+    tensorboardx_logger : SummaryWriter
+        The tensorboard logger object
+
+    Returns
+    -------
+    pytorch-ignite.Engine
+        Engine object that will be used to test the model.
+    """
+
+    device = idist.device()
+    model.eval()
+    model = idist.auto_model(model)
+
+    tester = create_engine("train_step", device, model, config)
+
+    # Track average loss
+    from ignite.metrics import RunningAverage
+
+    RunningAverage(output_transform=lambda x: x["loss"]).attach(tester, "avg_loss")
+
+    @tester.on(Events.STARTED)
+    def log_test_start(engine):
+        logger.info(f"Starting model evaluation on test data (device: {device})")
+
+    @tester.on(Events.COMPLETED)
+    def log_test_metrics(engine):
+        from colorama import Fore, Style
+
+        metrics = engine.state.metrics
+        logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
+        logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
+
+        # Log metrics to MLflow
+        mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
+
+        # Log to tensorboard
+        tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
+
+    return tester
+
+
 def create_trainer(
     model: torch.nn.Module, config: dict, results_directory: Path, tensorboardx_logger: SummaryWriter
 ) -> Engine:

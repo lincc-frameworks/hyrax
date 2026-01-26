@@ -42,7 +42,7 @@ class Test(Verb):
 
         from hyrax.config_utils import create_results_dir, log_runtime_config
         from hyrax.pytorch_ignite import (
-            create_engine,
+            create_tester,
             dist_data_loader,
             setup_dataset,
             setup_model,
@@ -69,15 +69,8 @@ class Test(Verb):
         # Determine which dataset to use for testing
         if isinstance(dataset, dict) and "test" in dataset:
             test_data_loader, _ = dist_data_loader(dataset["test"], config, False)
-        elif isinstance(dataset, dict) and "train" in dataset:
-            # Fall back to train dataset if test is not available
-            # This allows the test verb to work with percentage-based splits
-            data_loaders = dist_data_loader(dataset["train"], config, ["test"])
-            test_data_loader, _ = data_loaders.get("test", (None, None))
-            if test_data_loader is None:
-                raise RuntimeError("No test dataset available. Please configure a test dataset or split.")
         else:
-            raise RuntimeError("Could not determine test dataset from configuration")
+            raise RuntimeError("No test dataset available. Please configure a test dataset or split.")
 
         # Load model weights
         Test.load_model_weights(config, model)
@@ -86,7 +79,9 @@ class Test(Verb):
         mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
 
         # Get experiment_name and cast to string
-        experiment_name = str(config.get("test", {}).get("experiment_name", config["train"]["experiment_name"]))
+        experiment_name = str(
+            config.get("test", {}).get("experiment_name", config["train"]["experiment_name"])
+        )
 
         # This will create the experiment if it doesn't exist
         mlflow.set_experiment(experiment_name)
@@ -98,53 +93,8 @@ class Test(Verb):
         with mlflow.start_run(log_system_metrics=True, run_name=run_name):
             Test._log_params(config, results_dir)
 
-            # Create test evaluator
-            import ignite.distributed as idist
-
-            device = idist.device()
-            model.eval()
-            model = idist.auto_model(model)
-            
-            test_evaluator = create_engine("train_step", device, model, config)
-
-            # Attach metric logging
-            from ignite.engine import Events
-            from ignite.metrics import Loss, RunningAverage
-
-            # Get the criterion for loss calculation
-            from hyrax.plugin_utils import get_or_load_class
-
-            criterion_name = config["criterion"]["name"]
-            criterion_class = get_or_load_class(criterion_name)
-            criterion_config = config.get(criterion_name, {})
-            criterion = criterion_class(**criterion_config)
-
-            loss_metric = Loss(criterion)
-            loss_metric.attach(test_evaluator, "test_loss")
-
-            # Track average loss
-            RunningAverage(output_transform=lambda x: x["loss"]).attach(test_evaluator, "avg_loss")
-
-            @test_evaluator.on(Events.STARTED)
-            def log_test_start(engine):
-                logger.info(f"Starting model evaluation on test data (device: {device})")
-
-            @test_evaluator.on(Events.COMPLETED)
-            def log_test_metrics(engine):
-                metrics = engine.state.metrics
-                logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
-                logger.info(f"  Test Loss: {metrics.get('test_loss', 'N/A'):.4f}")
-                logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
-                
-                # Log metrics to MLflow
-                mlflow.log_metric("test_loss", metrics.get("test_loss", 0.0))
-                mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
-                
-                # Log to tensorboard
-                tensorboardx_logger.add_scalar("test/loss", metrics.get("test_loss", 0.0), 0)
-                tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
-
-            # Run the test process
+            # Create test evaluator and run test
+            test_evaluator = create_tester(model, config, results_dir, tensorboardx_logger)
             test_evaluator.run(test_data_loader)
 
         logger.info("Finished Testing")
@@ -166,22 +116,19 @@ class Test(Verb):
             The model class to load weights into
 
         """
+        from typing import Union
+
         from hyrax.config_utils import find_most_recent_results_dir
 
-        # Check test config first, then fall back to infer config
-        test_config = config.get("test", {})
-        weights_file = test_config.get("model_weights_file", None) if test_config else None
-        
-        # Fall back to infer config if test config doesn't have weights file
-        if weights_file is None:
-            weights_file = (
-                config["infer"]["model_weights_file"] if config["infer"]["model_weights_file"] else None
-            )
+        # The "test" key will always exist in config
+        weights_file: Union[str, Path] | None = (
+            config["test"]["model_weights_file"] if config["test"]["model_weights_file"] else None
+        )
 
         if weights_file is None:
             recent_results_path = find_most_recent_results_dir(config, "train")
             if recent_results_path is None:
-                raise RuntimeError("Must define model_weights_file in the [test] or [infer] section of hyrax config.")
+                raise RuntimeError("Must define model_weights_file in the [test] section of hyrax config.")
 
             weights_file = recent_results_path / config["train"]["weights_filename"]
 
@@ -194,8 +141,6 @@ class Test(Verb):
         try:
             model.load(weights_file_path)
             # Update config to track which weights file was actually used
-            if "test" not in config:
-                config["test"] = {}
             config["test"]["model_weights_file"] = str(weights_file_path)
         except Exception as err:
             msg = f"Model weights file {weights_file_path} did not load properly. Are you sure you are "
