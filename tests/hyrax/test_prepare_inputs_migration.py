@@ -1,6 +1,6 @@
 """Tests for prepare_inputs migration and backward compatibility."""
+
 import logging
-from pathlib import Path
 
 import numpy as np
 import torch.nn as nn
