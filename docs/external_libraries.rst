@@ -86,8 +86,8 @@ to their model, and to allow dataset authors to make datasets without constraini
 particular ML architecture.
 
 Defining ``prepare_inputs`` is necessary when a dataset returns a dictionary as the individual datum, rather than 
-a ``Torch.tensor``.  ``prepare_inputs`` takes a batch of whatever is returned by the Dataset class, and returns 
-a batch of ``Torch.tensor`` appropriate to send to the model's ``forward`` function
+a numpy array.  ``prepare_inputs`` takes a batch of whatever is returned by the Dataset class, and returns 
+numpy arrays appropriate to send to the model's ``forward`` function
 
 .. note::
    The older function name ``to_tensor`` is deprecated but still supported for backward compatibility. Please use ``prepare_inputs`` in new code.
@@ -101,9 +101,9 @@ python dictionary below:
 
     # What the dataset gives as a single item
     {
-    "flux_g": <Torch Tensor>,
-    "flux_r": <Torch Tensor>,
-    "flux_i": <Torch Tensor>,
+    "flux_g": <numpy.array>,
+    "flux_r": <numpy.array>,
+    "flux_i": <numpy.array>,
     "spectrum": <numpy.array>,
     "mag_g": <numpy.float32>,
     }
@@ -115,14 +115,14 @@ relevant data as shown below:
 
     # What prepare_inputs recieves from hyrax
     {
-    "flux_g": [ <Torch Tensor>, <Torch Tensor>, <Torch Tensor>, ...],
-    "flux_r": [ <Torch Tensor>, <Torch Tensor>, <Torch Tensor>, ...],
-    "flux_i": [ <Torch Tensor>, <Torch Tensor>, <Torch Tensor>, ...],
+    "flux_g": [ <numpy.array>, <numpy.array>, <numpy.array>, ...],
+    "flux_r": [ <numpy.array>, <numpy.array>, <numpy.array>, ...],
+    "flux_i": [ <numpy.array>, <numpy.array>, <numpy.array>, ...],
     "spectrum": [ <numpy.array>, <numpy.array>, <numpy.array>, ...],
     "mag_g": [ <numpy.float32>, <numpy.float32>, <numpy.float32>, ...],
     }
 
-``prepare_inputs`` must return a list of ``Torch.tensor`` objects that your ``forward`` function can accept as 
+``prepare_inputs`` must return numpy arrays that your ``forward`` function can accept as 
 it's ``x`` input. See the example below, which stacks the g, r, and i fluxes into a single tensor:
 
 .. code-block:: python
@@ -135,8 +135,8 @@ it's ``x`` input. See the example below, which stacks the g, r, and i fluxes int
         @staticmethod
         def prepare_inputs(batch_dict):
             """
-            Accepts a dictionary of tensor batches for individual telescope filters.
-            Returns a batch of stacked tensor with the first index corresponding to the 
+            Accepts a dictionary of numpy array batches for individual telescope filters.
+            Returns a batch of stacked arrays with the first index corresponding to the 
             filters g, r, and i respectively.
             """
             g_imgs = batch_dict["flux_g"]
@@ -167,7 +167,7 @@ NaN values from input data, replacing them with the value zero.
         @staticmethod
         def prepare_inputs(batch_dict):
             """
-            Accepts a batch of tensors which may contain NaN values. Replaces those values with zero.
+            Accepts a batch of arrays which may contain NaN values. Replaces those values with zero.
             """
             from torch import any, isnan, nan_to_num
             if any(isnan(batch)):
