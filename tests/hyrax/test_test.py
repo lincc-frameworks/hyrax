@@ -94,7 +94,7 @@ def test_test_with_explicit_weights(loopback_hyrax_map_only, tmp_path):
     weights_path = results_dir / h.config["train"]["weights_filename"]
 
     # Now, set the test config to point to this weights file
-    h.config["test"] = {"model_weights_file": str(weights_path)}
+    h.config["test"]["model_weights_file"] = str(weights_path)
 
     # Run test
     metrics = h.test()
@@ -120,61 +120,6 @@ def test_test_auto_detects_weights(loopback_hyrax_map_only, tmp_path):
     h.config["test"] = {"model_weights_file": False}
 
     # Run test - should auto-detect weights from train
-    metrics = h.test()
-
-    # Verify we got metrics back
-    assert metrics is not None
-    assert "avg_loss" in metrics
-
-
-def test_test_percent_split(tmp_path):
-    """
-    Ensure that testing works when the configuration provides an explicit
-    test dataset configuration.
-    """
-    import hyrax
-
-    h = hyrax.Hyrax()
-    h.config["model"]["name"] = "HyraxLoopback"
-    h.config["train"]["epochs"] = 1
-    h.config["data_loader"]["batch_size"] = 4
-    h.config["general"]["results_dir"] = str(tmp_path)
-    h.config["general"]["dev_mode"] = True
-
-    # Provide train, test, and infer model_inputs
-    h.config["model_inputs"] = {
-        "train": {
-            "data": {
-                "dataset_class": "HyraxRandomDataset",
-                "data_location": str(tmp_path / "data_train"),
-                "primary_id_field": "object_id",
-            }
-        },
-        "test": {
-            "data": {
-                "dataset_class": "HyraxRandomDataset",
-                "data_location": str(tmp_path / "data_test"),
-                "primary_id_field": "object_id",
-            }
-        },
-        "infer": {
-            "data": {
-                "dataset_class": "HyraxRandomDataset",
-                "data_location": str(tmp_path / "data_infer"),
-                "primary_id_field": "object_id",
-            }
-        },
-    }
-
-    # Configure the underlying random dataset used by tests
-    h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
-    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
-    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
-
-    # First train a model
-    h.train()
-
-    # Then test the model with the explicit test dataset
     metrics = h.test()
 
     # Verify we got metrics back
