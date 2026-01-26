@@ -42,9 +42,6 @@ def trained_hyrax(tmp_path):
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
-    # Single epoch of easy training gives a race condition for the preloader.
-    # If the training finishes before the preload thread, the preload thread crashes.
-    # h.config["data_set"]["preload_cache"] = False
 
     # Train the model
     h.train()

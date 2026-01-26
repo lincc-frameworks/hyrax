@@ -316,9 +316,7 @@ class DataProvider:
         from hyrax.data_sets.data_cache import DataCache
 
         self.data_cache = DataCache(config, self)
-
-    def __del__(self):
-        self.data_cache.stop_preload_thread()
+        self.data_cache.start_preload_thread()
 
     def pull_up_primary_dataset_methods(self):
         """If a primary dataset is defined, we will pull up some of its methods

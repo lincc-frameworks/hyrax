@@ -4,7 +4,7 @@ from collections.abc import Iterable
 from concurrent.futures import Executor
 from numbers import Number
 from sys import getsizeof
-from threading import Event, Thread
+from threading import Thread
 from typing import Any
 
 import numpy as np
@@ -75,24 +75,21 @@ class DataCache:
 
         self._preload_thread = None
         if self._preload_cache and self._use_cache:
-            self._preload_thread_should_terminate = Event()
             self._preload_thread = Thread(
                 name="DataCache-preload-tensor-cache",
                 daemon=True,
                 target=self._preload_tensor_cache.__func__,  # type: ignore[attr-defined]
-                args=(self, self._preload_thread_should_terminate),
+                args=(self,),
             )
-            self._preload_thread.start()
 
-    def __del__(self):
-        self.stop_preload_thread()
+    def start_preload_thread(self):
+        """Start the cache preload thread if configured
 
-    def stop_preload_thread(self):
-        """Gracefully teardown the preload thread if the data cache is being cleaned up."""
+        This exists to separate initialization from thread start in DataProvider's
+        constructor, so the thread started can always count on a fully initialized DataProvider.
+        """
         if self._preload_thread is not None:
-            self._preload_thread_should_terminate.set()
-            self._preload_thread.join()
-            self._preload_thread = None
+            self._preload_thread.start()
 
     def _idx_check(self, idx):
         if not isinstance(idx, int):
@@ -207,11 +204,10 @@ class DataCache:
 
         return total_data_size
 
-    def _preload_tensor_cache(self, preload_thread_should_terminate: Event):
+    def _preload_tensor_cache(self):
         """
         Preload all tensors in the dataset using multiple threads.
         """
-        import sys
         from concurrent.futures import ThreadPoolExecutor
 
         logger.info("Preloading Data cache...")
@@ -221,25 +217,13 @@ class DataCache:
             fetched_data = self._lazy_map_executor(executor, range(self._max_length))
 
             start_time = time.monotonic_ns()
-            try:
-                for idx, data_item in enumerate(fetched_data):
-                    self.insert_into_cache(idx, data_item)
+            for idx, data_item in enumerate(fetched_data):
+                self.insert_into_cache(idx, data_item)
 
-                    # Output timing every 1k tensors
-                    if idx % 1_000 == 0 and idx != 0:
-                        tensorboardx_logger.log_duration_ts(f"{prefix}/preload_1k_obj_s", start_time)
-                        start_time = time.monotonic_ns()
-            except Exception as e:
-                # If exceptions are coming out of termination ignore them. The timeout is to avoid a race
-                # where exceptions for deallocation of DataCache and DataProvider can occur slightly before
-                # their __del__ methods set this signal.
-                #
-                # We wait until the signal is set or 1 second whichever is shorter when we see a worker
-                # thread exception
-                if not preload_thread_should_terminate.wait(timeout=5):
-                    print("_preload_tensor_cache_error", file=sys.stderr)
-                    print(e, file=sys.stderr)
-                    raise e
+                # Output timing every 1k tensors
+                if idx % 1_000 == 0 and idx != 0:
+                    tensorboardx_logger.log_duration_ts(f"{prefix}/preload_1k_obj_s", start_time)
+                    start_time = time.monotonic_ns()
 
     @staticmethod
     def _determine_numprocs_preload():
