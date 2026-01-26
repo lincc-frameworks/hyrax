@@ -134,11 +134,7 @@ def save_prepare_inputs(prepare_inputs_fn, save_path: Path):
         The path to save the prepare_inputs function to.
     """
     with open(save_path.parent / "prepare_inputs.py", "w") as f:
-        try:
-            f.write(textwrap.dedent(inspect.getsource(prepare_inputs_fn)))
-        except (OSError, TypeError) as e:
-            logger.warning(f"Could not retrieve source for model.prepare_inputs: {e}")
-            f.write("# Source code for model.prepare_inputs could not be retrieved.\n")
+        f.write(textwrap.dedent(inspect.getsource(prepare_inputs_fn)))
 
 
 def load_prepare_inputs(load_path: Path):
@@ -181,11 +177,7 @@ def save_to_tensor(to_tensor_fn, save_path: Path):
         The path to save the to_tensor function to.
     """
     with open(save_path.parent / "to_tensor.py", "w") as f:
-        try:
-            f.write(textwrap.dedent(inspect.getsource(to_tensor_fn)))
-        except (OSError, TypeError) as e:
-            logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
-            f.write("# Source code for model.to_tensor could not be retrieved.\n")
+        f.write(textwrap.dedent(inspect.getsource(to_tensor_fn)))
 
 
 def load_to_tensor(load_path: Path):
