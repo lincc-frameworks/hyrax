@@ -419,7 +419,7 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
             raise RuntimeError(
                 f"No entries found with complete band coverage. Expected {expected_band_count} bands "
                 f"based on cutout_shape, but less than 5 downloaded entries have all bands present. "
-                f"Cannot automatically deterrmine consistent band structure."
+                f"Cannot automatically determine consistent band structure."
             )
 
         # Check that all complete entries have identical band lists
