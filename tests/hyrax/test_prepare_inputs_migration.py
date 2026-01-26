@@ -109,7 +109,7 @@ def test_model_without_prepare_inputs_or_to_tensor_raises_error():
     test_data = {"wrong_key": {"image": np.array([1, 2, 3])}}
     try:
         model.prepare_inputs(test_data)
-        assert False, "Should have raised RuntimeError"
+        raise AssertionError("Should have raised RuntimeError")
     except RuntimeError as e:
         assert "Hyrax couldn't find a 'data' key" in str(e)
         assert "prepare_inputs" in str(e)
