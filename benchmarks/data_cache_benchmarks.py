@@ -39,6 +39,7 @@ class DataCacheBenchmarks:
     def time_preload_cache_cifar(self):
         """Benchmark the amount of time needed to preload the cache of all data"""
         self.data_cache = DataCache(self.h.config, self.data_provider)
+        self.data_cache.start_preload_thread()
         self.data_cache._preload_thread.join()
 
     def track_cache_cifar_hyrax_size_undercount(self):
