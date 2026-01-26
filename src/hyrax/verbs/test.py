@@ -75,6 +75,9 @@ class Test(Verb):
         # Load model weights
         Test.load_model_weights(config, model)
 
+        # Save the loaded model weights to the test results directory
+        model.save(results_dir / "test_weights.pth")
+
         results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
         mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
 

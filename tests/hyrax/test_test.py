@@ -125,3 +125,25 @@ def test_test_auto_detects_weights(loopback_hyrax_map_only, tmp_path):
     # Verify we got metrics back
     assert metrics is not None
     assert "avg_loss" in metrics
+
+
+def test_test_saves_weights_file(loopback_hyrax_map_only, tmp_path):
+    """
+    Ensure that testing saves the model weights to test_weights.pth.
+    """
+    h, _ = loopback_hyrax_map_only
+    # set results directory to a temporary path
+    h.config["general"]["results_dir"] = str(tmp_path)
+
+    # First, run training to create a saved model file
+    _ = h.train()
+
+    # Run test
+    _ = h.test()
+
+    # Find the most recent test results directory
+    test_results_dir = find_most_recent_results_dir(h.config, "test")
+
+    # Verify that test_weights.pth was saved
+    weights_file = test_results_dir / "test_weights.pth"
+    assert weights_file.exists(), f"Expected weights file at {weights_file} does not exist"
