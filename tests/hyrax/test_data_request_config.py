@@ -88,6 +88,107 @@ def test_config_manager_set_config_accepts_data_request_definition():
     assert rendered["infer"]["data"]["dataset_class"] == "HyraxRandomDataset"
 
 
+def test_config_manager_set_config_with_valid_dict():
+    """ConfigManager.set_config validates and coerces valid dict data_request."""
+
+    cm = ConfigManager()
+    valid_dict = {
+        "train": {
+            "dataset_class": "HyraxRandomDataset",
+            "fields": ["image"],
+            "primary_id_field": "object_id",
+        }
+    }
+
+    cm.set_config("data_request", valid_dict)
+
+    rendered = cm.config["data_request"]
+    assert rendered["train"]["data"]["dataset_class"] == "HyraxRandomDataset"
+    assert rendered["train"]["data"]["fields"] == ["image"]
+    assert rendered["train"]["data"]["primary_id_field"] == "object_id"
+
+
+def test_config_manager_set_config_with_invalid_data_accepts_as_is():
+    """ConfigManager.set_config accepts invalid data as-is when validation fails."""
+
+    cm = ConfigManager()
+    # Invalid: missing required primary_id_field
+    invalid_dict = {
+        "train": {
+            "dataset_class": "HyraxRandomDataset",
+            "fields": ["image"],
+            # Missing primary_id_field - would fail DataRequestDefinition validation
+        }
+    }
+
+    # Should not raise - validation error is suppressed
+    cm.set_config("data_request", invalid_dict)
+
+    # Invalid data is stored as-is without validation/coercion
+    rendered = cm.config["data_request"]
+    assert rendered == invalid_dict
+    assert "train" in rendered
+    assert rendered["train"]["dataset_class"] == "HyraxRandomDataset"
+
+
+def test_config_manager_set_config_with_completely_invalid_structure():
+    """ConfigManager.set_config accepts completely invalid structures when validation fails."""
+
+    cm = ConfigManager()
+    # Completely invalid structure that can't be validated
+    invalid_data = {"random_key": "random_value", "nested": {"deeply": {"invalid": 123}}}
+
+    # Should not raise - validation error is suppressed
+    cm.set_config("data_request", invalid_data)
+
+    # Invalid data is stored as-is
+    rendered = cm.config["data_request"]
+    assert rendered == invalid_data
+
+
+def test_config_manager_set_config_coerces_typed_dataset_config():
+    """ConfigManager.set_config properly coerces dataset_config for known datasets."""
+
+    cm = ConfigManager()
+    valid_dict = {
+        "train": {
+            "dataset_class": "HyraxCifarDataset",
+            "primary_id_field": "id",
+            "dataset_config": {"use_training_data": True},
+        }
+    }
+
+    cm.set_config("data_request", valid_dict)
+
+    rendered = cm.config["data_request"]
+    assert rendered["train"]["data"]["dataset_class"] == "HyraxCifarDataset"
+    assert rendered["train"]["data"]["dataset_config"]["use_training_data"] is True
+
+
+def test_config_manager_set_config_with_partial_validity():
+    """ConfigManager.set_config handles edge case with partially valid data."""
+
+    cm = ConfigManager()
+    # Has some valid structure but missing required fields in one split
+    partially_valid = {
+        "train": {
+            "dataset_class": "HyraxRandomDataset",
+            "primary_id_field": "id",
+        },
+        "validate": {
+            "dataset_class": "HyraxCifarDataset",
+            # Missing primary_id_field - makes the whole definition invalid
+        },
+    }
+
+    # Should not raise - validation error is suppressed
+    cm.set_config("data_request", partially_valid)
+
+    # Since validation fails, data is stored as-is
+    rendered = cm.config["data_request"]
+    assert rendered == partially_valid
+
+
 def test_data_request_definition_rejects_missing_dataset_class():
     """dataset_class is required."""
     with pytest.raises(ValidationError):
