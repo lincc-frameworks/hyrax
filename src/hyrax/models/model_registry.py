@@ -26,7 +26,21 @@ def _torch_save(self: nn.Module, save_path: Path):
     torch.save(self.state_dict(), save_path)
     # Save prepare_inputs (preferred) or fall back to to_tensor for backward compatibility
     if hasattr(self, "prepare_inputs"):
-        save_prepare_inputs(self.prepare_inputs, save_path)
+        # If model has both prepare_inputs and to_tensor, and prepare_inputs was created from to_tensor,
+        # save the original to_tensor instead to maintain reproducibility
+        if hasattr(self, "to_tensor") and hasattr(self.__class__, "to_tensor"):
+            # Check if prepare_inputs is the wrapper we created
+            if hasattr(self.prepare_inputs, "__name__") and "prepare_inputs_from_to_tensor" in self.prepare_inputs.__name__:
+                # Save the original to_tensor function instead
+                logger.warning(
+                    "Model uses deprecated to_tensor method. Saving as prepare_inputs for forward compatibility. "
+                    "Please rename to_tensor to prepare_inputs in your model class to ensure reproducibility."
+                )
+                save_prepare_inputs(self.__class__.to_tensor, save_path)
+            else:
+                save_prepare_inputs(self.prepare_inputs, save_path)
+        else:
+            save_prepare_inputs(self.prepare_inputs, save_path)
     else:
         # For backward compatibility, save to_tensor if prepare_inputs is not available
         save_to_tensor(self.to_tensor, save_path)
@@ -46,8 +60,20 @@ def _torch_load(self: nn.Module, load_path: Path):
     # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
     prepare_inputs_fn = load_prepare_inputs(load_path.parent)
     to_tensor_fn = load_to_tensor(load_path.parent)
+    
+    # Check if model has to_tensor in class definition
+    has_class_to_tensor = hasattr(self.__class__, "to_tensor")
+    has_class_prepare_inputs = hasattr(self.__class__, "prepare_inputs")
 
     if prepare_inputs_fn:
+        # Warn if model has to_tensor but we're loading prepare_inputs
+        if has_class_to_tensor and not has_class_prepare_inputs:
+            logger.warning(
+                f"Model class has to_tensor method but loading prepare_inputs from {load_path.parent}. "
+                "The saved prepare_inputs may not match your current to_tensor implementation. "
+                "For reproducibility, please rename your to_tensor method to prepare_inputs."
+            )
+        
         if isinstance(prepare_inputs_fn, staticmethod):
             self.prepare_inputs = prepare_inputs_fn
         else:
