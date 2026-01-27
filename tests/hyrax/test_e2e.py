@@ -79,7 +79,6 @@ def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     h.config["model"]["name"] = model_class_name
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 128
-    h.config["data_set"]["preload_cache"] = False
 
     if dataset_class_name == "HyraxCifarIterableDataSet":
         h.config["data_loader"]["collate_fn"] = "hyrax.data_sets.iterable_dataset_collate"

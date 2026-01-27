@@ -10,6 +10,7 @@ import unittest.mock as mock
 
 import mocks
 import torch
+import torchvision  # noqa: F401  # Import before mock contexts to prevent kernel re-registration
 from mocks import lsst_config, mock_lsst_environment, sample_catalog, sample_catalog_saved  # noqa: F401
 
 

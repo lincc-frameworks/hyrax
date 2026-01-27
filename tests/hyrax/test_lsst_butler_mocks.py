@@ -74,8 +74,8 @@ def lsst_config():
             "filters": ["g", "r", "i"],
             "transform": "tanh",
             "crop_to": [100, 100],
-            "use_cache": False,
-            "preload_cache": False,
+            "use_cache": True,
+            "preload_cache": True,
         },
         "general": {
             "data_dir": "/tmp/test_data",

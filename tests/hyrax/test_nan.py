@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 import torch
-from torch import any, from_numpy, isnan, tensor
+from torch import any, isnan, tensor
 
 import hyrax
 from hyrax.data_sets.data_provider import _handle_nans
@@ -16,7 +16,7 @@ class RandomNaNDataset(HyraxRandomDataset):
         super().__init__(config, data_location)
 
     def __getitem__(self, idx):
-        return from_numpy(self.data[idx])
+        return self.data[idx]
 
 
 @pytest.fixture(scope="function", params=["RandomNaNDataset", "HyraxRandomDataset"])

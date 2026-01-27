@@ -9,12 +9,11 @@ from astropy.table import Table
 from tqdm import tqdm
 
 from .lsst_dataset import LSSTDataset
-from .tensor_cache_mixin import TensorCacheMixin
 
 logger = logging.getLogger(__name__)
 
 
-class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
+class DownloadedLSSTDataset(LSSTDataset):
     """
     DownloadedLSSTDataset: A dataset that inherits from LSSTDataset and downloads
     cutouts from the LSST butler, saving them as `.pt` files during first access.
@@ -109,10 +108,6 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         self._catalog_to_manifest_index_map = None
         self._manifest_to_catalog_index_map = None
         self._build_catalog_to_manifest_index_map()
-
-        # Initialize tensor caching from mixin
-        # TODO: Tensor Cache mixin refactor
-        self._init_tensor_cache(config)
 
     def get_objectId(self, idx):  # noqa: N802
         """Get object ID for a given index based on naming strategy."""
@@ -371,17 +366,33 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         return np.argmax([len(str(id)) for id in object_ids])
 
     def _get_available_bands_from_manifest(self, manifest):
-        """Best effort to get available bands by looking at first 10 successful downloads for consistency."""
+        """Get available bands by finding entries with complete band coverage.
+
+        Uses cutout_shape[0] to determine the expected number of bands, then finds
+        entries where downloaded_bands has that many entries (i.e., complete downloads).
+        """
         if len(manifest) == 0:
             return None, None
 
-        successful_entries = []
+        # First, find the expected number of bands from cutout_shape
+        # Look for the first entry with a valid cutout_shape
+        expected_band_count = None
+        for i in range(min(len(manifest), 1000)):
+            shape = manifest["cutout_shape"][i]
+            if shape is not None and len(shape) > 0 and shape[0] > 0:
+                expected_band_count = shape[0]
+                break
 
-        # Attempt to find first 10 successful downloads.
-        # For long manifests (e.g. 1 million undownloaded cutouts), avoid iterating too far to find these 10.
+        if expected_band_count is None:
+            # No valid cutout_shape found
+            return None, None
+
+        # Now find first 5 entries where downloaded_bands has the expected count
+        complete_entries = []
         give_up_idx = min(len(manifest), 1000)
+
         for i in range(give_up_idx):
-            if len(successful_entries) >= 10:
+            if len(complete_entries) >= 5:
                 break
 
             filename = manifest["filename"][i]
@@ -395,19 +406,26 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
                 and str(downloaded_bands_str).strip()
             ):
                 bands = [b.strip() for b in str(downloaded_bands_str).split(",") if b.strip()]
-                if bands:  # Non-empty band list
-                    successful_entries.append(bands)
+                # Only include entries with complete band coverage
+                if len(bands) == expected_band_count:
+                    complete_entries.append(bands)
 
-        if not successful_entries:
-            return None, None
+        if not complete_entries:
+            raise RuntimeError(
+                f"We checked the first 1000 manifest entries and found no entries with complete band"
+                f"coverage. Expected {expected_band_count} bands based on cutout_shape, but less than 5"
+                f"downloaded entries have all bands present. Cannot automatically determine consistent"
+                f"band structure."
+            )
 
-        # Check that all successful entries have identical band lists
-        first_bands = successful_entries[0]
-        for i, bands in enumerate(successful_entries[1:], 1):
+        # Check that all complete entries have identical band lists
+        first_bands = complete_entries[0]
+        for i, bands in enumerate(complete_entries[1:], 1):
             if bands != first_bands:
                 raise RuntimeError(
-                    f"Inconsistent band ordering in manifest. Entry 0 has {first_bands}, "
-                    f"but entry {i} has {bands}. Cannot determine consistent band structure."
+                    f"Inconsistent band ordering in manifest among complete downloads. "
+                    f"Entry 0 has {first_bands}, but entry {i} has {bands}. "
+                    f"Cannot determine consistent band structure."
                 )
 
         return set(first_bands), first_bands
@@ -728,41 +746,6 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
 
         # Return cutout and downloaded bands info for manifest tracking
         return data_torch, downloaded_bands
-
-    # TODO: Reimplement cache mixin
-    def _load_tensor_for_cache(self, object_id: str):
-        """Implementation of TensorCacheMixin abstract method."""
-        # Find the catalog index for this object_id
-        catalog_idx = None
-
-        if isinstance(self.catalog, Table):
-            for i in range(len(self.catalog)):
-                if str(self.catalog[i][self.object_id_column]) == object_id:
-                    catalog_idx = i
-                    break
-        else:
-            # pandas/hats catalog
-            mask = self.catalog[self.object_id_column] == object_id
-            matching_indices = self.catalog.index[mask].tolist()
-            if matching_indices:
-                catalog_idx = matching_indices[0]
-
-        if catalog_idx is None:
-            raise ValueError(f"Object ID {object_id} not found in catalog")
-
-        cutout_path = self._get_cutout_path(catalog_idx)
-        if cutout_path.exists():
-            # Load cached cutout
-            cutout = torch.load(cutout_path, map_location="cpu", weights_only=True)
-
-            # Apply band filtering if needed
-            if self._is_filtering_bands and self._band_indices is not None:
-                cutout = cutout[self._band_indices]
-
-            return cutout
-        else:
-            # Cutout not downloaded yet, cannot load for cache
-            raise FileNotFoundError(f"Cutout file {cutout_path} not found. Download cutouts first.")
 
     def __len__(self):
         """Return length of current catalog, not the full manifest."""
