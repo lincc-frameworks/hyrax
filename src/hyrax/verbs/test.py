@@ -46,6 +46,7 @@ class Test(Verb):
         from hyrax.config_utils import create_results_dir, log_runtime_config
         from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
         from hyrax.pytorch_ignite import (
+            create_evaluator,
             create_tester,
             dist_data_loader,
             setup_dataset,
@@ -151,9 +152,14 @@ class Test(Verb):
         with mlflow.start_run(log_system_metrics=True, run_name=run_name):
             Test._log_params(config, results_dir)
 
-            # Create test evaluator with save function and run test
-            test_evaluator = create_tester(model, config, results_dir, tensorboardx_logger, _save_batch)
-            test_evaluator.run(test_data_loader)
+            # Create two engines: one for metrics, one for saving outputs
+            # First, run evaluator to save model outputs
+            evaluator_engine = create_evaluator(model, _save_batch, config)
+            evaluator_engine.run(test_data_loader)
+
+            # Then, run tester to compute metrics
+            test_engine = create_tester(model, config, results_dir, tensorboardx_logger)
+            test_engine.run(test_data_loader)
 
         # Write out a dictionary to map IDs->Batch
         data_writer.write_index()
