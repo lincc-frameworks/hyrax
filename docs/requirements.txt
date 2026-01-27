@@ -8,6 +8,6 @@ sphinx
 sphinx-autoapi
 sphinx-copybutton
 sphinx-book-theme
-sphinx-rtd-theme
 sphinx-design
 sphinx-togglebutton
+sphinx-rtd-theme>=3.0
