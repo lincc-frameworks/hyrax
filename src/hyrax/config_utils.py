@@ -194,19 +194,19 @@ class ConfigManager:
         self.original_config = copy.deepcopy(self.config)
 
         # Validate data_request/model_inputs if present in loaded config
-        if "data_request" in self.config or "model_inputs" in self.config:
-            key = "data_request" if "data_request" in self.config else "model_inputs"
-            value = self.config[key]
-            try:
-                validated = self._coerce_data_request(value)
-                self.config[key] = validated
-                self.original_config = copy.deepcopy(self.config)
-            except ValidationError as e:
-                logger.warning(
-                    f"Configuration loaded from TOML has '{key}' that failed Pydantic validation. "
-                    f"This may indicate missing required fields (e.g., 'primary_id_field') or "
-                    f"invalid structure. The configuration will be used as-is. Validation error: {e}"
-                )
+        for key in ("data_request", "model_inputs"):
+            if key in self.config:
+                value = self.config[key]
+                try:
+                    validated = self._coerce_data_request(value)
+                    self.config[key] = validated
+                    self.original_config = copy.deepcopy(self.config)
+                except ValidationError as e:
+                    logger.warning(
+                        f"Configuration loaded from TOML has '{key}' that failed Pydantic validation. "
+                        f"This may indicate missing required fields (e.g., 'primary_id_field') or "
+                        f"invalid structure. The configuration will be used as-is. Validation error: {e}"
+                    )
 
     @staticmethod
     def _render_config(

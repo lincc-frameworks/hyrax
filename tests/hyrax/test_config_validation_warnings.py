@@ -222,3 +222,48 @@ def test_completely_invalid_structure_still_warns(caplog):
     # Invalid data is stored as-is
     rendered = cm.config["data_request"]
     assert rendered == invalid_data
+
+
+def test_init_validates_both_data_request_and_model_inputs(caplog, tmp_path):
+    """ConfigManager.__init__ validates both data_request and model_inputs if both present."""
+
+    # Create a TOML file with both invalid data_request and invalid model_inputs
+    config_file = tmp_path / "test_config.toml"
+    config_file.write_text(
+        """
+[general]
+dev_mode = true
+
+[data_request.train]
+dataset_class = "HyraxRandomDataset"
+# Missing primary_id_field - should trigger warning
+
+[model_inputs.validate]
+dataset_class = "HyraxCifarDataset"
+# Missing primary_id_field - should also trigger warning
+"""
+    )
+
+    # Create a minimal default config
+    default_config_file = tmp_path / "default_config.toml"
+    default_config_file.write_text(
+        """
+[general]
+dev_mode = false
+"""
+    )
+
+    with caplog.at_level(logging.WARNING):
+        cm = ConfigManager(
+            runtime_config_filepath=str(config_file),
+            default_config_filepath=str(default_config_file),
+        )
+
+    # Should log warnings for both keys
+    assert "Configuration loaded from TOML has 'data_request' that failed Pydantic validation" in caplog.text
+    assert "Configuration loaded from TOML has 'model_inputs' that failed Pydantic validation" in caplog.text
+    assert caplog.text.count("primary_id_field") >= 2  # Should mention it for both
+
+    # Both invalid configs are still loaded as-is
+    assert "data_request" in cm.config
+    assert "model_inputs" in cm.config
