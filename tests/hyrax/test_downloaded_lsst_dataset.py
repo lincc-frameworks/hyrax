@@ -9,6 +9,8 @@ LSST Science Pipelines or a Butler repository.
 import mocks
 import numpy as np
 import pytest
+import torch
+import torchvision  # noqa: F401  # Import before mock contexts to prevent kernel re-registration
 from mocks import lsst_config, mock_lsst_environment, sample_catalog, sample_catalog_saved  # noqa: F401
 
 from hyrax.data_sets.downloaded_lsst_dataset import DownloadedLSSTDataset
@@ -425,6 +427,39 @@ def test_failed_band_download(mock_lsst_environment, lsst_config, tmp_path):  # 
     # Verify it has all numbers in R,I channels
     assert (cutout[1] == cutout[1]).all()
     assert (cutout[2] == cutout[2]).all()
+
+
+def test_band_detection_with_partial_downloads(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
+    """
+    Test that _get_available_bands_from_manifest correctly identifies bands
+    from complete downloads, ignoring partial downloads that may appear earlier
+    in the manifest.
+    """
+    # Configure 4 bands
+    lsst_config["data_set"]["filters"] = ["g", "r", "i", "z"]
+
+    with mock_lsst_environment():
+        # Make g and r bands fail for the FIRST 5 downloads each, then succeed
+        # Early entries will have only i,z (partial), later entries will have all 4
+        dataset = DownloadedLSSTDatasetMocked(
+            lsst_config,
+            data_location=str(tmp_path),
+            patcher=mock_lsst_environment,
+            patcher_kwargs={"band_fail_before_n": {"g": 5, "r": 5}},
+        )
+        _manifest = dataset.download_cutouts()
+
+    # Request only g,r,i bands - triggers _get_available_bands_from_manifest
+    # which must find complete 4-band entries to determine available bands
+    lsst_config["data_set"]["filters"] = ["g", "r", "i"]
+
+    dataset = DownloadedLSSTDatasetMocked(
+        lsst_config, data_location=str(tmp_path), patcher=mock_lsst_environment
+    )
+
+    # Verify band filtering found complete entries and set up correctly
+    assert dataset._is_filtering_bands is True
+    assert set(dataset.BANDS) == {"g", "r", "i"}
 
 
 def test_catalog_ordering(mock_lsst_environment, lsst_config, tmp_path, sample_catalog):  # noqa: F811
