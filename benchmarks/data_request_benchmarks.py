@@ -47,4 +47,4 @@ class DatasetRequestBenchmarks:
         the random dataset
         """
         for indx in self.indexes:
-            self.ds["train"][indx]
+            self.ds["train"][int(indx)]
