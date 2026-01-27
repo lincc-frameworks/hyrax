@@ -116,13 +116,13 @@ def test_model_without_prepare_inputs_or_to_tensor_raises_error():
 
 
 def test_save_and_load_model_with_to_tensor_warns(tmp_path, caplog):
-    """Test that saving and loading a model with to_tensor method warns appropriately.
-    
+    """Test that saving and loading a model with to_tensor method works correctly.
+
     This tests the scenario where:
     1. A model is trained with the new Hyrax version but still uses to_tensor
-    2. The to_tensor content gets saved as prepare_inputs.py
-    3. When loading, the model still has to_tensor in the class
-    4. A warning should be shown about potential reproducibility issues
+    2. The to_tensor content gets saved as prepare_inputs.py with function renamed
+    3. When loading, the model can successfully load the renamed function
+    4. A warning is shown at save time about using deprecated to_tensor
     """
 
     @hyrax_model
@@ -150,33 +150,43 @@ def test_save_and_load_model_with_to_tensor_warns(tmp_path, caplog):
 
     # Create a model instance - this will create prepare_inputs from to_tensor
     model = TestModelWithToTensor(h.config)
-    
+
     # Save the model - should warn about using deprecated to_tensor
     save_path = tmp_path / "model.pth"
     with caplog.at_level(logging.WARNING):
         model.save(save_path)
         # Should warn about to_tensor being deprecated
         assert "deprecated to_tensor" in caplog.text.lower() or "to_tensor" in caplog.text
-    
+
     # Verify that prepare_inputs.py was created (not to_tensor.py)
     assert (tmp_path / "prepare_inputs.py").exists()
-    
+
+    # Verify that the saved file contains a function named prepare_inputs (not to_tensor)
+    prepare_inputs_content = (tmp_path / "prepare_inputs.py").read_text()
+    assert "def prepare_inputs(" in prepare_inputs_content
+    assert "def to_tensor(" not in prepare_inputs_content
+
     # Clear the log
     caplog.clear()
 
     # Now simulate loading: create a new model with to_tensor still in the class
     new_model = TestModelWithToTensor(h.config)
-    
-    # Load should warn about the mismatch
+
+    # Load the model - should load successfully without the old warning
     with caplog.at_level(logging.WARNING):
         new_model.load(save_path)
-        # Should warn about model having to_tensor but loading prepare_inputs
-        assert "to_tensor method but loading prepare_inputs" in caplog.text
-        assert "reproducibility" in caplog.text.lower()
 
-    # Model should still work
+    # Model should work correctly
     assert hasattr(new_model, "prepare_inputs")
     assert hasattr(new_model, "to_tensor")
+
+    # Test that the loaded prepare_inputs function actually works
+    test_data = {"image": np.array([4, 5, 6])}
+    result = new_model.prepare_inputs(test_data)
+    np.testing.assert_array_equal(result, np.array([4, 5, 6]))
+
+
+def test_load_model_with_old_to_tensor_file(tmp_path, caplog):
     """Test loading a model that has to_tensor.py file but no prepare_inputs.py."""
 
     @hyrax_model
