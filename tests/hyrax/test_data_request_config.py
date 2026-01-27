@@ -112,12 +112,12 @@ def test_config_manager_set_config_with_invalid_data_accepts_as_is():
     """ConfigManager.set_config accepts invalid data as-is when validation fails."""
 
     cm = ConfigManager()
-    # Invalid: missing required primary_id_field
+    # Invalid: missing primary_id_field required by DataRequestDefinition validation
     invalid_dict = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
             "fields": ["image"],
-            # Missing primary_id_field - would fail DataRequestDefinition validation
+            # Missing primary_id_field - fails DataRequestDefinition validation
         }
     }
 
@@ -169,7 +169,7 @@ def test_config_manager_set_config_with_partial_validity():
     """ConfigManager.set_config handles edge case with partially valid data."""
 
     cm = ConfigManager()
-    # Has some valid structure but missing required fields in one split
+    # Has some valid structure but missing primary_id_field in one split
     partially_valid = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
@@ -177,7 +177,7 @@ def test_config_manager_set_config_with_partial_validity():
         },
         "validate": {
             "dataset_class": "HyraxCifarDataset",
-            # Missing primary_id_field - makes the whole definition invalid
+            # Missing primary_id_field - fails DataRequestDefinition validation requirement
         },
     }
 
