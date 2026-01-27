@@ -4,11 +4,6 @@ import psutil
 
 from hyrax import Hyrax
 
-try:
-    from hyrax.data_sets.data_cache import DataCache
-except ImportError as e:
-    raise NotImplementedError("No DataCache in this version") from e
-
 
 class DataCacheBenchmarks:
     """Timing benchmarks for requesting data from the Hyrax random dataset"""
@@ -42,6 +37,10 @@ class DataCacheBenchmarks:
 
     def time_preload_cache_cifar(self):
         """Benchmark the amount of time needed to preload the cache of all data"""
+        try:
+            from hyrax.data_sets.data_cache import DataCache
+        except ImportError as e:
+            raise NotImplementedError("No DataCache in this version") from e
         self.data_cache = DataCache(self.h.config, self.data_provider)
         self.data_cache.start_preload_thread()
         self.data_cache._preload_thread.join()
