@@ -417,9 +417,10 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
 
         if not complete_entries:
             raise RuntimeError(
-                f"No entries found with complete band coverage. Expected {expected_band_count} bands "
-                f"based on cutout_shape, but less than 5 downloaded entries have all bands present. "
-                f"Cannot automatically determine consistent band structure."
+                f"We checked the first 1000 manifest entries and found no entries with complete band"
+                f"coverage. Expected {expected_band_count} bands based on cutout_shape, but less than 5"
+                f"downloaded entries have all bands present. Cannot automatically determine consistent"
+                f"band structure."
             )
 
         # Check that all complete entries have identical band lists
