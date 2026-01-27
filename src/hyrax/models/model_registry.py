@@ -10,7 +10,6 @@ from hyrax.plugin_utils import (
     load_prepare_inputs,
     load_to_tensor,
     save_prepare_inputs,
-    save_to_tensor,
     update_registry,
 )
 
@@ -37,11 +36,11 @@ def _torch_save(self: nn.Module, save_path: Path):
         to_tensor_source = inspect.getsource(to_tensor_func)
         # Replace function name from "to_tensor" to "prepare_inputs"
         prepared_source = to_tensor_source.replace("def to_tensor(", "def prepare_inputs(", 1)
-        
+
         # Add common imports that prepare_inputs/to_tensor functions typically need
         # This ensures the saved function can be loaded independently
         imports = "import numpy as np\nimport torch\n\n"
-        
+
         with open(save_path.parent / "prepare_inputs.py", "w") as f:
             f.write(imports + textwrap.dedent(prepared_source))
         logger.warning(

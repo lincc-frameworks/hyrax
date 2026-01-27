@@ -117,7 +117,7 @@ def test_model_without_prepare_inputs_or_to_tensor_raises_error():
 
 def test_save_and_load_model_with_to_tensor_warns(tmp_path, caplog):
     """Test that saving and loading a model with to_tensor method works correctly.
-    
+
     This tests the scenario where:
     1. A model is trained with the new Hyrax version but still uses to_tensor
     2. The to_tensor content gets saved as prepare_inputs.py with function renamed
@@ -150,36 +150,36 @@ def test_save_and_load_model_with_to_tensor_warns(tmp_path, caplog):
 
     # Create a model instance - this will create prepare_inputs from to_tensor
     model = TestModelWithToTensor(h.config)
-    
+
     # Save the model - should warn about using deprecated to_tensor
     save_path = tmp_path / "model.pth"
     with caplog.at_level(logging.WARNING):
         model.save(save_path)
         # Should warn about to_tensor being deprecated
         assert "deprecated to_tensor" in caplog.text.lower() or "to_tensor" in caplog.text
-    
+
     # Verify that prepare_inputs.py was created (not to_tensor.py)
     assert (tmp_path / "prepare_inputs.py").exists()
-    
+
     # Verify that the saved file contains a function named prepare_inputs (not to_tensor)
     prepare_inputs_content = (tmp_path / "prepare_inputs.py").read_text()
     assert "def prepare_inputs(" in prepare_inputs_content
     assert "def to_tensor(" not in prepare_inputs_content
-    
+
     # Clear the log
     caplog.clear()
 
     # Now simulate loading: create a new model with to_tensor still in the class
     new_model = TestModelWithToTensor(h.config)
-    
+
     # Load the model - should load successfully without the old warning
     with caplog.at_level(logging.WARNING):
         new_model.load(save_path)
-    
+
     # Model should work correctly
     assert hasattr(new_model, "prepare_inputs")
     assert hasattr(new_model, "to_tensor")
-    
+
     # Test that the loaded prepare_inputs function actually works
     test_data = {"image": np.array([4, 5, 6])}
     result = new_model.prepare_inputs(test_data)
