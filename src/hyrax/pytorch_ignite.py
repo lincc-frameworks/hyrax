@@ -575,6 +575,7 @@ def create_tester(
     config: dict,
     results_directory: Path,
     tensorboardx_logger: SummaryWriter,
+    save_function: Callable[[torch.Tensor, torch.Tensor], Any] | None = None,
 ) -> Engine:
     """This function creates a Pytorch Ignite engine object that will be used to
     test the model.
@@ -589,6 +590,9 @@ def create_tester(
         The directory where test results will be saved
     tensorboardx_logger : SummaryWriter
         The tensorboard logger object
+    save_function : Callable[[torch.Tensor, torch.Tensor], Any], optional
+        A function which will receive Engine.state.batch and Engine.state.output at the end
+        of each iteration. The intent is for the results of testing to be saved.
 
     Returns
     -------
@@ -600,16 +604,25 @@ def create_tester(
     model.eval()
     model = idist.auto_model(model)
 
-    tester = create_engine("train_step", device, model, config)
+    # Use forward if we're saving outputs, train_step if we're only computing metrics
+    engine_func = "forward" if save_function else "train_step"
+    tester = create_engine(engine_func, device, model, config)
 
-    # Track average loss
-    from ignite.metrics import RunningAverage
+    # Track average loss only when using train_step (which returns loss directly)
+    if not save_function:
+        from ignite.metrics import RunningAverage
 
-    RunningAverage(output_transform=lambda x: x["loss"]).attach(tester, "avg_loss")
+        RunningAverage(output_transform=lambda x: x["loss"]).attach(tester, "avg_loss")
 
     @tester.on(Events.STARTED)
     def log_test_start(engine):
         logger.info(f"Starting model evaluation on test data (device: {device})")
+
+    if save_function:
+        # When saving outputs, call the save function on each iteration
+        @tester.on(Events.ITERATION_COMPLETED)
+        def save_iteration_output(engine):
+            save_function(engine.state.batch, engine.state.output)
 
     @tester.on(Events.COMPLETED)
     def log_test_metrics(engine):
@@ -617,13 +630,15 @@ def create_tester(
 
         metrics = engine.state.metrics
         logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
-        logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
-
-        # Log metrics to MLflow
-        mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
-
-        # Log to tensorboard
-        tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
+        
+        if "avg_loss" in metrics:
+            logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
+            # Log metrics to MLflow
+            mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
+            # Log to tensorboard
+            tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
+        
+        logger.info(f"  Total test time: {engine.state.times['COMPLETED']:.2f}[s]")
 
     return tester
 

@@ -1,5 +1,6 @@
 import logging
 from pathlib import Path
+from typing import Union
 
 from colorama import Back, Fore, Style
 
@@ -29,18 +30,21 @@ class Test(Verb):
     def run(self):
         """
         Run the test process for the configured model on test data.
-        This evaluates a trained model and returns metrics.
+        This evaluates a trained model, saves outputs, and returns metrics.
 
         Returns
         -------
-        dict
-            Dictionary containing test metrics
+        InferenceDataSet
+            Dataset containing test results that can be used for further analysis
         """
 
         import mlflow
+        import numpy as np
         from tensorboardX import SummaryWriter
+        from torch import Tensor
 
         from hyrax.config_utils import create_results_dir, log_runtime_config
+        from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
         from hyrax.pytorch_ignite import (
             create_tester,
             dist_data_loader,
@@ -59,7 +63,12 @@ class Test(Verb):
 
         # Instantiate the model and dataset
         dataset = setup_dataset(config, tensorboardx_logger)
-        model = setup_model(config, dataset.get("test", dataset.get("train")))
+        
+        # Verify that test dataset exists
+        if not isinstance(dataset, dict) or "test" not in dataset:
+            raise RuntimeError("No test dataset available. Please configure a test dataset or split.")
+        
+        model = setup_model(config, dataset["test"])
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Testing model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"
@@ -67,16 +76,62 @@ class Test(Verb):
         logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Test dataset(s):{Style.RESET_ALL}\n{dataset}")
 
         # Determine which dataset to use for testing
-        if isinstance(dataset, dict) and "test" in dataset:
-            test_data_loader, _ = dist_data_loader(dataset["test"], config, False)
-        else:
-            raise RuntimeError("No test dataset available. Please configure a test dataset or split.")
+        test_data_loader, data_loader_indexes = dist_data_loader(dataset["test"], config, False)
 
         # Load model weights
         Test.load_model_weights(config, model)
 
         # Save the loaded model weights to the test results directory
         model.save(results_dir / "test_weights.pth")
+
+        # Initialize writer for saving test outputs
+        data_writer = InferenceDataSetWriter(dataset["test"], results_dir)
+
+        # These are values the _save_batch callback needs to run
+        write_index = 0
+        object_ids = np.array(list(dataset["test"].ids()))[data_loader_indexes]  # type: ignore[attr-defined]
+
+        def _save_batch(batch: Union[Tensor, list, tuple, dict], batch_results: Tensor):
+            """Receive and write results tensors to results_dir immediately
+            This function writes a single numpy binary file for each object.
+            """
+            nonlocal write_index
+            nonlocal object_ids
+            nonlocal data_writer
+
+            batch_len = len(batch_results)
+            batch_results = batch_results.detach().to("cpu")
+
+            batch_is_list = isinstance(batch, (tuple, list))
+            # Batch lacks ids if it is a Tensor, or a list/tuple of tensors
+            batch_lacks_ids = isinstance(batch, Tensor) or (
+                batch_is_list and isinstance(batch[0] if batch_is_list else None, Tensor)
+            )
+
+            # Batch has IDs if it is dict of tensors with the needed key
+            batch_has_ids = isinstance(batch, dict) and "object_id" in batch
+            if batch_lacks_ids:
+                # This fallback is brittle to any re-ordering of data that occurs during data loading
+                batch_object_ids = [
+                    object_ids[id] for id in range(write_index, write_index + len(batch_results))
+                ]
+            elif batch_has_ids:
+                if isinstance(batch["object_id"], list):
+                    batch_object_ids = batch["object_id"]
+                else:
+                    batch_object_ids = batch["object_id"].tolist()
+            elif isinstance(batch, dict):
+                msg = "Dataset dictionary should be returning object_ids to avoid ordering errors. "
+                msg += "Modify the __getitem__ or __iter__ function of your dataset to include 'object_id' "
+                msg += "with unique values per data member in the dictionary it returns."
+                raise RuntimeError(msg)
+            else:
+                msg = f"Could not determine object IDs from batch. Batch has type {type(batch)}"
+                raise RuntimeError(msg)
+
+            # Save results from this batch in a numpy file as a structured array
+            data_writer.write_batch(np.array(batch_object_ids), [t.numpy() for t in batch_results])
+            write_index += batch_len
 
         results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
         mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
@@ -96,15 +151,18 @@ class Test(Verb):
         with mlflow.start_run(log_system_metrics=True, run_name=run_name):
             Test._log_params(config, results_dir)
 
-            # Create test evaluator and run test
-            test_evaluator = create_tester(model, config, results_dir, tensorboardx_logger)
+            # Create test evaluator with save function and run test
+            test_evaluator = create_tester(model, config, results_dir, tensorboardx_logger, _save_batch)
             test_evaluator.run(test_data_loader)
+
+        # Write out a dictionary to map IDs->Batch
+        data_writer.write_index()
 
         logger.info("Finished Testing")
         tensorboardx_logger.close()
 
-        # Return the metrics
-        return test_evaluator.state.metrics
+        # Return the InferenceDataSet for further analysis
+        return InferenceDataSet(config, results_dir)
 
     @staticmethod
     def load_model_weights(config, model):
