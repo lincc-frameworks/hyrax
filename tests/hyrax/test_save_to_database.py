@@ -34,7 +34,7 @@ def test_save_to_database(loopback_inferred_hyrax):
         # original dataset, we need to find the index of the original dataset id
         # that corresponds to the inference result id.
         assert id in original_dataset_ids, f"Inference ID, {id} not found in original dataset IDs."
-        orig_indx = np.where(original_dataset_ids == id)[0][0]
+        orig_indx = int(np.where(original_dataset_ids == id)[0][0])
         result = db_connection.get_by_id(id)
         saved_value = result[id].reshape(original_shape)
         original_value = dataset[orig_indx]["data"]["image"]
