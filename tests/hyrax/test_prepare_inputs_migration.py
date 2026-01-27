@@ -171,7 +171,7 @@ def test_load_model_with_to_tensor_file(tmp_path, caplog):
     assert hasattr(new_model, "prepare_inputs")
 
 
-def test_load_model_without_prepare_inputs_or_to_tensor_file(tmp_path, caplog):
+def test_load_model_with_no_serialized_input_functions(tmp_path, caplog):
     """Test loading a model when neither prepare_inputs.py nor to_tensor.py exists."""
 
     @hyrax_model
