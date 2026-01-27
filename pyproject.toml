@@ -85,6 +85,7 @@ dev = [
     "sphinx-togglebutton",
     "sphinx-rtd-theme",
     "lsdb", # Used to test lsst dataset classes
+    "cdshealpix <= 0.7.1",
 ]
 
 [build-system]

@@ -403,9 +403,17 @@ class MockButler:
     band_fail_prob = {}
     fail_after_n = 0
     band_fail_after_n = {}
+    band_fail_before_n = {}
 
     @classmethod
-    def reset(cls, fail_prob=0.0, band_fail_prob=None, fail_after_n=0, band_fail_after_n=None):
+    def reset(
+        cls,
+        fail_prob=0.0,
+        band_fail_prob=None,
+        fail_after_n=0,
+        band_fail_after_n=None,
+        band_fail_before_n=None,
+    ):
         """Resets the mock butler for a new test, and configures failure behavior
 
         Parameters
@@ -423,12 +431,17 @@ class MockButler:
             Continually fail particular band(s) after the provided number of calls to butler.get in the
             particular band. Dictionary provided has bands as keys and counts as values.
             Counts of zero mean no failures for that band
+        band_fail_before_n : dict, optional
+            Fail particular band(s) for the first N calls, then succeed. Dictionary provided has bands
+            as keys and counts as values. For example band_fail_before_n={"g": 5} would cause the
+            first 5 gets to g band to fail, then succeed afterwards.
         """
         cls.initialized_thread_ids = []
         cls.fail_prob = fail_prob
         cls.band_fail_prob = {} if band_fail_prob is None else band_fail_prob
         cls.fail_after_n = fail_after_n
         cls.band_fail_after_n = {} if band_fail_after_n is None else band_fail_after_n
+        cls.band_fail_before_n = {} if band_fail_before_n is None else band_fail_before_n
 
     def __init__(self, repo=None, collections=None):
         """Initialize mock butler.
@@ -441,6 +454,7 @@ class MockButler:
         self._collections = collections
         self.request_count = 0
         self.band_request_count = {}
+        self.band_attempt_count = {}
 
         # Ensure only one Mock Butler per thread
         thread_id = threading.current_thread().ident
@@ -456,6 +470,12 @@ class MockButler:
         self._data = {}
 
     def _generate_errors(self, rng, band):
+        # Track attempts (before any failures) for band_fail_before_n
+        if self.band_attempt_count.get(band) is None:
+            self.band_attempt_count[band] = 1
+        else:
+            self.band_attempt_count[band] += 1
+
         if MockButler.fail_after_n != 0 and self.request_count >= MockButler.fail_after_n:
             msg = f"MockButler: Simulated fail after {self.request_count} requests."
             raise RuntimeError(msg)
@@ -467,6 +487,11 @@ class MockButler:
         band_limit = MockButler.band_fail_after_n.get(band, 0)
         if band_limit != 0 and self.band_request_count.get(band, 0) >= band_limit:
             msg = f"MockButler: Simulated fail after {band_limit} requests to {band} band."
+            raise RuntimeError(msg)
+
+        band_fail_before = MockButler.band_fail_before_n.get(band, 0)
+        if band_fail_before != 0 and self.band_attempt_count.get(band, 0) <= band_fail_before:
+            msg = f"MockButler: Simulated fail for first {band_fail_before} requests to {band} band."
             raise RuntimeError(msg)
 
         band_fail_prob = MockButler.band_fail_prob.get(band, 0.0)
