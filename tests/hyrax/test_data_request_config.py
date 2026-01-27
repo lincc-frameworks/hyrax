@@ -121,7 +121,7 @@ def test_config_manager_set_config_with_invalid_data_accepts_as_is():
         }
     }
 
-    # Should not raise - validation error is suppressed
+    # Should not raise - validation error is logged as warning but data is accepted
     cm.set_config("data_request", invalid_dict)
 
     # Invalid data is stored as-is without validation/coercion
@@ -138,7 +138,7 @@ def test_config_manager_set_config_with_completely_invalid_structure():
     # Completely invalid structure that can't be validated
     invalid_data = {"random_key": "random_value", "nested": {"deeply": {"invalid": 123}}}
 
-    # Should not raise - validation error is suppressed
+    # Should not raise - validation error is logged as warning but data is accepted
     cm.set_config("data_request", invalid_data)
 
     # Invalid data is stored as-is
@@ -181,7 +181,7 @@ def test_config_manager_set_config_with_partial_validity():
         },
     }
 
-    # Should not raise - validation error is suppressed
+    # Should not raise - validation error is logged as warning but data is accepted
     cm.set_config("data_request", partially_valid)
 
     # Since validation fails, data is stored as-is
