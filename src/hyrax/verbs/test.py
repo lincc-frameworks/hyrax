@@ -62,7 +62,7 @@ class Test(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         # Instantiate the model and dataset
-        dataset = setup_dataset(config, tensorboardx_logger)
+        dataset = setup_dataset(config)
         
         # Verify that test dataset exists
         if not isinstance(dataset, dict) or "test" not in dataset:
@@ -154,7 +154,7 @@ class Test(Verb):
         mlflow.set_experiment(experiment_name)
 
         # Use run_name if provided, otherwise use results directory name
-        run_name = config["test"].get("run_name", False) if config["test"].get("run_name", False) else results_dir.name
+        run_name = config["test"].get("run_name") if config["test"].get("run_name") else results_dir.name
 
         with mlflow.start_run(log_system_metrics=True, run_name=run_name):
             Test._log_params(config, results_dir)
@@ -165,7 +165,7 @@ class Test(Verb):
             evaluator_engine.run(test_data_loader)
 
             # Then, run tester to compute metrics
-            test_engine = create_tester(model, config, results_dir, tensorboardx_logger)
+            test_engine = create_tester(model, config, results_dir)
             test_engine.run(test_data_loader)
 
         # Write out a dictionary to map IDs->Batch

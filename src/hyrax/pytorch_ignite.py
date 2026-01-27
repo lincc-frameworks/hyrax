@@ -567,7 +567,6 @@ def create_tester(
     model: torch.nn.Module,
     config: dict,
     results_directory: Path,
-    tensorboardx_logger: SummaryWriter,
 ) -> Engine:
     """This function creates a Pytorch Ignite engine object that will be used to
     test the model and compute metrics without updating model weights.
@@ -580,8 +579,6 @@ def create_tester(
         Hyrax runtime configuration
     results_directory : Path
         The directory where test results will be saved
-    tensorboardx_logger : SummaryWriter
-        The tensorboard logger object
 
     Returns
     -------
@@ -591,6 +588,7 @@ def create_tester(
 
     device = idist.device()
     model = idist.auto_model(model)
+    tensorboardx_logger = get_tensorboard_logger()
 
     tester = create_engine("train_step", device, model, config)
     fixup_engine(tester)
