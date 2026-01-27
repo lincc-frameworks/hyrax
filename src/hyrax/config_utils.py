@@ -5,7 +5,6 @@ import importlib
 import logging
 import random
 import re
-from contextlib import suppress
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any, Union
@@ -194,6 +193,21 @@ class ConfigManager:
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
         self.original_config = copy.deepcopy(self.config)
 
+        # Validate data_request/model_inputs if present in loaded config
+        if "data_request" in self.config or "model_inputs" in self.config:
+            key = "data_request" if "data_request" in self.config else "model_inputs"
+            value = self.config[key]
+            try:
+                validated = self._coerce_data_request(value)
+                self.config[key] = validated
+                self.original_config = copy.deepcopy(self.config)
+            except ValidationError as e:
+                logger.warning(
+                    f"Configuration loaded from TOML has '{key}' that failed Pydantic validation. "
+                    f"This may indicate missing required fields (e.g., 'primary_id_field') or "
+                    f"invalid structure. The configuration will be used as-is. Validation error: {e}"
+                )
+
     @staticmethod
     def _render_config(
         user_specific_config: TOMLDocument = None,
@@ -241,8 +255,14 @@ class ConfigManager:
         """
         keys = parse_dotted_key(key)
         if key in ("data_request", "model_inputs"):
-            with suppress(ValidationError):
+            try:
                 value = self._coerce_data_request(value)
+            except ValidationError as e:
+                logger.warning(
+                    f"Configuration for '{key}' failed Pydantic validation and will be used as-is. "
+                    f"This may indicate missing required fields (e.g., 'primary_id_field') or "
+                    f"invalid structure. Validation error: {e}"
+                )
         elif isinstance(value, BaseConfigModel):
             value = value.model_dump()
 
