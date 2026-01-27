@@ -2,13 +2,12 @@ import os
 
 import psutil
 
-from asv_runner.benchmark.mark import SkipNotImplemented
 from hyrax import Hyrax
 
 try:
     from hyrax.data_sets.data_cache import DataCache
-except ImportError:
-    raise SkipNotImplemented()
+except ImportError as e:
+    raise NotImplementedError("No DataCache in this version") from e
 
 
 class DataCacheBenchmarks:
