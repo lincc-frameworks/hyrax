@@ -191,7 +191,7 @@ model_weights_file = false
 
 # The name of the experiment when logging test results to mlflow.
 # If not set, uses the experiment name from [train].
-experiment_name = false
+experiment_name = "notebook"
 
 # The name of the run when logging test results to mlflow.
 # If false, uses result directory string, <timestamp>-test-<uid>, as run name.

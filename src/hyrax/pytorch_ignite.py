@@ -549,7 +549,8 @@ def create_validator(
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
-        validator.run(validation_data_loader)
+        with torch.no_grad():
+            validator.run(validation_data_loader)
 
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
