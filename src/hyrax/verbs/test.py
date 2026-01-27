@@ -57,7 +57,6 @@ class Test(Verb):
 
         # Create a results directory
         results_dir = create_results_dir(config, "test")
-        log_runtime_config(config, results_dir)
 
         # Create a tensorboardX logger
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
@@ -70,17 +69,28 @@ class Test(Verb):
             raise RuntimeError("No test dataset available. Please configure a test dataset or split.")
         
         model = setup_model(config, dataset["test"])
+        
+        # Load model weights
+        Test.load_model_weights(config, model)
+        
+        # Log runtime config after loading weights so the actual weights path is captured
+        log_runtime_config(config, results_dir)
+        
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Testing model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"
         )
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Test dataset(s):{Style.RESET_ALL}\n{dataset}")
+        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Test dataset:{Style.RESET_ALL}\n{dataset['test']}")
+
+        # Disable shuffling for test (like inference)
+        if config["data_loader"]["shuffle"]:
+            msg = "Data loader shuffling not supported in test mode. "
+            msg += "Setting config['data_loader']['shuffle'] = False"
+            logger.warning(msg)
+            config["data_loader"]["shuffle"] = False
 
         # Determine which dataset to use for testing
         test_data_loader, data_loader_indexes = dist_data_loader(dataset["test"], config, False)
-
-        # Load model weights
-        Test.load_model_weights(config, model)
 
         # Save the loaded model weights to the test results directory
         model.save(results_dir / "test_weights.pth")
@@ -137,17 +147,14 @@ class Test(Verb):
         results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
         mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
 
-        # Get experiment_name and cast to string
-        experiment_name = str(
-            config.get("test", {}).get("experiment_name", config["train"]["experiment_name"])
-        )
+        # Get experiment_name from train config
+        experiment_name = str(config["train"]["experiment_name"])
 
         # This will create the experiment if it doesn't exist
         mlflow.set_experiment(experiment_name)
 
         # Use run_name if provided, otherwise use results directory name
-        run_name_config = config.get("test", {}).get("run_name", False)
-        run_name = str(run_name_config) if run_name_config else results_dir.name
+        run_name = config["test"].get("run_name", False) if config["test"].get("run_name", False) else results_dir.name
 
         with mlflow.start_run(log_system_metrics=True, run_name=run_name):
             Test._log_params(config, results_dir)

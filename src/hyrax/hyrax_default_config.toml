@@ -186,7 +186,7 @@ run_name = false
 
 [test]
 # The path to the model weights file to use for testing. If `false`, the most recent
-# training results will be used. Falls back to [infer].model_weights_file if not set.
+# training results (from [train]) will be used.
 model_weights_file = false
 
 # The name of the experiment when logging test results to mlflow.

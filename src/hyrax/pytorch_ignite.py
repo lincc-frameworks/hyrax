@@ -577,7 +577,7 @@ def create_tester(
     tensorboardx_logger: SummaryWriter,
 ) -> Engine:
     """This function creates a Pytorch Ignite engine object that will be used to
-    test the model and compute metrics.
+    test the model and compute metrics without updating model weights.
 
     Parameters
     ----------
@@ -614,6 +614,15 @@ def create_tester(
     @tester.on(Events.STARTED)
     def log_test_start(engine):
         logger.info(f"Starting model evaluation on test data (device: {device})")
+
+    # Wrap iteration to disable gradients during testing
+    original_run = tester.run
+
+    def run_with_no_grad(data, *args, **kwargs):
+        with torch.no_grad():
+            return original_run(data, *args, **kwargs)
+
+    tester.run = run_with_no_grad
 
     @tester.on(Events.COMPLETED)
     def log_test_metrics(engine):
