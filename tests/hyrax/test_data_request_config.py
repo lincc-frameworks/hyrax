@@ -38,10 +38,10 @@ def test_data_request_config_unwraps_data_key():
 def test_data_request_definition_collects_known_and_extra():
     """Collect train/validate/infer plus extra datasets."""
     definition = DataRequestDefinition(
-        train={"dataset_class": "TrainDS"},
-        validate={"dataset_class": "ValidateDS"},
-        infer={"dataset_class": "InferDS"},
-        custom_split={"dataset_class": "ExtraDS"},
+        train={"dataset_class": "TrainDS", "primary_id_field": "id1"},
+        validate={"dataset_class": "ValidateDS", "primary_id_field": "id2"},
+        infer={"dataset_class": "InferDS", "primary_id_field": "id3"},
+        custom_split={"dataset_class": "ExtraDS", "primary_id_field": "id4"},
     )
 
     assert isinstance(definition.train, DataRequestConfig)
@@ -54,8 +54,8 @@ def test_data_request_definition_collects_known_and_extra():
 def test_data_request_definition_as_dict_shape():
     """as_dict returns nested data blocks."""
     definition = DataRequestDefinition(
-        train={"dataset_class": "TrainDS", "fields": ["a"]},
-        custom={"dataset_class": "ExtraDS"},
+        train={"dataset_class": "TrainDS", "fields": ["a"], "primary_id_field": "id1"},
+        custom={"dataset_class": "ExtraDS", "primary_id_field": "id2"},
     )
 
     as_dict = definition.as_dict()
@@ -73,9 +73,10 @@ def test_config_manager_set_config_accepts_data_request_definition():
         train={
             "dataset_class": "HyraxRandomDataset",
             "fields": ["image"],
+            "primary_id_field": "object_id",
             "dataset_config": {"size": 10, "shape": [1, 2, 3], "seed": 123},
         },
-        infer={"dataset_class": "HyraxRandomDataset", "fields": ["image"]},
+        infer={"dataset_class": "HyraxRandomDataset", "fields": ["image"], "primary_id_field": "id"},
     )
 
     cm.set_config("data_request", definition)
@@ -122,3 +123,220 @@ def test_dataset_config_unknown_dataset_allows_dict():
     cfg = DataRequestConfig(dataset_class="MyCustomDataset", dataset_config={"foo": "bar"})
 
     assert cfg.dataset_config == {"foo": "bar"}
+
+
+def test_single_config_with_primary_id_valid():
+    """Single config with primary_id_field passes validation."""
+    definition = DataRequestDefinition(
+        train=DataRequestConfig(
+            dataset_class="HyraxRandomDataset",
+            primary_id_field="object_id",
+        )
+    )
+    assert definition.train.primary_id_field == "object_id"
+
+
+def test_single_config_without_primary_id_fails():
+    """Single config without primary_id_field fails validation."""
+    with pytest.raises(ValidationError) as exc_info:
+        DataRequestDefinition(
+            train=DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+            )
+        )
+    assert (
+        "'train' must have exactly one DataRequestConfig with 'primary_id_field' set, but found none"
+        in str(exc_info.value)
+    )
+
+
+def test_dict_configs_one_primary_id_valid():
+    """Dict with exactly one primary_id_field passes validation."""
+    definition = DataRequestDefinition(
+        train={
+            "data_0": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                primary_id_field="some_field",
+            ),
+            "data_1": DataRequestConfig(
+                dataset_class="HyraxCifarDataset",
+            ),
+        }
+    )
+    assert isinstance(definition.train, dict)
+    assert definition.train["data_0"].primary_id_field == "some_field"
+    assert definition.train["data_1"].primary_id_field is None
+
+
+def test_dict_configs_no_primary_id_fails():
+    """Dict with no primary_id_field fails validation."""
+    with pytest.raises(ValidationError) as exc_info:
+        DataRequestDefinition(
+            train={
+                "data_0": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                ),
+                "data_1": DataRequestConfig(
+                    dataset_class="HyraxCifarDataset",
+                ),
+            }
+        )
+    assert (
+        "'train' must have exactly one DataRequestConfig with 'primary_id_field' set, but found none"
+        in str(exc_info.value)
+    )
+
+
+def test_dict_configs_multiple_primary_ids_fails():
+    """Dict with multiple primary_id_fields fails validation."""
+    with pytest.raises(ValidationError) as exc_info:
+        DataRequestDefinition(
+            train={
+                "data_0": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    primary_id_field="field_0",
+                ),
+                "data_1": DataRequestConfig(
+                    dataset_class="HyraxCifarDataset",
+                    primary_id_field="field_1",
+                ),
+            }
+        )
+    assert "'train' must have exactly one DataRequestConfig with 'primary_id_field' set, but found 2" in str(
+        exc_info.value
+    )
+
+
+def test_multiple_dataset_groups_each_validated():
+    """Each dataset group is validated independently."""
+    # Valid: each group has exactly one primary_id_field
+    definition = DataRequestDefinition(
+        train=DataRequestConfig(
+            dataset_class="HyraxRandomDataset",
+            primary_id_field="train_id",
+        ),
+        validate=DataRequestConfig(
+            dataset_class="HyraxCifarDataset",
+            primary_id_field="validate_id",
+        ),
+        infer=DataRequestConfig(
+            dataset_class="HyraxRandomDataset",
+            primary_id_field="infer_id",
+        ),
+    )
+    assert definition.train.primary_id_field == "train_id"
+    assert definition.validate.primary_id_field == "validate_id"
+    assert definition.infer.primary_id_field == "infer_id"
+
+    # Invalid: train missing primary_id_field
+    with pytest.raises(ValidationError) as exc_info:
+        DataRequestDefinition(
+            train=DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+            ),
+            validate=DataRequestConfig(
+                dataset_class="HyraxCifarDataset",
+                primary_id_field="validate_id",
+            ),
+        )
+    assert (
+        "'train' must have exactly one DataRequestConfig with 'primary_id_field' set, but found none"
+        in str(exc_info.value)
+    )
+
+
+def test_dict_key_names_dont_matter():
+    """Arbitrary friendly names are allowed for dict keys."""
+    definition = DataRequestDefinition(
+        train={
+            "my_custom_name": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                primary_id_field="id",
+            ),
+            "another_name": DataRequestConfig(
+                dataset_class="HyraxCifarDataset",
+            ),
+        }
+    )
+    assert "my_custom_name" in definition.train
+    assert "another_name" in definition.train
+
+
+def test_from_dict_format():
+    """Construction from dictionary format works correctly."""
+    config_dict = {
+        "train": {
+            "dataset_0": {
+                "dataset_class": "HyraxRandomDataset",
+                "primary_id_field": "obj_id",
+            },
+            "dataset_1": {
+                "dataset_class": "HyraxCifarDataset",
+            },
+        }
+    }
+    definition = DataRequestDefinition.model_validate(config_dict)
+    assert isinstance(definition.train, dict)
+    assert definition.train["dataset_0"].primary_id_field == "obj_id"
+    assert definition.train["dataset_1"].primary_id_field is None
+
+
+def test_as_dict_with_single_config():
+    """as_dict handles single config correctly."""
+    definition = DataRequestDefinition(
+        train=DataRequestConfig(
+            dataset_class="HyraxRandomDataset",
+            primary_id_field="id",
+        )
+    )
+    as_dict = definition.as_dict()
+    assert "train" in as_dict
+    assert "data" in as_dict["train"]
+    assert as_dict["train"]["data"]["dataset_class"] == "HyraxRandomDataset"
+    assert as_dict["train"]["data"]["primary_id_field"] == "id"
+
+
+def test_as_dict_with_dict_configs():
+    """as_dict handles dict of configs correctly."""
+    definition = DataRequestDefinition(
+        train={
+            "data_0": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                primary_id_field="id",
+            ),
+            "data_1": DataRequestConfig(
+                dataset_class="HyraxCifarDataset",
+            ),
+        }
+    )
+    as_dict = definition.as_dict()
+    assert "train" in as_dict
+    assert "data_0" in as_dict["train"]
+    assert "data_1" in as_dict["train"]
+    assert as_dict["train"]["data_0"]["data"]["dataset_class"] == "HyraxRandomDataset"
+    assert as_dict["train"]["data_0"]["data"]["primary_id_field"] == "id"
+    assert as_dict["train"]["data_1"]["data"]["dataset_class"] == "HyraxCifarDataset"
+
+
+def test_other_datasets_validation():
+    """other_datasets field is also validated for primary_id_field."""
+    # Valid
+    definition = DataRequestDefinition(
+        custom_split=DataRequestConfig(
+            dataset_class="HyraxRandomDataset",
+            primary_id_field="id",
+        )
+    )
+    assert "custom_split" in definition.other_datasets
+
+    # Invalid - no primary_id_field
+    with pytest.raises(ValidationError) as exc_info:
+        DataRequestDefinition(
+            custom_split=DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+            )
+        )
+    assert (
+        "Dataset 'custom_split' must have exactly one DataRequestConfig "
+        "with 'primary_id_field' set, but found none" in str(exc_info.value)
+    )
