@@ -371,17 +371,33 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
         return np.argmax([len(str(id)) for id in object_ids])
 
     def _get_available_bands_from_manifest(self, manifest):
-        """Best effort to get available bands by looking at first 10 successful downloads for consistency."""
+        """Get available bands by finding entries with complete band coverage.
+
+        Uses cutout_shape[0] to determine the expected number of bands, then finds
+        entries where downloaded_bands has that many entries (i.e., complete downloads).
+        """
         if len(manifest) == 0:
             return None, None
 
-        successful_entries = []
+        # First, find the expected number of bands from cutout_shape
+        # Look for the first entry with a valid cutout_shape
+        expected_band_count = None
+        for i in range(min(len(manifest), 1000)):
+            shape = manifest["cutout_shape"][i]
+            if shape is not None and len(shape) > 0 and shape[0] > 0:
+                expected_band_count = shape[0]
+                break
 
-        # Attempt to find first 10 successful downloads.
-        # For long manifests (e.g. 1 million undownloaded cutouts), avoid iterating too far to find these 10.
+        if expected_band_count is None:
+            # No valid cutout_shape found
+            return None, None
+
+        # Now find first 5 entries where downloaded_bands has the expected count
+        complete_entries = []
         give_up_idx = min(len(manifest), 1000)
+
         for i in range(give_up_idx):
-            if len(successful_entries) >= 10:
+            if len(complete_entries) >= 5:
                 break
 
             filename = manifest["filename"][i]
@@ -395,19 +411,26 @@ class DownloadedLSSTDataset(LSSTDataset, TensorCacheMixin):
                 and str(downloaded_bands_str).strip()
             ):
                 bands = [b.strip() for b in str(downloaded_bands_str).split(",") if b.strip()]
-                if bands:  # Non-empty band list
-                    successful_entries.append(bands)
+                # Only include entries with complete band coverage
+                if len(bands) == expected_band_count:
+                    complete_entries.append(bands)
 
-        if not successful_entries:
-            return None, None
+        if not complete_entries:
+            raise RuntimeError(
+                f"We checked the first 1000 manifest entries and found no entries with complete band"
+                f"coverage. Expected {expected_band_count} bands based on cutout_shape, but less than 5"
+                f"downloaded entries have all bands present. Cannot automatically determine consistent"
+                f"band structure."
+            )
 
-        # Check that all successful entries have identical band lists
-        first_bands = successful_entries[0]
-        for i, bands in enumerate(successful_entries[1:], 1):
+        # Check that all complete entries have identical band lists
+        first_bands = complete_entries[0]
+        for i, bands in enumerate(complete_entries[1:], 1):
             if bands != first_bands:
                 raise RuntimeError(
-                    f"Inconsistent band ordering in manifest. Entry 0 has {first_bands}, "
-                    f"but entry {i} has {bands}. Cannot determine consistent band structure."
+                    f"Inconsistent band ordering in manifest among complete downloads. "
+                    f"Entry 0 has {first_bands}, but entry {i} has {bands}. "
+                    f"Cannot determine consistent band structure."
                 )
 
         return set(first_bands), first_bands
