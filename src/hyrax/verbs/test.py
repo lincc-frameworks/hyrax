@@ -179,7 +179,7 @@ class Test(Verb):
 
     @staticmethod
     def load_model_weights(config, model):
-        """Loads the model weights from a file. Raises RuntimeError if this is not possible due to
+        """Loads the model weights from the file indicated by the configuration. Raises RuntimeError if this is not possible due to
         config, missing or malformed file
 
         Parameters
