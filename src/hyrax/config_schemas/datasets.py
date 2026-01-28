@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pydantic import Field, model_validator
+from pydantic import Field
 
 from .base import BaseConfigModel
 
@@ -26,16 +26,6 @@ class HyraxRandomDatasetConfig(BaseConfigModel):
         "nan",
         description='Type of invalid value to insert; one of "nan", "inf", "-inf", "none" or a float.',
     )
-
-    @model_validator(mode="after")
-    def validate_invalid_value_type(self) -> HyraxRandomDatasetConfig:
-        """Validate that invalid_value_type is an allowed sentinel string or a float."""
-        if isinstance(self.invalid_value_type, str):
-            allowed = {"nan", "inf", "-inf", "none"}
-            if self.invalid_value_type.lower() not in allowed:
-                msg = f"invalid_value_type must be one of {sorted(allowed)} or a float"
-                raise ValueError(msg)
-        return self
 
 
 class HyraxCifarDatasetConfig(BaseConfigModel):
@@ -66,14 +56,6 @@ class LSSTDatasetConfig(BaseConfigModel):
     butler_repo: str | None = Field(None, description="Butler repository path.")
     butler_collection: str | None = Field(None, description="Butler collection name.")
     skymap: str | None = Field(None, description="Butler skymap name.")
-
-    @model_validator(mode="after")
-    def ensure_catalog_source(self) -> LSSTDatasetConfig:
-        """Ensure that either hats_catalog or astropy_table is provided."""
-        if not (self.hats_catalog or self.astropy_table):
-            msg = "Either 'hats_catalog' or 'astropy_table' must be provided."
-            raise ValueError(msg)
-        return self
 
 
 class DownloadedLSSTDatasetConfig(LSSTDatasetConfig):
