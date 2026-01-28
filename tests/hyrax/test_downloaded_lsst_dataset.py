@@ -7,8 +7,8 @@ LSST Science Pipelines or a Butler repository.
 """
 
 import mocks
+import numpy as np
 import pytest
-import torch
 from mocks import lsst_config, mock_lsst_environment, sample_catalog, sample_catalog_saved  # noqa: F401
 
 from hyrax.data_sets.downloaded_lsst_dataset import DownloadedLSSTDataset
@@ -76,7 +76,7 @@ def test_init(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
         cutout = data_record["data"]["image"]
 
         # Verify cutout is a tensor
-        assert isinstance(cutout, torch.Tensor)
+        assert isinstance(cutout, np.ndarray)
 
         # Verify it has the right number of bands (channels)
         assert cutout.shape[0] == 3  # g, r, i bands
@@ -119,7 +119,7 @@ def test_download(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
     cutout = data_record["data"]["image"]
 
     # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
+    assert isinstance(cutout, np.ndarray)
 
     # Verify it has the right number of bands (channels)
     assert cutout.shape[0] == 3  # g, r, i bands
@@ -155,7 +155,7 @@ def test_download_band_filtering(mock_lsst_environment, lsst_config, tmp_path): 
     cutout = data_record["data"]["image"]
 
     # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
+    assert isinstance(cutout, np.ndarray)
 
     # Verify it has the right number of bands (channels)
     assert cutout.shape[0] == 2  # g, r bands only
@@ -202,7 +202,7 @@ def test_interrupted_download(mock_lsst_environment, lsst_config, tmp_path):  # 
     cutout = data_record["data"]["image"]
 
     # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
+    assert isinstance(cutout, np.ndarray)
 
     # Verify it has the right number of bands (channels)
     assert cutout.shape[0] == 3  # g, r, i bands
@@ -246,7 +246,7 @@ def test_interrupted_download_completes(mock_lsst_environment, lsst_config, tmp_
     cutout = data_record["data"]["image"]
 
     # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
+    assert isinstance(cutout, np.ndarray)
 
     # Verify it has the right number of bands (channels)
     assert cutout.shape[0] == 3  # g, r, i bands
@@ -294,7 +294,7 @@ def test_failed_download(mock_lsst_environment, lsst_config, tmp_path):  # noqa:
     cutout = data_record["data"]["image"]
 
     # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
+    assert isinstance(cutout, np.ndarray)
 
     # Verify it has the right number of bands (channels)
     assert cutout.shape[0] == 3  # g, r, i bands
@@ -339,7 +339,7 @@ def test_failed_download_completes(mock_lsst_environment, lsst_config, tmp_path)
     cutout = data_record["data"]["image"]
 
     # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
+    assert isinstance(cutout, np.ndarray)
 
     # Verify it has the right number of bands (channels)
     assert cutout.shape[0] == 3  # g, r, i bands
@@ -381,7 +381,7 @@ def test_failed_download_completes_on_reset(mock_lsst_environment, lsst_config, 
     cutout = data_record["data"]["image"]
 
     # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
+    assert isinstance(cutout, np.ndarray)
 
     # Verify it has the right number of bands (channels)
     assert cutout.shape[0] == 3  # g, r, i bands
@@ -414,17 +414,50 @@ def test_failed_band_download(mock_lsst_environment, lsst_config, tmp_path):  # 
     cutout = data_record["data"]["image"]
 
     # Verify cutout is a tensor
-    assert isinstance(cutout, torch.Tensor)
+    assert isinstance(cutout, np.ndarray)
 
     # Verify it has the right number of bands (channels)
     assert cutout.shape[0] == 3  # g, r, i bands
 
     # Verify it has all NaNs in the G channel
-    assert torch.all(cutout[0] != cutout[0])
+    assert (cutout[0] != cutout[0]).all()
 
     # Verify it has all numbers in R,I channels
-    assert torch.all(cutout[1] == cutout[1])
-    assert torch.all(cutout[2] == cutout[2])
+    assert (cutout[1] == cutout[1]).all()
+    assert (cutout[2] == cutout[2]).all()
+
+
+def test_band_detection_with_partial_downloads(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
+    """
+    Test that _get_available_bands_from_manifest correctly identifies bands
+    from complete downloads, ignoring partial downloads that may appear earlier
+    in the manifest.
+    """
+    # Configure 4 bands
+    lsst_config["data_set"]["filters"] = ["g", "r", "i", "z"]
+
+    with mock_lsst_environment():
+        # Make g and r bands fail for the FIRST 5 downloads each, then succeed
+        # Early entries will have only i,z (partial), later entries will have all 4
+        dataset = DownloadedLSSTDatasetMocked(
+            lsst_config,
+            data_location=str(tmp_path),
+            patcher=mock_lsst_environment,
+            patcher_kwargs={"band_fail_before_n": {"g": 5, "r": 5}},
+        )
+        _manifest = dataset.download_cutouts()
+
+    # Request only g,r,i bands - triggers _get_available_bands_from_manifest
+    # which must find complete 4-band entries to determine available bands
+    lsst_config["data_set"]["filters"] = ["g", "r", "i"]
+
+    dataset = DownloadedLSSTDatasetMocked(
+        lsst_config, data_location=str(tmp_path), patcher=mock_lsst_environment
+    )
+
+    # Verify band filtering found complete entries and set up correctly
+    assert dataset._is_filtering_bands is True
+    assert set(dataset.BANDS) == {"g", "r", "i"}
 
 
 def test_catalog_ordering(mock_lsst_environment, lsst_config, tmp_path, sample_catalog):  # noqa: F811
@@ -492,7 +525,7 @@ def test_catalog_ordering(mock_lsst_environment, lsst_config, tmp_path, sample_c
     for index, value in enumerate(catalog_permutation):
         # index indexes the filtered dataset
         # value is the index in the original dataset
-        assert torch.all(filtered_dataset[index]["data"]["image"] == dataset[value]["data"]["image"])
+        assert (filtered_dataset[index]["data"]["image"] == dataset[value]["data"]["image"]).all()
         assert (
             filtered_dataset.metadata([index], ["object_id"])[0][0]
             == dataset.metadata([value], ["object_id"])[0][0]

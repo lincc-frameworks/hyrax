@@ -229,6 +229,7 @@ def test_validate_request_bad_field(multimodal_config, caplog):
     c = multimodal_config
     c["train"]["random_0"]["fields"] = ["image", "no_such_field"]
     h.config["model_inputs"] = c
+    h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
     with caplog.at_level("ERROR"):
         DataProvider(h.config, c["train"])
 
@@ -243,6 +244,7 @@ def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
     c = multimodal_config
     c["train"]["random_0"].pop("fields", None)
     h.config["model_inputs"] = c
+    h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
 
     # Fake methods to return from `dir`, none of which start with `get_*`.
     fake_methods = ["fake_one", "fake_two", "fake_three"]

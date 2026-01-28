@@ -3,7 +3,8 @@ Reference
 
 .. toctree::
     :maxdepth: 1
-    
+
+    Hyrax default configuration <hyrax_default_config>
     OLD Builtin Datasets <autoapi/hyrax/data_sets/index>
     OLD Custom Datasets and Models <external_libraries>
     OLD Verbs <verbs>

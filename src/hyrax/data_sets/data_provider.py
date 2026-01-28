@@ -1,14 +1,17 @@
 import copy
 import functools
 import logging
+import time
 import warnings
 from typing import Any
 
 import numpy as np
 
 from hyrax.data_sets.data_set_registry import DATASET_REGISTRY, fetch_dataset_class
+from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
+tensorboardx_logger = get_tensorboard_logger()
 
 
 @functools.singledispatch
@@ -309,6 +312,12 @@ class DataProvider:
 
         self.pull_up_primary_dataset_methods()
 
+        # Required because of circular import.
+        from hyrax.data_sets.data_cache import DataCache
+
+        self.data_cache = DataCache(config, self)
+        self.data_cache.start_preload_thread()
+
     def pull_up_primary_dataset_methods(self):
         """If a primary dataset is defined, we will pull up some of its methods
         to the DataProvider level so that they can be called directly on the
@@ -598,6 +607,13 @@ class DataProvider:
         dict
             A dictionary containing the requested data from the prepared datasets.
         """
+        start_time = time.monotonic_ns()
+        prefix = self.__class__.__name__
+        cached_data = self.data_cache.try_fetch(idx)
+        if cached_data is not None:
+            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
+            return cached_data
+
         returned_data: dict[str, dict[str, Any]] = {}
 
         for friendly_name, fields in self.requested_fields.items():
@@ -617,6 +633,8 @@ class DataProvider:
 
             returned_data["object_id"] = object_id
 
+        self.data_cache.insert_into_cache(idx, returned_data)
+        tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
         return returned_data
 
     # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,

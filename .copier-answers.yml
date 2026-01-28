@@ -1,10 +1,10 @@
 # Changes here will be overwritten by Copier
-_commit: v2.1.1
+_commit: v2.2.0
 _src_path: gh:lincc-frameworks/python-project-template
 author_email: mtauraso@uw.edu
 author_name: LINCC Frameworks
 create_example_module: false
-custom_install: true
+custom_install: custom
 enforce_style:
 - ruff_lint
 - ruff_format
@@ -14,11 +14,13 @@ include_docs: true
 include_notebooks: true
 mypy_type_checking: none
 package_name: hyrax
+project_description: "A low-code solution for rapid experimentation with machine learning\
+    \ in astronomy. \n\nHyrax is an extensible platform that handles much of the boilerplate\
+    \ code that is often required for a machine learning project in astronomy."
 project_license: MIT
 project_name: hyrax
 project_organization: lincc-frameworks
 python_versions:
-- '3.10'
 - '3.11'
 - '3.12'
 - '3.13'
