@@ -31,6 +31,9 @@ class Test(Verb):
         """
         Run the test process for the configured model on test data.
         This evaluates a trained model, saves outputs, and returns metrics.
+        
+        Note: The configuration dictionary will be updated with the full path to the
+        model weights file that is loaded into the model (config["test"]["model_weights_file"]).
 
         Returns
         -------
@@ -216,6 +219,9 @@ class Test(Verb):
             model.load(weights_file_path)
             # Update config to track which weights file was actually used
             config["test"]["model_weights_file"] = str(weights_file_path)
+            logger.info(
+                f"Updated config['test']['model_weights_file'] to: {config['test']['model_weights_file']}"
+            )
         except Exception as err:
             msg = f"Model weights file {weights_file_path} did not load properly. Are you sure you are "
             msg += "testing with the correct model?"
