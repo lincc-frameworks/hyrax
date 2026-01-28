@@ -7,19 +7,11 @@ the Hyrax framework.
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
-from pydantic import ConfigDict, Field, ValidationError, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from .base import BaseConfigModel
-from .datasets import (
-    DownloadedLSSTDatasetConfig,
-    HSCDataSetConfig,
-    HyraxCifarDatasetConfig,
-    HyraxCSVDatasetConfig,
-    HyraxRandomDatasetConfig,
-    LSSTDatasetConfig,
-)
 
 
 class DataRequestConfig(BaseConfigModel):
@@ -33,22 +25,11 @@ class DataRequestConfig(BaseConfigModel):
     primary_id_field: str | None = Field(
         None, description="Name of the primary identifier field in the dataset."
     )
-    _DATASET_SCHEMAS: ClassVar[tuple[type[BaseConfigModel], ...]] = (
-        HyraxRandomDatasetConfig,
-        HyraxCifarDatasetConfig,
-        LSSTDatasetConfig,
-        DownloadedLSSTDatasetConfig,
-        HSCDataSetConfig,
-        HyraxCSVDatasetConfig,
-    )
 
-    # Changed from union type to Any to prevent automatic Pydantic coercion
+    # Keep dataset_config as Any - it's a free-form dictionary for dataset-specific settings
     dataset_config: Any = Field(
         None,
-        description=(
-            "Dataset-specific configuration. If the dataset_class is a known built-in dataset, "
-            "the schema will be validated against its typed config; otherwise a free-form dictionary."
-        ),
+        description="Dataset-specific configuration as a free-form dictionary.",
     )
 
     @model_validator(mode="before")
@@ -65,59 +46,9 @@ class DataRequestConfig(BaseConfigModel):
             return value["data"]
         return value
 
-    @model_validator(mode="before")
-    @classmethod
-    def coerce_dataset_config(cls, value: Any) -> Any:
-        """Coerce dataset_config into the appropriate typed model based on dataset_class."""
-
-        if not isinstance(value, dict):
-            return value
-
-        dataset_class = value.get("dataset_class")
-        cfg = value.get("dataset_config")
-
-        if cfg is None or not isinstance(cfg, dict):
-            return value
-
-        # Extract just the class name from fully-qualified paths
-        class_name = dataset_class.split(".")[-1] if dataset_class and "." in dataset_class else dataset_class
-
-        mapping: dict[str, type[BaseConfigModel]] = {
-            schema.__name__.removesuffix("Config"): schema for schema in cls._DATASET_SCHEMAS
-        }
-        # Iterable variants share the same schema
-        mapping["HyraxRandomIterableDataset"] = HyraxRandomDatasetConfig
-        mapping["HyraxCifarIterableDataset"] = HyraxCifarDatasetConfig
-
-        cfg_model = mapping.get(class_name)
-
-        # Only coerce if we have a matching model and all input keys are valid schema fields
-        if cfg_model is not None and not isinstance(cfg, cfg_model):
-            try:
-                # Check if all input keys are valid schema fields
-                model_fields = set(cfg_model.model_fields.keys())
-                input_keys = set(cfg.keys())
-
-                # Only coerce if all input keys are recognized by the schema
-                if input_keys.issubset(model_fields):
-                    value["dataset_config"] = cfg_model.model_validate(cfg)
-                # Otherwise leave as plain dict (unknown keys present)
-            except ValidationError:
-                # If validation fails, leave as plain dict
-                pass
-
-        return value
-
     def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
         """Return the configuration as a plain dictionary."""
-
-        result = self.model_dump(exclude_unset=exclude_unset)
-
-        # If dataset_config is a BaseConfigModel instance, convert it to dict
-        if isinstance(result.get("dataset_config"), BaseConfigModel):
-            result["dataset_config"] = result["dataset_config"].model_dump(exclude_unset=exclude_unset)
-
-        return result
+        return self.model_dump(exclude_unset=exclude_unset)
 
 
 class DataRequestDefinition(BaseConfigModel):
