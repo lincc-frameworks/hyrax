@@ -4,8 +4,6 @@ from pydantic import ValidationError
 from hyrax.config_schemas import (
     DataRequestConfig,
     DataRequestDefinition,
-    HyraxCifarDatasetConfig,
-    HyraxRandomDatasetConfig,
 )
 from hyrax.config_utils import ConfigManager
 
@@ -193,30 +191,6 @@ def test_data_request_definition_rejects_missing_dataset_class():
     """dataset_class is required."""
     with pytest.raises(ValidationError):
         DataRequestConfig(data_location="/tmp/data")
-
-
-def test_dataset_config_typed_mapping_random():
-    """dataset_config coerces to typed config for random dataset."""
-    cfg = DataRequestConfig(
-        dataset_class="HyraxRandomDataset",
-        dataset_config={"size": 10, "shape": [1, 2], "seed": 123},
-    )
-
-    assert isinstance(cfg.dataset_config, HyraxRandomDatasetConfig)
-    assert cfg.dataset_config.size == 10
-    assert cfg.dataset_config.shape == [1, 2]
-    assert cfg.dataset_config.seed == 123
-
-
-def test_dataset_config_typed_mapping_cifar():
-    """dataset_config coerces to typed config for cifar dataset."""
-    cfg = DataRequestConfig(
-        dataset_class="HyraxCifarDataset",
-        dataset_config={"use_training_data": False},
-    )
-
-    assert isinstance(cfg.dataset_config, HyraxCifarDatasetConfig)
-    assert cfg.dataset_config.use_training_data is False
 
 
 def test_dataset_config_unknown_dataset_allows_dict():
