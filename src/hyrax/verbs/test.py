@@ -31,7 +31,7 @@ class Test(Verb):
         """
         Run the test process for the configured model on test data.
         This evaluates a trained model, saves outputs, and returns metrics.
-        
+
         Note: The configuration dictionary will be updated with the full path to the
         model weights file that is loaded into the model (config["test"]["model_weights_file"]).
 
@@ -66,24 +66,26 @@ class Test(Verb):
 
         # Instantiate the model and dataset
         dataset = setup_dataset(config)
-        
+
         # Verify that test dataset exists
         if not isinstance(dataset, dict) or "test" not in dataset:
             raise RuntimeError("No test dataset available. Please configure a test dataset or split.")
-        
+
         model = setup_model(config, dataset["test"])
-        
+
         # Load model weights
         Test.load_model_weights(config, model)
-        
+
         # Log runtime config after loading weights so the actual weights path is captured
         log_runtime_config(config, results_dir)
-        
+
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Testing model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"
         )
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Test dataset:{Style.RESET_ALL}\n{dataset['test']}")
+        logger.info(
+            f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Test dataset:{Style.RESET_ALL}\n{dataset['test']}"
+        )
 
         # Disable shuffling for test (like inference)
         if config["data_loader"]["shuffle"]:
@@ -182,8 +184,10 @@ class Test(Verb):
 
     @staticmethod
     def load_model_weights(config, model):
-        """Loads the model weights from the file indicated by the configuration. Raises RuntimeError if this is not possible due to
-        config, missing or malformed file
+        """Loads the model weights from the file indicated by the configuration
+        or from the most recent training run if no file is specified.
+
+        Raises RuntimeError if the file cannot be found.
 
         Parameters
         ----------

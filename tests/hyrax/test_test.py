@@ -78,7 +78,7 @@ def test_test(loopback_hyrax_map_only):
 
     assert result is not None
     assert isinstance(result, InferenceDataSet)
-    
+
     # Verify the results directory has the expected files
     assert result.results_dir.exists()
     assert (result.results_dir / "batch_index.npy").exists()
