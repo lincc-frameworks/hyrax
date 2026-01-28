@@ -184,6 +184,21 @@ experiment_name = "notebook"
 run_name = false
 
 
+[test]
+# The path to the model weights file to use for testing. If `false`, the most recent
+# training results (from [train]) will be used.
+model_weights_file = false
+
+# The name of the experiment when logging test results to mlflow.
+# If not set, uses the experiment name from [train].
+experiment_name = "notebook"
+
+# The name of the run when logging test results to mlflow.
+# If false, uses result directory string, <timestamp>-test-<uid>, as run name.
+run_name = false
+
+
+
 [onnx]
 
 # The operator set version to use when exporting a model. See the following for info:

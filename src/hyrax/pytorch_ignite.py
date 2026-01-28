@@ -549,7 +549,8 @@ def create_validator(
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
-        validator.run(validation_data_loader)
+        with torch.no_grad():
+            validator.run(validation_data_loader)
 
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
@@ -560,6 +561,75 @@ def create_validator(
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
     return validator
+
+
+def create_tester(
+    model: torch.nn.Module,
+    config: dict,
+    results_directory: Path,
+) -> Engine:
+    """This function creates a Pytorch Ignite engine object that will be used to
+    test the model and compute metrics without updating model weights.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The model to test
+    config : dict
+        Hyrax runtime configuration
+    results_directory : Path
+        The directory where test results will be saved
+
+    Returns
+    -------
+    pytorch-ignite.Engine
+        Engine object that will be used to test the model and compute metrics.
+    """
+
+    device = idist.device()
+    model = idist.auto_model(model)
+    tensorboardx_logger = get_tensorboard_logger()
+
+    tester = create_engine("train_step", device, model, config)
+    fixup_engine(tester)
+
+    @tester.on(Events.STARTED)
+    def set_model_to_eval_mode():
+        model.eval()
+
+    # Track average loss
+    from ignite.metrics import RunningAverage
+
+    RunningAverage(output_transform=lambda x: x["loss"]).attach(tester, "avg_loss")
+
+    @tester.on(Events.STARTED)
+    def log_test_start(engine):
+        logger.info(f"Starting model evaluation on test data (device: {device})")
+
+    # Wrap iteration to disable gradients during testing
+    original_run = tester.run
+
+    def run_with_no_grad(data, *args, **kwargs):
+        with torch.no_grad():
+            return original_run(data, *args, **kwargs)
+
+    tester.run = run_with_no_grad
+
+    @tester.on(Events.COMPLETED)
+    def log_test_metrics(engine):
+        from colorama import Fore, Style
+
+        metrics = engine.state.metrics
+        logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
+        logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
+
+        # Log metrics to MLflow
+        mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
+
+        # Log to tensorboard
+        tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
+
+    return tester
 
 
 def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path) -> Engine:
