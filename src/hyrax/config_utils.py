@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Any, Union
 
 import tomlkit
+from pydantic import ValidationError
 from tomlkit.toml_document import TOMLDocument
+
+from hyrax.config_schemas import BaseConfigModel, DataRequestDefinition
 
 DEFAULT_CONFIG_FILEPATH = Path(__file__).parent.resolve() / "hyrax_default_config.toml"
 DEFAULT_USER_CONFIG_FILEPATH = Path.cwd() / "hyrax_config.toml"
@@ -190,6 +193,21 @@ class ConfigManager:
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
         self.original_config = copy.deepcopy(self.config)
 
+        # Validate data_request/model_inputs if present in loaded config
+        for key in ("data_request", "model_inputs"):
+            if key in self.config:
+                value = self.config[key]
+                try:
+                    validated = self._coerce_data_request(value)
+                    self.config[key] = validated
+                    self.original_config = copy.deepcopy(self.config)
+                except ValidationError as e:
+                    logger.warning(
+                        f"Configuration loaded from TOML has '{key}' that failed Pydantic validation. "
+                        f"This may indicate missing required fields (e.g., 'primary_id_field') or "
+                        f"invalid structure. The configuration will be used as-is. Validation error: {e}"
+                    )
+
     @staticmethod
     def _render_config(
         user_specific_config: TOMLDocument = None,
@@ -236,6 +254,18 @@ class ConfigManager:
             The value to set the key to.
         """
         keys = parse_dotted_key(key)
+        if key in ("data_request", "model_inputs"):
+            try:
+                value = self._coerce_data_request(value)
+            except ValidationError as e:
+                logger.warning(
+                    f"Configuration for '{key}' failed Pydantic validation and will be used as-is. "
+                    f"This may indicate missing required fields (e.g., 'primary_id_field') or "
+                    f"invalid structure. Validation error: {e}"
+                )
+        elif isinstance(value, BaseConfigModel):
+            value = value.model_dump()
+
         d = self.config
         for k in keys[:-1]:
             d = d[k]
@@ -243,6 +273,38 @@ class ConfigManager:
 
         self.config = self._render_config(self.config, self.original_config)
         self.original_config = copy.deepcopy(self.config)
+
+    @staticmethod
+    def _coerce_data_request(value: Any) -> dict:
+        """Validate and normalize data_request configuration into a plain dictionary.
+
+        This method ensures that the ``data_request`` configuration (which defines
+        datasets for training, validation, and inference) is properly validated against
+        the DataRequestDefinition schema and converted to a dictionary format suitable
+        for internal use.
+
+        Parameters
+        ----------
+        value : Any
+            The data_request value to validate. Can be a DataRequestDefinition instance
+            or a dictionary/object that can be validated as one.
+
+        Returns
+        -------
+        dict
+            The validated data_request as a plain dictionary with unset values excluded.
+
+        Raises
+        ------
+        ValidationError
+            If the value cannot be validated as a DataRequestDefinition.
+        """
+
+        if isinstance(value, DataRequestDefinition):
+            return value.as_dict(exclude_unset=True)
+
+        validated = DataRequestDefinition.model_validate(value)
+        return validated.as_dict(exclude_unset=True)
 
     @staticmethod
     def read_runtime_config(config_filepath: Union[Path, str] = DEFAULT_CONFIG_FILEPATH) -> TOMLDocument:
