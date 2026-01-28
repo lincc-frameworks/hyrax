@@ -123,6 +123,49 @@ def update_registry(registry: dict, name: str, class_type: type):
     registry.update({name: class_type})
 
 
+def save_prepare_inputs(prepare_inputs_fn, save_path: Path):
+    """Save a prepare_inputs function to a specified path.
+
+    Parameters
+    ----------
+    prepare_inputs_fn : collections.abc.Callable
+        The prepare_inputs function to save.
+    save_path : pathlib.Path
+        The path to save the prepare_inputs function to.
+    """
+    with open(save_path.parent / "prepare_inputs.py", "w") as f:
+        f.write(textwrap.dedent(inspect.getsource(prepare_inputs_fn)))
+
+
+def load_prepare_inputs(load_path: Path):
+    """Load a prepare_inputs function from a specified path.
+
+    Parameters
+    ----------
+    load_path : pathlib.Path
+        The directory containing the `prepare_inputs.py` module to load.
+
+    Returns
+    -------
+    collections.abc.Callable or None
+        The loaded prepare_inputs function.
+    """
+    prepare_inputs = None
+    prepare_inputs_path = load_path / "prepare_inputs.py"
+    if prepare_inputs_path.exists():
+        spec = importlib_util.spec_from_file_location("prepare_inputs_module", prepare_inputs_path)
+        prepare_inputs_module = importlib_util.module_from_spec(spec)
+        spec.loader.exec_module(prepare_inputs_module)  # type: ignore
+        if hasattr(prepare_inputs_module, "prepare_inputs"):
+            prepare_inputs = prepare_inputs_module.prepare_inputs
+        else:
+            logger.warning(f"No prepare_inputs function found in {prepare_inputs_path}")
+    else:
+        logger.debug(f"prepare_inputs.py file not found at {prepare_inputs_path}")
+
+    return prepare_inputs
+
+
 def save_to_tensor(to_tensor_fn, save_path: Path):
     """Save a to_tensor function to a specified path.
 
@@ -134,11 +177,7 @@ def save_to_tensor(to_tensor_fn, save_path: Path):
         The path to save the to_tensor function to.
     """
     with open(save_path.parent / "to_tensor.py", "w") as f:
-        try:
-            f.write(textwrap.dedent(inspect.getsource(to_tensor_fn)))
-        except (OSError, TypeError) as e:
-            logger.warning(f"Could not retrieve source for model.to_tensor: {e}")
-            f.write("# Source code for model.to_tensor could not be retrieved.\n")
+        f.write(textwrap.dedent(inspect.getsource(to_tensor_fn)))
 
 
 def load_to_tensor(load_path: Path):
