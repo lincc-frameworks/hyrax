@@ -99,7 +99,7 @@ class HyraxCNN(nn.Module):
         return {"loss": loss.item()}
 
     @staticmethod
-    def to_tensor(data_dict) -> tuple:
+    def prepare_inputs(data_dict) -> tuple:
         """Does NOT convert to PyTorch Tensors.
         This works exclusively with numpy data types and returns
         a tuple of numpy data types."""

@@ -5,7 +5,13 @@ from typing import Any, cast
 import numpy as np
 import torch.nn as nn
 
-from hyrax.plugin_utils import get_or_load_class, load_to_tensor, save_to_tensor, update_registry
+from hyrax.plugin_utils import (
+    get_or_load_class,
+    load_prepare_inputs,
+    load_to_tensor,
+    save_prepare_inputs,
+    update_registry,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -13,11 +19,37 @@ MODEL_REGISTRY: dict[str, type[nn.Module]] = {}
 
 
 def _torch_save(self: nn.Module, save_path: Path):
+    import inspect
+    import textwrap
+
     import torch
 
     # save the model weights
     torch.save(self.state_dict(), save_path)
-    save_to_tensor(self.to_tensor, save_path)
+
+    # If model originally had to_tensor, save it with renamed function
+    if hasattr(self.__class__, "_has_legacy_to_tensor"):
+        # Get source of original to_tensor and rename the function
+        # Access the staticmethod descriptor from vars() and get its underlying function
+        to_tensor_staticmethod = vars(self.__class__)["to_tensor"]
+        to_tensor_func = to_tensor_staticmethod.__func__
+        to_tensor_source = inspect.getsource(to_tensor_func)
+        # Replace function name from "to_tensor" to "prepare_inputs"
+        prepared_source = to_tensor_source.replace("def to_tensor(", "def prepare_inputs(", 1)
+
+        # Add common imports that prepare_inputs/to_tensor functions typically need
+        # This ensures the saved function can be loaded independently
+        imports = "import numpy as np\nimport torch\n\n"
+
+        with open(save_path.parent / "prepare_inputs.py", "w") as f:
+            f.write(imports + textwrap.dedent(prepared_source))
+        logger.warning(
+            "Model uses deprecated to_tensor method. Saving as prepare_inputs for forward compatibility. "
+            "Please rename to_tensor to prepare_inputs in your model class to ensure reproducibility."
+        )
+    else:
+        # Modern model with prepare_inputs - save as-is
+        save_prepare_inputs(self.prepare_inputs, save_path)
 
 
 def _torch_load(self: nn.Module, load_path: Path):
@@ -25,23 +57,36 @@ def _torch_load(self: nn.Module, load_path: Path):
     import torch
 
     # Use ignite's device detection which handles distributed training and device availability
-    # This allows models trained on GPU to be loaded on CPU-only machines
     device = idist.device()
     state = torch.load(load_path, weights_only=True, map_location=device)
 
     self.load_state_dict(state, assign=True)
 
-    to_tensor = load_to_tensor(load_path.parent)
+    # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
+    prepare_inputs_fn = load_prepare_inputs(load_path.parent)
+    to_tensor_fn = load_to_tensor(load_path.parent)
 
-    if not to_tensor:
-        logger.warning(
-            f"Could not find to_tensor function in {load_path}. Using the model's existing to_tensor method."
-        )
-    else:
-        if isinstance(to_tensor, staticmethod):
-            self.to_tensor = to_tensor
+    if prepare_inputs_fn:
+        # Successfully loaded prepare_inputs.py
+        if isinstance(prepare_inputs_fn, staticmethod):
+            self.prepare_inputs = prepare_inputs_fn
         else:
-            self.to_tensor = staticmethod(to_tensor)
+            self.prepare_inputs = staticmethod(prepare_inputs_fn)
+    elif to_tensor_fn:
+        # Backward compatibility: loading old model with to_tensor.py
+        logger.warning(
+            f"Found to_tensor function in {load_path.parent}. "
+            "to_tensor is deprecated, please re-save your model with the new version to use prepare_inputs."
+        )
+        if isinstance(to_tensor_fn, staticmethod):
+            self.prepare_inputs = to_tensor_fn
+        else:
+            self.prepare_inputs = staticmethod(to_tensor_fn)
+    else:
+        logger.warning(
+            f"Could not find prepare_inputs or to_tensor function in {load_path.parent}. "
+            "Using the model's existing methods."
+        )
 
 
 def _torch_criterion(self: nn.Module):
@@ -143,14 +188,14 @@ def hyrax_model(cls):
 
     cls.__init__ = wrapped_init
 
-    def default_to_tensor(data_dict):
+    def default_prepare_inputs(data_dict):
         if "data" not in data_dict:
             msg = "Hyrax couldn't find a 'data' key in the data dictionaries from your dataset.\n"
             msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"
             msg += "value(s) from the dictionary your dataset is returning:\n\n"
             msg += f"class {cls.__name__}:\n\n"
             msg += "    @staticmethod\n"
-            msg += "    def to_tensor(data_dict) -> Tuple[npt.NDArray, ...]:\n"
+            msg += "    def prepare_inputs(data_dict) -> Tuple[npt.NDArray, ...]:\n"
             msg += "        <Your implementation goes here>\n\n"
             raise RuntimeError(msg)
 
@@ -160,17 +205,41 @@ def hyrax_model(cls):
 
         return (image, label)
 
-    if not hasattr(cls, "to_tensor"):
-        cls.to_tensor = staticmethod(default_to_tensor)
+    # Check if the class has prepare_inputs or to_tensor
+    has_prepare_inputs = hasattr(cls, "prepare_inputs")
+    has_to_tensor = hasattr(cls, "to_tensor")
 
-    if not isinstance(vars(cls)["to_tensor"], staticmethod):
-        msg = f"You must implement to_tensor() in {cls.__name__} as\n\n"
-        msg += "@staticmethod\n"
-        msg += "to_tensor(data_dict: dict) -> torch.Tensor:\n"
-        msg += "    <Your implementation goes here>\n"
-        raise RuntimeError(msg)
+    if has_prepare_inputs:
+        # Model has new prepare_inputs method - ensure it's a staticmethod
+        if not isinstance(vars(cls)["prepare_inputs"], staticmethod):
+            msg = f"You must implement prepare_inputs() in {cls.__name__} as\n\n"
+            msg += "@staticmethod\n"
+            msg += "def prepare_inputs(data_dict: dict) -> Tuple[npt.NDArray, ...]:\n"
+            msg += "    <Your implementation goes here>\n"
+            raise RuntimeError(msg)
 
-    required_methods = ["train_step", "forward", "__init__", "to_tensor"]
+    elif has_to_tensor:
+        # Model only has old to_tensor method - make prepare_inputs an alias
+        if not isinstance(vars(cls)["to_tensor"], staticmethod):
+            msg = f"You must rename to_tensor() to prepare_inputs() in {cls.__name__} as\n\n"
+            msg += "@staticmethod\n"
+            msg += "def prepare_inputs(data_dict: dict) -> Tuple[npt.NDArray, ...]:\n"
+            msg += "    <Your implementation goes here>\n"
+            raise RuntimeError(msg)
+
+        # Create an alias that's also a staticmethod
+        # We need to get the underlying function from the staticmethod descriptor
+        to_tensor_func = vars(cls)["to_tensor"].__func__
+        cls.prepare_inputs = staticmethod(to_tensor_func)
+        # Mark for save logic to know this needs function renaming
+        cls._has_legacy_to_tensor = True
+
+    else:
+        # No method defined - use defaults
+        cls.prepare_inputs = staticmethod(default_prepare_inputs)
+
+    # Update required methods to include prepare_inputs
+    required_methods = ["train_step", "forward", "__init__", "prepare_inputs"]
     for name in required_methods:
         if not hasattr(cls, name):
             logger.error(f"Hyrax model {cls.__name__} missing required method {name}.")
