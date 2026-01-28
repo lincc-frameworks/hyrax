@@ -34,7 +34,7 @@ class Train(Verb):
 
         import mlflow
 
-        from hyrax.config_utils import create_results_dir, log_runtime_config
+        from hyrax.config_utils import create_results_dir, log_mlflow_params, log_runtime_config
         from hyrax.gpu_monitor import GpuMonitor
         from hyrax.pytorch_ignite import (
             create_trainer,
@@ -102,7 +102,7 @@ class Train(Verb):
         run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
 
         with mlflow.start_run(log_system_metrics=True, run_name=run_name):
-            Train._log_params(config, results_dir)
+            log_mlflow_params(config, results_dir, "train")
 
             # Run the training process
             trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
@@ -115,38 +115,3 @@ class Train(Verb):
         close_tensorboard_logger()
 
         return model
-
-    @staticmethod
-    def _log_params(config, results_dir):
-        """Log the various parameters to mlflow from the config file.
-
-        Parameters
-        ----------
-        config : dict
-            The main configuration dictionary
-
-        results_dir: str
-            The full path to the results sub-directory
-        """
-        import mlflow
-
-        # Log full path to results subdirectory
-        mlflow.log_param("Results Directory", results_dir)
-
-        # Log all model params
-        mlflow.log_params(config["model"])
-
-        # Log some training and data loader params
-        mlflow.log_param("epochs", config["train"]["epochs"])
-        mlflow.log_param("batch_size", config["data_loader"]["batch_size"])
-
-        # Log the criterion and optimizer params
-        criterion_name = config["criterion"]["name"]
-        mlflow.log_param("criterion", criterion_name)
-        if criterion_name in config:
-            mlflow.log_params(config[criterion_name])
-
-        optimizer_name = config["optimizer"]["name"]
-        mlflow.log_param("optimizer", optimizer_name)
-        if optimizer_name in config:
-            mlflow.log_params(config[optimizer_name])

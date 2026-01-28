@@ -756,6 +756,79 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     return trainer
 
 
+def create_save_batch_callback(dataset, data_loader_indexes, results_dir):
+    """Create a callback function for saving batch results during inference or testing.
+
+    This factory function creates a closure that captures the dataset, indexes, and output
+    directory, then returns a callback that can be used with create_evaluator to save
+    model outputs batch by batch.
+
+    Parameters
+    ----------
+    dataset : Dataset
+        The dataset being processed (must have an ids() method)
+    data_loader_indexes : array-like
+        Indices mapping data loader order to dataset order
+    results_dir : Path
+        Directory where results should be saved
+
+    Returns
+    -------
+    callable
+        A callback function with signature (batch, batch_results) that saves results
+    """
+    from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
+
+    data_writer = InferenceDataSetWriter(dataset, results_dir)
+    write_index = 0
+    object_ids = np.array(list(dataset.ids()))[data_loader_indexes]  # type: ignore[attr-defined]
+
+    def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
+        """Receive and write results tensors to results_dir immediately.
+        This function writes a single numpy binary file for each object.
+        """
+        nonlocal write_index
+        nonlocal object_ids
+        nonlocal data_writer
+
+        batch_len = len(batch_results)
+        batch_results = batch_results.detach().to("cpu")
+
+        batch_is_list = isinstance(batch, (tuple, list))
+        # Batch lacks ids if it is a Tensor, or a list/tuple of tensors
+        batch_lacks_ids = isinstance(batch, torch.Tensor) or (
+            batch_is_list and isinstance(batch[0] if batch_is_list else None, torch.Tensor)
+        )
+
+        # Batch has IDs if it is dict of tensors with the needed key
+        batch_has_ids = isinstance(batch, dict) and "object_id" in batch
+        if batch_lacks_ids:
+            # This fallback is brittle to any re-ordering of data that occurs during data loading
+            batch_object_ids = [object_ids[id] for id in range(write_index, write_index + len(batch_results))]
+        elif batch_has_ids:
+            if isinstance(batch["object_id"], list):
+                batch_object_ids = batch["object_id"]
+            else:
+                batch_object_ids = batch["object_id"].tolist()
+        elif isinstance(batch, dict):
+            msg = "Dataset dictionary should be returning object_ids to avoid ordering errors. "
+            msg += "Modify the __getitem__ or __iter__ function of your dataset to include 'object_id' "
+            msg += "with unique values per data member in the dictionary it returns."
+            raise RuntimeError(msg)
+        else:
+            msg = f"Could not determine object IDs from batch. Batch has type {type(batch)}"
+            raise RuntimeError(msg)
+
+        # Save results from this batch in a numpy file as a structured array
+        data_writer.write_batch(np.array(batch_object_ids), [t.numpy() for t in batch_results])
+        write_index += batch_len
+
+    # Attach the data_writer to the callback so it can be accessed later
+    _save_batch.data_writer = data_writer  # type: ignore[attr-defined]
+
+    return _save_batch
+
+
 class HyraxEvents(EventEnum):
     """
     Workaround event for a pytorch ignite bug. See fixup_engine for details
