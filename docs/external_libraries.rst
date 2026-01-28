@@ -108,12 +108,12 @@ python dictionary below:
     "mag_g": <numpy.float32>,
     }
 
-The model's ``prepare_inputs`` function will recieve a batch dictionary, where each key will have a list of the
+The model's ``prepare_inputs`` function will receive a batch dictionary, where each key will have a list of the
 relevant data as shown below:
 
 .. code-block:: python
 
-    # What prepare_inputs recieves from hyrax
+    # What prepare_inputs receives from hyrax
     {
     "flux_g": [ <numpy.array>, <numpy.array>, <numpy.array>, ...],
     "flux_r": [ <numpy.array>, <numpy.array>, <numpy.array>, ...],
@@ -128,6 +128,8 @@ it's ``x`` input. See the example below, which stacks the g, r, and i fluxes int
 .. code-block:: python
 
     from hyrax.models import hyrax_model
+
+    import numpy as np
 
     @hyrax_model
     class MyModel:
@@ -144,11 +146,11 @@ it's ``x`` input. See the example below, which stacks the g, r, and i fluxes int
             i_imgs = batch_dict["flux_i"]
 
             stacked_imgs = [
-                torch.stack(g_img, r_img, i_img)
+                np.stack([g_img, r_img, i_img]) 
                 for g_img, r_img, i_img in zip(g_imgs, r_imgs, i_imgs)
             ]
 
-            return stacked_images
+            return stacked_imgs
 
 Note that ``prepare_inputs`` must be defined with ``@staticmethod`` as in the example. The function does not have
 access to the model's data members through the typical ``self`` argument in python.

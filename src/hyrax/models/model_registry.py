@@ -214,7 +214,7 @@ def hyrax_model(cls):
         if not isinstance(vars(cls)["prepare_inputs"], staticmethod):
             msg = f"You must implement prepare_inputs() in {cls.__name__} as\n\n"
             msg += "@staticmethod\n"
-            msg += "def prepare_inputs(data_dict: dict) -> torch.Tensor:\n"
+            msg += "def prepare_inputs(data_dict: dict) -> Tuple[npt.NDArray, ...]:\n"
             msg += "    <Your implementation goes here>\n"
             raise RuntimeError(msg)
 
@@ -223,7 +223,7 @@ def hyrax_model(cls):
         if not isinstance(vars(cls)["to_tensor"], staticmethod):
             msg = f"You must rename to_tensor() to prepare_inputs() in {cls.__name__} as\n\n"
             msg += "@staticmethod\n"
-            msg += "def prepare_inputs(data_dict: dict) -> torch.Tensor:\n"
+            msg += "def prepare_inputs(data_dict: dict) -> Tuple[npt.NDArray, ...]:\n"
             msg += "    <Your implementation goes here>\n"
             raise RuntimeError(msg)
 
