@@ -191,22 +191,22 @@ class ConfigManager:
             self.user_specific_config = ConfigManager.read_runtime_config(self.runtime_config_filepath)
 
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
-        self.original_config = copy.deepcopy(self.config)
 
         # Validate data_request/model_inputs if present in loaded config
         for key in ("data_request", "model_inputs"):
             if key in self.config:
                 value = self.config[key]
                 try:
-                    validated = self._coerce_data_request(value)
+                    validated = self._validate_data_request(value)
                     self.config[key] = validated
-                    self.original_config = copy.deepcopy(self.config)
                 except ValidationError as e:
                     logger.warning(
                         f"Configuration loaded from TOML has '{key}' that failed Pydantic validation. "
                         f"This may indicate missing required fields (e.g., 'primary_id_field') or "
                         f"invalid structure. The configuration will be used as-is. Validation error: {e}"
                     )
+
+        self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
     def _render_config(
@@ -256,7 +256,7 @@ class ConfigManager:
         keys = parse_dotted_key(key)
         if key in ("data_request", "model_inputs"):
             try:
-                value = self._coerce_data_request(value)
+                value = self._validate_data_request(value)
             except ValidationError as e:
                 logger.warning(
                     f"Configuration for '{key}' failed Pydantic validation and will be used as-is. "
@@ -275,7 +275,7 @@ class ConfigManager:
         self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
-    def _coerce_data_request(value: Any) -> dict:
+    def _validate_data_request(value: Any) -> dict:
         """Validate and normalize data_request configuration into a plain dictionary.
 
         This method ensures that the ``data_request`` configuration (which defines
