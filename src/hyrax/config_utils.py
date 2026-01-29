@@ -197,7 +197,7 @@ class ConfigManager:
             if key in self.config:
                 value = self.config[key]
                 try:
-                    validated = self._coerce_data_request(value)
+                    validated = self._validate_data_request(value)
                     self.config[key] = validated
                 except ValidationError as e:
                     logger.warning(
@@ -257,7 +257,7 @@ class ConfigManager:
         keys = parse_dotted_key(key)
         if key in ("data_request", "model_inputs"):
             try:
-                value = self._coerce_data_request(value)
+                value = self._validate_data_request(value)
             except ValidationError as e:
                 logger.warning(
                     f"Configuration for '{key}' failed Pydantic validation and will be used as-is. "
@@ -276,7 +276,7 @@ class ConfigManager:
         self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
-    def _coerce_data_request(value: Any) -> dict:
+    def _validate_data_request(value: Any) -> dict:
         """Validate and normalize data_request configuration into a plain dictionary.
 
         This method ensures that the ``data_request`` configuration (which defines
