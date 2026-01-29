@@ -104,6 +104,17 @@ latent_dim = 64
 # The activation function of the final layer.
 final_layer = "tanh"
 
+[model.ImageDCAE]
+# The number of output channels from the first layer.
+base_channel_size = 32
+
+# The length of the latent space vector.
+latent_dim = 512
+
+# The activation function of the final layer.
+final_layer = "identity"
+
+
 [model.SimCLR]
 # The dimension of the projection head for SimCLR
 projection_dimension = 128
