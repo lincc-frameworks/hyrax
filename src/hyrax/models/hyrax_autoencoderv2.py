@@ -188,6 +188,9 @@ class HyraxAutoencoderV2(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
+        if "data" not in data_dict:
+            raise RuntimeError("Unable to find `data` key in data_dict")
+
         data_dict = data_dict["data"]
         if "image" in data_dict:
             return data_dict["image"]
