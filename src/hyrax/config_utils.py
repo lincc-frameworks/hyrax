@@ -206,6 +206,7 @@ class ConfigManager:
                         f"invalid structure. The configuration will be used as-is. Validation error: {e}"
                     )
 
+        # Update original_config after all validations are complete
         self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
