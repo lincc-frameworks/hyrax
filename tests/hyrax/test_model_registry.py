@@ -187,11 +187,11 @@ def test_use_model_scheduler():
     model = TestModel(h.config)
     assert hasattr(model, "scheduler")
     assert model.scheduler == "model_scheduler"  # Should use the model's own scheduler, not the config
-  
-  
+
+
 def test_use_config_scheduler(caplog):
     """Test that the config will inject a scheduler if the model does not define one."""
-    
+
     @hyrax_model
     class TestModel(nn.Module):
         def __init__(self, config, data_sample=None):
@@ -206,7 +206,7 @@ def test_use_config_scheduler(caplog):
     model = TestModel(h.config)
     assert hasattr(model, "scheduler")
     assert model.scheduler.__class__.__name__ == "ConstantLR"  # Should use the config's scheduler
-  
+
 
 def test_no_scheduler_defined_logs_warning(caplog):
     """Test that if neither model nor config define a scheduler, a warning is logged."""
@@ -225,8 +225,8 @@ def test_no_scheduler_defined_logs_warning(caplog):
     with caplog.at_level(logging.WARNING):
         _ = TestModel(h.config)
         assert "No scheduler specified in config or" in caplog.text
-  
-  
+
+
 def test_scheduler_defined_in_model_and_config(caplog):
     """Test that if both model and config define a scheduler, a warning is logged."""
 

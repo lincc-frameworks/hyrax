@@ -173,7 +173,7 @@ def test_torch_load_with_map_location(tmp_path):
         "criterion": {"name": "torch.nn.MSELoss"},
         "optimizer": {"name": "torch.optim.SGD"},
         "torch.optim.SGD": {"lr": 0.01},
-        "scheduler" : {"name": None},
+        "scheduler": {"name": None},
     }
 
     # Get the expected device from idist (same as _torch_load uses)

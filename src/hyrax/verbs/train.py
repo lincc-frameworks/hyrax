@@ -152,7 +152,7 @@ class Train(Verb):
         mlflow.log_param("optimizer", optimizer_name)
         if optimizer_name in config:
             mlflow.log_params(config[optimizer_name])
-            
+
         # Log the scheduler params
         scheduler_name = config["scheduler"]["name"]
         mlflow.log_param("scheduler", scheduler_name)

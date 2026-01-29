@@ -45,7 +45,6 @@ def _torch_load(self: nn.Module, load_path: Path):
             self.to_tensor = staticmethod(to_tensor)
 
 
-
 def _torch_criterion(self: nn.Module):
     """Load the criterion class using the name defined in the config and
     instantiate it with the arguments defined in the config."""
@@ -106,17 +105,17 @@ def _torch_optimizer(self: nn.Module):
 def _torch_schedulers(self: nn.Module):
     """Load the scheduler classes using the names defined in the config and
     instantiate it with the arguments defined in the config."""
-    
+
     config = cast(dict[str, Any], self.config)
-    
+
     # Load the class and get any parameters from the config dictionary
     scheduler_name = config["scheduler"]["name"]
     if not scheduler_name:
         logger.warning("No scheduler specified in config or self.scheduler in model.")
         return None
-      
+
     scheduler_cls = get_or_load_class(scheduler_name)
-    
+
     arguments = {}
     if scheduler_name in config:
         arguments = config[scheduler_name]
@@ -128,14 +127,12 @@ def _torch_schedulers(self: nn.Module):
     else:
         log_string += "with default arguments."
     logger.info(log_string)
-    
+
     if not isinstance(self.optimizer, optim.Optimizer):
-        raise RuntimeError(
-          "Model optimizer must be a torch.optim.Optimizer"
-        )
-            
+        raise RuntimeError("Model optimizer must be a torch.optim.Optimizer")
+
     return scheduler_cls(self.optimizer, **arguments)
-  
+
 
 def hyrax_model(cls):
     """Decorator to register a model with the model registry, and to add common interface functions
@@ -176,7 +173,7 @@ def hyrax_model(cls):
                 )
             crit_name = f"{type(self.criterion).__module__}.{type(self.criterion).__qualname__}"
             logger.info(f"Using self.criterion defined in model: {crit_name}")
-        
+
         if not hasattr(self, "scheduler"):
             self.scheduler = _torch_schedulers(self)
         else:

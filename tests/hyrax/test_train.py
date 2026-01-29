@@ -104,25 +104,22 @@ def test_train_percent_split(tmp_path):
     # Finally, run full training to exercise `train.py` end-to-end and ensure
     # the training verb functions correctly with percent-based splits.
     h.train()
-    
-  
+
+
 def test_constant_scheduler(loopback_hyrax):
     """
     Ensure that setting a ConstantLR works properly
     """
     h, _ = loopback_hyrax
     h.config["scheduler"]["name"] = "torch.optim.lr_scheduler.ConstantLR"
-    h.config["torch.optim.lr_scheduler.ConstantLR"] = {
-      "total_iters": 4,
-      "factor": 0.5
-    }
+    h.config["torch.optim.lr_scheduler.ConstantLR"] = {"total_iters": 4, "factor": 0.5}
     h.config["train"]["epochs"] = 6
     initial_lr = h.config[h.config["optimizer"]["name"]]["lr"]
     model = h.train()
-    
+
     assert hasattr(model, "lrs")
     assert model.lrs == [initial_lr * 0.5] * 4 + [initial_lr] * 2
-    
+
 
 def test_default_exponential_scheduler(loopback_hyrax):
     """
@@ -134,7 +131,6 @@ def test_default_exponential_scheduler(loopback_hyrax):
     h.config["train"]["epochs"] = 5
     initial_lr = h.config[h.config["optimizer"]["name"]]["lr"]
     model = h.train()
-    
+
     assert hasattr(model, "lrs")
     assert model.lrs == [initial_lr] * 5
-    
