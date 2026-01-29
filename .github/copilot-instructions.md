@@ -64,7 +64,7 @@ After making changes, ALWAYS test these scenarios:
 - **Fast tests**: `python -m pytest -m "not slow"` (default test suite)
 - **Slow tests**: `python -m pytest -m "slow"` (integration and E2E tests)
 - **E2E tests**: Full end-to-end workflows testing models and datasets
-- **Test datasets**: Uses built-in datasets like `HyraxCifarDataSet`, `HSCDataSet`
+- **Test datasets**: Uses built-in datasets like `HyraxCifarDataset`, `HSCDataSet`
 - **Test models**: Primarily tests `HyraxAutoencoder` model
 - **Parallel testing**: Use `-n auto` for multiprocessing
 
@@ -129,7 +129,7 @@ After making changes, ALWAYS test these scenarios:
 
 ### Working with Data
 - Data loaders in `src/hyrax/data_sets/`
-- Built-in datasets: `HSCDataSet`, `HyraxCifarDataSet`, `LSSTDataset`, `FitsImageDataSet`
+- Built-in datasets: `HSCDataSet`, `HyraxCifarDataset`, `LSSTDataset`, `FitsImageDataSet`
 - Dataset splits: train/validation/test controlled by config
 - Configuration in `[data_set]` section
 - Default data directory: `./data/`
