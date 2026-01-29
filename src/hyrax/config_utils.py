@@ -200,13 +200,15 @@ class ConfigManager:
                 try:
                     validated = self._coerce_data_request(value)
                     self.config[key] = validated
-                    self.original_config = copy.deepcopy(self.config)
                 except ValidationError as e:
                     logger.warning(
                         f"Configuration loaded from TOML has '{key}' that failed Pydantic validation. "
                         f"This may indicate missing required fields (e.g., 'primary_id_field') or "
                         f"invalid structure. The configuration will be used as-is. Validation error: {e}"
                     )
+
+        # Update original_config after all validations are complete
+        self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
     def _render_config(
