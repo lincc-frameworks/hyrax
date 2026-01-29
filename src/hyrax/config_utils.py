@@ -191,7 +191,6 @@ class ConfigManager:
             self.user_specific_config = ConfigManager.read_runtime_config(self.runtime_config_filepath)
 
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
-        self.original_config = copy.deepcopy(self.config)
 
         # Validate data_request/model_inputs if present in loaded config
         for key in ("data_request", "model_inputs"):
