@@ -800,6 +800,14 @@ def create_trainer(
                     f"training/training/epoch/{m}", epoch_metrics[m], global_step=epoch_number
                 )
                 mlflow.log_metrics({f"training/epoch/{m}": epoch_metrics[m]}, step=epoch_number)
+                
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def scheduler_step(trainer):
+       if model.scheduler:
+          if not hasattr(model, "lrs"):
+              model.lrs = []
+          model.lrs.append(model.scheduler.get_last_lr()[0])
+          model.scheduler.step()
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)

@@ -47,6 +47,7 @@ def test_patch_to_tensor(tmp_path):
         "criterion": {"name": "torch.nn.MSELoss"},
         "optimizer": {"name": "torch.optim.SGD"},
         "torch.optim.SGD": {"lr": 0.01},
+        "scheduler" : {"name": None},
     }
 
     # create an instance of the dummy model
@@ -87,6 +88,7 @@ def test_patch_to_tensor_over_default(tmp_path):
         "criterion": {"name": "torch.nn.MSELoss"},
         "optimizer": {"name": "torch.optim.SGD"},
         "torch.optim.SGD": {"lr": 0.01},
+        "scheduler" : {"name": None},
     }
 
     # create an instance of the dummy model
