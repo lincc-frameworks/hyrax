@@ -1,220 +1,208 @@
-# Hyrax - An extensible Framework for Machine Learning in Astronomy
+# GitHub Copilot Instructions for Hyrax
 
-**ALWAYS follow these instructions first and only fallback to additional search and context gathering if the information here is incomplete or found to be in error.**
+**🔗 For comprehensive project information, see [HYRAX_GUIDE.md](../HYRAX_GUIDE.md) in the repository root**
 
-Hyrax is a Python-based tool for hunting rare and anomalous sources in large astronomical imaging surveys. It supports downloading cutouts, building latent representations, interactive visualization, and anomaly detection using PyTorch models.
+Hyrax is a low-code Python framework for machine learning in astronomy. This file provides GitHub Copilot-specific guidance.
 
-## Design Goals and North Stars
+## Quick Reference
 
-**CRITICAL: Always keep these design principles in mind when making changes to Hyrax.**
+**Project essentials:**
+- Python 3.9+ with PyTorch, TOML config, CLI-first (`hyrax` command with verbs)
+- Workflows: Data download → Training → Inference → Visualization → Vector search
+- Plugin architecture: Models, datasets, and verbs auto-register via decorators
+- Configuration: TOML files with Pydantic validation, hierarchical merging
 
-### 1. Low Code Interface
-- **Minimize user-facing APIs**: Hyrax prioritizes configuration-driven workflows over complex programmatic APIs
-- **Avoid API proliferation**: Don't create new user-facing APIs that we'll need to maintain indefinitely
-- **Favor declarative over imperative**: Users should configure what they want, not how to get it
-- **CLI-first approach**: The `hyrax` CLI tool with verb-based commands is the primary user interface
-- **Configuration over code**: Use TOML configuration files extensively to control behavior
+**For detailed information on:**
+- Design principles and architectural conventions → [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#design-principles)
+- Repository structure and key files → [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#repository-structure)
+- Configuration system → [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#configuration-system)
+- Plugin architecture (models, datasets, verbs) → [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#plugin-architecture-via-registries)
+- Adding new components → [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#adding-new-components)
+- Data flow through system → [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#data-flow)
 
-### 2. Make Easy Things Easy, Hard Things Possible
-- **Default workflows should "just work"**: Common use cases should require minimal configuration
-- **Progressive complexity**: Simple tasks should be simple; advanced features available when needed
-- **Sensible defaults**: Default configurations in `hyrax_default_config.toml` should handle common scenarios
-- **Extensibility without complexity**: Advanced users can extend with custom models, datasets, and verbs
-- **Clear extension points**: Well-documented base classes (`Verb`, model base classes, dataset classes)
+## Critical Guidelines for GitHub Copilot
 
-### 3. Support Reproducibility
-- **Configuration as documentation**: Config files serve as complete records of how experiments were run
-- **Version everything**: Track model versions, data versions, and configuration versions
-- **Manifest files**: Maintain manifests of downloaded data and processed results
-- **Deterministic defaults**: Random seeds and other sources of variability should be configurable
-- **MLflow integration**: Log experiments systematically for comparison and reproduction
-- **ONNX export**: Support model serialization for long-term reproducibility
+### Always Follow These Instructions First
 
-### 4. Smooth and Legible Migration When APIs Change
-- **Clear deprecation warnings**: When changing APIs, provide helpful deprecation messages
-- **Migration guides in documentation**: Document breaking changes with before/after examples
-- **Backward compatibility when possible**: Maintain compatibility or provide clear upgrade paths
-- **Version pinning guidance**: Help users understand which versions work together
-- **Config schema validation**: Use Pydantic schemas to validate configurations and provide helpful error messages
-- **Changelog discipline**: Maintain comprehensive changelog with breaking change notifications
+Trust these instructions and only search for additional context if information here or in [HYRAX_GUIDE.md](../HYRAX_GUIDE.md) is incomplete or incorrect.
 
-## Working Effectively
+### Command Execution - Long-Running Operations
 
-### Bootstrap and Setup - NEVER CANCEL these commands
-- Create virtual environment: `conda create -n hyrax python=3.10 && conda activate hyrax`
-- Clone repository: `git clone https://github.com/lincc-frameworks/hyrax.git`
-- **CRITICAL**: Install dependencies using `.setup_dev.sh` script:
-  - `cd hyrax && echo 'y' | bash .setup_dev.sh` -- NEVER CANCEL: Takes 5-15 minutes depending on network. Set timeout to 20+ minutes.
-  - Script installs package with `pip install -e .'[dev]'` and sets up pre-commit hooks
-  - **Note**: Script prompts for system install if no virtual environment detected - respond 'y' to proceed
-  - **Alternative manual installation** if script fails due to network issues:
-    - `python -m pip install --upgrade pip` first
-    - `python -m pip install -e .'[dev]'` -- NEVER CANCEL: Takes 5-15 minutes. Set timeout to 20+ minutes.
-    - `python -m pip install pre-commit && pre-commit install` 
-    - `conda install pandoc` (for documentation)
-  - **Network Issues**: Installation may fail with ReadTimeoutError due to PyPI connectivity. Retry installation multiple times if needed.
+**CRITICAL: Never cancel these commands.** Allow sufficient time for completion:
 
-### Build and Test Commands - NEVER CANCEL these commands
-- **Run tests**: `python -m pytest -m "not slow"` -- NEVER CANCEL: Takes 2-5 minutes. Set timeout to 10+ minutes.
-- **Run tests with coverage**: `python -m pytest --cov=hyrax --cov-report=xml -m "not slow"` -- NEVER CANCEL: Takes 3-6 minutes. Set timeout to 10+ minutes.
-- **Run slow tests**: `python -m pytest -m "slow"` -- NEVER CANCEL: Takes 10-20 minutes. Set timeout to 30+ minutes.
-- **Run all tests**: `python -m pytest` -- NEVER CANCEL: Takes 15-25 minutes. Set timeout to 45+ minutes.
-- **Run parallel tests**: `python -m pytest -n auto` (uses multiple cores)
+| Operation | Duration | Required Timeout |
+|-----------|----------|------------------|
+| `bash .setup_dev.sh` | 5-15 min | 20+ minutes |
+| `pip install -e .'[dev]'` | 5-15 min | 20+ minutes |
+| `pytest -m "not slow"` | 2-5 min | 10+ minutes |
+| `pytest` (all tests) | 15-25 min | 45+ minutes |
+| `pytest -m slow` | 10-20 min | 30+ minutes |
+| `pre-commit run --all-files` | 3-8 min | 15+ minutes |
+| `sphinx-build` (docs) | 2-4 min | 10+ minutes |
 
-### CLI Usage and Functionality
-- **Main CLI entry point**: `hyrax` command (defined in pyproject.toml as `hyrax = "hyrax_cli.main:main"`)
-- **Check version**: `hyrax --version`
-- **Get help**: `hyrax --help`
-- **Available verbs/commands**: 
-  - **Core operations**: `train`, `infer`, `download`, `prepare`
-  - **Analysis**: `umap`, `visualize`, `lookup`
-  - **Vector DB**: `save_to_database`, `database_connection`
-  - **Utilities**: `rebuild_manifest`
-- **Verb-specific help**: `hyrax <verb> --help` (e.g., `hyrax train --help`)
-- **Configuration**: Use `--runtime-config path/to/config.toml` or `-c path/to/config.toml`
-- **Verb implementation**: All verbs are classes in `src/hyrax/verbs/` that inherit from `Verb` base class
+**Network issues:** Installation commands may encounter `ReadTimeoutError` from PyPI. If this occurs:
+1. Wait 1-2 minutes
+2. Retry the exact same command  
+3. May require 3-5 attempts to succeed
 
-### Development and Code Quality - NEVER CANCEL these commands
-- **Pre-commit checks**: `pre-commit run --all-files` -- NEVER CANCEL: Takes 3-8 minutes. Set timeout to 15+ minutes.
-- **Linting with ruff**: `ruff check src/ tests/` -- Takes 10-30 seconds.
-- **Format with ruff**: `ruff format src/ tests/` -- Takes 10-30 seconds.
-- **Build documentation**: `sphinx-build -M html ./docs ./_readthedocs` -- NEVER CANCEL: Takes 2-4 minutes. Set timeout to 10+ minutes.
+### Development Setup
 
-## Validation and Testing
-
-### CRITICAL: Always run these validation steps after making changes
-1. **NEVER CANCEL**: Lint and format code: `ruff check src/ tests/ && ruff format src/ tests/`
-2. **NEVER CANCEL**: Run unit tests: `python -m pytest -m "not slow"` (timeout: 10+ minutes)
-3. **NEVER CANCEL**: Run pre-commit hooks: `pre-commit run --all-files` (timeout: 15+ minutes)
-
-### Manual Validation Scenarios
-After making changes, ALWAYS test these scenarios:
-1. **CLI functionality**: Run `hyrax --help` and `hyrax --version` to ensure CLI works
-2. **Import test**: `python -c "import hyrax; h = hyrax.Hyrax(); print('Success')"` 
-3. **Configuration loading**: Verify config loads with `hyrax.Hyrax()` constructor
-4. **Verb functionality**: Test relevant verbs like `hyrax train --help` if modifying training code
-
-### Test Categories and Markers
-- **Fast tests**: `python -m pytest -m "not slow"` (default test suite)
-- **Slow tests**: `python -m pytest -m "slow"` (integration and E2E tests)
-- **E2E tests**: Full end-to-end workflows testing models and datasets
-- **Test datasets**: Uses built-in datasets like `HyraxCifarDataset`, `HSCDataSet`
-- **Test models**: Primarily tests `HyraxAutoencoder` model
-- **Parallel testing**: Use `-n auto` for multiprocessing
-
-### Timeout Values and Timing Expectations
-- **NEVER CANCEL**: Package installation: 5-15 minutes (timeout: 20+ minutes)
-- **NEVER CANCEL**: Unit tests: 2-5 minutes (timeout: 10+ minutes) 
-- **NEVER CANCEL**: Full test suite: 15-25 minutes (timeout: 45+ minutes)
-- **NEVER CANCEL**: Pre-commit hooks: 3-8 minutes (timeout: 15+ minutes)
-- **NEVER CANCEL**: Documentation build: 2-4 minutes (timeout: 10+ minutes)
-- Code formatting/linting: 10-30 seconds
-
-### Network and Installation Issues
-- **PyPI Connectivity**: May encounter ReadTimeoutError when installing packages
-- **Retry Strategy**: If installation fails, wait 1-2 minutes and retry the same command
-- **Alternative mirrors**: Consider using `--index-url` with alternative PyPI mirrors if persistent issues
-- **Dependency conflicts**: The package has complex ML dependencies (PyTorch, etc.) which may cause conflicts
-
-## Repository Structure and Navigation
-
-### Key Directories
-- `src/hyrax/`: Main package source code
-- `src/hyrax_cli/`: CLI entry point (`main.py`)
-- `src/hyrax/verbs/`: Command implementations (train, infer, download, etc.)
-- `src/hyrax/data_sets/`: Dataset implementations 
-- `src/hyrax/models/`: Model definitions
-- `src/hyrax/vector_dbs/`: Vector database implementations (ChromaDB, Qdrant)
-- `tests/hyrax/`: Unit tests
-- `docs/`: Documentation source files
-- `benchmarks/`: Performance benchmarks
-- `example_notebooks/`: Example Jupyter notebooks
-
-### Important Files
-- `pyproject.toml`: Project configuration, dependencies, scripts
-- `src/hyrax/hyrax_default_config.toml`: Default configuration template
-- `.setup_dev.sh`: Development environment setup script
-- `.pre-commit-config.yaml`: Pre-commit hook configuration
-- `.github/workflows/`: CI/CD pipeline definitions
-
-### Configuration System
-- Default config: `src/hyrax/hyrax_default_config.toml`
-- Users can override with custom config files via `--runtime-config`
-- Config sections: `[general]`, `[model]`, `[train]`, `[data_set]`, `[download]`, etc.
-
-## Common Tasks and Workflows
-
-### Adding New Features
-1. **ALWAYS** run full validation first: `python -m pytest -m "not slow"`
-2. Make changes in appropriate `src/hyrax/` subdirectory
-3. Add tests in `tests/hyrax/` following existing patterns
-4. **ALWAYS** run: `ruff format src/ tests/ && ruff check src/ tests/`
-5. **ALWAYS** run: `python -m pytest -m "not slow"` (timeout: 10+ minutes)
-6. **ALWAYS** run: `pre-commit run --all-files` (timeout: 15+ minutes)
-
-### Working with Models
-- Models defined in `src/hyrax/models/`
-- Built-in models: `HyraxAutoencoder`, `HyraxCNN`
-- Model registry system automatically discovers models
-- General model configuration in `[model]` section of config files
-- Configurations for specific models in `[model.<ModelName>]` sections
-- Training via `hyrax train` command
-- Export to ONNX format supported
-
-### Working with Data
-- Data loaders in `src/hyrax/data_sets/`
-- Built-in datasets: `HSCDataSet`, `HyraxCifarDataset`, `LSSTDataset`, `FitsImageDataSet`
-- Dataset splits: train/validation/test controlled by config
-- Configuration in `[data_set]` section
-- Default data directory: `./data/`
-- Sample data includes HSC1k dataset for testing
-
-### Working with Vector Databases
-- Implementations in `src/hyrax/vector_dbs/`
-- Supported: ChromaDB, Qdrant
-- Commands: `save_to_database`, `database_connection`
-- Configuration in `[vector_db]` section
-
-## Notebook Development
-- Jupyter integration via `holoviews`, `bokeh` for visualizations
-- Interactive visualization via `hyrax visualize` verb
-- Pre-executed examples in `docs/pre_executed/`
-
-## CI/CD and GitHub Workflows
-- Main workflows in `.github/workflows/`
-- **Testing**: `testing-and-coverage.yml` runs on PRs and main branch
-- **Smoke test**: `smoke-test.yml` runs daily
-- **Documentation**: `build-documentation.yml` builds docs
-- **Benchmarks**: ASV benchmarks via `asv-*.yml` workflows
-- **Pre-commit**: Automated via `pre-commit-ci.yml`
-
-## Troubleshooting
-- **Import errors**: Ensure `pip install -e .'[dev]'` completed successfully
-- **Network timeouts during install**: Retry installation multiple times, may require 3-5 attempts due to PyPI connectivity issues
-- **ReadTimeoutError**: Common during installation - wait 1-2 minutes and retry the same pip command
-- **CLI not found**: Verify installation with `pip list | grep hyrax`
-- **Tests failing**: Check if in virtual environment and dependencies installed
-- **Pre-commit issues**: Run `pre-commit install` if hooks not working
-- **Permission issues**: Use `--user` flag with pip if encountering permission errors
-- **Virtual environment**: Always use conda/venv to avoid system Python conflicts
-
-## Performance Notes
-- Vector database operations can be slow with large datasets
-- Benchmarks available in `benchmarks/` directory (run with `asv` tool)
-- Use `--timeout` parameters appropriately for long-running operations
-- ChromaDB performance degrades with vectors >10,000 elements
-- UMAP fitting limited to 1024 samples by default for performance
-- Benchmark tests include timing for CLI help commands, object construction, and vector DB operations
-
-## Common Command Reference
 ```bash
-# Full development setup
+# Environment setup
 conda create -n hyrax python=3.10 && conda activate hyrax
 git clone https://github.com/lincc-frameworks/hyrax.git && cd hyrax
-echo 'y' | bash .setup_dev.sh
 
-# Quick validation workflow  
-ruff check src/ tests/ && ruff format src/ tests/
-python -m pytest -m "not slow"
-pre-commit run --all-files
+# Recommended: Automated setup script
+echo 'y' | bash .setup_dev.sh
+# Installs with pip install -e .'[dev]' and sets up pre-commit hooks
+# Prompts for system install if no venv - respond 'y'
+
+# Alternative: Manual installation
+pip install -e .'[dev]' && pre-commit install
 ```
+
+### Essential Commands
+
+See [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#essential-commands) for full command reference.
+
+```bash
+# Testing
+pytest -m "not slow"                    # Fast tests (2-5 min)
+pytest -n auto -m "not slow"            # Parallel fast tests
+pytest -m slow                          # Slow/E2E tests (10-20 min)
+pytest                                  # All tests (15-25 min)
+
+# Code quality
+ruff format . && ruff check --fix .     # Format and lint (30 sec)
+pre-commit run --all-files              # All checks (3-8 min)
+
+# CLI
+hyrax --help                            # List verbs
+hyrax <verb> --help                     # Verb-specific help
+hyrax <verb> -c config.toml             # Run with config
+
+# Documentation
+sphinx-build -M html ./docs ./_readthedocs -T -E -d ./docs/_build/doctrees
+```
+### Validation After Changes
+
+**CRITICAL: Always run these validation steps:**
+1. Format and lint: `ruff format . && ruff check --fix .` (30 seconds)
+2. Fast tests: `pytest -m "not slow"` (2-5 min, NEVER CANCEL)
+3. Pre-commit: `pre-commit run --all-files` (3-8 min, NEVER CANCEL)
+
+**Manual validation scenarios:**
+1. CLI: `hyrax --help` and `hyrax --version`
+2. Import: `python -c "import hyrax; h = hyrax.Hyrax(); print('Success')"`
+3. Config loading: Verify `hyrax.Hyrax()` constructor works
+4. Relevant verbs: Test with `hyrax <verb> --help`
+
+## Key Implementation Details
+
+### Configuration System Pitfalls
+
+- **Use ConfigDict, not dict**: ConfigDict catches missing defaults at runtime
+- **All keys need defaults**: Add to `src/hyrax/hyrax_default_config.toml`
+- **Config is immutable**: No runtime mutations allowed after creation
+- **Pydantic validation**: Use schemas in `src/hyrax/config_schemas/` for validation
+
+### Model Interface Requirements
+
+Models MUST implement (see [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#plugin-architecture-via-registries)):
+- `forward()`: Forward pass through model
+- `train_step()`: Single training step
+- `prepare_inputs()`: Data preparation (replaces deprecated `to_tensor()`)
+
+Use `@hyrax_model` decorator for auto-registration and shape inference.
+
+### Testing Requirements
+
+- Mark long tests: `@pytest.mark.slow` (>5 min)
+- Fast tests in pre-commit and CI (<5 min total)
+- Always run fast tests after changes: `pytest -m "not slow"`
+- Test fixtures in `tests/hyrax/conftest.py`
+- Sample data via Pooch from Zenodo DOIs
+
+### Pre-commit Hooks Include
+
+- ruff linting and formatting
+- pytest fast tests (not slow)
+- sphinx documentation build
+- jupyter notebook conversion
+- Custom hook: prevents note-to-self comments
+
+## Repository Structure
+
+See [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#repository-structure) for complete details.
+
+**Quick navigation:**
+```
+src/hyrax/
+  ├── hyrax.py                        # Main orchestration class
+  ├── config_utils.py                 # ConfigManager, ConfigDict
+  ├── plugin_utils.py                 # Dynamic plugin loading
+  ├── train.py, pytorch_ignite.py     # Training infrastructure
+  ├── hyrax_default_config.toml       # Default configuration
+  ├── models/model_registry.py        # @hyrax_model decorator
+  ├── data_sets/data_set_registry.py  # Dataset registration
+  ├── verbs/verb_registry.py          # @hyrax_verb decorator
+  ├── config_schemas/                 # Pydantic validation
+  └── vector_dbs/                     # ChromaDB, Qdrant
+
+src/hyrax_cli/main.py                 # CLI entry point
+tests/hyrax/conftest.py, test_e2e.py  # Test fixtures, E2E tests
+.github/workflows/                    # CI/CD pipelines
+```
+
+## Important Conventions
+
+See [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#code-style-and-conventions) for complete list.
+
+1. **Immutable Config**: ConfigDict prevents mutations; all keys need defaults
+2. **Timestamped Results**: Verbs create unique directories (`YYYYMMDD-HHMMSS-<verb>-<uid>`)
+3. **Automatic Registration**: Use decorators (`@hyrax_model`, `@hyrax_verb`) or `__init_subclass__`
+4. **Batch Indexing**: Inference includes `batch_index.npy` for ordered retrieval
+5. **Transform Stacking**: `HyraxImageDataset._update_transform()` composes transforms
+6. **External Plugins**: Config detects `name = "pkg.Class"`, auto-loads `pkg/default_config.toml`
+
+## Common Workflows
+
+### Adding New Model
+See [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#adding-a-new-model) for details.
+1. Subclass `torch.nn.Module` in `src/hyrax/models/`
+2. Add `@hyrax_model("ModelName")` decorator
+3. Implement: `forward()`, `train_step()`, `prepare_inputs()`
+4. Available via: `hyrax train -c config.toml` (with `model.name = "ModelName"`)
+
+### Adding New Dataset
+See [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#adding-a-new-dataset) for details.
+1. Subclass `HyraxDataset` in `src/hyrax/data_sets/`
+2. Set `_name` class attribute (triggers auto-registration)
+3. Implement: `__len__()`, `__getitem__()`, metadata interface
+4. For images: subclass `HyraxImageDataset` for transform stacking
+
+### Adding New Verb
+See [HYRAX_GUIDE.md](../HYRAX_GUIDE.md#adding-a-new-verb) for details.
+1. Create class in `src/hyrax/verbs/` with `run()` and `run_cli()`
+2. Add `@hyrax_verb("verb_name")` decorator
+3. Implement `setup_parser(parser)` for CLI args
+4. Set `add_parser_kwargs` for help text
+5. Available via: `hyrax verb_name [args]`
+
+## Common Issues
+
+- **Import errors**: Verify `pip install -e .'[dev]'` completed
+- **Network timeouts**: Retry 3-5 times with 1-2 min waits for PyPI connectivity
+- **CLI not found**: Check with `pip list | grep hyrax`
+- **Config key not found**: Add to `hyrax_default_config.toml`
+- **Model not registering**: Ensure `@hyrax_model` decorator present
+- **Verb not in CLI**: Ensure `@hyrax_verb` decorator present
+- **Pre-commit not running**: Run `pre-commit install`
+
+## CI/CD Workflows
+
+- **testing-and-coverage.yml**: Runs on PRs and main (pytest with coverage)
+- **smoke-test.yml**: Daily smoke tests
+- **build-documentation.yml**: Sphinx documentation builds
+- **asv-*.yml**: Performance benchmarks
+- **pre-commit-ci.yml**: Automated pre-commit checks
