@@ -1,255 +1,210 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides Claude Code (claude.ai/code) specific guidance when working with this repository.
 
-## Project Overview
-Hyrax is designed to be a low-code solution for rapid experimentation with machine learning in astronomy
+**🔗 For comprehensive project information, architecture, and workflows, see [HYRAX_GUIDE.md](./HYRAX_GUIDE.md)**
 
-Hyrax helps scientists/astronomers handle much of the boilerplate code that is often required for a machine learning project in astronomy so that users can focus on their model development and downstream science. 
+## Quick Reference
 
-Hyrax supports a few primary workflows:
-1. Downloading/Accessing data from specific public data repositories (e.g. HSC, Rubin-LSST)
-2. Training supervised/unsupervised ML algorithms using the above data or other data a user chooses to bring to Hyrax
-3. Performing inference using the above models
-4. Building interactive two and three dimensional latent spaces using the above tools 
-4. Building vector databased with inference results for rapid similarity search and outlier detection. 
+Hyrax is a low-code Python tool for machine learning in astronomy. Key facts:
+- **Tech Stack**: Python 3.9+, PyTorch, TOML configuration, CLI-first design
+- **Main Workflows**: Data download → Training → Inference → Visualization → Vector search
+- **Entry Point**: `hyrax` CLI with verb-based commands (train, infer, umap, visualize, etc.)
+- **Configuration**: TOML files with Pydantic validation, hierarchical merging
+- **Testing**: pytest with `@pytest.mark.slow` for long tests, parallel execution with `-n auto`
 
-Hyrax is model-agnostic and extensible, supporting any PyTorch-based algorithm.
+**Always refer to [HYRAX_GUIDE.md](./HYRAX_GUIDE.md) for:**
+- Design principles and architectural conventions
+- Repository structure and key files
+- Configuration system details
+- Plugin architecture (models, datasets, verbs)
+- Adding new components
+- Data flow through the system
 
-## Development Setup
+## Claude-Specific Guidance
 
-```bash
-# Clone and setup environment
-git clone https://github.com/lincc-frameworks/hyrax.git
-conda create -n hyrax python=3.10
-conda activate hyrax
+### Command Execution Strategy
 
-# For developers - installs package in editable mode, dev dependencies, and pre-commit hooks
-bash .setup_dev.sh
+**CRITICAL: Never cancel long-running commands.** Hyrax has several operations that require extended execution time:
 
-# Manual installation
-pip install -e .              # Runtime dependencies only
-pip install -e .'[dev]'       # Include dev dependencies
+| Command | Typical Duration | Minimum Timeout |
+|---------|------------------|-----------------|
+| `bash .setup_dev.sh` | 5-15 minutes | 20 minutes |
+| `pip install -e .'[dev]'` | 5-15 minutes | 20 minutes |
+| `pytest -m "not slow"` | 2-5 minutes | 10 minutes |
+| `pytest` (all tests) | 15-25 minutes | 45 minutes |
+| `pytest -m slow` | 10-20 minutes | 30 minutes |
+| `pre-commit run --all-files` | 3-8 minutes | 15 minutes |
+| `sphinx-build ...` | 2-4 minutes | 10 minutes |
+| `ruff check/format` | 10-30 seconds | 2 minutes |
+
+**Network Issues**: Installation commands may encounter `ReadTimeoutError` due to PyPI connectivity. If this occurs:
+1. Wait 1-2 minutes
+2. Retry the exact same command
+3. May require 3-5 retry attempts
+
+### Task Delegation with Sub-Agents
+
+Claude Code provides specialized sub-agents via the `task` tool. Use them proactively:
+
+**When to use the `explore` agent:**
+- Questions requiring codebase understanding or synthesis
+- Multi-step searches requiring analysis
+- When you want a summarized answer, not raw grep/glob results
+- Examples: "How does authentication work?", "Where are API endpoints defined?"
+
+**When to use the `task` agent:**
+- Executing commands with verbose output (tests, builds, lints, dependency installs)
+- Returns brief summary on success, full output on failure
+- Keeps main context clean by minimizing successful output
+
+**When to use direct tools (grep/glob):**
+- Simple, targeted single searches where you know what to find
+- Need results immediately in your context
+- Looking for something specific, not discovering something unknown
+
+**Parallel searches** - Call multiple grep/glob in ONE response:
+```python
+# Good: Parallel search calls
+grep(pattern="function handleSubmit", glob="*.ts")
+grep(pattern="interface FormData", glob="*.ts")
+glob(pattern="**/*.tsx")
 ```
 
-## Common Commands
+### Working Patterns
 
-### Testing
+**Initial exploration:**
+1. Use `explore` agent for codebase questions: "What does this module do?"
+2. Use grep/glob for targeted searches: "Find all test files"
+3. View key files identified: config files, main modules
+
+**Making changes:**
+1. Always validate first: run relevant fast tests to establish baseline
+2. Make minimal, surgical changes
+3. Test immediately after changes: `pytest tests/hyrax/test_<relevant>.py`
+4. Format and lint: `ruff format . && ruff check --fix .`
+5. Run full validation: `pytest -m "not slow"` (NEVER CANCEL, 10+ min timeout)
+6. Run pre-commit: `pre-commit run --all-files` (NEVER CANCEL, 15+ min timeout)
+
+**Common validation workflow:**
 ```bash
-# Run all tests (excluding slow tests)
+# Quick format/lint (30 seconds)
+ruff format src/ tests/ && ruff check src/ tests/
+
+# Fast tests (2-5 minutes, NEVER CANCEL)
 pytest -m "not slow"
 
-# Run tests in parallel
-pytest -n auto -m "not slow"
-
-# Run with coverage
-pytest -n auto --cov=./src --cov-report=html -m "not slow"
-
-# Run slow tests (includes end-to-end tests)
-pytest -m slow
-
-# Run specific test file
-pytest tests/hyrax/test_config_utils.py
-
-# Run specific test function
-pytest tests/hyrax/test_infer.py::test_infer_basic
-```
-
-### Linting
-```bash
-# Run ruff linting with auto-fix
-ruff check --fix .
-
-# Format code with ruff
-ruff format .
-
-# Run pre-commit hooks manually
+# Pre-commit (3-8 minutes, NEVER CANCEL)
 pre-commit run --all-files
 ```
 
-### Documentation
+### Manual Validation After Changes
+
+After making code changes, ALWAYS run these validation scenarios:
+
+1. **CLI functionality**: `hyrax --help` and `hyrax --version` ensure CLI works
+2. **Import test**: `python -c "import hyrax; h = hyrax.Hyrax(); print('Success')"`
+3. **Configuration loading**: Verify config loads correctly
+4. **Verb functionality**: Test relevant verbs like `hyrax train --help`
+
+### Important Notes for Claude Code
+
+**Batch editing**: Use the `edit` tool multiple times in a single response for:
+- Renaming variables across multiple locations in the same file
+- Editing non-overlapping blocks in the same or different files
+- Applying the same pattern across multiple files
+
+**Configuration system pitfalls**:
+- Use `ConfigDict` instead of regular dict to catch missing defaults at runtime
+- All config keys MUST have defaults in `hyrax_default_config.toml`
+- Config is immutable after creation - no runtime mutations allowed
+
+**Model interface requirements**:
+- Models MUST implement: `forward()`, `train_step()`, `prepare_inputs()`
+- Note: `to_tensor()` is deprecated, use `prepare_inputs()` instead
+- Use `@hyrax_model` decorator for auto-registration
+
+**Testing requirements**:
+- Mark long-running tests with `@pytest.mark.slow`
+- Fast tests (<5 min) run in pre-commit and CI
+- Slow tests (>5 min) run separately
+- Always run fast tests after changes: `pytest -m "not slow"`
+
+**Pre-commit hooks include**:
+- ruff linting and formatting
+- pytest fast tests (not slow)
+- sphinx documentation build
+- jupyter notebook conversion
+- Custom hook preventing note-to-self comments
+
+## Key File Locations
+
+Reference [HYRAX_GUIDE.md](./HYRAX_GUIDE.md#repository-structure) for full structure. Quick access:
+
+```
+src/hyrax/
+  ├── hyrax.py                      # Main Hyrax class
+  ├── config_utils.py               # ConfigManager, ConfigDict
+  ├── plugin_utils.py               # get_or_load_class() for dynamic loading
+  ├── train.py                      # Training orchestration
+  ├── pytorch_ignite.py             # Dataset, model, dataloader setup
+  ├── hyrax_default_config.toml     # Default configuration
+  ├── models/model_registry.py      # Model registration, @hyrax_model
+  ├── data_sets/data_set_registry.py # Dataset registration
+  ├── verbs/verb_registry.py        # Verb registration, @hyrax_verb
+  ├── config_schemas/               # Pydantic validation schemas
+  └── vector_dbs/                   # ChromaDB, Qdrant implementations
+
+src/hyrax_cli/main.py               # CLI entry point
+
+tests/hyrax/
+  ├── conftest.py                   # Shared test fixtures
+  └── test_e2e.py                   # End-to-end integration tests
+
+.github/
+  ├── copilot-instructions.md       # GitHub Copilot instructions
+  └── workflows/                    # CI/CD pipelines
+```
+
+## Common Pitfalls and Solutions
+
+**Pitfall**: Forgetting to activate virtual environment
+- **Solution**: Always check with `which python` or `pip list | grep hyrax`
+
+**Pitfall**: Tests failing due to network issues during fixture download
+- **Solution**: Tests use Pooch for reproducible downloads from Zenodo - retry if network fails
+
+**Pitfall**: Pre-commit hooks not running
+- **Solution**: Ensure `pre-commit install` was run after `pip install`
+
+**Pitfall**: Config key not found errors
+- **Solution**: Add missing key to `hyrax_default_config.toml` with sensible default
+
+**Pitfall**: Model not registering
+- **Solution**: Ensure `@hyrax_model("ModelName")` decorator is present and file is imported
+
+**Pitfall**: Verb not appearing in CLI
+- **Solution**: Ensure `@hyrax_verb("verb_name")` decorator is present and verb is imported
+
+## Quick Command Reference
+
+See [HYRAX_GUIDE.md](./HYRAX_GUIDE.md#essential-commands) for full command reference.
+
 ```bash
-# Build documentation locally
-sphinx-build -M html ./docs ./_readthedocs -T -E -d ./docs/_build/doctrees
+# Development setup
+conda create -n hyrax python=3.10 && conda activate hyrax
+cd hyrax && echo 'y' | bash .setup_dev.sh      # NEVER CANCEL: 20+ min timeout
+
+# Quick validation (run after changes)
+ruff format src/ tests/ && ruff check src/ tests/    # 30 seconds
+pytest -m "not slow"                                  # NEVER CANCEL: 10+ min
+pre-commit run --all-files                            # NEVER CANCEL: 15+ min
+
+# Specific tests
+pytest tests/hyrax/test_config_utils.py              # Single file
+pytest tests/hyrax/test_infer.py::test_infer_basic  # Single test
+
+# CLI verification
+hyrax --help && hyrax --version                      # Verify CLI works
 ```
 
-### CLI Usage
-```bash
-# Show available verbs (commands)
-hyrax --help
-
-# Show version
-hyrax --version
-
-# Run with custom config
-hyrax <verb> -c path/to/config.toml
-
-# Common verbs
-hyrax train           # Train a model
-hyrax infer           # Run inference to generate latent space
-hyrax umap            # Dimensionality reduction on inference results
-hyrax visualize       # Interactive visualization
-hyrax save_to_database  # Populate vector DB from inference
-hyrax lookup          # Query vector DB
-```
-
-## Architecture Overview
-
-### Core Design Pattern: Plugin Architecture via Registries
-
-Hyrax uses three primary registries for extensibility:
-
-1. **MODEL_REGISTRY** (`models/model_registry.py`): Maps model names to PyTorch nn.Module classes
-   - The `@hyrax_model` decorator auto-registers models and injects standard interface methods
-   - Models must implement: `forward()`, `train_step()`, `to_tensor()`
-   - Automatic shape inference from dataset samples
-
-2. **DATA_SET_REGISTRY** (`data_sets/data_set_registry.py`): Maps dataset names to HyraxDataset classes
-   - Uses `__init_subclass__` for automatic registration when subclasses are defined
-   - Base class provides metadata interface, ID generation, catalog access
-
-3. **VERB_REGISTRY** (`verbs/verb_registry.py`): Maps CLI command names to Verb classes
-   - The `@hyrax_verb` decorator registers verbs
-   - Verbs can be class-based (with `run()` and `run_cli()` methods) or function-based
-
-### External Plugin Support
-
-External libraries can provide custom models/datasets/verbs by:
-1. Setting config values like `name = "external_pkg.model.CustomModel"`
-2. Providing a `default_config.toml` file in the package root
-3. Hyrax's `get_or_load_class()` in `plugin_utils.py` handles dynamic import and config merging
-
-### Configuration System
-
-- **TOML-based hierarchical configuration** with strong validation
-- **ConfigManager** merges: `hyrax_default_config.toml` + external library configs + user runtime config
-- **ConfigDict** enforces all keys must have defaults (prevents silent config bugs)
-- Automatic path resolution for relative paths
-- Use `ConfigDict` instead of regular dict in new code to catch missing defaults at runtime
-
-### Data Flow Through the System
-
-```
-1. DOWNLOAD (optional)
-   - Catalog (FITS) → Downloader → Cutout images + manifest.fits
-   - Stored in config[general][data_dir]
-
-2. PREPROCESSING (implicit in dataset)
-   - Dataset loads raw images → applies transforms (crop, tanh, etc.)
-   - Split into train/validate/test via SubsetSequentialSampler
-   - DataLoader batching with optional caching
-
-3. TRAINING
-   - train.py orchestrates: setup_dataset → setup_model → create_trainer
-   - Model.train_step() called per batch
-   - Checkpoints saved to timestamped results_dir
-   - MLflow logs metrics/params
-
-4. LATENT SPACE (Inference)
-   - Infer verb: Model.forward(batch) → latent vectors
-   - InferenceDataSetWriter saves: batch_<N>.npy files + batch_index.npy
-   - Optional: SaveToDatabase → ChromaDB for similarity search
-   - Umap verb: reduces latent space to 2D/3D
-
-5. VISUALIZATION/SEARCH
-   - Visualize: InferenceDataSet reads umap results → Holoviews scatter plot
-   - Lookup: Query ChromaDB by ID or vector → k-nearest neighbors
-```
-
-### Key Abstractions
-
-**Hyrax class** (`hyrax.py`): Central orchestration interface that wraps all functionality. Provides both programmatic and CLI access to all verbs via dynamic `__getattr__` that instantiates verb classes on demand.
-
-**HyraxDataset** (`data_sets/`): Base class for all datasets
-- Subclasses automatically register via `__init_subclass__`
-- Must provide metadata interface (fields, catalog data)
-- `HyraxImageDataset` mixin provides transform stacking via `_update_transform()`
-- Built-in datasets: HSCDataSet, LSSTDataset, FitsImageDataSet, HyraxCifarDataSet, InferenceDataSet
-
-**Model Registration**: The `@hyrax_model` decorator provides:
-- Automatic shape inference by sampling the dataset
-- Standardized save/load via PyTorch state_dict
-- Criterion and optimizer loading from config
-- Injection of common interface methods
-
-**Verb Pattern**: Base `Verb` class with `run()` (programmatic) and `run_cli()` (CLI) methods
-- CLI autodiscovery via `all_verbs()` in registry
-- Class-based verbs: Infer, Umap, Visualize, SaveToDatabase, Lookup, DatabaseConnection
-- Function-based verbs: train, download, prepare, rebuild_manifest
-
-**Result Chaining**: Verbs create timestamped result directories (`YYYYMMDD-HHMMSS-<verb>-<uid>`)
-- `find_most_recent_results_dir()` enables automatic chaining between verbs
-- InferenceDataSet preserves original dataset config for metadata access
-
-### Training Infrastructure
-
-- **PyTorch Ignite-based** distributed training (`pytorch_ignite.py`, `train.py`)
-- `setup_dataset()`: Instantiates dataset from config
-- `setup_model()`: Instantiates model, infers shape from dataset
-- `dist_data_loader()`: Creates distributed data loaders with train/validate/test splits
-- `create_trainer()`: Training engine with checkpointing, progress bars
-- MLflow integration for experiment tracking
-- TensorboardX for metric logging
-
-### Testing Conventions
-
-- **End-to-end tests** in `test_e2e.py` are parametrized across model/dataset combinations
-- Use `@pytest.mark.slow` for long-running tests (skipped in pre-commit and CI)
-- Test fixtures in `tests/hyrax/conftest.py` provide shared setup
-- Sample data uses Pooch for reproducible downloads from Zenodo DOIs
-- Pre-commit hook runs fast tests only: `pytest -n auto --cov=./src -m 'not slow'`
-
-## Important Architectural Conventions
-
-1. **Immutable Config**: ConfigDict prevents runtime mutations; all keys must have defaults
-2. **Timestamped Results**: Every verb execution creates a unique directory preventing overwrites
-3. **Metadata Preservation**: InferenceDataSet stores original dataset config to maintain catalog access
-4. **Automatic Registration**: Use decorators (`@hyrax_model`, `@hyrax_verb`) or `__init_subclass__` - no manual registration
-5. **Batch Indexing**: Inference results include `batch_index.npy` mapping object_ids → batch files (critical for ordered retrieval)
-6. **Transform Stacking**: HyraxImageDataset uses `_update_transform()` to compose torchvision transforms in sequence
-7. **Distributed Training**: PyTorch Ignite's `idist.auto_dataloader()` abstracts single/multi-GPU execution
-8. **External Library Support**: Config system detects `name = "pkg.Class"` and auto-loads `pkg/default_config.toml`
-
-## Code Style
-
-- **Line length**: 110 characters (configured in pyproject.toml)
-- **Python version**: >= 3.9, target 3.9 for compatibility
-- **Linter**: ruff (replaces black, isort, flake8)
-- **Docstrings**: Required for public classes and functions (enforced by ruff D101, D102, D103, D106)
-- **Pre-commit hooks**: Run automatically on commit (includes ruff, pytest, sphinx-build, jupyter nbconvert)
-- **No note-to-self comments**: Custom pre-commit hook prevents placeholder comments from being committed
-
-## Key Files and Modules
-
-- `src/hyrax/hyrax.py`: Main Hyrax orchestration class
-- `src/hyrax/config_utils.py`: Configuration system (ConfigManager, ConfigDict)
-- `src/hyrax/plugin_utils.py`: Dynamic plugin loading (`get_or_load_class`)
-- `src/hyrax/train.py`: Training orchestration with PyTorch Ignite
-- `src/hyrax/pytorch_ignite.py`: Setup functions for datasets, models, data loaders
-- `src/hyrax_cli/main.py`: CLI entry point with auto-discovered verb subparsers
-- `src/hyrax/models/model_registry.py`: Model registration and `@hyrax_model` decorator
-- `src/hyrax/data_sets/data_set_registry.py`: Dataset registration
-- `src/hyrax/verbs/verb_registry.py`: Verb registration and `@hyrax_verb` decorator
-- `src/hyrax/vector_dbs/`: Vector database abstraction (ChromaDB implementation)
-- `tests/hyrax/test_e2e.py`: End-to-end integration tests
-
-## Adding New Components
-
-### Adding a New Model
-1. Subclass `torch.nn.Module` in `src/hyrax/models/`
-2. Add `@hyrax_model` decorator with a unique name
-3. Implement required methods: `forward()`, `train_step()`, `to_tensor()`
-4. Model will auto-register and be available via CLI: `hyrax train -c config.toml` (with `model.name = "YourModelName"`)
-
-### Adding a New Dataset
-1. Subclass `HyraxDataset` in `src/hyrax/data_sets/`
-2. Set `_name` class attribute (triggers auto-registration via `__init_subclass__`)
-3. Implement required methods: `__len__()`, `__getitem__()`, metadata interface
-4. For image datasets, subclass `HyraxImageDataset` to get transform stacking
-
-### Adding a New Verb
-1. Create a class in `src/hyrax/verbs/` that implements `run()` and optionally `run_cli()`
-2. Add `@hyrax_verb("verb_name")` decorator
-3. Implement `setup_parser(parser)` class method for CLI argument parsing
-4. Set `add_parser_kwargs` class attribute for help text
-5. Verb will be available via CLI: `hyrax verb_name [args]` and programmatically: `hyrax_instance.verb_name()`
