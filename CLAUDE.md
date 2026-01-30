@@ -21,6 +21,17 @@ Hyrax is a low-code Python tool for machine learning in astronomy. Key facts:
 - Adding new components
 - Data flow through the system
 
+## Claude Skills
+
+**Claude Code users**: Hyrax provides specialized skills for common development tasks. Access these via the Skills panel in Claude Code or reference them when needed:
+
+- **[Hyrax Development Workflow](.github/skills/hyrax-development-workflow.json)**: Complete dev setup → code → test → commit workflow with timeout expectations
+- **[Hyrax Testing Strategy](.github/skills/hyrax-testing-strategy.json)**: pytest markers, parallel execution, fixtures, network retry strategies
+- **[Adding Hyrax Components](.github/skills/adding-hyrax-components.json)**: Step-by-step guides for adding models, datasets, and verbs with decorators
+- **[Hyrax Configuration System](.github/skills/hyrax-configuration-system.json)**: ConfigDict usage, defaults, key=false convention, immutability rules
+
+These skills provide focused, actionable guidance for common tasks and help avoid confusion about tooling and patterns.
+
 ## Claude-Specific Guidance
 
 ### Command Execution Strategy
@@ -207,4 +218,14 @@ pytest tests/hyrax/test_infer.py::test_infer_basic  # Single test
 # CLI verification
 hyrax --help && hyrax --version                      # Verify CLI works
 ```
+
+## Using Claude Skills
+
+For detailed guidance on specific tasks, consult the Claude Skills in `.github/skills/`:
+- Development workflow and validation
+- Testing strategy and pytest usage
+- Adding models, datasets, and verbs
+- Configuration system and ConfigDict
+
+These skills provide step-by-step instructions and best practices for common Hyrax development tasks.
 
