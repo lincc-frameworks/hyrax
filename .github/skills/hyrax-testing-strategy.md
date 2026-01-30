@@ -35,6 +35,7 @@ Hyrax uses pytest markers to categorize tests by execution time:
 - Include end-to-end integration tests
 - Run separately from fast tests
 - May involve network I/O, large datasets
+- **WARNING**: Do not run on GitHub Action runners - they will timeout. Only run slow tests on beefy local hardware.
 
 ### Test Execution Commands
 

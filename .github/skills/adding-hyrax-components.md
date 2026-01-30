@@ -183,7 +183,7 @@ hyrax train -c config.toml
 ### Dataset Requirements
 
 All Hyrax datasets MUST:
-1. Subclass `HyraxDataset` or `HyraxImageDataset`
+1. Subclass `HyraxDataset` directly or indirectly through child classes
 2. Set `_name` class attribute (triggers auto-registration)
 3. Implement: `__len__()`, `__getitem__()`, metadata interface
 
@@ -194,35 +194,36 @@ All Hyrax datasets MUST:
 Location: `src/hyrax/data_sets/my_dataset.py`
 
 ```python
-import torch
 from pathlib import Path
-from hyrax.data_sets.hyrax_image_dataset import HyraxImageDataset
+from hyrax.data_sets.data_set_registry import HyraxDataset
 
-class MyDataset(HyraxImageDataset):
+class MyDataset(HyraxDataset):
     """Custom dataset for my astronomy data.
     
-    This dataset loads <describe data source>.
+    This dataset loads tabular data from <describe data source>.
     """
     
     # Auto-registration via _name attribute
     _name = "MyDataset"
     
-    def __init__(self, config, split="train"):
+    def __init__(self, config, data_location=None):
         """Initialize dataset.
         
         Args:
             config: Hyrax config dictionary
-            split: Data split (train/val/test)
+            data_location: Path to data file
         """
-        super().__init__(config, split)
+        self.data_location = data_location or Path(config["data"]["data_location"])
         
-        # Load data file list
-        self.data_dir = Path(config["data"]["root_dir"])
-        self.file_list = self._load_file_list(split)
+        # Load your data here
+        self.data = self._load_data()
+        
+        # Call parent __init__ at the end
+        super().__init__(config)
     
     def __len__(self):
         """Return dataset size."""
-        return len(self.file_list)
+        return len(self.data)
     
     def __getitem__(self, idx):
         """Get single data item.
@@ -233,39 +234,25 @@ class MyDataset(HyraxImageDataset):
         Returns:
             Dictionary with data item
         """
-        # Load image
-        image_path = self.file_list[idx]
-        image = self._load_image(image_path)
-        
-        # Apply transforms (handled by HyraxImageDataset)
-        if self.transform:
-            image = self.transform(image)
-        
         return {
-            "image": image,
-            "label": self._get_label(idx),
-            "metadata": self._get_metadata(idx)
+            "data": self.data[idx],
+            "label": self._get_label(idx) if hasattr(self, '_get_label') else None,
         }
     
-    def _load_file_list(self, split):
-        """Load list of files for split."""
-        split_file = self.data_dir / f"{split}.txt"
-        with open(split_file) as f:
-            return [line.strip() for line in f]
-    
-    def _load_image(self, path):
-        """Load single image."""
-        # Implementation depends on image format
+    def _load_data(self):
+        """Load data from file."""
+        # Implementation depends on data format
+        # e.g., np.load(), pd.read_csv(), etc.
         pass
     
-    def _get_label(self, idx):
-        """Get label for item."""
-        # Return label if supervised, None if unsupervised
-        pass
+    def sample_data(self):
+        """Return the first record as a sample."""
+        return {"data": self.data[0]}
     
-    def _get_metadata(self, idx):
-        """Get metadata for item."""
-        return {"index": idx, "path": str(self.file_list[idx])}
+    @classmethod
+    def is_map(cls):
+        """Indicate this is a map-style dataset."""
+        return True
 ```
 
 #### 2. Registration (Automatic)
@@ -279,7 +266,7 @@ Location: `src/hyrax/data_sets/my_dataset_default_config.toml`
 ```toml
 [data]
 name = "MyDataset"
-root_dir = "/path/to/data"
+data_location = "/path/to/data"
 batch_size = 32
 num_workers = 4
 ```
@@ -303,22 +290,24 @@ from hyrax.data_sets import MyDataset
 
 def test_my_dataset_creation(tmp_path):
     """Test dataset can be created."""
-    config = {"data": {"name": "MyDataset", "root_dir": str(tmp_path)}}
-    dataset = MyDataset(config)
+    config = {"data": {"name": "MyDataset", "data_location": str(tmp_path / "data.csv")}}
+    dataset = MyDataset(config, data_location=tmp_path / "data.csv")
     assert dataset is not None
 
 def test_my_dataset_length(tmp_path):
     """Test dataset length."""
     # Setup test data
-    dataset = MyDataset(config)
-    assert len(dataset) > 0
+    config = {"data": {"name": "MyDataset", "data_location": str(tmp_path / "data.csv")}}
+    dataset = MyDataset(config, data_location=tmp_path / "data.csv")
+    assert len(dataset) >= 0
 
 def test_my_dataset_getitem(tmp_path):
     """Test getting data item."""
-    dataset = MyDataset(config)
-    item = dataset[0]
-    assert "image" in item
-    assert "label" in item
+    config = {"data": {"name": "MyDataset", "data_location": str(tmp_path / "data.csv")}}
+    dataset = MyDataset(config, data_location=tmp_path / "data.csv")
+    if len(dataset) > 0:
+        item = dataset[0]
+        assert "data" in item
 ```
 
 ## Adding a New Verb
@@ -338,19 +327,18 @@ All Hyrax verbs MUST:
 Location: `src/hyrax/verbs/my_verb.py`
 
 ```python
-import argparse
-from pathlib import Path
-from hyrax.verbs.verb_registry import hyrax_verb
+from hyrax.verbs.verb_registry import hyrax_verb, Verb
 from hyrax import Hyrax
 
-@hyrax_verb("myverb")
-class MyVerb:
+@hyrax_verb
+class MyVerb(Verb):
     """Custom verb for doing something useful.
     
     This verb performs <describe functionality>.
     """
     
-    # Help text for CLI
+    # CLI name and help text
+    cli_name = "myverb"
     add_parser_kwargs = {
         "help": "Perform my custom operation",
         "description": "Detailed description of what this verb does."
@@ -360,79 +348,61 @@ class MyVerb:
     def setup_parser(parser):
         """Setup argument parser for CLI.
         
-        Args:
-            parser: argparse.ArgumentParser
+        Most verbs don't need CLI arguments - prefer configuration over parameters.
         """
-        parser.add_argument(
-            "-c", "--config",
-            type=str,
-            required=True,
-            help="Path to configuration file"
-        )
-        parser.add_argument(
-            "-o", "--output",
-            type=str,
-            help="Output directory"
-        )
-        parser.add_argument(
-            "--option",
-            action="store_true",
-            help="Enable optional behavior"
-        )
+        pass
     
-    @staticmethod
-    def run(config, output_dir=None, option=False):
+    def run(self):
         """Execute verb logic.
         
-        Args:
-            config: Hyrax config dictionary
-            output_dir: Optional output directory
-            option: Optional flag
-            
         Returns:
             Results dictionary
         """
-        # Initialize Hyrax
-        hyrax = Hyrax(config)
+        # Access config from self.config
+        config = self.config
+        
+        # Initialize Hyrax if needed
+        # hyrax = Hyrax(config)
         
         # Perform verb logic
-        results = perform_operation(hyrax, output_dir, option)
+        results = self._perform_operation()
         
         # Save results
-        if output_dir:
-            save_results(results, output_dir)
+        self._save_results(results)
         
         return results
     
-    @staticmethod
-    def run_cli(args):
+    def run_cli(self, args=None):
         """Execute verb from CLI.
         
         Args:
-            args: Parsed command line arguments
+            args: Parsed command line arguments (usually None)
             
         Returns:
             Exit code (0 for success)
         """
-        # Load config
-        config = load_config(args.config)
-        
-        # Run verb
-        results = MyVerb.run(
-            config,
-            output_dir=args.output,
-            option=args.option
-        )
+        # Run the verb
+        results = self.run()
         
         # Print summary
-        print(f"Operation complete: {results['summary']}")
+        print(f"Operation complete: {results.get('summary', 'Done')}")
         
         return 0
+    
+    def _perform_operation(self):
+        """Internal method to perform the actual work."""
+        # Implementation here
+        return {"summary": "Success"}
+    
+    def _save_results(self, results):
+        """Save results to output directory."""
+        # Implementation here
+        pass
 ```
 
 #### 2. Registration (Automatic)
 
-The `@hyrax_verb("myverb")` decorator handles automatic CLI registration.
+The `@hyrax_verb` decorator handles automatic CLI registration.
 
 #### 3. Import in `__init__.py`
 
@@ -450,29 +420,15 @@ __all__ = [..., "MyVerb"]
 # tests/hyrax/verbs/test_my_verb.py
 import pytest
 from hyrax.verbs import MyVerb
+from hyrax import Hyrax
 
 def test_my_verb_run(default_config):
     """Test verb execution."""
-    results = MyVerb.run(default_config)
+    hyrax = Hyrax(default_config)
+    verb = MyVerb(hyrax)
+    results = verb.run()
     assert results is not None
     assert "summary" in results
-
-def test_my_verb_cli(tmp_path, default_config):
-    """Test CLI execution."""
-    # Save config
-    config_path = tmp_path / "config.toml"
-    save_config(default_config, config_path)
-    
-    # Mock CLI args
-    args = argparse.Namespace(
-        config=str(config_path),
-        output=str(tmp_path),
-        option=True
-    )
-    
-    # Run CLI
-    exit_code = MyVerb.run_cli(args)
-    assert exit_code == 0
 ```
 
 #### 5. Use via CLI
@@ -481,55 +437,9 @@ def test_my_verb_cli(tmp_path, default_config):
 # View help
 hyrax myverb --help
 
-# Execute verb
-hyrax myverb -c config.toml -o output/ --option
+# Execute verb (config loaded from hyrax CLI framework)
+hyrax myverb -c config.toml
 ```
-
-## Common Registration Issues
-
-### Model Not Registering
-
-**Problem**: Model not available in CLI
-
-**Solutions**:
-1. Verify `@hyrax_model("ModelName")` decorator present
-2. Check model imported in `src/hyrax/models/__init__.py`
-3. Ensure decorator uses correct string name
-4. Check for syntax errors in model file
-
-### Dataset Not Registering
-
-**Problem**: Dataset not found by name
-
-**Solutions**:
-1. Verify `_name` class attribute is set
-2. Check dataset imported in `src/hyrax/data_sets/__init__.py`
-3. Ensure `_name` matches config `[data] name = "..."`
-4. Check class actually subclasses `HyraxDataset` or `HyraxImageDataset`
-
-### Verb Not in CLI
-
-**Problem**: Verb command not available
-
-**Solutions**:
-1. Verify `@hyrax_verb("verb_name")` decorator present
-2. Check verb imported in `src/hyrax/verbs/__init__.py`
-3. Ensure `setup_parser()` and `run_cli()` methods exist
-4. Check `add_parser_kwargs` is set
-5. Verify no syntax errors in verb file
-
-## External Plugins
-
-For external packages:
-```toml
-[model]
-name = "my_package.MyModel"  # Triggers auto-load of my_package/default_config.toml
-```
-
-Hyrax will:
-1. Import `my_package.MyModel`
-2. Look for `my_package/default_config.toml`
-3. Merge with local config
 
 ## Best Practices
 
@@ -542,18 +452,18 @@ Hyrax will:
 6. Add comprehensive tests
 
 ### Datasets
-1. Subclass appropriate base (`HyraxDataset` or `HyraxImageDataset`)
+1. Subclass `HyraxDataset` directly or indirectly
 2. Use `_name` attribute for registration
 3. Return dictionaries from `__getitem__()`
-4. Include metadata in returned items
-5. Handle splits (train/val/test) appropriately
+4. Implement the metadata interface
+5. Call `super().__init__(config)` at the end of your `__init__`
 6. Use Pooch for reproducible data downloads in tests
 
 ### Verbs
 1. Use clear, action-oriented names
-2. Provide helpful CLI help text
+2. Provide helpful CLI help text in `add_parser_kwargs`
 3. Implement both `run()` and `run_cli()`
-4. Return meaningful exit codes
+4. Prefer configuration over CLI parameters
 5. Save results to timestamped directories
 6. Print progress and summary information
 
