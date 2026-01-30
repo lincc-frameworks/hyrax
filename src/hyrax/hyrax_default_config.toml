@@ -16,6 +16,16 @@ data_dir = "./data"
 #Top level directory for writing results.
 results_dir = "./results"
 
+# Storage backend for inference results. Options: "auto", "lance", "npy".
+# "auto" uses LanceDB for new writes and auto-detects format on read.
+# "lance" always uses LanceDB format (convertible to Pandas/Parquet).
+# "npy" uses legacy numpy structured arrays.
+storage_backend = "auto"
+
+# Automatically migrate .npy files to LanceDB format on first read.
+# Only applies when storage_backend = "auto".
+auto_migrate_to_lance = false
+
 
 [download]
 # Cut out width in arcseconds.

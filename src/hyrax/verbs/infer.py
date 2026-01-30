@@ -96,7 +96,7 @@ class Infer(Verb):
 
         model.save(results_dir / "inference_weights.pth")
 
-        data_writer = InferenceDataSetWriter(dataset, results_dir)
+        data_writer = InferenceDataSetWriter(dataset, results_dir, config)
 
         # These are values the _save_batch callback needs to run
         write_index = 0
