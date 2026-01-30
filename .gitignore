@@ -164,5 +164,3 @@ mlruns/
 
 #JSON data files used by the 3d visualizer
 *.json
-# Exception: Claude skills are configuration files, not data
-!.github/skills/*.json

@@ -5,7 +5,7 @@ This directory contains Claude Code skills for Hyrax development. Skills are reu
 ## Available Skills
 
 ### 1. Hyrax Development Workflow
-**File**: `hyrax-development-workflow.json`
+**File**: `hyrax-development-workflow.md`
 
 Complete guide for setup → code → test → commit workflow. Covers:
 - Environment setup with conda/pip
@@ -17,7 +17,7 @@ Complete guide for setup → code → test → commit workflow. Covers:
 **Use when**: Setting up dev environment, validating changes, understanding timeouts
 
 ### 2. Hyrax Testing Strategy
-**File**: `hyrax-testing-strategy.json`
+**File**: `hyrax-testing-strategy.md`
 
 Comprehensive testing guide covering:
 - Fast vs slow test markers (`@pytest.mark.slow`)
@@ -29,7 +29,7 @@ Comprehensive testing guide covering:
 **Use when**: Running tests, adding new tests, debugging failures
 
 ### 3. Adding Hyrax Components
-**File**: `adding-hyrax-components.json`
+**File**: `adding-hyrax-components.md`
 
 Step-by-step guides for:
 - Adding new models with `@hyrax_model` decorator
@@ -40,7 +40,7 @@ Step-by-step guides for:
 **Use when**: Adding models, datasets, or verbs to Hyrax
 
 ### 4. Hyrax Configuration System
-**File**: `hyrax-configuration-system.json`
+**File**: `hyrax-configuration-system.md`
 
 Configuration system deep dive:
 - ConfigDict vs regular dict usage
@@ -67,19 +67,18 @@ Example prompts:
 
 ### Manual Reference
 
-Skills are JSON files with structured instructions. You can:
+Skills are Markdown files with structured instructions. You can:
 1. Read them directly for guidance
 2. Copy/paste relevant sections for reference
 3. Share links to specific skills in documentation
 
 ## Skill Structure
 
-Each skill JSON contains:
-- `name`: Human-readable skill name
-- `description`: Brief description of skill purpose
-- `version`: Semantic version for tracking updates
-- `tags`: Keywords for discovery
-- `instructions`: Detailed markdown instructions
+Each skill Markdown file contains:
+- YAML frontmatter with metadata (`name`, `description`, `version`, `tags`)
+- Comprehensive markdown instructions
+- Code examples and command references
+- Cross-references to related skills and documentation
 
 ## Best Practices
 
@@ -97,9 +96,9 @@ Each skill JSON contains:
 ## Contributing
 
 When updating skills:
-1. Maintain JSON structure (name, description, version, tags, instructions)
+1. Maintain YAML frontmatter with metadata (name, description, version, tags)
 2. Use clear, actionable markdown in instructions
 3. Include code examples and command reference
 4. Cross-reference related skills
 5. Update version numbers semantically
-6. Validate JSON syntax after changes
+6. Follow standard Markdown formatting
