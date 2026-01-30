@@ -806,7 +806,10 @@ def create_trainer(
         if model.scheduler:
             if not hasattr(model, "lrs"):
                 model.lrs = []
-            model.lrs.append(model.scheduler.get_last_lr()[0])
+            epoch_lr = model.scheduler.get_last_lr()[0]
+            epoch_number = trainer.state.epoch
+            model.lrs.append(epoch_lr)
+            tensorboardx_logger.add_scalar("training/training/epoch/lr", epoch_lr, global_step=epoch_number)
             model.scheduler.step()
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
