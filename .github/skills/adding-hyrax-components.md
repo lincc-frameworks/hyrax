@@ -236,7 +236,6 @@ class MyDataset(HyraxDataset):
         """
         return {
             "data": self.data[idx],
-            "label": self._get_label(idx) if hasattr(self, '_get_label') else None,
         }
     
     def _load_data(self):
@@ -244,16 +243,30 @@ class MyDataset(HyraxDataset):
         # Implementation depends on data format
         # e.g., np.load(), pd.read_csv(), etc.
         pass
-    
-    def sample_data(self):
-        """Return the first record as a sample."""
-        return {"data": self.data[0]}
-    
-    @classmethod
-    def is_map(cls):
-        """Indicate this is a map-style dataset."""
-        return True
 ```
+
+**Optional Metadata Interface**: If you have per-item metadata, pass an Astropy Table to `super().__init__()`:
+
+```python
+from astropy.table import Table
+
+class MyDataset(HyraxDataset):
+    def __init__(self, config, data_location=None):
+        self.data_location = data_location or Path(config["data"]["data_location"])
+        self.data = self._load_data()
+        
+        # Create metadata table with same order as data
+        metadata_table = Table({
+            'object_id': ['obj_0', 'obj_1', 'obj_2'],
+            'ra': [10.5, 20.3, 30.1],
+            'dec': [5.2, -3.4, 12.8]
+        })
+        
+        # Pass metadata to parent
+        super().__init__(config, metadata_table=metadata_table, object_id_column_name='object_id')
+```
+
+This provides automatic `metadata_fields()` and `metadata()` methods for visualization.
 
 #### 2. Registration (Automatic)
 

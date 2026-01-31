@@ -111,21 +111,31 @@ new_value = config["model"]["new_parameter"]
 
 ## The `key = false` Convention
 
-**Convention**: `key = false` in TOML means the key is optional and evaluates to `None` in Python.
+**Convention**: In Hyrax, `key = false` in TOML is used to represent `None` values, since TOML has no native `None` syntax.
+
+The common codebase pattern is:
+```python
+foo_value = config['foo'] if config['foo'] != False else None
+```
+
+Use `key = false` when:
+1. The config is required and the user must supply it
+2. The config is optional and `None` has sensible behavior (e.g., feature disabled)
 
 ```toml
 [model]
-optional_param = false  # Means "None" or "not set"
+optional_param = false  # User must provide, or None disables feature
 
 [data]
-pretrained_weights = false  # Optional path
+pretrained_weights = false  # Optional path, None means no pretrained weights
 ```
 
 ```python
-# In Python
-if config["model"]["optional_param"]:
-    use_param(config["model"]["optional_param"])
-# If false in TOML, this branch is skipped
+# In Python - common pattern
+pretrained = config["data"]["pretrained_weights"]
+if pretrained != False:
+    load_pretrained_weights(pretrained)
+# If false in TOML, pretrained stays False and is not used
 ```
 
 ## Common Configuration Errors
@@ -149,7 +159,7 @@ new_param = default_value  # Or false if optional
 ## Best Practices
 
 1. **Always provide defaults**: Every key must be in `hyrax_default_config.toml`
-2. **Use `key = false` for optional features**: This clearly indicates optional parameters
+2. **Use `key = false` convention**: For required user input or optional features where `None` makes sense
 3. **Access via Hyrax object**: Use `hyrax.config`, don't create ConfigDict directly
 4. **Read-only access**: Never try to modify config after creation
 5. **Document new keys**: Add descriptions to HYRAX_GUIDE.md
