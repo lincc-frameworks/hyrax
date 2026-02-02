@@ -131,7 +131,8 @@ def _torch_schedulers(self: nn.Module):
     if not isinstance(self.optimizer, optim.Optimizer):
         raise RuntimeError("Model optimizer must be a torch.optim.Optimizer")
 
-    return scheduler_cls(self.optimizer, **arguments)
+    scheduler = scheduler_cls(self.optimizer, **arguments)
+    return scheduler
 
 
 def hyrax_model(cls):

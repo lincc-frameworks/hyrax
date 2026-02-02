@@ -111,26 +111,115 @@ def test_constant_scheduler(loopback_hyrax):
     Ensure that setting a ConstantLR works properly
     """
     h, _ = loopback_hyrax
+    factor = 0.5
     h.config["scheduler"]["name"] = "torch.optim.lr_scheduler.ConstantLR"
-    h.config["torch.optim.lr_scheduler.ConstantLR"] = {"total_iters": 4, "factor": 0.5}
+    h.config["torch.optim.lr_scheduler.ConstantLR"] = {"total_iters": 4, "factor": factor}
     h.config["train"]["epochs"] = 6
-    initial_lr = h.config[h.config["optimizer"]["name"]]["lr"]
+    initial_lr = 128
+    h.config[h.config["optimizer"]["name"]]["lr"] = 128
     model = h.train()
 
     assert hasattr(model, "lrs")
-    assert model.lrs == [initial_lr * 0.5] * 4 + [initial_lr] * 2
+    assert model.lrs == [initial_lr * factor] * 4 + [initial_lr] * 2
 
 
-def test_default_exponential_scheduler(loopback_hyrax):
+def test_exponential_scheduler(loopback_hyrax):
     """
     Ensure that using an ExponentialLR scheduler without any arguments
     pulls the default (useless) arguments
     """
     h, _ = loopback_hyrax
+    gamma = 0.5
     h.config["scheduler"]["name"] = "torch.optim.lr_scheduler.ExponentialLR"
+    h.config["torch.optim.lr_scheduler.ExponentialLR"] = {"gamma": gamma}
     h.config["train"]["epochs"] = 5
-    initial_lr = h.config[h.config["optimizer"]["name"]]["lr"]
+    initial_lr = 128
+    h.config[h.config["optimizer"]["name"]]["lr"] = initial_lr
     model = h.train()
 
     assert hasattr(model, "lrs")
-    assert model.lrs == [initial_lr] * 5
+    assert model.lrs == [initial_lr * gamma**i for i in range(h.config["train"]["epochs"])]
+
+
+def test_exponential_scheduler_checkpointing(loopback_hyrax, tmp_path):
+    """
+    Ensure that using an ExponentialLR scheduler without any arguments
+    pulls the default (useless) arguments
+    """
+    checkpoint_filename = "checkpoint_epoch_3.pt"
+    h, _ = loopback_hyrax
+
+    # set results directory to a temporary path
+    h.config["general"]["results_dir"] = str(tmp_path)
+
+    # set the scheduler up
+    gamma = 0.5
+    initial_lr = 128
+    h.config["scheduler"]["name"] = "torch.optim.lr_scheduler.ExponentialLR"
+    h.config["torch.optim.lr_scheduler.ExponentialLR"] = {"gamma": gamma}
+    h.config["train"]["epochs"] = 3
+    h.config[h.config["optimizer"]["name"]]["lr"] = initial_lr
+
+    # run initial training to create a saved model file
+    model = h.train()
+
+    # first 3 epochs working as expected
+    assert hasattr(model, "lrs")
+    assert model.lrs == [initial_lr * gamma**i for i in range(3)]
+
+    # find the model file in the most recent results directory
+    results_dir = find_most_recent_results_dir(h.config, "train")
+    checkpoint_path = results_dir / checkpoint_filename
+
+    # Now, set the resume config to point to this checkpoint
+    h.config["train"]["resume"] = str(checkpoint_path)
+
+    # We will try running for two more epochs
+    h.config["train"]["epochs"] = 5
+    # Resume training
+    model = h.train()
+
+    assert hasattr(model, "lrs")
+    assert model.lrs == [initial_lr * gamma**i for i in range(3, 5)]
+
+
+def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
+    """
+    Ensure that using an ExponentialLR scheduler without any arguments
+    pulls the default (useless) arguments
+    """
+    checkpoint_filename = "checkpoint_epoch_2.pt"
+    h, _ = loopback_hyrax
+
+    # set results directory to a temporary path
+    h.config["general"]["results_dir"] = str(tmp_path)
+
+    # set the scheduler up
+    factor = 0.5
+    initial_lr = 128
+    h.config["scheduler"]["name"] = "torch.optim.lr_scheduler.ConstantLR"
+    h.config["torch.optim.lr_scheduler.ConstantLR"] = {"total_iters": 3, "factor": factor}
+    h.config["train"]["epochs"] = 2
+    h.config[h.config["optimizer"]["name"]]["lr"] = initial_lr
+
+    # run initial training to create a saved model file
+    model = h.train()
+
+    # first 2 epochs working as expected
+    assert hasattr(model, "lrs")
+    assert model.lrs == [initial_lr * factor for _ in range(h.config["train"]["epochs"])]
+
+    # find the model file in the most recent results directory
+    results_dir = find_most_recent_results_dir(h.config, "train")
+    checkpoint_path = results_dir / checkpoint_filename
+
+    # Now, set the resume config to point to this checkpoint
+    h.config["train"]["resume"] = str(checkpoint_path)
+
+    # We will try running for three more epochs
+    h.config["train"]["epochs"] = 5
+    # Resume training
+    model = h.train()
+
+    assert hasattr(model, "lrs")
+    assert model.lrs == [initial_lr * factor] + [initial_lr for _ in range(2)]

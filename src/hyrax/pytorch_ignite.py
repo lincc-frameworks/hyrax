@@ -732,12 +732,16 @@ def create_trainer(
     fixup_engine(trainer)
 
     optimizer = extract_model_method(model, "optimizer")
+    scheduler = extract_model_method(model, "scheduler")
 
     to_save = {
         "model": model,
         "optimizer": optimizer,
         "trainer": trainer,
     }
+
+    if scheduler:
+        to_save["scheduler"] = scheduler
 
     #! We may want to move the checkpointing logic over to the `validator`.
     #! It was created here initially because this was the only place where the
@@ -807,7 +811,7 @@ def create_trainer(
             if not hasattr(model, "lrs"):
                 model.lrs = []
             epoch_lr = model.scheduler.get_last_lr()[0]
-            epoch_number = trainer.state.epoch
+            epoch_number = trainer.state.epoch - 1
             model.lrs.append(epoch_lr)
             tensorboardx_logger.add_scalar("training/training/epoch/lr", epoch_lr, global_step=epoch_number)
             model.scheduler.step()

@@ -171,10 +171,9 @@ name = "torch.optim.lr_scheduler.ExponentialLR"
 # the decay multipler on each epoch
 gamma = 1
 
-# the last epoch completed, in case one wishes to resume training from the middle.
-# -1 means it just starts at the beginning.
-last_epoch = -1
+["torch.optim.lr_scheduler.ConstantLR"]
 
+last_epoch = -1
 
 [train]
 # The name of the file were the model weights will be saved after training.
