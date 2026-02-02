@@ -104,6 +104,17 @@ latent_dim = 64
 # The activation function of the final layer.
 final_layer = "tanh"
 
+[model.ImageDCAE]
+# The number of output channels from the first layer.
+base_channel_size = 32
+
+# The length of the latent space vector.
+latent_dim = 512
+
+# The activation function of the final layer.
+final_layer = "identity"
+
+
 [model.SimCLR]
 # The dimension of the projection head for SimCLR
 projection_dimension = 128
@@ -197,6 +208,21 @@ experiment_name = "notebook"
 run_name = false
 
 
+[test]
+# The path to the model weights file to use for testing. If `false`, the most recent
+# training results (from [train]) will be used.
+model_weights_file = false
+
+# The name of the experiment when logging test results to mlflow.
+# If not set, uses the experiment name from [train].
+experiment_name = "notebook"
+
+# The name of the run when logging test results to mlflow.
+# If false, uses result directory string, <timestamp>-test-<uid>, as run name.
+run_name = false
+
+
+
 [onnx]
 
 # The operator set version to use when exporting a model. See the following for info:
@@ -208,13 +234,17 @@ opset_version = 20
 input_model_directory = false
 
 
-[model_inputs]
+[data_request]
 # Top-level table that defines the dataset(s) used for training, validation, and inference.
+
+
+[model_inputs]
+# DEPRECATED: Use [data_request] instead. This will be removed in the next major release.
 
 
 [data_set]
 # Warning - using data_set.name to define the dataset class will be deprecated.
-# Please use [model_inputs.<friendly_name>.dataset_class] instead. See usage above.
+# Please use [data_request.<friendly_name>.dataset_class] instead. See usage above.
 name = "HyraxCifarDataset"
 
 # Crop pixel dimensions for images, e.g., [100, 100]. If false, scans for the

@@ -44,8 +44,8 @@ class ImageDCAE(nn.Module):
             self.image_height, self.image_width = self.input_shape[1], self.input_shape[2]
 
         # Get latent dimension from config (similar to HyraxAutoencoder)
-        self.latent_dim = config["model"].get("latent_dim", 512)
-        self.base_channel_size = config["model"].get("base_channel_size", 32)
+        self.latent_dim = config["model"]["ImageDCAE"]["latent_dim"]
+        self.base_channel_size = config["model"]["ImageDCAE"]["base_channel_size"]
 
         # Calculate the size after convolutional layers for the linear bottleneck
         self.conv_output_size = self._calculate_conv_output_size()
@@ -89,7 +89,7 @@ class ImageDCAE(nn.Module):
         self.activation = nn.GELU()  # Better gradients than ReLU
 
         # Configure final activation
-        final_layer = config["model"].get("final_layer", "identity")
+        final_layer = config["model"]["ImageDCAE"]["final_layer"]
         if final_layer == "sigmoid":
             self.final_activation = nn.Sigmoid()
         elif final_layer == "tanh":
@@ -218,7 +218,7 @@ class ImageDCAE(nn.Module):
         return {"loss": loss.item()}
 
     @staticmethod
-    def to_tensor(data_dict):
+    def prepare_inputs(data_dict):
         """Convert structured data to tensor format."""
         data_dict = data_dict["data"]
         if "image" in data_dict:

@@ -20,13 +20,13 @@ import torch
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
-from tensorboardX import SummaryWriter
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 from hyrax.plugin_utils import get_or_load_class
+from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,7 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     return is_iterable
 
 
-def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None) -> Dataset:
+def setup_dataset(config: dict) -> Dataset:
     """This function creates an instance of the requested dataset specified in the
     runtime configuration. There are two modes encapsulated here:
 
@@ -80,8 +80,6 @@ def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None
     ----------
     config : dict
         The runtime configuration
-    tensorboardx_logger : SummaryWriter, optional
-        If Tensorboard is in use, the tensorboard logger so the dataset can log things
 
     Returns
     -------
@@ -119,17 +117,13 @@ def setup_dataset(config: dict, tensorboardx_logger: SummaryWriter | None = None
             data_location = data_definition.get("data_location", None)
             ds = dataset_cls(config=config, data_location=data_location)
 
-            ds.tensorboardx_logger = tensorboardx_logger
-
             dataset[set_name] = ds
 
     else:
-        # We know that `model_inputs` will always have at least 2 sub-tables, `train`
+        # We know that `data_request` will always have at least 2 sub-tables, `train`
         # and `infer`. It may have additional sub-tables such as `validate`.
         for key, value in data_request.items():
             ds = DataProvider(config, value)
-            for friendly_name in ds.prepped_datasets:
-                ds.prepped_datasets[friendly_name].tensorboardx_logger = tensorboardx_logger
             dataset[key] = ds
 
     return dataset
@@ -156,14 +150,14 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
 
-    # Pass a single sample of data through the model's to_tensor function
+    # Pass a single sample of data through the model's prepare_inputs function
     # ? I don't think that the `if` portion of this logic is used, should double check
     if isinstance(dataset, dict):
         # If we have multiple datasets, just take the first one
         first_dataset = next(iter(dataset.values()))
-        data_sample = model_cls.to_tensor(first_dataset.sample_data())
+        data_sample = model_cls.prepare_inputs(first_dataset.sample_data())
     else:
-        data_sample = model_cls.to_tensor(dataset.sample_data())
+        data_sample = model_cls.prepare_inputs(dataset.sample_data())
 
     # Provide the data sample for runtime modifications to the model architecture
     return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
@@ -375,143 +369,12 @@ def create_splits(data_set: Dataset, config: dict):
     return split_inds
 
 
-@functools.singledispatch
-def _handle_nans(batch, config):
-    """The default _handle_nan function. Will print a warning and return `batch`."""
-    logger.warning(
-        f"Encountered an unhandled batch type, {type(batch)}, while\
-                   attempting to handle NaN values in the data."
-    )
-    return batch
-
-
-@_handle_nans.register(torch.Tensor)
-def _handle_nans_tensor(batch, config):
-    """The implementation of _handle_nans when expecting `batch` to be a tensor."""
-    return _handle_nans_logic_torch(batch, config)
-
-
-@_handle_nans.register(np.ndarray)
-def _handle_nans_numpy(batch, config):
-    return _handle_nans_logic_numpy(batch, config)
-
-
-# Register tuples and lists because we're not sure yet which will be returned
-# from to_tensor.
-@_handle_nans.register(tuple)
-@_handle_nans.register(list)
-def _handle_nans_tuple(batch, config):
-    """This is the tuple-specific implementation of _handle_nans. Each tensor element
-    of the tuple will have nan-handling applied. Non-tensor elements are returned unchanged."""
-    # Process each element in the tuple
-    handled_elements = []
-    for element in batch:
-        if isinstance(element, torch.Tensor):
-            handled_elements.append(_handle_nans_logic_torch(element, config))
-        elif isinstance(element, np.ndarray):
-            handled_elements.append(_handle_nans_logic_numpy(element, config))
-        else:
-            # Keep non-tensor elements unchanged (e.g., labels, metadata)
-            handled_elements.append(element)
-
-    return tuple(handled_elements)
-
-
-def _handle_nans_logic_torch(batch, config):
-    from torch import any, isnan
-
-    if config["data_set"]["nan_mode"] is False:
-        if any(isnan(batch)):
-            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
-            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
-            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
-            msg += "to get started."
-            logger.warning(msg)
-        return batch
-
-    if config["data_set"]["nan_mode"] == "quantile":
-        quantile = config["data_set"]["nan_quantile"]
-        if quantile < 0.0 or quantile > 1.0:
-            raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
-        return _handle_nan_quantile_torch(batch, quantile)
-    elif config["data_set"]["nan_mode"] == "zero":
-        return _handle_nan_zero_torch(batch)
-    else:
-        msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
-        msg += "The supported modes are 'quantile' and 'zero'."
-        raise NotImplementedError(msg)
-
-
-def _handle_nan_quantile_torch(batch, quantile):
-    from torch import any, isnan
-
-    if any(isnan(batch)):
-        flat_batch = torch.reshape(batch, (batch.shape[0], -1))
-        batch_quantile = torch.nanquantile(flat_batch, q=quantile, dim=-1)
-        for i, val in enumerate(batch_quantile):
-            batch[i] = torch.nan_to_num(batch[i], val)
-
-    return batch
-
-
-def _handle_nan_zero_torch(batch):
-    from torch import any, isnan
-
-    if any(isnan(batch)):
-        batch = torch.nan_to_num(batch, nan=0.0)
-
-    return batch
-
-
-def _handle_nans_logic_numpy(batch, config):
-    if config["data_set"]["nan_mode"] is False:
-        if np.any(np.isnan(batch)):
-            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
-            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
-            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
-            msg += "to get started."
-            logger.warning(msg)
-        return batch
-
-    if config["data_set"]["nan_mode"] == "quantile":
-        quantile = config["data_set"]["nan_quantile"]
-        if quantile < 0.0 or quantile > 1.0:
-            raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
-        return _handle_nan_quantile_numpy(batch, quantile)
-    elif config["data_set"]["nan_mode"] == "zero":
-        return _handle_nan_zero_numpy(batch)
-    else:
-        msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
-        msg += "The supported modes are 'quantile' and 'zero'."
-        raise NotImplementedError(msg)
-
-
-def _handle_nan_quantile_numpy(batch, quantile):
-    if np.any(np.isnan(batch)):
-        flat_batch = np.reshape(batch, (batch.shape[0], -1))
-        batch_quantile = np.nanquantile(flat_batch, q=quantile, axis=-1)
-        for i, val in enumerate(batch_quantile):
-            batch[i] = np.nan_to_num(batch[i], nan=val)
-
-    return batch
-
-
-def _handle_nan_zero_numpy(batch):
-    if np.any(np.isnan(batch)):
-        batch = np.nan_to_num(batch, nan=0.0)
-
-    return batch
-
-
 # ! Need to go through and clean up the variables here. I think `device` and `engine`
 # ! are not used, but we'll need to double check before pulling out all the wiring.
-def _inner_loop(func, to_tensor, device, config, engine, batch):
+def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
-    # Pass the collated batch through the model's to_tensor function
-    batch = to_tensor(batch)
-
-    # ! Nan handling will be moved to DataProvider in the near future
-    batch = _handle_nans(batch, config)
+    # Pass the collated batch through the model's prepare_inputs function
+    batch = prepare_inputs(batch)
 
     # Convert the data to numpy and place it on the device explicitly.
     # This allows us to control when the tensor makes it on to the device without setting
@@ -534,8 +397,8 @@ def _inner_loop(func, to_tensor, device, config, engine, batch):
 
 def _create_process_func(funcname, device, model, config):
     inner_step = extract_model_method(model, funcname)
-    to_tensor = extract_model_method(model, "to_tensor")
-    inner_loop = functools.partial(_inner_loop, inner_step, to_tensor, device, config)
+    prepare_inputs = extract_model_method(model, "prepare_inputs")
+    inner_loop = functools.partial(_inner_loop, inner_step, prepare_inputs, device, config)
     return inner_loop
 
 
@@ -637,7 +500,6 @@ def create_validator(
     model: torch.nn.Module,
     config: dict,
     results_directory: Path,
-    tensorboardx_logger: SummaryWriter,
     validation_data_loader: DataLoader,
     trainer: Engine,
 ) -> Engine:
@@ -652,8 +514,6 @@ def create_validator(
         Hyrax runtime configuration
     results_directory : Path
         The directory where training results will be saved
-    tensorboardx_logger : SummaryWriter
-        The tensorboard logger object
     validation_data_loader : DataLoader
         The data loader for the validation data
     trainer : pytorch-ignite.Engine
@@ -668,6 +528,7 @@ def create_validator(
 
     device = idist.device()
     model = idist.auto_model(model)
+    tensorboardx_logger = get_tensorboard_logger()
 
     validator = create_engine("train_step", device, model, config)
     fixup_engine(validator)
@@ -688,7 +549,8 @@ def create_validator(
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
-        validator.run(validation_data_loader)
+        with torch.no_grad():
+            validator.run(validation_data_loader)
 
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
@@ -701,9 +563,76 @@ def create_validator(
     return validator
 
 
-def create_trainer(
-    model: torch.nn.Module, config: dict, results_directory: Path, tensorboardx_logger: SummaryWriter
+def create_tester(
+    model: torch.nn.Module,
+    config: dict,
+    results_directory: Path,
 ) -> Engine:
+    """This function creates a Pytorch Ignite engine object that will be used to
+    test the model and compute metrics without updating model weights.
+
+    Parameters
+    ----------
+    model : torch.nn.Module
+        The model to test
+    config : dict
+        Hyrax runtime configuration
+    results_directory : Path
+        The directory where test results will be saved
+
+    Returns
+    -------
+    pytorch-ignite.Engine
+        Engine object that will be used to test the model and compute metrics.
+    """
+
+    device = idist.device()
+    model = idist.auto_model(model)
+    tensorboardx_logger = get_tensorboard_logger()
+
+    tester = create_engine("train_step", device, model, config)
+    fixup_engine(tester)
+
+    @tester.on(Events.STARTED)
+    def set_model_to_eval_mode():
+        model.eval()
+
+    # Track average loss
+    from ignite.metrics import RunningAverage
+
+    RunningAverage(output_transform=lambda x: x["loss"]).attach(tester, "avg_loss")
+
+    @tester.on(Events.STARTED)
+    def log_test_start(engine):
+        logger.info(f"Starting model evaluation on test data (device: {device})")
+
+    # Wrap iteration to disable gradients during testing
+    original_run = tester.run
+
+    def run_with_no_grad(data, *args, **kwargs):
+        with torch.no_grad():
+            return original_run(data, *args, **kwargs)
+
+    tester.run = run_with_no_grad
+
+    @tester.on(Events.COMPLETED)
+    def log_test_metrics(engine):
+        from colorama import Fore, Style
+
+        metrics = engine.state.metrics
+        logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
+        logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
+
+        # Log metrics to MLflow
+        mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
+
+        # Log to tensorboard
+        tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
+
+    return tester
+
+
+def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path) -> Engine:
     """This function is originally copied from here:
     https://github.com/pytorch-ignite/examples/blob/main/tutorials/intermediate/cifar10-distributed.py#L164
 
@@ -717,8 +646,6 @@ def create_trainer(
         Hyrax runtime configuration
     results_directory : Path
         The directory where training results will be saved
-    tensorboardx_logger : SummaryWriter
-        The tensorboard logger object
 
     Returns
     -------
@@ -729,6 +656,7 @@ def create_trainer(
     model.train()
     model = idist.auto_model(model)
     trainer = create_engine("train_step", device, model, config)
+    tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
 
     optimizer = extract_model_method(model, "optimizer")
@@ -851,7 +779,7 @@ class HyraxEvents(EventEnum):
     HYRAX_EPOCH_COMPLETED = "HyraxEpochCompleted"
 
 
-def fixup_engine(engine: Engine) -> Engine:
+def fixup_engine(engine: Engine):
     """
     Workaround for this pytorch ignite bug (https://github.com/pytorch/ignite/issues/3372) where
     engine.state.output is not available at EPOCH_COMPLETED or later times (COMPLETED, etc)

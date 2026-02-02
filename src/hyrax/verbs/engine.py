@@ -30,13 +30,22 @@ class Engine(Verb):
 
     def run(self, model_directory: str = None):
         """
-        [x] Read in the user config
-        [x] Prepare all the datasets requested
-        [x] Implement a simple strategy for reading in batches of data samples
-        [x] Process the samples with any custom collate functions as well as a default collate function
-        [x] Pass the collated batch to the appropriate to_tensor function
-        [x] Send that output to the ONNX-ified model
-        [x] Persist the results of inference.
+        Run inference with an ONNX model.
+
+        This method performs the following steps:
+        - Read in the user config
+        - Prepare all the datasets requested
+        - Implement a simple strategy for reading in batches of data samples
+        - Process the samples with any custom collate functions as well as a default collate function
+        - Pass the collated batch to the appropriate to_tensor function
+        - Send that output to the ONNX-ified model
+        - Persist the results of inference
+
+        Parameters
+        ----------
+        model_directory : str, optional
+            Directory containing the ONNX model. If not provided, uses the config file
+            or finds the most recent ONNX export directory.
         """
         from pathlib import Path
 
@@ -47,12 +56,12 @@ class Engine(Verb):
             find_most_recent_results_dir,
         )
         from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
-        from hyrax.plugin_utils import load_to_tensor
+        from hyrax.plugin_utils import load_prepare_inputs, load_to_tensor
         from hyrax.pytorch_ignite import setup_dataset
 
         config = self.config
 
-        # ~ Find the directory that contains the ONNX model, to_tensor.py, etc.
+        # Find the directory that contains the ONNX model, prepare_inputs.py, etc.
         if model_directory:
             input_directory = Path(model_directory)
             if not input_directory.exists():
@@ -69,26 +78,41 @@ class Engine(Verb):
                 logger.error("No previous training results directory found for ONNX export.")
                 return
 
-        # ~ Here we load the appropriate to_tensor function from onnx output.
+        # Here we load the appropriate prepare_inputs function from onnx output.
+        # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
+        prepare_inputs_fn = load_prepare_inputs(input_directory)
         to_tensor_fn = load_to_tensor(input_directory)
+
+        if prepare_inputs_fn:
+            logger.debug("Using prepare_inputs function from model directory.")
+        elif to_tensor_fn:
+            # Backward compatibility: use to_tensor if prepare_inputs is not found
+            logger.warning(
+                "Using deprecated to_tensor function. "
+                "Please update to prepare_inputs for future compatibility."
+            )
+            prepare_inputs_fn = to_tensor_fn
+        else:
+            logger.error("No prepare_inputs or to_tensor function found in the model directory.")
+            return
 
         # ~ Load the ONNX model from the input directory.
         onnx_file_name = input_directory / "model.onnx"
         ort_session = onnxruntime.InferenceSession(onnx_file_name)
 
-        # ~ For now we use `setup_dataset` to get our datasets back. Later we can
+        # For now we use `setup_dataset` to get our datasets back. Later we can
         # optimize this, because we know that we'll only need the `infer` part
-        # of the model_inputs dictionary. And we can assume that we'll be working
+        # of the data_request dictionary. And we can assume that we'll be working
         # with map-style datasets. But for now, this gets us going.
         dataset = setup_dataset(config)
 
-        # ~ In the `train` and `infer` verbs, we use `dist_data_loader` to create
+        # In the `train` and `infer` verbs, we use `dist_data_loader` to create
         # our data loaders. But here in `engine`, we can assume that we can simply
         # find the length of our dataset and then iterate over it in batches.
         infer_dataset = dataset["infer"]
         batch_size = config["data_loader"]["batch_size"]
 
-        # ~ Initialize the InferenceDatasetWriter to persist results of inference
+        # Initialize the InferenceDatasetWriter to persist results of inference
         # Note that the inference_dataset.py module takes a dependency on
         # torch.utils.data.Dataset, but InferenceDatasetWrite only uses Dataset
         # as a type hint. So we may need to separate InferenceDataset and IDWriter
@@ -101,12 +125,12 @@ class Engine(Verb):
             end_idx = min(start_idx + batch_size, len(infer_dataset))
             batch = [infer_dataset[i] for i in range(start_idx, end_idx)]
 
-            # ~ Here we convert the batch from a list of dictionaries into a
+            # Here we convert the batch from a list of dictionaries into a
             # dictionary of lists by using the DataProvider.collate function.
             collated_batch = infer_dataset.collate(batch)
 
-            # ~ Pass the collated batch to the to_tensor function
-            prepared_batch = to_tensor_fn(collated_batch)
+            # Pass the collated batch to the prepare_inputs function
+            prepared_batch = prepare_inputs_fn(collated_batch)
 
             # Create the inputs array for the ONNX model using the expected inputs
             # from the loaded ONNX model and the type and shape of the prepared batch.
@@ -124,7 +148,7 @@ class Engine(Verb):
             # Run the ONNX model with the prepared batch as input
             onnx_results = ort_session.run(None, ort_inputs)
 
-            # ~ Finally, we persist the results of inference.
+            # Finally, we persist the results of inference.
             # For now, collated_batch will always have an "object_id" key that
             # is a list of strings. However, we should move to a state where the
             # object ids are taken from the primary dataset's "primary_id_field",

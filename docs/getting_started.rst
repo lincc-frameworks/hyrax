@@ -21,6 +21,12 @@ dependencies with other packages you have installed.
 First Steps
 -----------
 
+.. raw:: html
+
+   <a href="https://colab.research.google.com/github/lincc-frameworks/hyrax/blob/main/docs/pre_executed/getting_started.ipynb" target="_blank">
+      <img src="https://colab.research.google.com/assets/colab-badge.svg" alt="Run in Google Colab"/>
+   </a>
+
 This getting started example uses Hyrax to train a small convolutional neural network to classify CIFAR data.
 It is based on a similar `PyTorch tutorial <https://docs.pytorch.org/tutorials/beginner/blitz/cifar10_tutorial.html>`__.
 We also use the CIFAR10 dataset:
@@ -50,6 +56,8 @@ instance of this class.
 When we create the Hyrax instance, it will automatically load a default configuration
 file. This file contains default settings for all of the components that Hyrax uses.
 
+.. _getting_started_specify_model:
+
 Specify a model
 ~~~~~~~~~~~~~~~
 
@@ -62,6 +70,8 @@ from the PyTorch CIFAR10 tutorial.
 
    h.set_config('model.name', 'HyraxCNN')
 
+
+.. _getting_started_specify_data:
 
 Defining the dataset
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -76,7 +86,7 @@ https://www.cs.toronto.edu/~kriz/cifar.html
 .. code-block:: python
    :linenos:
 
-   model_inputs_definition = {
+   data_request_definition = {
         "train": {
             "data": {
                 "dataset_class": "HyraxCifarDataset",
@@ -87,7 +97,7 @@ https://www.cs.toronto.edu/~kriz/cifar.html
         }
     }
 
-    h.set_config("model_inputs", model_inputs_definition)
+    h.set_config("data_request", data_request_definition)
 
 This may appear overwhelming, especially for a simple case, but being explicit
 about the dataset configuration will allow for great flexibility down the line
@@ -120,7 +130,7 @@ inference.
 .. code-block:: python
    :linenos:
 
-   model_inputs_definition["infer"] = {
+   data_request_definition["infer"] = {
        "data": {
            "dataset_class": "HyraxCifarDataset",
            "data_location": "./data",
@@ -132,7 +142,7 @@ inference.
        },
    }
 
-   h.set_config("model_inputs", model_inputs_definition)
+   h.set_config("data_request", data_request_definition)
 
 Then we'll use Hyrax's ``infer`` verb to load the trained model weights and process
 the data defined above.

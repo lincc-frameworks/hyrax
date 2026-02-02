@@ -1,0 +1,5 @@
+[general]
+log_level = "error"
+
+[train]
+weights_filename = "model_weights.pth"

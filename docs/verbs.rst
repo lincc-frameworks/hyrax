@@ -15,9 +15,9 @@ When called from a notebook or python, ``train()`` returns a trained pytorch
 model which you can :doc:`immediately evaluate, inspect, or export </pre_executed/export_model>`. Batch evaluations of datasets
 are enabled using the ``infer`` verb, see below.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -29,7 +29,7 @@ are enabled using the ``infer`` verb, see below.
            # Train the model specified in the configuration file
            model = h.train()
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 
@@ -43,9 +43,9 @@ be specified in the configuration file. If no model is specified, Hyrax will fin
 the most recently trained model in the results directory and use that for inference.
 The data used for inference is also specified in the configuration file.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -57,7 +57,7 @@ The data used for inference is also specified in the configuration file.
            # Pass data through a trained model to produce embeddings or predictions.
            h.infer()
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 
@@ -69,12 +69,15 @@ the ``[]`` operators in python.
 
 ``umap``
 --------
-Run UMAP on the output of inference or a dataset. By default, Hyrax will use the
-most recently generated output from the ``infer`` verb.
+Run UMAP (`Uniform Manifold Approximation and Projection`_) on the
+output of inference or a dataset. By default, Hyrax will use the most
+recently generated output from the ``infer`` verb.
 
-.. tabs::
+.. _`Uniform Manifold Approximation and Projection`: https://umap-learn.readthedocs.io
 
-    .. group-tab:: Notebook
+.. tab-set::
+
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -86,7 +89,7 @@ most recently generated output from the ``infer`` verb.
            # Train a UMAP and process the entire dataset.
            h.umap()
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 
@@ -95,7 +98,7 @@ most recently generated output from the ``infer`` verb.
 
 ``visualize``
 -------------
-Interactively visualize embedded space produced by UMAP.
+Interactively visualize the embedded space produced by the ``umap`` verb.
 Due to the fact that the visualization is interactive, it is not available in the CLI.
 
 .. code-block:: python
@@ -136,9 +139,9 @@ write the resulting database to a new timestamped directory under the default
 An existing database directory can be specified in order to add more vectors to
 an existing index.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -150,7 +153,7 @@ an existing index.
             # Build a vector database index from the output of inference
             h.index()
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 

@@ -121,8 +121,6 @@ class HyraxDataset:
                 if not hasattr(self, method_name):
                     setattr(self, method_name, MethodType(_make_getter(col), self))
 
-        self.tensorboardx_logger = None
-
     @classmethod
     def is_iterable(cls):
         """
@@ -307,7 +305,7 @@ def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:
     """
 
     if not class_name:
-        raise RuntimeError("dataset_class must be specified in 'model_inputs'.")
+        raise RuntimeError("dataset_class must be specified in 'data_request'.")
 
     dataset_cls = get_or_load_class(class_name, DATASET_REGISTRY)
 
@@ -351,7 +349,9 @@ class HyraxImageDataset:
         if self.__dict__.get("transform", False) is False:
             self.transform = None
 
-        return self.transform(data_torch) if self.transform is not None else data_torch
+        data_transformed = self.transform(data_torch) if self.transform is not None else data_torch
+
+        return data_transformed.numpy()
 
     def _update_transform(self, new_transform):
         from torchvision.transforms.v2 import Compose

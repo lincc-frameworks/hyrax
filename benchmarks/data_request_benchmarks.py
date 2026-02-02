@@ -16,7 +16,7 @@ class DatasetRequestBenchmarks:
 
         self.h = Hyrax()
         self.h.config["general"]["results_dir"] = str(self.input_dir)
-        self.h.config["model_inputs"] = {
+        self.h.config["data_request"] = {
             "train": {
                 "data": {
                     "dataset_class": "HyraxRandomDataset",
@@ -47,4 +47,4 @@ class DatasetRequestBenchmarks:
         the random dataset
         """
         for indx in self.indexes:
-            self.ds["train"][indx]
+            self.ds["train"][int(indx)]

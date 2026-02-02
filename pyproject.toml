@@ -6,6 +6,11 @@ readme = "README.md"
 authors = [
     { name = "LINCC Frameworks", email = "mtauraso@uw.edu" }
 ]
+description = """
+A low-code solution for rapid experimentation with machine learning in astronomy. Hyrax is an extensible 
+platform that handles much of the boilerplate code that is often required for a machine learning project 
+in astronomy.
+"""
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -14,7 +19,7 @@ classifiers = [
     "Programming Language :: Python",
 ]
 dynamic = ["version"]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "astropy", # Used to load fits files of sources to query HSC cutout server
     # Pin to the current version of pytorch ignite so workarounds to 
@@ -43,6 +48,7 @@ dependencies = [
     "pynvml", # Used to gather GPU usage information
     "umap-learn", # Used to map latent spaces down to 2d
     "pooch", # Used to download data files
+    "pydantic>=2.10.0,<3.0", # Used for typed configuration schemas
     "onnx", # Used to export models to ONNX format
     "onnxruntime", # Used to run ONNX models
     "onnxscript", # Used to convert PyTorch models to ONNX format
@@ -113,7 +119,7 @@ markers = [
 
 [tool.ruff]
 line-length = 110
-target-version = "py310"
+target-version = "py311"
 [tool.ruff.lint]
 select = [
     # pycodestyle

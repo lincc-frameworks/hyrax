@@ -9,11 +9,12 @@ from hyrax.data_sets.data_provider import DataProvider, generate_data_request_fr
 
 def test_generate_data_request_from_config():
     """Test that we support generating a data request dictionary
-    outside of the `model_inputs` table."""
+    outside of the `data_request` table."""
 
     h = Hyrax()
     config = dict(h.config)
     config.pop("model_inputs", None)
+    config.pop("data_request", None)
 
     config["data_set"]["name"] = "HyraxRandomDataset"
     config["general"]["data_dir"] = "./data"
@@ -37,8 +38,15 @@ def test_generate_data_request_passes_model_inputs():
 
     h = Hyrax()
     model_inputs = {
-        "a": "foo",
-        "b": {"c": "bar"},
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./data",
+                "primary_id_field": "object_id",
+                "fields": ["image"],
+                "dataset_config": {"shape": [1, 2, 3], "seed": 1},
+            }
+        }
     }
     h.config["model_inputs"] = model_inputs
 
@@ -59,7 +67,102 @@ def test_generate_data_request_empty_model_inputs(caplog):
             generate_data_request_from_config(h.config)
 
     error_message = str(execinfo.value)
-    assert "The [model_inputs] table in the configuration is empty." in error_message
+    assert "The [data_request] table in the configuration is empty." in error_message
+
+
+def test_generate_data_request_model_inputs_deprecated():
+    """Test that using model_inputs config key triggers a deprecation warning."""
+    import warnings
+
+    h = Hyrax()
+    model_inputs = {
+        "a": "foo",
+        "b": {"c": "bar"},
+    }
+    h.config["model_inputs"] = model_inputs
+    # Explicitly remove data_request to ensure clean test conditions
+    h.config.pop("data_request", None)
+
+    # DeprecationWarnings are filtered by default, so we need to capture them explicitly
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ret_val = generate_data_request_from_config(h.config)
+
+        assert len(w) == 1
+        assert issubclass(w[-1].category, DeprecationWarning)
+        assert "model_inputs" in str(w[-1].message)
+        assert "deprecated" in str(w[-1].message)
+        assert "data_request" in str(w[-1].message)
+
+    assert ret_val == model_inputs
+
+
+def test_generate_data_request_passes_data_request():
+    """Test that generate_data_request passes the data_request
+    dict from the config, unchanged, without deprecation warning."""
+    import warnings
+
+    h = Hyrax()
+    data_request = {
+        "a": "foo",
+        "b": {"c": "bar"},
+    }
+    h.config["data_request"] = data_request
+    # Explicitly remove model_inputs to ensure clean test conditions
+    h.config.pop("model_inputs", None)
+
+    # Verify no deprecation warning is issued
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ret_val = generate_data_request_from_config(h.config)
+
+        # Assert no warnings were raised
+        assert len(w) == 0, f"Expected no warnings, but got: {[str(x.message) for x in w]}"
+
+    assert ret_val == data_request
+
+
+def test_generate_data_request_empty_data_request(caplog):
+    """Test that generate_data_request raises an error with a helpful message
+    when data_request is empty."""
+
+    h = Hyrax()
+    h.config["data_request"] = {}
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(RuntimeError) as execinfo:
+            generate_data_request_from_config(h.config)
+
+    error_message = str(execinfo.value)
+    assert "The [data_request] table in the configuration is empty." in error_message
+
+
+def test_generate_data_request_both_keys_present():
+    """Test that when both data_request and model_inputs are present,
+    data_request takes priority and no deprecation warning is issued."""
+    import warnings
+
+    h = Hyrax()
+    data_request = {
+        "train": {"data": {"dataset_class": "DataRequestDataset"}},
+    }
+    model_inputs = {
+        "train": {"data": {"dataset_class": "ModelInputsDataset"}},
+    }
+    h.config["data_request"] = data_request
+    h.config["model_inputs"] = model_inputs
+
+    # Verify no deprecation warning is issued when data_request takes priority
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        ret_val = generate_data_request_from_config(h.config)
+
+        # Assert no warnings were raised
+        assert len(w) == 0, f"Expected no warnings, but got: {[str(x.message) for x in w]}"
+
+    # Assert data_request is returned, not model_inputs
+    assert ret_val == data_request
+    assert ret_val != model_inputs
 
 
 def test_data_provider(data_provider):
@@ -133,6 +236,7 @@ def test_validate_request_bad_field(multimodal_config, caplog):
     c = multimodal_config
     c["train"]["random_0"]["fields"] = ["image", "no_such_field"]
     h.config["model_inputs"] = c
+    h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
     with caplog.at_level("ERROR"):
         DataProvider(h.config, c["train"])
 
@@ -147,6 +251,7 @@ def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
     c = multimodal_config
     c["train"]["random_0"].pop("fields", None)
     h.config["model_inputs"] = c
+    h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
 
     # Fake methods to return from `dir`, none of which start with `get_*`.
     fake_methods = ["fake_one", "fake_two", "fake_three"]

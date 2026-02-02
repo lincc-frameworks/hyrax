@@ -18,9 +18,9 @@ The size of these splits can be configured in the ``[data_set]`` section of the 
 ``train_size``, ``validate_size``, and ``test_size`` configuration keys. The value is either a number of data points
 or a ratio of the dataset, where 1.0 represents the entire dataset. For example:
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -30,7 +30,7 @@ or a ratio of the dataset, where 1.0 represents the entire dataset. For example:
             h.config["data_set"]["validate_size"] = 0.2
             h.config["data_set"]["test_size"] = 0.2
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
             
@@ -58,9 +58,9 @@ By default the ``infer`` verb uses the entire dataset for inference; however any
 specifying the ``[infer]`` ``split`` config value. Valid values are any of the three splits. For example, to 
 infer on only the test split:
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -70,7 +70,7 @@ infer on only the test split:
 
             h.infer()
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 
@@ -88,9 +88,9 @@ The membership in each split is determined randomly. By default, system entropy 
 
 You can specify a random seed with the ``[data_set]`` ``seed`` configuration key as follows:
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Notebook
+    .. tab-item:: Notebook
 
         .. code-block:: python
 
@@ -98,7 +98,7 @@ You can specify a random seed with the ``[data_set]`` ``seed`` configuration key
             h = Hyrax()
             h.config["data_set"]["seed"] = 1
 
-    .. group-tab:: CLI
+    .. tab-item:: CLI
 
         .. code-block:: bash
 

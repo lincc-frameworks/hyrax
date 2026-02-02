@@ -60,15 +60,19 @@ def inference_dataset(tmp_path_factory, request):
     return original_data_set["train"], current_data_set
 
 
-def get_data_by_dataset_type(dataset, idx):
+def get_data_by_dataset_type(dataset, idxs):
     """Different behavior depending on whether the dataset is an `InferenceDataset`
     vs. a DataProvider dataset. IF it's an InferenceDataset, we return the data
     directly, otherwise we unpack the data from the DataProvider."""
-    output_data = dataset[idx]
-    if isinstance(dataset, DataProvider):
-        output_data = output_data["data"]["image"]
 
-    return np.array(output_data)
+    def _get_data_by_dataset_type(dataset, idx):
+        output_data = dataset[idx]
+        if isinstance(dataset, DataProvider):
+            output_data = output_data["data"]["image"]
+
+        return np.array(output_data)
+
+    return [_get_data_by_dataset_type(dataset, int(i)) for i in idxs]
 
 
 def test_order(inference_dataset):

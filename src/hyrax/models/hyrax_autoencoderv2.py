@@ -4,7 +4,6 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
-from torch import Tensor
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
@@ -181,7 +180,7 @@ class HyraxAutoencoderV2(nn.Module):
         return {"loss": loss.item()}
 
     @staticmethod
-    def to_tensor(data_dict) -> tuple[Tensor]:
+    def prepare_inputs(data_dict) -> tuple:
         """This function converts structured data to the input tensor we need to run
 
         Parameters
@@ -189,6 +188,10 @@ class HyraxAutoencoderV2(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
+        if "data" not in data_dict:
+            raise RuntimeError("Unable to find `data` key in data_dict")
+
+        data_dict = data_dict["data"]
         if "image" in data_dict:
             return data_dict["image"]
         else:
