@@ -125,8 +125,7 @@ def test_constant_scheduler(loopback_hyrax):
 
 def test_exponential_scheduler(loopback_hyrax):
     """
-    Ensure that using an ExponentialLR scheduler without any arguments
-    pulls the default (useless) arguments
+    Ensure that setting an ExponentialLR scheduler works properly
     """
     h, _ = loopback_hyrax
     gamma = 0.5
@@ -143,8 +142,7 @@ def test_exponential_scheduler(loopback_hyrax):
 
 def test_exponential_scheduler_checkpointing(loopback_hyrax, tmp_path):
     """
-    Ensure that using an ExponentialLR scheduler without any arguments
-    pulls the default (useless) arguments
+    Ensure that ExponentialLR scheduler resumes from a checkpoint properly
     """
     checkpoint_filename = "checkpoint_epoch_3.pt"
     h, _ = loopback_hyrax
@@ -185,8 +183,7 @@ def test_exponential_scheduler_checkpointing(loopback_hyrax, tmp_path):
 
 def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
     """
-    Ensure that using an ExponentialLR scheduler without any arguments
-    pulls the default (useless) arguments
+    Ensure that ConstantLR scheduler resumes from a checkpoint properly
     """
     checkpoint_filename = "checkpoint_epoch_2.pt"
     h, _ = loopback_hyrax
