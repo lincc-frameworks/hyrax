@@ -88,7 +88,7 @@ class SimCLR(nn.Module):
         feats = self.backbone(x)
         return self.projection_head(feats)
 
-    def train_step(self, x):
+    def train_batch(self, x):
         aug = T.Compose(
             [
                 T.RandomResizedCrop(size=x.shape[-1]),
@@ -116,3 +116,47 @@ class SimCLR(nn.Module):
         loss.backward()
         self.optimizer.step()
         return {"loss": loss.item()}
+
+    def validate_batch(self, x):
+        aug = T.Compose(
+            [
+                T.RandomResizedCrop(size=x.shape[-1]),
+                T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
+                T.RandomApply(
+                    [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
+                    p=self.config["model"]["SimCLR"]["color_jitter_probability"],
+                ),
+                T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
+                T.GaussianBlur(
+                    kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
+                    sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
+                ),
+            ]
+        )
+
+        x1 = torch.stack([aug(img) for img in x])
+        x2 = torch.stack([aug(img) for img in x])
+
+        z1 = self.forward(x1)
+        z2 = self.forward(x2)
+
+        loss = self.criterion(z1, z2)
+        return {"loss": loss.item()}
+
+    def test_batch(self, x):
+        return self.validate_batch(x)
+
+    def infer_batch(self, x):
+        """Function to run inference on a batch of data.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            Input tensor of shape (batch_size, channels, height, width).
+
+        Returns
+        -------
+        torch.Tensor
+            Output tensor of shape (batch_size, projection_dimension).
+        """
+        return self.forward(x)

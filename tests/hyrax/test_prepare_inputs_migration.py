@@ -27,7 +27,7 @@ def test_model_with_only_to_tensor():
         def forward(self, x):
             return x
 
-        def train_step(self, batch):
+        def train_batch(self, batch):
             return {"loss": 0.0}
 
     h = Hyrax()
@@ -60,7 +60,7 @@ def test_model_without_prepare_inputs_or_to_tensor():
         def forward(self, x):
             return x
 
-        def train_step(self, batch):
+        def train_batch(self, batch):
             return {"loss": 0.0}
 
     h = Hyrax()
@@ -95,7 +95,7 @@ def test_model_without_prepare_inputs_or_to_tensor_raises_error():
         def forward(self, x):
             return x
 
-        def train_step(self, batch):
+        def train_batch(self, batch):
             return {"loss": 0.0}
 
     h = Hyrax()
@@ -140,7 +140,7 @@ def test_save_and_load_model_with_to_tensor_warns(tmp_path, caplog):
         def forward(self, x):
             return x
 
-        def train_step(self, batch):
+        def train_batch(self, batch):
             return {"loss": 0.0}
 
     h = Hyrax()
@@ -203,7 +203,7 @@ def test_load_model_with_old_to_tensor_file(tmp_path, caplog):
         def forward(self, x):
             return x
 
-        def train_step(self, batch):
+        def train_batch(self, batch):
             return {"loss": 0.0}
 
     h = Hyrax()
@@ -259,7 +259,7 @@ def test_load_model_with_no_serialized_input_functions(tmp_path, caplog):
         def forward(self, x):
             return x
 
-        def train_step(self, batch):
+        def train_batch(self, batch):
             return {"loss": 0.0}
 
     h = Hyrax()
