@@ -113,6 +113,8 @@ class DataRequestDefinition(BaseConfigModel):
     def collect_additional_datasets(cls, values: dict[str, Any]) -> dict[str, Any]:
         """Capture arbitrary dataset keys beyond train/validate/infer."""
 
+        # Copy to avoid mutating the caller's dict
+        values = dict(values)
         known = {"train", "validate", "infer"}
         extra = {k: v for k, v in values.items() if k not in known}
         for key in extra:
