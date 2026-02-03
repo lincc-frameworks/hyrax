@@ -75,9 +75,10 @@ class HyraxCNN(nn.Module):
         x = self.fc3(x)
         return x
 
-    def train_step(self, batch):
-        """This function contains the logic for a single training step. i.e. the
-        contents of the inner loop of a ML training process.
+    def train_batch(self, batch):
+        """This function contains the logic for a single training step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML training process.
 
         Parameters
         ----------
@@ -97,6 +98,65 @@ class HyraxCNN(nn.Module):
         loss.backward()
         self.optimizer.step()
         return {"loss": loss.item()}
+
+    def validate_batch(self, batch):
+        """This function contains the logic for a single validation step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML validation process. In this case it is identical to `test_batch`.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the inputs and labels for the current batch.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        _, labels = batch
+
+        outputs = self(batch)
+        loss = self.criterion(outputs, labels)
+        return {"loss": loss.item()}
+
+    def test_batch(self, batch):
+        """This function contains the logic for a single testing step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML testing process. In this case, it is identical to `validate_batch`.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the inputs and labels for the current batch.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        _, labels = batch
+
+        outputs = self(batch)
+        loss = self.criterion(outputs, labels)
+        return {"loss": loss.item()}
+
+    def infer_batch(self, batch):
+        """This function contains the logic for a single inference step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML inference process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the inputs and labels for the current batch.
+
+        Returns
+        -------
+        Model outputs : Tensor
+            Tensor containing the model outputs for the current batch.
+        """
+        return self(batch)
 
     @staticmethod
     def prepare_inputs(data_dict) -> tuple:

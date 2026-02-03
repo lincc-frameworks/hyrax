@@ -185,13 +185,14 @@ class ImageDCAE(nn.Module):
 
         return reconstructed
 
-    def train_step(self, batch):
+    def train_batch(self, batch):
         """This function contains the logic for a single training step.
 
         Parameters
         ----------
         batch : tuple
-            A tuple containing the two values the loss function
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
 
         Returns
         -------
@@ -216,6 +217,84 @@ class ImageDCAE(nn.Module):
         self.optimizer.step()
 
         return {"loss": loss.item()}
+
+    def validate_batch(self, batch):
+        """This function contains the logic for a single validation step that will
+        process a single batch of data.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        data = batch
+
+        # Store original spatial dimensions for decoding
+        self.original_size = data.shape[2:]
+
+        # Encode to latent space
+        latent, skip_connections, encoded_shape = self.encode(data)
+
+        # Decode back to image
+        decoded = self.decode(latent, skip_connections, encoded_shape)
+
+        # Compute loss
+        loss = self.criterion(decoded, data)
+
+        return {"loss": loss.item()}
+
+    def test_batch(self, batch):
+        """This function contains the logic for a single testing step that will
+        process a single batch of data. In this case, it is identical to `validate_batch`.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        data = batch
+
+        # Store original spatial dimensions for decoding
+        self.original_size = data.shape[2:]
+
+        # Encode to latent space
+        latent, skip_connections, encoded_shape = self.encode(data)
+
+        # Decode back to image
+        decoded = self.decode(latent, skip_connections, encoded_shape)
+
+        # Compute loss
+        loss = self.criterion(decoded, data)
+
+        return {"loss": loss.item()}
+
+    def infer_batch(self, batch):
+        """This function contains the logic for a single inference step.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Reconstructed images : torch.Tensor
+            Tensor containing the reconstructed images for the current batch.
+        """
+        return self.forward(batch)
 
     @staticmethod
     def prepare_inputs(data_dict):
