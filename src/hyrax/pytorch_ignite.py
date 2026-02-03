@@ -738,7 +738,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
         if model.scheduler:
             if not hasattr(model, "lrs"):
                 model.lrs = []
-            epoch_lr = model.scheduler.get_last_lr()[0]
+            epoch_lr = model.scheduler.get_last_lr()
             epoch_number = trainer.state.epoch - 1
             model.lrs.append(epoch_lr)
             tensorboardx_logger.add_scalar("training/training/epoch/lr", epoch_lr, global_step=epoch_number)
