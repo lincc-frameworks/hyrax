@@ -28,7 +28,9 @@ def test_data_request_config_basic_fields():
 
 def test_data_request_config_unwraps_data_key():
     """Support legacy wrapped 'data' key."""
-    cfg = DataRequestConfig(data={"dataset_class": "HyraxCifarDataset", "primary_id_field": "oid"})
+    cfg = DataRequestConfig(
+        data={"dataset_class": "HyraxCifarDataset", "primary_id_field": "oid", "data_location": "nowhere"}
+    )
     assert cfg.dataset_class == "HyraxCifarDataset"
     assert cfg.primary_id_field == "oid"
 
@@ -36,31 +38,33 @@ def test_data_request_config_unwraps_data_key():
 def test_data_request_definition_collects_known_and_extra():
     """Collect train/validate/infer plus extra datasets."""
     definition = DataRequestDefinition(
-        train={"dataset_class": "TrainDS", "primary_id_field": "id1"},
-        validate={"dataset_class": "ValidateDS", "primary_id_field": "id2"},
-        infer={"dataset_class": "InferDS", "primary_id_field": "id3"},
-        custom_split={"dataset_class": "ExtraDS", "primary_id_field": "id4"},
+        train={"dataset_class": "TrainDS", "primary_id_field": "id1", "data_location": "nowhere"},
+        validate={"dataset_class": "ValidateDS", "primary_id_field": "id2", "data_location": "nowhere"},
+        infer={"dataset_class": "InferDS", "primary_id_field": "id3", "data_location": "nowhere"},
     )
 
     assert isinstance(definition.train, DataRequestConfig)
     assert isinstance(definition.validate, DataRequestConfig)
     assert isinstance(definition.infer, DataRequestConfig)
-    assert "custom_split" in definition.other_datasets
-    assert definition.other_datasets["custom_split"].dataset_class == "ExtraDS"
 
 
 def test_data_request_definition_as_dict_shape():
     """as_dict returns nested data blocks."""
     definition = DataRequestDefinition(
-        train={"dataset_class": "TrainDS", "fields": ["a"], "primary_id_field": "id1"},
-        custom={"dataset_class": "ExtraDS", "primary_id_field": "id2"},
+        train={
+            "dataset_class": "TrainDS",
+            "fields": ["a"],
+            "primary_id_field": "id1",
+            "data_location": "nowhere",
+        },
+        validate={"dataset_class": "ExtraDS", "primary_id_field": "id2", "data_location": "nowhere"},
     )
 
     as_dict = definition.as_dict()
-    assert set(as_dict.keys()) == {"train", "custom"}
+    assert set(as_dict.keys()) == {"train", "validate"}
     assert as_dict["train"]["data"]["dataset_class"] == "TrainDS"
     assert as_dict["train"]["data"]["fields"] == ["a"]
-    assert as_dict["custom"]["data"]["dataset_class"] == "ExtraDS"
+    assert as_dict["validate"]["data"]["dataset_class"] == "ExtraDS"
 
 
 def test_config_manager_set_config_accepts_data_request_definition():
@@ -72,9 +76,15 @@ def test_config_manager_set_config_accepts_data_request_definition():
             "dataset_class": "HyraxRandomDataset",
             "fields": ["image"],
             "primary_id_field": "object_id",
+            "data_location": "nowhere",
             "dataset_config": {"size": 10, "shape": [1, 2, 3], "seed": 123},
         },
-        infer={"dataset_class": "HyraxRandomDataset", "fields": ["image"], "primary_id_field": "id"},
+        infer={
+            "dataset_class": "HyraxRandomDataset",
+            "fields": ["image"],
+            "primary_id_field": "id",
+            "data_location": "somewhere",
+        },
     )
 
     cm.set_config("data_request", definition)
@@ -95,6 +105,7 @@ def test_config_manager_set_config_with_valid_dict():
             "dataset_class": "HyraxRandomDataset",
             "fields": ["image"],
             "primary_id_field": "object_id",
+            "data_location": "nowhere",
         }
     }
 
@@ -115,6 +126,7 @@ def test_config_manager_set_config_with_invalid_data_accepts_as_is():
         "train": {
             "dataset_class": "HyraxRandomDataset",
             "fields": ["image"],
+            "data_location": "nowhere",
             # Missing primary_id_field - fails DataRequestDefinition validation
         }
     }
@@ -129,21 +141,6 @@ def test_config_manager_set_config_with_invalid_data_accepts_as_is():
     assert rendered["train"]["dataset_class"] == "HyraxRandomDataset"
 
 
-def test_config_manager_set_config_with_completely_invalid_structure():
-    """ConfigManager.set_config accepts completely invalid structures when validation fails."""
-
-    cm = ConfigManager()
-    # Completely invalid structure that can't be validated
-    invalid_data = {"random_key": "random_value", "nested": {"deeply": {"invalid": 123}}}
-
-    # Should not raise - validation error is logged as warning but data is accepted
-    cm.set_config("data_request", invalid_data)
-
-    # Invalid data is stored as-is
-    rendered = cm.config["data_request"]
-    assert rendered == invalid_data
-
-
 def test_config_manager_set_config_coerces_typed_dataset_config():
     """ConfigManager.set_config properly coerces dataset_config for known datasets."""
 
@@ -151,6 +148,7 @@ def test_config_manager_set_config_coerces_typed_dataset_config():
     valid_dict = {
         "train": {
             "dataset_class": "HyraxCifarDataset",
+            "data_location": "nowhere",
             "primary_id_field": "id",
             "dataset_config": {"use_training_data": True},
         }
@@ -171,10 +169,12 @@ def test_config_manager_set_config_with_partial_validity():
     partially_valid = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
+            "data_location": "nowhere",
             "primary_id_field": "id",
         },
         "validate": {
             "dataset_class": "HyraxCifarDataset",
+            "data_location": "nowhere",
             # Missing primary_id_field - fails DataRequestDefinition validation requirement
         },
     }
@@ -195,7 +195,9 @@ def test_data_request_definition_rejects_missing_dataset_class():
 
 def test_dataset_config_unknown_dataset_allows_dict():
     """Unknown dataset_class leaves dataset_config as plain dict."""
-    cfg = DataRequestConfig(dataset_class="MyCustomDataset", dataset_config={"foo": "bar"})
+    cfg = DataRequestConfig(
+        dataset_class="MyCustomDataset", data_location="/dev/null", dataset_config={"foo": "bar"}
+    )
 
     assert cfg.dataset_config == {"foo": "bar"}
 
@@ -205,6 +207,7 @@ def test_single_config_with_primary_id_valid():
     definition = DataRequestDefinition(
         train=DataRequestConfig(
             dataset_class="HyraxRandomDataset",
+            data_location="/dev/null",
             primary_id_field="object_id",
         )
     )
@@ -217,6 +220,7 @@ def test_single_config_without_primary_id_fails():
         DataRequestDefinition(
             train=DataRequestConfig(
                 dataset_class="HyraxRandomDataset",
+                data_location="somewhere",
             )
         )
     assert (
@@ -231,10 +235,12 @@ def test_dict_configs_one_primary_id_valid():
         train={
             "data_0": DataRequestConfig(
                 dataset_class="HyraxRandomDataset",
+                data_location="somewhere",
                 primary_id_field="some_field",
             ),
             "data_1": DataRequestConfig(
                 dataset_class="HyraxCifarDataset",
+                data_location="somewhere",
             ),
         }
     )
@@ -250,9 +256,11 @@ def test_dict_configs_no_primary_id_fails():
             train={
                 "data_0": DataRequestConfig(
                     dataset_class="HyraxRandomDataset",
+                    data_location="somewhere",
                 ),
                 "data_1": DataRequestConfig(
                     dataset_class="HyraxCifarDataset",
+                    data_location="somewhere",
                 ),
             }
         )
@@ -269,10 +277,12 @@ def test_dict_configs_multiple_primary_ids_fails():
             train={
                 "data_0": DataRequestConfig(
                     dataset_class="HyraxRandomDataset",
+                    data_location="somewhere",
                     primary_id_field="field_0",
                 ),
                 "data_1": DataRequestConfig(
                     dataset_class="HyraxCifarDataset",
+                    data_location="somewhere",
                     primary_id_field="field_1",
                 ),
             }
@@ -288,14 +298,17 @@ def test_multiple_dataset_groups_each_validated():
     definition = DataRequestDefinition(
         train=DataRequestConfig(
             dataset_class="HyraxRandomDataset",
+            data_location="somewhere",
             primary_id_field="train_id",
         ),
         validate=DataRequestConfig(
             dataset_class="HyraxCifarDataset",
+            data_location="somewhere",
             primary_id_field="validate_id",
         ),
         infer=DataRequestConfig(
             dataset_class="HyraxRandomDataset",
+            data_location="somewhere",
             primary_id_field="infer_id",
         ),
     )
@@ -308,9 +321,11 @@ def test_multiple_dataset_groups_each_validated():
         DataRequestDefinition(
             train=DataRequestConfig(
                 dataset_class="HyraxRandomDataset",
+                data_location="somewhere",
             ),
             validate=DataRequestConfig(
                 dataset_class="HyraxCifarDataset",
+                data_location="somewhere",
                 primary_id_field="validate_id",
             ),
         )
@@ -326,10 +341,12 @@ def test_dict_key_names_dont_matter():
         train={
             "my_custom_name": DataRequestConfig(
                 dataset_class="HyraxRandomDataset",
+                data_location="somewhere",
                 primary_id_field="id",
             ),
             "another_name": DataRequestConfig(
                 dataset_class="HyraxCifarDataset",
+                data_location="somewhere",
             ),
         }
     )
@@ -343,10 +360,12 @@ def test_from_dict_format():
         "train": {
             "dataset_0": {
                 "dataset_class": "HyraxRandomDataset",
+                "data_location": "/dev/null",
                 "primary_id_field": "obj_id",
             },
             "dataset_1": {
                 "dataset_class": "HyraxCifarDataset",
+                "data_location": "somewhere",
             },
         }
     }
@@ -361,6 +380,7 @@ def test_as_dict_with_single_config():
     definition = DataRequestDefinition(
         train=DataRequestConfig(
             dataset_class="HyraxRandomDataset",
+            data_location="somewhere",
             primary_id_field="id",
         )
     )
@@ -377,10 +397,12 @@ def test_as_dict_with_dict_configs():
         train={
             "data_0": DataRequestConfig(
                 dataset_class="HyraxRandomDataset",
+                data_location="somewhere",
                 primary_id_field="id",
             ),
             "data_1": DataRequestConfig(
                 dataset_class="HyraxCifarDataset",
+                data_location="somewhere",
             ),
         }
     )
@@ -391,27 +413,3 @@ def test_as_dict_with_dict_configs():
     assert as_dict["train"]["data_0"]["data"]["dataset_class"] == "HyraxRandomDataset"
     assert as_dict["train"]["data_0"]["data"]["primary_id_field"] == "id"
     assert as_dict["train"]["data_1"]["data"]["dataset_class"] == "HyraxCifarDataset"
-
-
-def test_other_datasets_validation():
-    """other_datasets field is also validated for primary_id_field."""
-    # Valid
-    definition = DataRequestDefinition(
-        custom_split=DataRequestConfig(
-            dataset_class="HyraxRandomDataset",
-            primary_id_field="id",
-        )
-    )
-    assert "custom_split" in definition.other_datasets
-
-    # Invalid - no primary_id_field
-    with pytest.raises(ValidationError) as exc_info:
-        DataRequestDefinition(
-            custom_split=DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-            )
-        )
-    assert (
-        "Dataset 'custom_split' must have exactly one DataRequestConfig "
-        "with 'primary_id_field' set, but found none" in str(exc_info.value)
-    )
