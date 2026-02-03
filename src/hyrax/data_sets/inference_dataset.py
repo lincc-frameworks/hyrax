@@ -137,18 +137,25 @@ class InferenceDataSet(HyraxDataset, Dataset):
         # Get length and create index mapping
         self.length = self.lance_table.count_rows()
 
-        # Cache the batch index as a numpy array for compatibility
-        # We'll load it lazily when needed
-        self._lance_batch_index = None
+        # Load the entire table once and cache it - this is much faster than
+        # loading on every __getitem__ call
+        pa_table = self.lance_table.to_arrow()
+        self._lance_data_dict = pa_table.to_pydict()
 
         # Detect tensor dtype and shape from first record
-        # Use head() to get PyArrow table, then convert to numpy
-        first_batch = self.lance_table.head(1)
-        first_row = first_batch.to_pydict()
-        # tensor is stored as nested list, convert to numpy to get dtype/shape
-        sample_tensor = np.array(first_row["tensor"][0])
+        sample_tensor = np.array(self._lance_data_dict["tensor"][0])
         self.tensor_dtype = sample_tensor.dtype
         self.tensor_shape = sample_tensor.shape
+
+        # Pre-convert to numpy arrays for fast filtering
+        self._lance_ids = np.array(self._lance_data_dict["id"], dtype=object)
+        self._lance_batch_nums = np.array(self._lance_data_dict["batch_num"], dtype=np.int64)
+
+        # Build batch index from cached data
+        dtype = np.dtype([("id", object), ("batch_num", np.int64)])
+        self._lance_batch_index = np.zeros(len(self._lance_ids), dtype=dtype)
+        self._lance_batch_index["id"] = self._lance_ids
+        self._lance_batch_index["batch_num"] = self._lance_batch_nums
 
     def _init_npy_backend(self):
         """Initialize the numpy backend for reading inference results."""
@@ -164,15 +171,14 @@ class InferenceDataSet(HyraxDataset, Dataset):
     def _load_element_sample(self):
         """Load a sample element for shape detection."""
         if self.storage_format == STORAGE_LANCE:
-            # Get first row from Lance table as PyArrow, convert to numpy properly
-            first_batch = self.lance_table.head(1)
-            first_row = first_batch.to_pydict()
-            # Convert nested list to numpy array with proper dtype
-            tensor_data = np.array(first_row["tensor"][0], dtype=self.tensor_dtype).reshape(self.tensor_shape)
+            # Use cached data from _init_lance_backend
+            tensor_data = np.array(self._lance_data_dict["tensor"][0], dtype=self.tensor_dtype).reshape(
+                self.tensor_shape
+            )
             # Create structured array with proper dtype
             dtype = [("id", object), ("tensor", self.tensor_dtype, self.tensor_shape)]
             result = np.zeros(1, dtype=dtype)
-            result[0]["id"] = first_row["id"][0]
+            result[0]["id"] = self._lance_data_dict["id"][0]
             result[0]["tensor"][:] = tensor_data
             return result[0]
         else:
@@ -218,15 +224,6 @@ class InferenceDataSet(HyraxDataset, Dataset):
     def batch_index(self):
         """Get batch index, loading from Lance if necessary."""
         if self.storage_format == STORAGE_LANCE:
-            if self._lance_batch_index is None:
-                # Convert Lance table to batch_index format for compatibility
-                # Use PyArrow table for better performance
-                pa_table = self.lance_table.to_arrow()
-                data_dict = pa_table.to_pydict()
-                dtype = np.dtype([("id", object), ("batch_num", np.int64)])
-                self._lance_batch_index = np.zeros(len(data_dict["id"]), dtype=dtype)
-                self._lance_batch_index["id"] = np.array(data_dict["id"], dtype=object)
-                self._lance_batch_index["batch_num"] = np.array(data_dict["batch_num"], dtype=np.int64)
             return self._lance_batch_index
         else:
             return self._batch_index
@@ -401,32 +398,25 @@ class InferenceDataSet(HyraxDataset, Dataset):
         batch number"""
 
         if self.storage_format == STORAGE_LANCE:
-            # Query Lance table for specific batch and IDs
             # Ensure ids is iterable
             if not isinstance(ids, np.ndarray):
                 ids = np.array([ids])
 
-            # Convert ids to strings for querying
-            id_strs = [str(id_val) for id_val in ids]
+            # Convert ids to strings for comparison (Lance stores as strings)
+            id_strs = np.array([str(id_val) for id_val in ids], dtype=object)
 
-            # Query the table using Lance SQL-like syntax
-            # Get full table as PyArrow then filter in memory (more efficient for small queries)
-            pa_table = self.lance_table.to_arrow()
-            data_dict = pa_table.to_pydict()
-
-            # Filter by batch_num and id
-            filtered_indices = [
-                i
-                for i, (bid, bnum) in enumerate(zip(data_dict["id"], data_dict["batch_num"]))
-                if bnum == batch_num and bid in id_strs
-            ]
+            # Use numpy vectorized operations on cached arrays for fast filtering
+            batch_mask = self._lance_batch_nums == batch_num
+            id_mask = np.isin(self._lance_ids, id_strs)
+            filtered_mask = batch_mask & id_mask
+            filtered_indices = np.where(filtered_mask)[0]
 
             # Use the same dtype as shape_element to ensure compatibility
             result = np.zeros(len(filtered_indices), dtype=self.shape_element.dtype)
             for result_idx, table_idx in enumerate(filtered_indices):
-                result[result_idx]["id"] = data_dict["id"][table_idx]
+                result[result_idx]["id"] = self._lance_data_dict["id"][table_idx]
                 # Convert nested list to numpy array
-                tensor_list = data_dict["tensor"][table_idx]
+                tensor_list = self._lance_data_dict["tensor"][table_idx]
                 tensor_data = np.array(tensor_list, dtype=self.tensor_dtype).reshape(self.tensor_shape)
                 # Assign using slice notation to copy into the structured array
                 result[result_idx]["tensor"][:] = tensor_data
