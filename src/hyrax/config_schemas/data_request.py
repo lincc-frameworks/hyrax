@@ -7,18 +7,28 @@ the Hyrax framework.
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from .base import BaseConfigModel
 
+# Suppress Pydantic warning about 'validate' field shadowing BaseModel.validate().
+# This is intentional - we use 'validate' as a field name to match the TOML config
+# structure, and we don't need the legacy validate() classmethod on this model.
+warnings.filterwarnings(
+    "ignore",
+    message=r'Field name "validate" in "DataRequestDefinition" shadows an attribute',
+    category=UserWarning,
+)
+
 
 class DataRequestConfig(BaseConfigModel):
     """Per-dataset configuration used within ``data_request``."""
 
     dataset_class: str = Field(..., description="Fully qualified dataset class name.")
-    data_location: str | None = Field(None, description="Path or URI describing where the dataset is stored.")
+    data_location: str = Field(..., description="Path or URI describing where the dataset is stored.")
     fields: list[str] | None = Field(
         None, description="Subset of columns/fields to request from the dataset."
     )
@@ -27,7 +37,7 @@ class DataRequestConfig(BaseConfigModel):
     )
 
     # Keep dataset_config as Any - it's a free-form dictionary for dataset-specific settings
-    dataset_config: Any = Field(
+    dataset_config: dict | None = Field(
         None,
         description="Dataset-specific configuration as a free-form dictionary.",
     )
@@ -54,7 +64,7 @@ class DataRequestConfig(BaseConfigModel):
 class DataRequestDefinition(BaseConfigModel):
     """Typed representation of the full ``data_request`` table."""
 
-    model_config = ConfigDict(protected_namespaces=())
+    model_config = ConfigDict(protected_namespaces=(), extra="allow")
 
     train: DataRequestConfig | dict[str, DataRequestConfig] | None = Field(
         None, description="Dataset configuration(s) used for training."
@@ -64,10 +74,6 @@ class DataRequestDefinition(BaseConfigModel):
     )
     infer: DataRequestConfig | dict[str, DataRequestConfig] | None = Field(
         None, description="Dataset configuration(s) used for inference."
-    )
-    other_datasets: dict[str, DataRequestConfig | dict[str, DataRequestConfig]] = Field(
-        default_factory=dict,
-        description="Additional dataset definitions keyed by friendly name.",
     )
 
     @field_validator("train", "validate", "infer", mode="before")
@@ -108,20 +114,12 @@ class DataRequestDefinition(BaseConfigModel):
 
         return value
 
-    @model_validator(mode="before")
-    @classmethod
-    def collect_additional_datasets(cls, values: dict[str, Any]) -> dict[str, Any]:
-        """Capture arbitrary dataset keys beyond train/validate/infer."""
-
-        # Copy to avoid mutating the caller's dict
-        values = dict(values)
-        known = {"train", "validate", "infer"}
-        extra = {k: v for k, v in values.items() if k not in known}
-        for key in extra:
-            values.pop(key)
-        values.setdefault("other_datasets", {})
-        values["other_datasets"].update(extra)
-        return values
+    @model_validator(mode="after")
+    def require_at_least_one_dataset(self) -> DataRequestDefinition:
+        """Ensure at least one of train, validate, or infer is provided."""
+        if self.train is None and self.validate is None and self.infer is None:
+            raise ValueError("At least one of 'train', 'validate', or 'infer' must be provided.")
+        return self
 
     @model_validator(mode="after")
     def validate_primary_id_fields(self) -> DataRequestDefinition:
@@ -159,28 +157,6 @@ class DataRequestDefinition(BaseConfigModel):
                     f"'primary_id_field' set, but found {primary_count}."
                 )
 
-        # Also validate other_datasets if present
-        if self.other_datasets:
-            for dataset_name, config_or_dict in self.other_datasets.items():
-                configs_dict = (
-                    config_or_dict if isinstance(config_or_dict, dict) else {"_default": config_or_dict}
-                )
-
-                primary_count = sum(
-                    1 for config in configs_dict.values() if config.primary_id_field is not None
-                )
-
-                if primary_count == 0:
-                    raise ValueError(
-                        f"Dataset '{dataset_name}' must have exactly one DataRequestConfig with "
-                        f"'primary_id_field' set, but found none."
-                    )
-                elif primary_count > 1:
-                    raise ValueError(
-                        f"Dataset '{dataset_name}' must have exactly one DataRequestConfig with "
-                        f"'primary_id_field' set, but found {primary_count}."
-                    )
-
         return self
 
     def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
@@ -200,11 +176,5 @@ class DataRequestDefinition(BaseConfigModel):
                 else:
                     # Single config - wrap in {"data": ...}
                     output[name] = {"data": value.as_dict(exclude_unset=exclude_unset)}
-
-        for key, cfg in self.other_datasets.items():
-            if isinstance(cfg, dict):
-                output[key] = {k: {"data": c.as_dict(exclude_unset=exclude_unset)} for k, c in cfg.items()}
-            else:
-                output[key] = {"data": cfg.as_dict(exclude_unset=exclude_unset)}
 
         return output
