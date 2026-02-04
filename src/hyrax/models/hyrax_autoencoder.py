@@ -20,7 +20,7 @@ class HyraxAutoencoder(nn.Module):
     This example model is taken from this
     `autoenocoder tutorial <https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html>`_
 
-    The train function has been converted into train_step for use with pytorch-ignite.
+    The train function has been converted into train_batch for use with pytorch-ignite.
     """
 
     def __init__(self, config, data_sample=None):
@@ -109,14 +109,15 @@ class HyraxAutoencoder(nn.Module):
     def forward(self, batch):
         return self._eval_encoder(batch)
 
-    def train_step(self, batch):
+    def train_batch(self, batch):
         """This function contains the logic for a single training step. i.e. the
         contents of the inner loop of a ML training process.
 
         Parameters
         ----------
         batch : tuple
-            A tuple containing the inputs and labels for the current batch.
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
 
         Returns
         -------
@@ -136,8 +137,71 @@ class HyraxAutoencoder(nn.Module):
 
         return {"loss": loss.item()}
 
+    def validate_batch(self, batch):
+        """This function contains the logic for a single validation step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML validation process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        z = self._eval_encoder(batch)
+        x_hat = self._eval_decoder(z)
+        loss = F.mse_loss(batch, x_hat, reduction="none")
+        loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
+
+        return {"loss": loss.item()}
+
+    def test_batch(self, batch):
+        """This function contains the logic for a single testing step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML testing process. In this case, it is identical to `validate_batch`.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        z = self._eval_encoder(batch)
+        x_hat = self._eval_decoder(z)
+        loss = F.mse_loss(batch, x_hat, reduction="none")
+        loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
+
+        return {"loss": loss.item()}
+
+    def infer_batch(self, batch):
+        """This function contains the logic for a single inference step. i.e. the
+        contents of the inner loop of a ML inference process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Reconstructed inputs : torch.Tensor
+            The reconstructed inputs from the autoencoder.
+        """
+        return self.forward(batch)
+
     @staticmethod
-    def to_tensor(data_dict) -> tuple:
+    def prepare_inputs(data_dict) -> tuple:
         """This function converts structured data to the input tensor we need to run
 
         Parameters

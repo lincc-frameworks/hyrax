@@ -48,12 +48,15 @@ three 2d arrays: "science", "mask", and "variance".
 To be flexible, the dataset class that provides data from disk would return each
 array individually.
 The model may expect a single flattened array as input.
-In this case, the user would need to define a `to_tensor` function that takes in
+In this case, the user would need to define a `prepare_inputs` function that takes in
 the structured data sample and stacks the arrays into a single array before
 returning it.
 
 The user may then want to quickly experiment with the model by first providing
 only the "science" array as input, and later adding in the "variance" array as well.
-By defining a custom `to_tensor` function, the user can easily modify how the
+By defining a custom `prepare_inputs` function, the user can easily modify how the
 data is prepared for the model without needing to modify either the dataset or
 the model code.
+
+.. note::
+   The older function name ``to_tensor`` is deprecated but still supported for backward compatibility. Please use ``prepare_inputs`` in new code.

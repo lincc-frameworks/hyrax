@@ -44,8 +44,8 @@ class ImageDCAE(nn.Module):
             self.image_height, self.image_width = self.input_shape[1], self.input_shape[2]
 
         # Get latent dimension from config (similar to HyraxAutoencoder)
-        self.latent_dim = config["model"].get("latent_dim", 512)
-        self.base_channel_size = config["model"].get("base_channel_size", 32)
+        self.latent_dim = config["model"]["ImageDCAE"]["latent_dim"]
+        self.base_channel_size = config["model"]["ImageDCAE"]["base_channel_size"]
 
         # Calculate the size after convolutional layers for the linear bottleneck
         self.conv_output_size = self._calculate_conv_output_size()
@@ -89,7 +89,7 @@ class ImageDCAE(nn.Module):
         self.activation = nn.GELU()  # Better gradients than ReLU
 
         # Configure final activation
-        final_layer = config["model"].get("final_layer", "identity")
+        final_layer = config["model"]["ImageDCAE"]["final_layer"]
         if final_layer == "sigmoid":
             self.final_activation = nn.Sigmoid()
         elif final_layer == "tanh":
@@ -185,13 +185,14 @@ class ImageDCAE(nn.Module):
 
         return reconstructed
 
-    def train_step(self, batch):
+    def train_batch(self, batch):
         """This function contains the logic for a single training step.
 
         Parameters
         ----------
         batch : tuple
-            A tuple containing the two values the loss function
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
 
         Returns
         -------
@@ -217,8 +218,86 @@ class ImageDCAE(nn.Module):
 
         return {"loss": loss.item()}
 
+    def validate_batch(self, batch):
+        """This function contains the logic for a single validation step that will
+        process a single batch of data.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        data = batch
+
+        # Store original spatial dimensions for decoding
+        self.original_size = data.shape[2:]
+
+        # Encode to latent space
+        latent, skip_connections, encoded_shape = self.encode(data)
+
+        # Decode back to image
+        decoded = self.decode(latent, skip_connections, encoded_shape)
+
+        # Compute loss
+        loss = self.criterion(decoded, data)
+
+        return {"loss": loss.item()}
+
+    def test_batch(self, batch):
+        """This function contains the logic for a single testing step that will
+        process a single batch of data. In this case, it is identical to `validate_batch`.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        data = batch
+
+        # Store original spatial dimensions for decoding
+        self.original_size = data.shape[2:]
+
+        # Encode to latent space
+        latent, skip_connections, encoded_shape = self.encode(data)
+
+        # Decode back to image
+        decoded = self.decode(latent, skip_connections, encoded_shape)
+
+        # Compute loss
+        loss = self.criterion(decoded, data)
+
+        return {"loss": loss.item()}
+
+    def infer_batch(self, batch):
+        """This function contains the logic for a single inference step.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Reconstructed images : torch.Tensor
+            Tensor containing the reconstructed images for the current batch.
+        """
+        return self.forward(batch)
+
     @staticmethod
-    def to_tensor(data_dict):
+    def prepare_inputs(data_dict):
         """Convert structured data to tensor format."""
         data_dict = data_dict["data"]
         if "image" in data_dict:

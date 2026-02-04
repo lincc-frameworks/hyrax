@@ -4,7 +4,6 @@ import logging
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
-from torch import Tensor
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
@@ -51,6 +50,9 @@ class HyraxAutoencoderV2(nn.Module):
 
         self._init_encoder()
         self._init_decoder()
+
+        # Configurable band reduction strategy
+        self.band_reduction = self.config["criterion"]["band_loss_reduction"]
 
     def conv2d_multi_layer(self, input_size, num_applications, **kwargs) -> int:
         for _ in range(num_applications):
@@ -131,14 +133,15 @@ class HyraxAutoencoderV2(nn.Module):
     def forward(self, batch):
         return self._eval_encoder(batch)
 
-    def train_step(self, batch):
+    def train_batch(self, batch):
         """This function contains the logic for a single training step. i.e. the
         contents of the inner loop of a ML training process.
 
         Parameters
         ----------
         batch : tuple
-            A tuple containing the inputs and labels for the current batch.
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
 
         Returns
         -------
@@ -149,13 +152,10 @@ class HyraxAutoencoderV2(nn.Module):
         z = self._eval_encoder(x)
         x_hat = self._eval_decoder(z)
 
-        # Configurable band reduction strategy
-        band_reduction = self.config["criterion"].get("band_loss_reduction", "mean")
-
         # The loss averaging strategy here is different from v1 which averages
         # over only the batch dimension. Here we always average over both batch
         # and spaital dimensions; so as the loss-value is not impacted by image size.
-        if band_reduction == "sum":
+        if self.band_reduction == "sum":
             # Sum across bands, mean over spatial dims and batch
             # More channels will result in larger loss values
             # but MIGHT result in better popping out of bad reconstruction
@@ -163,12 +163,12 @@ class HyraxAutoencoderV2(nn.Module):
             criterion_cls = type(self.criterion)
             loss = criterion_cls(reduction="none")(x_hat, x)
             loss = loss.sum(dim=1).mean()
-        elif band_reduction == "mean":
+        elif self.band_reduction == "mean":
             # Default: Mean over all dimensions (batch,channel,spatial)
             loss = self.criterion(x_hat, x)
         else:
             raise ValueError(
-                f"band_loss_reduction:{band_reduction} not supported by HyraxAutoencoderV2.\
+                f"band_loss_reduction:{self.band_reduction} not supported by HyraxAutoencoderV2.\
                                Current supported options are sum and mean (default)"
             )
 
@@ -180,8 +180,93 @@ class HyraxAutoencoderV2(nn.Module):
 
         return {"loss": loss.item()}
 
+    def validate_batch(self, batch):
+        """This function contains the logic for a single validation step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML validation process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        x = batch
+        z = self._eval_encoder(x)
+        x_hat = self._eval_decoder(z)
+
+        if self.band_reduction == "sum":
+            criterion_cls = type(self.criterion)
+            loss = criterion_cls(reduction="none")(x_hat, x)
+            loss = loss.sum(dim=1).mean()
+        elif self.band_reduction == "mean":
+            loss = self.criterion(x_hat, x)
+        else:
+            raise ValueError(
+                f"band_loss_reduction:{self.band_reduction} not supported by HyraxAutoencoderV2.\
+                               Current supported options are sum and mean (default)"
+            )
+
+        return {"loss": loss.item()}
+
+    def test_batch(self, batch):
+        """This function contains the logic for a single testing step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML testing process. In this case, it is identical to `validate_batch`.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+        x = batch
+        z = self._eval_encoder(x)
+        x_hat = self._eval_decoder(z)
+
+        if self.band_reduction == "sum":
+            criterion_cls = type(self.criterion)
+            loss = criterion_cls(reduction="none")(x_hat, x)
+            loss = loss.sum(dim=1).mean()
+        elif self.band_reduction == "mean":
+            loss = self.criterion(x_hat, x)
+        else:
+            raise ValueError(
+                f"band_loss_reduction:{self.band_reduction} not supported by HyraxAutoencoderV2.\
+                               Current supported options are sum and mean (default)"
+            )
+
+        return {"loss": loss.item()}
+
+    def infer_batch(self, batch):
+        """This function contains the logic for a single inference step. i.e. the
+        contents of the inner loop of a ML inference process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Reconstructed outputs : torch.Tensor
+            The reconstructed outputs from the autoencoder.
+        """
+        return self.forward(batch)
+
     @staticmethod
-    def to_tensor(data_dict) -> tuple[Tensor]:
+    def prepare_inputs(data_dict) -> tuple:
         """This function converts structured data to the input tensor we need to run
 
         Parameters
@@ -189,6 +274,10 @@ class HyraxAutoencoderV2(nn.Module):
         data_dict : dict
             The dictionary returned from our data source
         """
+        if "data" not in data_dict:
+            raise RuntimeError("Unable to find `data` key in data_dict")
+
+        data_dict = data_dict["data"]
         if "image" in data_dict:
             return data_dict["image"]
         else:

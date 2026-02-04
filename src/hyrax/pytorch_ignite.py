@@ -150,14 +150,14 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
 
-    # Pass a single sample of data through the model's to_tensor function
+    # Pass a single sample of data through the model's prepare_inputs function
     # ? I don't think that the `if` portion of this logic is used, should double check
     if isinstance(dataset, dict):
         # If we have multiple datasets, just take the first one
         first_dataset = next(iter(dataset.values()))
-        data_sample = model_cls.to_tensor(first_dataset.sample_data())
+        data_sample = model_cls.prepare_inputs(first_dataset.sample_data())
     else:
-        data_sample = model_cls.to_tensor(dataset.sample_data())
+        data_sample = model_cls.prepare_inputs(dataset.sample_data())
 
     # Provide the data sample for runtime modifications to the model architecture
     return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
@@ -371,10 +371,10 @@ def create_splits(data_set: Dataset, config: dict):
 
 # ! Need to go through and clean up the variables here. I think `device` and `engine`
 # ! are not used, but we'll need to double check before pulling out all the wiring.
-def _inner_loop(func, to_tensor, device, config, engine, batch):
+def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
-    # Pass the collated batch through the model's to_tensor function
-    batch = to_tensor(batch)
+    # Pass the collated batch through the model's prepare_inputs function
+    batch = prepare_inputs(batch)
 
     # Convert the data to numpy and place it on the device explicitly.
     # This allows us to control when the tensor makes it on to the device without setting
@@ -397,8 +397,8 @@ def _inner_loop(func, to_tensor, device, config, engine, batch):
 
 def _create_process_func(funcname, device, model, config):
     inner_step = extract_model_method(model, funcname)
-    to_tensor = extract_model_method(model, "to_tensor")
-    inner_loop = functools.partial(_inner_loop, inner_step, to_tensor, device, config)
+    prepare_inputs = extract_model_method(model, "prepare_inputs")
+    inner_loop = functools.partial(_inner_loop, inner_step, prepare_inputs, device, config)
     return inner_loop
 
 
@@ -427,8 +427,8 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
 
 def extract_model_method(model, method_name):
     """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-    or DataParallel object. For instance, method_name could be `train_step` or
-    `forward`.
+    or DataParallel object. For instance, method_name could be `train_batch` or
+    `infer_batch`.
 
     Parameters
     ----------
@@ -443,6 +443,11 @@ def extract_model_method(model, method_name):
         The method extracted from the model
     """
     wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
+
+    # Check to see if the model has the requested method
+    if not hasattr(model.module if wrapped else model, method_name):
+        raise RuntimeError(f"Model does not have required method: {method_name}")
+
     return getattr(model.module if wrapped else model, method_name)
 
 
@@ -472,7 +477,7 @@ def create_evaluator(
     device = idist.device()
     model.eval()
     model = idist.auto_model(model)
-    evaluator = create_engine("forward", device, model, config)
+    evaluator = create_engine("infer_batch", device, model, config)
 
     @evaluator.on(Events.STARTED)
     def log_eval_start(evaluator):
@@ -530,7 +535,7 @@ def create_validator(
     model = idist.auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
-    validator = create_engine("train_step", device, model, config)
+    validator = create_engine("validate_batch", device, model, config)
     fixup_engine(validator)
 
     @validator.on(Events.STARTED)
@@ -590,7 +595,7 @@ def create_tester(
     model = idist.auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
-    tester = create_engine("train_step", device, model, config)
+    tester = create_engine("test_batch", device, model, config)
     fixup_engine(tester)
 
     @tester.on(Events.STARTED)
@@ -655,7 +660,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     device = idist.device()
     model.train()
     model = idist.auto_model(model)
-    trainer = create_engine("train_step", device, model, config)
+    trainer = create_engine("train_batch", device, model, config)
     tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
 
