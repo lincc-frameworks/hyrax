@@ -22,7 +22,7 @@ class DataCacheBenchmarks:
             # DOI for Example HSC dataset
             url="doi:10.5281/zenodo.14498536/hsc_demo_data.zip",
             known_hash="md5:1be05a6b49505054de441a7262a09671",
-            fname="example_hsc_new.zip",
+            fname="hsc_demo_data.zip",
             path=data_dir,
             processor=pooch.Unzip(extract_dir="."),
         )
@@ -36,7 +36,6 @@ class DataCacheBenchmarks:
                     "dataset_class": "HSCDataSet",
                     "data_location": str(hsc_data_dir),
                     "fields": ["image"],
-                    "primary_id_field": "object_id",
                 }
             },
         }
@@ -46,7 +45,7 @@ class DataCacheBenchmarks:
 
     def setup(self):
         """
-        Prepare for benchmark by defining and setting up the same random dataset
+        Prepare for benchmark by defining and setting up the same dataset.
         Despite calling setup_cache this should not trigger another HSC1k download.
         """
         self.setup_cache()
