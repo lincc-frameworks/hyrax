@@ -16,7 +16,7 @@ class DataCacheBenchmarks:
         self.h = Hyrax()
 
         # asv caches the cwd for each benchmark run
-        data_dir = Path("./hsc1k")
+        data_dir = Path("./hsc1k").resolve()
         data_dir.mkdir(exist_ok=True)
         pooch.retrieve(
             # DOI for Example HSC dataset
@@ -24,7 +24,7 @@ class DataCacheBenchmarks:
             known_hash="md5:1be05a6b49505054de441a7262a09671",
             fname="hsc_demo_data.zip",
             path=data_dir,
-            processor=pooch.Unzip(extract_dir="."),
+            processor=pooch.Unzip(extract_dir=str(data_dir)),
         )
         hsc_data_dir = data_dir / "hsc_8asec_1000"
 
