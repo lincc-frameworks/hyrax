@@ -25,15 +25,23 @@ class DataCacheBenchmarks:
             known_hash="md5:1be05a6b49505054de441a7262a09671",
             fname="hsc_demo_data.zip",
             path=data_dir,
-            processor=pooch.Unzip(extract_dir=str(data_dir)),
+            processor=pooch.Unzip(extract_dir=data_dir),
         )
         # Extracted folder name from the bundled HSC1k sample dataset.
         hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
         if not hsc_data_dir.exists():
-            raise RuntimeError(
-                f"Expected HSC1k data directory at {hsc_data_dir}. "
-                "Confirm the HSC1k archive extracted correctly into this folder."
-            )
+            manifest_dirs = [
+                path
+                for path in data_dir.iterdir()
+                if path.is_dir() and (path / "manifest.fits").exists()
+            ]
+            if len(manifest_dirs) == 1:
+                hsc_data_dir = manifest_dirs[0]
+            else:
+                raise RuntimeError(
+                    f"Expected HSC1k data directory at {hsc_data_dir}. "
+                    "Confirm the HSC1k archive extracted correctly into this folder."
+                )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
         self.h.config["general"]["data_dir"] = str(hsc_data_dir)
