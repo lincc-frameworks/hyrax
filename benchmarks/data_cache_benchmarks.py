@@ -27,6 +27,8 @@ class DataCacheBenchmarks:
         )
         # Extracted folder name from the bundled HSC1k sample dataset.
         hsc_data_dir = data_dir / "hsc_8asec_1000"
+        if not hsc_data_dir.exists():
+            raise RuntimeError(f"Expected HSC1k data directory at {hsc_data_dir}.")
 
         self.h.config["general"]["results_dir"] = str(data_dir)
         self.h.config["general"]["data_dir"] = str(hsc_data_dir)
