@@ -283,7 +283,7 @@ use_cache = true
 # If `true`, preload the in memory cache using many worker threads when the dataset is constructed 
 # to reduce the effect of filesystem latency on first epoch runtime. 
 # Warning: Only suitable for situations where the entire dataset fits in system memory
-preload_cache = true
+preload_cache = false
 
 # Override the name of the object_id column for FitsImageDataset, HSCDataset and DownloadedLSSTDataset
 object_id_column_name = false
