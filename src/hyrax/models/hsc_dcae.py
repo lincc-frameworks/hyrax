@@ -71,14 +71,15 @@ class HSCDCAE(nn.Module):
 
         return x4
 
-    def train_step(self, batch):
+    def train_batch(self, batch):
         """This function contains the logic for a single training step. i.e. the
         contents of the inner loop of a ML training process.
 
         Parameters
         ----------
         batch : tuple
-            A tuple containing the two values the loss function
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
 
         Returns
         -------
@@ -107,3 +108,93 @@ class HSCDCAE(nn.Module):
         self.optimizer.step()
 
         return {"loss": loss.item()}
+
+    def validate_batch(self, batch):
+        """This function contains the logic for a single validation step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML validation process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+
+        # Dropping labels if present
+        data = batch[0] if isinstance(batch, tuple) else batch
+
+        # Encoder with skip connections
+        x1 = self.activation(self.encoder1(data))
+        x2 = self.activation(self.encoder2(self.pool(x1)))
+        x3 = self.activation(self.encoder3(self.pool(x2)))
+        x4 = self.activation(self.encoder4(self.pool(x3)))
+
+        # Decoder with skip connections
+        x = self.activation(self.decoder4(x4) + x3)
+        x = self.activation(self.decoder3(x) + x2)
+        x = self.activation(self.decoder2(x) + x1)
+        decoded = self.final_activation(self.decoder1(x))
+
+        loss = self.criterion(decoded, data)
+
+        return {"loss": loss.item()}
+
+    def test_batch(self, batch):
+        """This function contains the logic for a single testing step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML testing process. In this case, it is identical to `validate_batch`.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+
+        # Dropping labels if present
+        data = batch[0] if isinstance(batch, tuple) else batch
+
+        # Encoder with skip connections
+        x1 = self.activation(self.encoder1(data))
+        x2 = self.activation(self.encoder2(self.pool(x1)))
+        x3 = self.activation(self.encoder3(self.pool(x2)))
+        x4 = self.activation(self.encoder4(self.pool(x3)))
+
+        # Decoder with skip connections
+        x = self.activation(self.decoder4(x4) + x3)
+        x = self.activation(self.decoder3(x) + x2)
+        x = self.activation(self.decoder2(x) + x1)
+        decoded = self.final_activation(self.decoder1(x))
+
+        loss = self.criterion(decoded, data)
+
+        return {"loss": loss.item()}
+
+    def infer_batch(self, batch):
+        """This function contains the logic for a single inference step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML inference process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Reconstructed outputs : torch.Tensor
+            The reconstructed outputs from the autoencoder.
+        """
+        return self.forward(batch)

@@ -43,7 +43,7 @@ Defining a Model
 ----------------
 
 Models must be written as a subclasses of ``torch.nn.Module``, use pytorch for computation, and
-be decorated with ``@hyrax_model``. Models must minimally define ``__init__``, ``forward``, and ``train_step``
+be decorated with ``@hyrax_model``. Models must minimally define ``__init__``, ``prepare_inputs``, ``infer_batch``, and ``train_batch``
 methods.
 
 In order to get the ``@hyrax_model`` decorator you can import it with ``from hyrax.models import hyrax_model``.
@@ -59,21 +59,21 @@ to allow your model class to adjust architecture or check that the provided data
 the first iterable axis of the numpy array.
 
 
-``forward(self, x)``
+``infer_batch(self, x)``
 ....................
 Hyrax calls this function, which evaluates your model on a single input ``x``. ``x`` is guaranteed to be a numpy array with
 the shape passed to ``__init__``.
 
-``forward()`` should return a numpy array that is the output of your model.
+``infer_batch(self, x)`` should return a numpy array that is the output of your model.
 
 
-``train_step(self, batch)``
+``train_batch(self, batch)``
 ...........................
 This is called several times every training epoch with a batch of input numpy arrays for your model, and is the
 inner training loop for your model. This is where you compute loss, perform back propagation, etc depending on
 how your model is trained.
 
-``train_step`` returns a dictionary with a "loss" key who's value is a list of loss values for the individual
+``train_batch`` returns a dictionary with a "loss" key who's value is a list of loss values for the individual
 items in the batch. This loss is logged to MLflow and tensorboard.
 
 Optional Methods
