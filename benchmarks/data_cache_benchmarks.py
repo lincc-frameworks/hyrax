@@ -27,13 +27,13 @@ class DataCacheBenchmarks:
                 known_hash="md5:1be05a6b49505054de441a7262a09671",
                 fname="hsc_demo_data.zip",
                 path=data_dir,
-                processor=pooch.Unzip(extract_dir=data_dir),
+                processor=pooch.Unzip(),
             )
-            if not hsc_data_dir.exists():
-                raise RuntimeError(
-                    f"HSC1k data directory not found under {data_dir}. "
-                    f"Expected extracted directory named {HSC1K_EXTRACTED_DIRNAME}."
-                )
+        if not hsc_data_dir.exists():
+            raise RuntimeError(
+                f"HSC1k data directory not found under {data_dir}. "
+                f"Expected extracted directory named {HSC1K_EXTRACTED_DIRNAME}."
+            )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
         self.h.config["general"]["data_dir"] = str(hsc_data_dir)
