@@ -257,7 +257,7 @@ class DataCache:
         ## thread of the preloader spends waiting for workers. For a balanced situation where
         ## there are the right number of workers to fully exercise the I/O system:
         ##
-        ##  N = number of wokers
+        ##  N = number of workers
         ##  t_w = Wall clock time a worker/future takes to execute (averaged over some period, because I/O
         ##        is bursty.)
         ##  t_p = Wall clock time the preload thread waits between workers completing
