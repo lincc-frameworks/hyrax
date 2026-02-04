@@ -31,8 +31,8 @@ class DataCacheBenchmarks:
             )
             if not hsc_data_dir.exists():
                 raise RuntimeError(
-                    f"No manifest.fits directory found under {data_dir}. "
-                    f"Expected extracted HSC1k directory named {HSC1K_EXTRACTED_DIRNAME}."
+                    f"HSC1k data directory not found under {data_dir}. "
+                    f"Expected extracted directory named {HSC1K_EXTRACTED_DIRNAME}."
                 )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
