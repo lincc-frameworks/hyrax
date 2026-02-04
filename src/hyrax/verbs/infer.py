@@ -36,10 +36,10 @@ class Infer(Verb):
 
         from hyrax.config_utils import (
             create_results_dir,
-            load_model_weights,
             log_runtime_config,
         )
         from hyrax.data_sets.inference_dataset import InferenceDataSet
+        from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
             create_evaluator,
             create_save_batch_callback,

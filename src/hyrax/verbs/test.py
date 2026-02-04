@@ -45,11 +45,10 @@ class Test(Verb):
 
         from hyrax.config_utils import (
             create_results_dir,
-            load_model_weights,
-            log_mlflow_params,
             log_runtime_config,
         )
         from hyrax.data_sets.inference_dataset import InferenceDataSet
+        from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
             create_evaluator,
             create_save_batch_callback,
@@ -119,7 +118,7 @@ class Test(Verb):
         run_name = config["test"].get("run_name") if config["test"].get("run_name") else results_dir.name
 
         with mlflow.start_run(log_system_metrics=True, run_name=run_name):
-            log_mlflow_params(config, results_dir, "test")
+            Test._log_params(config, results_dir)
 
             # Create two engines: one for metrics, one for saving outputs
             # First, run evaluator to save model outputs
@@ -138,3 +137,32 @@ class Test(Verb):
 
         # Return the InferenceDataSet for further analysis
         return InferenceDataSet(config, results_dir)
+
+    @staticmethod
+    def _log_params(config, results_dir):
+        """Log the various parameters to mlflow from the config file.
+
+        Parameters
+        ----------
+        config : dict
+            The main configuration dictionary
+
+        results_dir: str
+            The full path to the results sub-directory
+        """
+        import mlflow
+
+        # Log full path to results subdirectory
+        mlflow.log_param("Results Directory", results_dir)
+
+        # Log all model params
+        mlflow.log_params(config["model"])
+
+        # Log batch size
+        mlflow.log_param("batch_size", config["data_loader"]["batch_size"])
+
+        # Log the criterion params
+        criterion_name = config["criterion"]["name"]
+        mlflow.log_param("criterion", criterion_name)
+        if criterion_name in config:
+            mlflow.log_params(config[criterion_name])

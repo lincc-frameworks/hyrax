@@ -38,7 +38,7 @@ def test_infer_order(loopback_hyrax, shuffle):
 
 def test_load_model_weights_updates_config_when_auto_detected(tmp_path):
     """Test that config is updated when model_weights_file is auto-detected from train directory"""
-    from hyrax.config_utils import load_model_weights
+    from hyrax.models.model_utils import load_model_weights
 
     # Create a mock config with no model_weights_file specified
     config = {}
@@ -70,7 +70,7 @@ def test_load_model_weights_preserves_explicit_config():
     """Test that config is still updated when model_weights_file is explicitly provided"""
     from tempfile import NamedTemporaryFile
 
-    from hyrax.config_utils import load_model_weights
+    from hyrax.models.model_utils import load_model_weights
 
     # Create a temporary weights file
     with NamedTemporaryFile(suffix=".pth", delete=False) as tmp_file:
