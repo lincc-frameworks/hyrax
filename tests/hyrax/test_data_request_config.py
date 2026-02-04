@@ -35,8 +35,8 @@ def test_data_request_config_unwraps_data_key():
     assert cfg.primary_id_field == "oid"
 
 
-def test_data_request_definition_collects_known_and_extra():
-    """Collect train/validate/infer plus extra datasets."""
+def test_data_request_definition_collects_known_fields():
+    """Collect train/validate/infer fields."""
     definition = DataRequestDefinition(
         train={"dataset_class": "TrainDS", "primary_id_field": "id1", "data_location": "nowhere"},
         validate={"dataset_class": "ValidateDS", "primary_id_field": "id2", "data_location": "nowhere"},
