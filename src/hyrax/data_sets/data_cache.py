@@ -310,4 +310,4 @@ class DataCache:
                 except Exception as e:
                     raise e
                 else:
-                    yield result  #
+                    yield result
