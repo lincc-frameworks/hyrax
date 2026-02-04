@@ -427,8 +427,8 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
 
 def extract_model_method(model, method_name):
     """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-    or DataParallel object. For instance, method_name could be `train_step` or
-    `forward`.
+    or DataParallel object. For instance, method_name could be `train_batch` or
+    `infer_batch`.
 
     Parameters
     ----------
@@ -443,6 +443,11 @@ def extract_model_method(model, method_name):
         The method extracted from the model
     """
     wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
+
+    # Check to see if the model has the requested method
+    if not hasattr(model.module if wrapped else model, method_name):
+        raise RuntimeError(f"Model does not have required method: {method_name}")
+
     return getattr(model.module if wrapped else model, method_name)
 
 
@@ -472,7 +477,7 @@ def create_evaluator(
     device = idist.device()
     model.eval()
     model = idist.auto_model(model)
-    evaluator = create_engine("forward", device, model, config)
+    evaluator = create_engine("infer_batch", device, model, config)
 
     @evaluator.on(Events.STARTED)
     def log_eval_start(evaluator):
@@ -530,7 +535,7 @@ def create_validator(
     model = idist.auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
-    validator = create_engine("train_step", device, model, config)
+    validator = create_engine("validate_batch", device, model, config)
     fixup_engine(validator)
 
     @validator.on(Events.STARTED)
@@ -590,7 +595,7 @@ def create_tester(
     model = idist.auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
-    tester = create_engine("train_step", device, model, config)
+    tester = create_engine("test_batch", device, model, config)
     fixup_engine(tester)
 
     @tester.on(Events.STARTED)
@@ -655,7 +660,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     device = idist.device()
     model.train()
     model = idist.auto_model(model)
-    trainer = create_engine("train_step", device, model, config)
+    trainer = create_engine("train_batch", device, model, config)
     tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
 

@@ -14,6 +14,15 @@ from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from .base import BaseConfigModel
 
+# Suppress Pydantic warning about 'validate' field shadowing BaseModel.validate().
+# This is intentional - we use 'validate' as a field name to match the TOML config
+# structure, and we don't need the legacy validate() classmethod on this model.
+warnings.filterwarnings(
+    "ignore",
+    message=r'Field name "validate" in "DataRequestDefinition" shadows an attribute',
+    category=UserWarning,
+)
+
 
 class DataRequestConfig(BaseConfigModel):
     """Per-dataset configuration used within ``data_request``."""
