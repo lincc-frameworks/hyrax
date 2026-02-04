@@ -280,7 +280,7 @@ class DataCache:
         ## would also reduce instances where the algorithm changing the number of threads throws it into
         ## a feedback loop.
         ##
-        ## Sadly some of the logic for this would be inside ThreadPoolExecutor, becuase we need to post-hoc
+        ## Sadly some of the logic for this would be inside ThreadPoolExecutor, because we need to post-hoc
         ## alter the number of worker threads after creating the object. The alternative would be
         ## preallocating worker threads that we don't use.
         max_futures = self._preload_threads
