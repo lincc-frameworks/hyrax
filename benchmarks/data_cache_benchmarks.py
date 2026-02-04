@@ -30,23 +30,25 @@ class DataCacheBenchmarks:
         # Extracted folder name from the bundled HSC1k sample dataset.
         hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
         if not hsc_data_dir.exists():
-            manifest_dirs = [
-                path
-                for path in data_dir.iterdir()
-                if path.is_dir() and (path / "manifest.fits").exists()
-            ]
+            manifest_dirs = []
+            for path in data_dir.iterdir():
+                if path.is_dir() and (path / "manifest.fits").exists():
+                    manifest_dirs.append(path)
+                    if len(manifest_dirs) > 1:
+                        break
             if len(manifest_dirs) == 1:
                 hsc_data_dir = manifest_dirs[0]
             elif len(manifest_dirs) == 0:
                 raise RuntimeError(
                     f"No manifest.fits directory found under {data_dir}. "
-                    f"Expected HSC1k data directory at {hsc_data_dir}."
+                    f"Expected extracted HSC1k directory named {HSC1K_EXTRACTED_DIRNAME}."
                 )
             else:
                 manifest_names = ", ".join(sorted(p.name for p in manifest_dirs))
                 raise RuntimeError(
                     f"Found multiple manifest.fits directories under {data_dir}: {manifest_names}. "
-                    f"Expected a single HSC1k data directory at {hsc_data_dir}."
+                    "Expected a single extracted HSC1k directory named "
+                    f"{HSC1K_EXTRACTED_DIRNAME}."
                 )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
