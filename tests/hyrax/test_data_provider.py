@@ -295,6 +295,8 @@ def test_primary_or_first_dataset(multimodal_config):
     """Test that if no primary dataset is specified, the first dataset
     in the config is returned."""
 
+    from pathlib import Path
+
     from hyrax import Hyrax
 
     h = Hyrax()
@@ -310,7 +312,9 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name == "object_id"
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_location == "./in_memory_0"
+    # Path should now be resolved to absolute
+    expected_path = str(Path("./in_memory_0").resolve())
+    assert primary_dataset.data_location == expected_path
 
     # Secondary case with no `primary_id_field` defined
     model_inputs["train"]["random_0"].pop("primary_id_field", None)
@@ -323,7 +327,9 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name is None
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_location == "./in_memory_0"
+    # Path should now be resolved to absolute
+    expected_path = str(Path("./in_memory_0").resolve())
+    assert primary_dataset.data_location == expected_path
 
     # Tertiary case with `primary_id_field` defined on `random_1`
     model_inputs["train"]["random_1"]["primary_id_field"] = "object_id"
@@ -336,7 +342,9 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name == "object_id"
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_location == "./in_memory_1"
+    # Path should now be resolved to absolute
+    expected_path = str(Path("./in_memory_1").resolve())
+    assert primary_dataset.data_location == expected_path
 
 
 def test_metadata_fields(data_provider):
@@ -767,3 +775,108 @@ def test_custom_collate_function_applied(custom_collate_data_provider):
 
     # assert that the object_id key is a numpy array
     assert isinstance(collated_batch["object_id"], np.ndarray)
+
+
+def test_data_location_path_resolution():
+    """Test that relative data_location paths are resolved to absolute paths."""
+    from pathlib import Path
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+
+    # Create a config with a relative data_location path
+    data_request = {
+        "train": {
+            "test_data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "./relative/path",
+                "primary_id_field": "object_id",
+                "fields": ["image"],
+            }
+        }
+    }
+    h.config["data_request"] = data_request
+    h.config["data_set"]["preload_cache"] = False
+
+    # Create DataProvider which should resolve the path
+    dp = DataProvider(h.config, data_request["train"])
+
+    # Check that the path was resolved to an absolute path
+    resolved_location = dp.data_request["test_data"]["data_location"]
+    assert Path(resolved_location).is_absolute(), f"Expected absolute path, got: {resolved_location}"
+
+    # Check that the resolved path matches Path.resolve() behavior
+    expected_path = str(Path("./relative/path").resolve())
+    assert resolved_location == expected_path, f"Expected {expected_path}, got {resolved_location}"
+
+    # Verify the dataset instance also has the resolved path
+    test_dataset = dp.prepped_datasets["test_data"]
+    assert test_dataset.data_location == resolved_location
+
+
+def test_data_location_absolute_path_unchanged():
+    """Test that absolute data_location paths are kept unchanged."""
+    from pathlib import Path
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+
+    # Create a config with an absolute data_location path
+    absolute_path = "/absolute/path/to/data"
+    data_request = {
+        "train": {
+            "test_data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": absolute_path,
+                "primary_id_field": "object_id",
+                "fields": ["image"],
+            }
+        }
+    }
+    h.config["data_request"] = data_request
+    h.config["data_set"]["preload_cache"] = False
+
+    # Create DataProvider
+    dp = DataProvider(h.config, data_request["train"])
+
+    # Check that the path is still absolute
+    resolved_location = dp.data_request["test_data"]["data_location"]
+    assert Path(resolved_location).is_absolute()
+
+    # The path should still be equal to str(Path(absolute_path).resolve())
+    # even though it was already absolute
+    expected_path = str(Path(absolute_path).resolve())
+    assert resolved_location == expected_path
+
+
+def test_data_location_none_unchanged():
+    """Test that None data_location values remain None."""
+    from hyrax import Hyrax
+
+    h = Hyrax()
+
+    # Create a config without data_location (implicitly None)
+    data_request = {
+        "train": {
+            "test_data": {
+                "dataset_class": "HyraxRandomDataset",
+                "primary_id_field": "object_id",
+                "fields": ["image"],
+            }
+        }
+    }
+    h.config["data_request"] = data_request
+    h.config["data_set"]["preload_cache"] = False
+
+    # Create DataProvider
+    dp = DataProvider(h.config, data_request["train"])
+
+    # Check that data_location is None
+    assert dp.data_request["test_data"].get("data_location") is None
+
+    # Verify the dataset instance also has None
+    test_dataset = dp.prepped_datasets["test_data"]
+    # HyraxRandomDataset should still work with None data_location
+    assert test_dataset is not None

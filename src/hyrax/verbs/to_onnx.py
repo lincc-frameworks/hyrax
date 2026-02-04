@@ -38,10 +38,14 @@ class ToOnnx(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
+        from hyrax.data_sets.data_provider import resolve_data_locations_in_config
         from hyrax.model_exporters import export_to_onnx
         from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
 
         config = self.config
+
+        # Resolve relative data_location paths to absolute paths before saving config
+        resolve_data_locations_in_config(config)
 
         # Resolve the input directory in this order; 1) input_model_directory arg,
         # 2) config value, 3) most recent train results

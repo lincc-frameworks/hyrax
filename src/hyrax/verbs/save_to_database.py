@@ -69,6 +69,7 @@ class SaveToDatabase(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
+        from hyrax.data_sets.data_provider import resolve_data_locations_in_config
         from hyrax.data_sets.inference_dataset import InferenceDataSet
         from hyrax.tensorboardx_logger import (
             close_tensorboard_logger,
@@ -78,6 +79,9 @@ class SaveToDatabase(Verb):
         from hyrax.vector_dbs.vector_db_factory import vector_db_factory
 
         config = deepcopy(self.config)
+
+        # Resolve relative data_location paths to absolute paths before saving config
+        resolve_data_locations_in_config(config)
 
         # Attempt to find the directory containing inference results. Check for
         # the --input-dir argument first, then check the config file for

@@ -3,6 +3,7 @@ import functools
 import logging
 import time
 import warnings
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -268,6 +269,48 @@ Example configuration:
     return data_request
 
 
+def resolve_data_locations_in_config(config: dict) -> None:
+    """Resolve relative data_location paths to absolute paths in the config's data_request.
+
+    This function modifies the config dictionary in-place, converting any relative
+    data_location paths to absolute paths. This ensures that when the runtime_config
+    is saved, it contains fully resolved paths.
+
+    Parameters
+    ----------
+    config : dict
+        The Hyrax configuration dictionary containing a data_request section.
+        This dictionary is modified in-place.
+    """
+    data_request = generate_data_request_from_config(config)
+
+    # Iterate through all dataset definitions in the data_request
+    for split_name, split_data in data_request.items():
+        for friendly_name, dataset_definition in split_data.items():
+            data_location = dataset_definition.get("data_location")
+
+            # Resolve data_location to an absolute path if it's a string
+            if data_location is not None and isinstance(data_location, str):
+                resolved_path = Path(data_location).resolve()
+                data_location_str = str(resolved_path)
+
+                # Update in the config's data_request (or model_inputs for backwards compatibility)
+                if (
+                    "data_request" in config
+                    and config["data_request"]
+                    and split_name in config["data_request"]
+                    and friendly_name in config["data_request"][split_name]
+                ):
+                    config["data_request"][split_name][friendly_name]["data_location"] = data_location_str
+                elif (
+                    "model_inputs" in config
+                    and config["model_inputs"]
+                    and split_name in config["model_inputs"]
+                    and friendly_name in config["model_inputs"][split_name]
+                ):
+                    config["model_inputs"][split_name][friendly_name]["data_location"] = data_location_str
+
+
 class DataProvider:
     """This class presents itself as a PyTorch Dataset, but acts like a GraphQL
     gateway that fetches data from multiple datasets based on the `data_request`
@@ -425,6 +468,14 @@ class DataProvider:
             # It's ok for data_location to be None, some datasets
             # (e.g. HyraxRandomDataset) may not require it.
             data_location = dataset_definition.get("data_location")
+
+            # Resolve data_location to an absolute path if it's a string
+            if data_location is not None and isinstance(data_location, str):
+                resolved_path = Path(data_location).resolve()
+                data_location = str(resolved_path)
+                # Write the resolved path back to the data_request
+                dataset_definition["data_location"] = data_location
+                self.data_request[friendly_name]["data_location"] = data_location
 
             # Create a temporary config dictionary that merges the original
             # config with the dataset-specific config.

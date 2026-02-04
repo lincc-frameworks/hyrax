@@ -35,6 +35,7 @@ class Train(Verb):
         import mlflow
 
         from hyrax.config_utils import create_results_dir, log_runtime_config
+        from hyrax.data_sets.data_provider import resolve_data_locations_in_config
         from hyrax.gpu_monitor import GpuMonitor
         from hyrax.pytorch_ignite import (
             create_trainer,
@@ -46,6 +47,9 @@ class Train(Verb):
         from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
+
+        # Resolve relative data_location paths to absolute paths before saving config
+        resolve_data_locations_in_config(config)
 
         # Create a results directory
         results_dir = create_results_dir(config, "train")

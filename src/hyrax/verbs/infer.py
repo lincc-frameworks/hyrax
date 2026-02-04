@@ -43,6 +43,7 @@ class Infer(Verb):
             create_results_dir,
             log_runtime_config,
         )
+        from hyrax.data_sets.data_provider import resolve_data_locations_in_config
         from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
         from hyrax.pytorch_ignite import (
             create_evaluator,
@@ -54,6 +55,9 @@ class Infer(Verb):
 
         config = self.config
         context = {}
+
+        # Resolve relative data_location paths to absolute paths before saving config
+        resolve_data_locations_in_config(config)
 
         # Create a results directory and dump our config there
         results_dir = create_results_dir(config, "infer")
