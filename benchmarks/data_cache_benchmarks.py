@@ -30,17 +30,20 @@ class DataCacheBenchmarks:
         # Extracted folder name from the bundled HSC1k sample dataset.
         hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
         if not hsc_data_dir.exists():
-            manifest_dirs = [
-                path
-                for path in data_dir.iterdir()
-                if path.is_dir() and (path / "manifest.fits").exists()
-            ]
+            manifest_dirs = []
+            for path in data_dir.iterdir():
+                if path.is_dir() and (path / "manifest.fits").exists():
+                    manifest_dirs.append(path)
+                    if len(manifest_dirs) > 1:
+                        break
             if len(manifest_dirs) == 1:
                 hsc_data_dir = manifest_dirs[0]
             else:
+                manifest_names = ", ".join(sorted(p.name for p in manifest_dirs)) or "none"
                 raise RuntimeError(
                     f"Expected HSC1k data directory at {hsc_data_dir}. "
-                    "Confirm the HSC1k archive extracted correctly into this folder."
+                    "Confirm the HSC1k archive extracted correctly into this folder. "
+                    f"Found {len(manifest_dirs)} manifest directories: {manifest_names}."
                 )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
