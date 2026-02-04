@@ -36,7 +36,6 @@ class DataRequestConfig(BaseConfigModel):
         None, description="Name of the primary identifier field in the dataset."
     )
 
-    # Keep dataset_config as Any - it's a free-form dictionary for dataset-specific settings
     dataset_config: dict | None = Field(
         None,
         description="Dataset-specific configuration as a free-form dictionary.",
