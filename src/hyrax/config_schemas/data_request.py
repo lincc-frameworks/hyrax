@@ -73,7 +73,7 @@ with warnings.catch_warnings():
     class DataRequestDefinition(BaseConfigModel):
         """Typed representation of the full ``data_request`` table."""
 
-        model_config = ConfigDict(protected_namespaces=(), extra="allow")
+        model_config = ConfigDict(protected_namespaces=())
 
         train: DataRequestConfig | dict[str, DataRequestConfig] | None = Field(
             None, description="Dataset configuration(s) used for training."
@@ -152,7 +152,9 @@ with warnings.catch_warnings():
                 configs_dict = field_value if isinstance(field_value, dict) else {"_default": field_value}
 
                 # Count how many configs have primary_id_field set
-                primary_count = sum(1 for config in configs_dict.values() if config.primary_id_field is not None)
+                primary_count = sum(
+                    1 for config in configs_dict.values() if config.primary_id_field is not None
+                )
 
                 # Validate exactly one
                 if primary_count == 0:
@@ -180,7 +182,8 @@ with warnings.catch_warnings():
                     if isinstance(value, dict):
                         # Dict of configs - wrap each in {"data": ...}
                         output[name] = {
-                            key: {"data": cfg.as_dict(exclude_unset=exclude_unset)} for key, cfg in value.items()
+                            key: {"data": cfg.as_dict(exclude_unset=exclude_unset)}
+                            for key, cfg in value.items()
                         }
                     else:
                         # Single config - wrap in {"data": ...}
