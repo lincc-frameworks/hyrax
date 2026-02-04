@@ -24,7 +24,7 @@ The ``prepare_inputs`` function is responsible for taking in the output of the `
 Model Input and Output Pipeline
 -------------------------------
 
-The data is then either sent to ``pytorch`` ignite for training or to ``onnx`` for inference. In the case of training, the data is converted into a tensor and passed into the model's ``train_step`` function. The model processes the data and returns the output predictions. If the user wishes to perform data augmentations, these can be set up in the model's ``train_step`` function as well.
+The data is then either sent to ``pytorch`` ignite for training or to ``onnx`` for inference. In the case of training, the data is converted into a tensor and passed into the model's ``train_batch`` function. The model processes the data and returns the output predictions. If the user wishes to perform data augmentations, these can be set up in the model's ``train_batch`` function as well.
 
 In the ``onnx`` case, the data remains a numpy array throughout the model evaluation and to the result. Both paths result in the output being a numpy array.
 

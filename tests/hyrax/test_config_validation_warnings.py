@@ -17,6 +17,7 @@ def test_set_config_warns_on_invalid_data_request(caplog):
     invalid_dict = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
+            "data_location": "/dev/null",
             "fields": ["image"],
             # Missing primary_id_field - fails DataRequestDefinition validation
         }
@@ -43,6 +44,7 @@ def test_set_config_warns_on_invalid_model_inputs(caplog):
     invalid_dict = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
+            "data_location": "/dev/null",
             # Missing primary_id_field
         }
     }
@@ -67,6 +69,7 @@ def test_set_config_no_warning_on_valid_data_request(caplog):
     valid_dict = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
+            "data_location": "somewhere",
             "fields": ["image"],
             "primary_id_field": "object_id",
         }
@@ -97,6 +100,7 @@ dev_mode = true
 
 [data_request.train]
 dataset_class = "HyraxRandomDataset"
+data_location = "/dev/null"
 fields = ["image"]
 # Missing primary_id_field - fails validation
 """
@@ -139,6 +143,7 @@ dev_mode = true
 
 [data_request.train]
 dataset_class = "HyraxRandomDataset"
+data_location = "/dev/null"
 fields = ["image"]
 primary_id_field = "object_id"
 """
@@ -236,10 +241,12 @@ dev_mode = true
 
 [data_request.train]
 dataset_class = "HyraxRandomDataset"
+data_location = "/dev/null"
 # Missing primary_id_field - should trigger warning
 
 [model_inputs.validate]
 dataset_class = "HyraxCifarDataset"
+data_location = "/dev/null"
 # Missing primary_id_field - should also trigger warning
 """
     )
