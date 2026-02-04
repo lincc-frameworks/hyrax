@@ -6,6 +6,8 @@ import psutil
 
 from hyrax import Hyrax
 
+HSC1K_EXTRACTED_DIRNAME = "hsc_8asec_1000"
+
 
 class DataCacheBenchmarks:
     """Timing benchmarks for preloading the data cache with the HSC1k dataset."""
@@ -23,10 +25,10 @@ class DataCacheBenchmarks:
             known_hash="md5:1be05a6b49505054de441a7262a09671",
             fname="hsc_demo_data.zip",
             path=data_dir,
-            processor=pooch.Unzip(extract_dir=data_dir),
+            processor=pooch.Unzip(extract_dir=str(data_dir)),
         )
         # Extracted folder name from the bundled HSC1k sample dataset.
-        hsc_data_dir = data_dir / "hsc_8asec_1000"
+        hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
         if not hsc_data_dir.exists():
             raise RuntimeError(
                 f"Expected HSC1k data directory at {hsc_data_dir}. "
