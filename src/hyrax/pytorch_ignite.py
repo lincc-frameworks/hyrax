@@ -504,7 +504,6 @@ def create_evaluator(
 def create_validator(
     model: torch.nn.Module,
     config: dict,
-    results_directory: Path,
     validation_data_loader: DataLoader,
     trainer: Engine,
 ) -> Engine:
@@ -517,8 +516,6 @@ def create_validator(
         The model to train
     config : dict
         Hyrax runtime configuration
-    results_directory : Path
-        The directory where training results will be saved
     validation_data_loader : DataLoader
         The data loader for the validation data
     trainer : pytorch-ignite.Engine
@@ -568,11 +565,7 @@ def create_validator(
     return validator
 
 
-def create_tester(
-    model: torch.nn.Module,
-    config: dict,
-    results_directory: Path,
-) -> Engine:
+def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """This function creates a Pytorch Ignite engine object that will be used to
     test the model and compute metrics without updating model weights.
 
@@ -582,8 +575,6 @@ def create_tester(
         The model to test
     config : dict
         Hyrax runtime configuration
-    results_directory : Path
-        The directory where test results will be saved
 
     Returns
     -------
@@ -761,7 +752,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     return trainer
 
 
-def create_save_batch_callback(dataset, data_loader_indexes, results_dir):
+def create_save_batch_callback(dataset, results_dir):
     """Create a callback function for saving batch results during inference or testing.
 
     This factory function creates a closure that captures the dataset, indexes, and output
@@ -772,8 +763,6 @@ def create_save_batch_callback(dataset, data_loader_indexes, results_dir):
     ----------
     dataset : Dataset
         The dataset being processed (must have an ids() method)
-    data_loader_indexes : array-like
-        Indices mapping data loader order to dataset order
     results_dir : Path
         Directory where results should be saved
 

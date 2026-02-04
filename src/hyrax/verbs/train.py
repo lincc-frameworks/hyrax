@@ -85,7 +85,7 @@ class Train(Verb):
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:
-            create_validator(model, config, results_dir, validation_data_loader, trainer)
+            create_validator(model, config, validation_data_loader, trainer)
 
         monitor = GpuMonitor()
 

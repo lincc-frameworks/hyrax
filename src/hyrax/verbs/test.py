@@ -97,13 +97,13 @@ class Test(Verb):
             config["data_loader"]["shuffle"] = False
 
         # Determine which dataset to use for testing
-        test_data_loader, data_loader_indexes = dist_data_loader(dataset["test"], config, False)
+        test_data_loader, _ = dist_data_loader(dataset["test"], config, False)
 
         # Save the loaded model weights to the test results directory
         model.save(results_dir / "test_weights.pth")
 
         # Create the save batch callback
-        save_batch_callback = create_save_batch_callback(dataset["test"], data_loader_indexes, results_dir)
+        save_batch_callback = create_save_batch_callback(dataset["test"], results_dir)
 
         results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
         mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
@@ -126,7 +126,7 @@ class Test(Verb):
             evaluator_engine.run(test_data_loader)
 
             # Then, run tester to compute metrics
-            test_engine = create_tester(model, config, results_dir)
+            test_engine = create_tester(model, config)
             test_engine.run(test_data_loader)
 
         # Write out a dictionary to map IDs->Batch

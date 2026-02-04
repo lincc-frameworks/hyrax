@@ -82,7 +82,7 @@ class Infer(Verb):
             if dataset.is_map():
                 logger.debug(f"Inference dataset has length: {len(dataset)}")  # type: ignore[arg-type]
 
-        data_loader, data_loader_indexes = dist_data_loader(dataset, config, False)
+        data_loader, _ = dist_data_loader(dataset, config, False)
 
         load_model_weights(config, model, "infer")
         log_runtime_config(config, results_dir)
@@ -94,7 +94,7 @@ class Infer(Verb):
         model.save(results_dir / "inference_weights.pth")
 
         # Create the save batch callback
-        save_batch_callback = create_save_batch_callback(dataset, data_loader_indexes, results_dir)
+        save_batch_callback = create_save_batch_callback(dataset, results_dir)
 
         # Run inference
         evaluator = create_evaluator(model, save_batch_callback, config)
