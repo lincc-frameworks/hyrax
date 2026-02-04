@@ -247,11 +247,11 @@ class DataCache:
         """
         from concurrent.futures import FIRST_COMPLETED, Future, wait
 
-        ## We use self._preload threads here as both the number of workers and
+        ## We use self._preload_threads here as both the number of workers and
         ## the number of in-flight futures that this lazy map executor keeps running
         ##
         ## The goal here is actually maximum filesystem performance on a high-latency filesystem
-        ## Currently the defaults are tuned for UW's HYAK Klone filesystem, where 50 threads is
+        ## Currently the defaults are tuned for UW's HYAK Klone filesystem, where 50 threads is optimal.
         ##
         ## A better implementation would look at how long the main
         ## thread of the preloader spends waiting for workers. For a balanced situation where
