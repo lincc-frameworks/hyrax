@@ -19,36 +19,20 @@ class DataCacheBenchmarks:
         # asv caches the cwd for each benchmark run
         data_dir = Path("./hsc1k").resolve()
         data_dir.mkdir(exist_ok=True)
-        pooch.retrieve(
-            # Zenodo URL for example HSC dataset
-            url="https://zenodo.org/records/14498536/files/hsc_demo_data.zip?download=1",
-            known_hash="md5:1be05a6b49505054de441a7262a09671",
-            fname="hsc_demo_data.zip",
-            path=data_dir,
-            processor=pooch.Unzip(extract_dir=data_dir),
-        )
-        # Extracted folder name from the bundled HSC1k sample dataset.
         hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
         if not hsc_data_dir.exists():
-            manifest_dirs = []
-            for path in data_dir.iterdir():
-                if path.is_dir() and (path / "manifest.fits").exists():
-                    manifest_dirs.append(path)
-                    if len(manifest_dirs) > 1:
-                        break
-            if len(manifest_dirs) == 1:
-                hsc_data_dir = manifest_dirs[0]
-            elif len(manifest_dirs) == 0:
+            pooch.retrieve(
+                # Zenodo URL for example HSC dataset
+                url="https://zenodo.org/records/14498536/files/hsc_demo_data.zip?download=1",
+                known_hash="md5:1be05a6b49505054de441a7262a09671",
+                fname="hsc_demo_data.zip",
+                path=data_dir,
+                processor=pooch.Unzip(extract_dir=data_dir),
+            )
+            if not hsc_data_dir.exists():
                 raise RuntimeError(
                     f"No manifest.fits directory found under {data_dir}. "
                     f"Expected extracted HSC1k directory named {HSC1K_EXTRACTED_DIRNAME}."
-                )
-            else:
-                manifest_names = ", ".join(sorted(p.name for p in manifest_dirs))
-                raise RuntimeError(
-                    f"Found multiple manifest.fits directories under {data_dir}: {manifest_names}. "
-                    "Expected a single extracted HSC1k directory named "
-                    f"{HSC1K_EXTRACTED_DIRNAME}."
                 )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
