@@ -24,19 +24,18 @@ class DataCacheBenchmarks:
         hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
         if not hsc_data_dir.exists():
             pooch.retrieve(
-                # Zenodo URL for example HSC dataset
                 url=HSC1K_ARCHIVE_URL,
                 known_hash=HSC1K_ARCHIVE_HASH,
                 fname="hsc_demo_data.zip",
                 path=data_dir,
                 processor=pooch.Unzip(),
             )
-        if not hsc_data_dir.exists():
-            raise RuntimeError(
-                f"HSC1k data directory not found under {data_dir}. "
-                "The archive was downloaded but did not extract to the expected directory "
-                f"named {HSC1K_EXTRACTED_DIRNAME}."
-            )
+            if not hsc_data_dir.exists():
+                raise RuntimeError(
+                    f"HSC1k data directory not found under {data_dir}. "
+                    "The archive was downloaded but did not extract to the expected directory "
+                    f"named {HSC1K_EXTRACTED_DIRNAME}."
+                )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
         self.h.config["general"]["data_dir"] = str(hsc_data_dir)
