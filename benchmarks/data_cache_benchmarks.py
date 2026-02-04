@@ -7,6 +7,8 @@ import psutil
 from hyrax import Hyrax
 
 HSC1K_EXTRACTED_DIRNAME = "hsc_8asec_1000"
+HSC1K_ARCHIVE_URL = "https://zenodo.org/records/14498536/files/hsc_demo_data.zip?download=1"
+HSC1K_ARCHIVE_HASH = "md5:1be05a6b49505054de441a7262a09671"
 
 
 class DataCacheBenchmarks:
@@ -23,8 +25,8 @@ class DataCacheBenchmarks:
         if not hsc_data_dir.exists():
             pooch.retrieve(
                 # Zenodo URL for example HSC dataset
-                url="https://zenodo.org/records/14498536/files/hsc_demo_data.zip?download=1",
-                known_hash="md5:1be05a6b49505054de441a7262a09671",
+                url=HSC1K_ARCHIVE_URL,
+                known_hash=HSC1K_ARCHIVE_HASH,
                 fname="hsc_demo_data.zip",
                 path=data_dir,
                 processor=pooch.Unzip(),
@@ -32,7 +34,8 @@ class DataCacheBenchmarks:
         if not hsc_data_dir.exists():
             raise RuntimeError(
                 f"HSC1k data directory not found under {data_dir}. "
-                f"Expected extracted directory named {HSC1K_EXTRACTED_DIRNAME}."
+                "The archive was downloaded but did not extract to the expected directory "
+                f"named {HSC1K_EXTRACTED_DIRNAME}."
             )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
