@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+import pooch
 import psutil
 
 from hyrax import Hyrax
@@ -11,8 +12,6 @@ class DataCacheBenchmarks:
 
     def setup_cache(self):
         """Download the HSC1k dataset only once."""
-        import pooch
-
         self.h = Hyrax()
 
         # asv caches the cwd for each benchmark run
@@ -24,7 +23,7 @@ class DataCacheBenchmarks:
             known_hash="md5:1be05a6b49505054de441a7262a09671",
             fname="hsc_demo_data.zip",
             path=data_dir,
-            processor=pooch.Unzip(extract_dir=str(data_dir)),
+            processor=pooch.Unzip(extract_dir=data_dir),
         )
         # Extracted folder name from the bundled HSC1k sample dataset.
         hsc_data_dir = data_dir / "hsc_8asec_1000"
