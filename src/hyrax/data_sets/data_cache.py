@@ -59,7 +59,6 @@ class DataCache:
         # Save config we need
         self._use_cache = config["data_set"]["use_cache"]
         self._preload_cache = config["data_set"]["preload_cache"]
-        self._preload_threads = config["data_set"]["preload_threads"]
 
         # Data size and count tracking
         self._data_size_bytes = 0
@@ -76,6 +75,7 @@ class DataCache:
 
         self._preload_thread = None
         if self._preload_cache and self._use_cache:
+            self._preload_threads = config["data_set"]["preload_threads"]
             self._preload_thread = Thread(
                 name="DataCache-preload-tensor-cache",
                 daemon=True,
