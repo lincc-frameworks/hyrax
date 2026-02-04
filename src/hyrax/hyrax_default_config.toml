@@ -285,6 +285,11 @@ use_cache = true
 # Warning: Only suitable for situations where the entire dataset fits in system memory
 preload_cache = false
 
+# Number of threads to use for preload. Preload is most effective when your dataset has many small files
+# and your storage layer has high latency or is IOPS limited. Avoid writing your dataset class this way,
+# but if you do then a large number of preload threads will maximize io throughput
+preload_threads = 50
+
 # Override the name of the object_id column for FitsImageDataset, HSCDataset and DownloadedLSSTDataset
 object_id_column_name = false
 
