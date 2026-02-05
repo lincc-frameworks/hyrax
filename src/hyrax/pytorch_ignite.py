@@ -783,10 +783,9 @@ def create_save_batch_callback(dataset, results_dir):
         batch_results = batch_results.detach().to("cpu")
 
         # Verify that batch contains object_id
-        if not isinstance(batch, dict) or "object_id" not in batch:
-            msg = "Dataset must return batches as dictionaries containing 'object_id'. "
-            msg += "Modify the __getitem__ or __iter__ function of your dataset to include 'object_id' "
-            msg += "with unique values per data member in the dictionary it returns."
+        if "object_id" not in batch:
+            msg = "The data batch is missing the key: 'object_id'. "
+            msg += "Cannot save the model output."
             logger.error(msg)
             raise RuntimeError(msg)
 
