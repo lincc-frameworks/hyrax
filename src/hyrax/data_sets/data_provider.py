@@ -3,6 +3,7 @@ import functools
 import logging
 import time
 import warnings
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -425,6 +426,16 @@ class DataProvider:
             # It's ok for data_location to be None, some datasets
             # (e.g. HyraxRandomDataset) may not require it.
             data_location = dataset_definition.get("data_location")
+
+            # Resolve data_location to an absolute path and write it back to the config
+            if data_location is not None:
+                resolved_path = str(Path(data_location).expanduser().resolve())
+                dataset_definition["data_location"] = resolved_path
+                data_location = resolved_path
+
+                # Also update the main config's data_request so the resolved path is persisted
+                if "data_request" in self.config and friendly_name in self.config["data_request"]:
+                    self.config["data_request"][friendly_name]["data_location"] = resolved_path
 
             # Create a temporary config dictionary that merges the original
             # config with the dataset-specific config.

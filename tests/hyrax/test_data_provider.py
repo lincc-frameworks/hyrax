@@ -295,6 +295,8 @@ def test_primary_or_first_dataset(multimodal_config):
     """Test that if no primary dataset is specified, the first dataset
     in the config is returned."""
 
+    from pathlib import Path
+
     from hyrax import Hyrax
 
     h = Hyrax()
@@ -310,7 +312,9 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name == "object_id"
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_location == "./in_memory_0"
+    # data_location is now resolved to an absolute path
+    assert Path(primary_dataset.data_location).is_absolute()
+    assert "in_memory_0" in primary_dataset.data_location
 
     # Secondary case with no `primary_id_field` defined
     model_inputs["train"]["random_0"].pop("primary_id_field", None)
@@ -323,7 +327,9 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name is None
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_location == "./in_memory_0"
+    # data_location is now resolved to an absolute path
+    assert Path(primary_dataset.data_location).is_absolute()
+    assert "in_memory_0" in primary_dataset.data_location
 
     # Tertiary case with `primary_id_field` defined on `random_1`
     model_inputs["train"]["random_1"]["primary_id_field"] = "object_id"
@@ -336,7 +342,9 @@ def test_primary_or_first_dataset(multimodal_config):
     assert dp.primary_dataset_id_field_name == "object_id"
 
     primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_location == "./in_memory_1"
+    # data_location is now resolved to an absolute path
+    assert Path(primary_dataset.data_location).is_absolute()
+    assert "in_memory_1" in primary_dataset.data_location
 
 
 def test_metadata_fields(data_provider):
