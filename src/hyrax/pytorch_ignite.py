@@ -755,7 +755,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 def create_save_batch_callback(dataset, results_dir):
     """Create a callback function for saving batch results during inference or testing.
 
-    This factory function creates a closure that captures the dataset, indexes, and output
+    This factory function creates a closure that captures the dataset and output
     directory, then returns a callback that can be used with create_evaluator to save
     model outputs batch by batch.
 
@@ -774,23 +774,26 @@ def create_save_batch_callback(dataset, results_dir):
     from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
 
     data_writer = InferenceDataSetWriter(dataset, results_dir)
-    write_index = 0
 
     def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
         """Receive and write batch results to results_dir immediately."""
-        nonlocal write_index
         nonlocal data_writer
-
-        batch_len = len(batch_results)
 
         # Ensure the batch results are on CPU and detached from the computation graph
         batch_results = batch_results.detach().to("cpu")
+
+        # Verify that batch contains object_id
+        if not isinstance(batch, dict) or "object_id" not in batch:
+            msg = "Dataset must return batches as dictionaries containing 'object_id'. "
+            msg += "Modify the __getitem__ or __iter__ function of your dataset to include 'object_id' "
+            msg += "with unique values per data member in the dictionary it returns."
+            logger.error(msg)
+            raise RuntimeError(msg)
 
         batch_object_ids = batch["object_id"]
 
         # Ensure that everything to be written is in numpy format, and write it out
         data_writer.write_batch(np.array(batch_object_ids), [t.numpy() for t in batch_results])
-        write_index += batch_len
 
     # Attach the data_writer to the callback so it can be accessed later
     _save_batch.data_writer = data_writer  # type: ignore[attr-defined]
