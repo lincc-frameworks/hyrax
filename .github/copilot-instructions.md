@@ -4,6 +4,40 @@
 
 Hyrax is a Python-based tool for hunting rare and anomalous sources in large astronomical imaging surveys. It supports downloading cutouts, building latent representations, interactive visualization, and anomaly detection using PyTorch models.
 
+## Design Goals and North Stars
+
+**CRITICAL: Always keep these design principles in mind when making changes to Hyrax.**
+
+### 1. Low Code Interface
+- **Minimize user-facing APIs**: Hyrax prioritizes configuration-driven workflows over complex programmatic APIs
+- **Avoid API proliferation**: Don't create new user-facing APIs that we'll need to maintain indefinitely
+- **Favor declarative over imperative**: Users should configure what they want, not how to get it
+- **CLI-first approach**: The `hyrax` CLI tool with verb-based commands is the primary user interface
+- **Configuration over code**: Use TOML configuration files extensively to control behavior
+
+### 2. Make Easy Things Easy, Hard Things Possible
+- **Default workflows should "just work"**: Common use cases should require minimal configuration
+- **Progressive complexity**: Simple tasks should be simple; advanced features available when needed
+- **Sensible defaults**: Default configurations in `hyrax_default_config.toml` should handle common scenarios
+- **Extensibility without complexity**: Advanced users can extend with custom models, datasets, and verbs
+- **Clear extension points**: Well-documented base classes (`Verb`, model base classes, dataset classes)
+
+### 3. Support Reproducibility
+- **Configuration as documentation**: Config files serve as complete records of how experiments were run
+- **Version everything**: Track model versions, data versions, and configuration versions
+- **Manifest files**: Maintain manifests of downloaded data and processed results
+- **Deterministic defaults**: Random seeds and other sources of variability should be configurable
+- **MLflow integration**: Log experiments systematically for comparison and reproduction
+- **ONNX export**: Support model serialization for long-term reproducibility
+
+### 4. Smooth and Legible Migration When APIs Change
+- **Clear deprecation warnings**: When changing APIs, provide helpful deprecation messages
+- **Migration guides in documentation**: Document breaking changes with before/after examples
+- **Backward compatibility when possible**: Maintain compatibility or provide clear upgrade paths
+- **Version pinning guidance**: Help users understand which versions work together
+- **Config schema validation**: Use Pydantic schemas to validate configurations and provide helpful error messages
+- **Changelog discipline**: Maintain comprehensive changelog with breaking change notifications
+
 ## Working Effectively
 
 ### Bootstrap and Setup - NEVER CANCEL these commands
