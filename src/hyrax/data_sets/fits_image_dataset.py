@@ -17,7 +17,7 @@ in a configuration file if you are running from the CLI
 
     import hyrax
     h = hyrax.Hyrax()
-    
+
     # Configure using data_request (recommended approach)
     h.config["data_request"] = {
         "train": {
