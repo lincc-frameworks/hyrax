@@ -1,8 +1,8 @@
 # Hyrax — Claude Code Instructions
 
-> **Read `HYRAX_GUIDE.md` first.** It contains the canonical project reference
-> (architecture, config system, registries, conventions). This file adds only
-> Claude Code-specific guidance.
+> **`HYRAX_GUIDE.md` is the canonical reference** for architecture, config system,
+> registries, and conventions. This file contains only Claude Code-specific overrides.
+> When in doubt, follow `HYRAX_GUIDE.md`.
 
 ## Project Overview
 
@@ -31,14 +31,14 @@ Primary interface is Jupyter notebooks; the `hyrax` CLI is secondary (HPC/Slurm)
 
 ### New Model
 1. Create a file in `src/hyrax/models/`.
-2. Decorate the class with `@hyrax_model`.
+2. Inherit from `torch.nn.Module`, decorate the class with `@hyrax_model`.
 3. Implement `__init__`, `forward`, `train_step`, and `prepare_inputs`.
 4. Add default config under `[model.YourModelName]` in `hyrax_default_config.toml`.
-5. Add tests in `tests/hyrax/`.
+5. Add tests in `tests/hyrax/test_<name>.py`.
 
 ### New Dataset
 1. Create a file in `src/hyrax/data_sets/`.
-2. Subclass `HyraxDataset` (auto-registered via `__init_subclass__`).
+2. Subclass `HyraxDataset` (auto-registered via `__init_subclass__`). Use `Dataset` spelling.
 3. For image datasets, also inherit `HyraxImageDataset` for transform stacking.
 4. Add default config under `[data_set.YourDatasetName]` in `hyrax_default_config.toml`.
 
@@ -46,17 +46,16 @@ Primary interface is Jupyter notebooks; the `hyrax` CLI is secondary (HPC/Slurm)
 1. Create a file in `src/hyrax/verbs/`.
 2. Subclass `Verb`, set `cli_name`, decorate with `@hyrax_verb`.
 3. Implement `setup_parser`, `run_cli`, and `run`.
-4. Verbs are internal only — there is no external verb plugin system.
+4. Verbs are internal only. Always use class-based verbs (function-based verbs are legacy).
 
 ## Common Pitfalls
+
+See `HYRAX_GUIDE.md` for the full list. Key points:
 
 - **`key = false` means `None`** — TOML has no null. Hyrax uses `false` as a sentinel
   for "not set." Code must treat `False` as `None` for these keys.
 - **`ConfigDict` is Pydantic's** — `from pydantic import ConfigDict`. The runtime
   config is an ordinary mutable `dict`, not a custom wrapper.
 - **Verbs are internal only** — external plugins register models and datasets, not verbs.
-- **Spelling:** `HyraxCifarDataset` (lowercase 's' in "set"), `HSCDataSet` (capital 'S').
-- **Manifest files are a compromise** — they exist out of necessity, not as a design
-  goal. Do not treat them as an architectural pattern to extend.
-- **Pydantic validation is experimental** — it applies only to the `[data_request]`
-  config section. Do not assume Pydantic covers the full config.
+- **Manifest files** — ask the user before extending this pattern.
+- **Pydantic validation** — do not add to new config sections.

@@ -1,8 +1,9 @@
 # Hyrax — GitHub Copilot Instructions
 
-> **Read `HYRAX_GUIDE.md` in the repo root first.** It contains the canonical project
-> reference (architecture, config system, registries, conventions). This file adds only
-> Copilot-specific guidance.
+> **`HYRAX_GUIDE.md` in the repo root is the canonical reference** for architecture,
+> config system, registries, and conventions. This file contains only Copilot-specific
+> overrides (primarily timeout handling for async execution). When in doubt, follow
+> `HYRAX_GUIDE.md`.
 
 ## Critical: Long-Running Commands
 
@@ -52,14 +53,15 @@ Common verbs: `train`, `infer`, `download`, `prepare`, `umap`, `visualize`, `loo
 
 ## Key Pitfalls
 
+See `HYRAX_GUIDE.md` for the full list. Key points:
+
 - **`key = false` means `None`** — TOML has no null. Hyrax uses `false` as a sentinel
   for "not set." Code must treat `False` as `None` for these keys.
 - **`ConfigDict` is Pydantic's** — the runtime config is an ordinary mutable `dict`,
   not a custom immutable wrapper.
 - **Verbs are internal only** — external plugins register models and datasets, not verbs.
-- **Spelling:** `HyraxCifarDataset` (lowercase 's'), `HSCDataSet` (capital 'S').
-- **Manifest files are a compromise** — not a design pattern to extend.
-- **Pydantic validation is experimental** — applies to `[data_request]` only.
+- **Manifest files** — ask the user before extending this pattern.
+- **Pydantic validation** — do not add to new config sections.
 
 ## Repository Layout
 
@@ -79,7 +81,7 @@ Only skip these if specifically requested by the user, otherwise:
 
 1. **ALWAYS** run full validation first: `python -m pytest -m "not slow"`
 2. Make changes in appropriate `src/hyrax/` subdirectory
-3. Add tests in `tests/hyrax/` following existing patterns
+3. Add tests in `tests/hyrax/test_<name>.py` following existing patterns
 4. **ALWAYS** run: `ruff format src/ tests/ && ruff check src/ tests/`
 5. **ALWAYS** run: `python -m pytest -m "not slow"` (timeout: 10+ minutes)
 6. **ALWAYS** run: `pre-commit run --all-files` (timeout: 15+ minutes)

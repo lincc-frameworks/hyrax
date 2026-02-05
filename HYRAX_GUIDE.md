@@ -1,7 +1,9 @@
 # Hyrax Guide
 
-Canonical reference for AI coding assistants working on Hyrax. Both `CLAUDE.md` and
-`.github/copilot-instructions.md` point here—keep this file as the single source of truth.
+Canonical reference for AI coding assistants working on Hyrax. Tool-specific files
+(`CLAUDE.md`, `.github/copilot-instructions.md`) contain only tool-specific overrides
+and reference this file for shared guidance. **Edit this file** for changes that should
+apply to all AI assistants; edit tool-specific files only for tool-specific behavior.
 
 ## What Is Hyrax
 
@@ -130,7 +132,8 @@ Hyrax discovers components through three registries:
 
 ### MODEL_REGISTRY (`src/hyrax/models/model_registry.py`)
 - Decorator: `@hyrax_model`
-- Models must implement `__init__`, `forward`, `train_step`, and `prepare_inputs`.
+- Models must inherit from `torch.nn.Module` and implement `__init__`, `forward`,
+  `train_step`, and `prepare_inputs`.
 - The decorator wires up save/load, optimizer, and criterion handling.
 - Built-in: `HyraxAutoencoder`, `HyraxAutoencoderV2`, `HyraxCNN`, `SimCLR`, `ImageDCAE`
 - **External plugins supported** — use a fully qualified import path in the config
@@ -143,8 +146,10 @@ Hyrax discovers components through three registries:
 
 ### VERB_REGISTRY (`src/hyrax/verbs/verb_registry.py`)
 - Decorator: `@hyrax_verb`; base class: `Verb`
-- Class-based verbs implement `setup_parser`, `run_cli`, and `run`.
-- Some verbs (download, prepare, rebuild_manifest) are function-based in `hyrax.py`.
+- **New verbs must be class-based**: subclass `Verb`, implement `setup_parser`, `run_cli`,
+  and `run`.
+- Some legacy verbs (download, prepare, rebuild_manifest) are function-based in `hyrax.py`.
+  Leave these alone; do not add new function-based verbs.
 - **Verbs are internal only** — there is no public plugin system for external verb
   registration. External extensions register through models and datasets only.
 
@@ -167,10 +172,10 @@ behavior." Code that reads these keys must treat the boolean `False` as `None`.
 
 ### Pydantic validation
 
-Pydantic validation is **experimental and limited to the `[data_request]` section only**
-(`config_schemas/data_request.py`). The rest of the config is validated by checking keys
-against defaults, not by Pydantic schemas. Do not assume Pydantic covers the whole
-config.
+Pydantic validation exists **only for `[data_request]`** (`config_schemas/data_request.py`)
+due to that section's complexity with nested dictionaries. **Do not add Pydantic validation
+to other config sections** — the rest of the config is validated by checking keys against
+defaults, not by Pydantic schemas.
 
 Note: `ConfigDict` appearing in `config_schemas/` is **Pydantic's `ConfigDict`**, not a
 custom Hyrax wrapper. The runtime config itself is an ordinary `dict`.
@@ -191,6 +196,7 @@ Each verb that produces output creates its own timestamped results directory.
 
 ## Testing Conventions
 
+- **File naming:** `tests/hyrax/test_<name>.py`
 - **Markers:** `slow` for integration / E2E tests; unmarked tests are fast.
 - Default test run: `python -m pytest -m "not slow"`
 - Test data: `HyraxCifarDataset` (CIFAR-10 via torchvision), `HyraxRandomDataset`,
@@ -200,6 +206,8 @@ Each verb that produces output creates its own timestamped results directory.
 
 ## Key Conventions
 
+- **Spelling:** `Dataset` (lowercase 's') is preferred for new code. Legacy classes like
+  `HSCDataSet` use `DataSet` — leave existing code alone, but use `Dataset` for new classes.
 - **Timestamped results dirs** — `YYYYMMDD-HHMMSS-<verb>-<uid>` under `results/`.
   Each run snapshots its config as `runtime_config.toml` inside the directory.
 - **Batch indexing** — data loaders use PyTorch's standard batch dimension (dim 0).
@@ -214,7 +222,8 @@ Each verb that produces output creates its own timestamped results directory.
 - **Line length** — 110 characters (`ruff` enforces this).
 - **Manifest files** — FITS binary tables tracking download state. These are a **known
   compromise / anti-pattern**, not a design goal. They exist because there was no better
-  option at the time.
+  option at the time. If extending manifest files seems like the right solution, ask the
+  user for clarification first.
 
 ## Common Tasks and Workflows
 
