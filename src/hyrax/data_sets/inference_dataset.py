@@ -290,6 +290,9 @@ class InferenceDataSet(HyraxDataset, Dataset):
             # This directly retrieves rows by their 0-indexed offset, returning
             # results in the same order as the input indices.
             arrow_result = self.lance_table.take_offsets(idx.tolist()).to_arrow()
+            # Must check for empty results in Arrow format before calling
+            # `.to_pydict()`, since even empty results will produce a dictionary
+            # which, having a key for each column, will appear non-empty.
             if not arrow_result:
                 raise IndexError("Indexes not found in database")
             result = arrow_result.to_pydict()
