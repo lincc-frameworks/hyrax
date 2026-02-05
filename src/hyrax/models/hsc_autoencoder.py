@@ -43,7 +43,7 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         decoded = self.decoder(encoded)
         return decoded
 
-    def train_step(self, batch):
+    def train_batch(self, batch):
         """
         This function contains the logic for a single training step. i.e. the
         contents of the inner loop of a ML training process.
@@ -51,7 +51,8 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         Parameters
         ----------
         batch : tuple
-            A tuple containing the two values the loss function
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
 
         Returns
         -------
@@ -68,3 +69,74 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         self.optimizer.step()
 
         return {"loss": loss.item()}
+
+    def validate_batch(self, batch):
+        """
+        This function contains the logic for a single validation step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML validation process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+
+        data = batch[0]
+
+        decoded = self.forward(data)
+        loss = self.criterion(decoded, data)
+
+        return {"loss": loss.item()}
+
+    def test_batch(self, batch):
+        """
+        This function contains the logic for a single testing step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML testing process. In this case, it is identical to `validate_batch`.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Current loss value : dict
+            Dictionary containing the loss value for the current batch.
+        """
+
+        data = batch[0]
+
+        decoded = self.forward(data)
+        loss = self.criterion(decoded, data)
+
+        return {"loss": loss.item()}
+
+    def infer_batch(self, batch):
+        """
+        This function contains the logic for a single inference step that will
+        process a single batch of data. i.e. the contents of the inner loop of a
+        ML inference process.
+
+        Parameters
+        ----------
+        batch : tuple
+            A tuple containing the input data for the current batch, possibly
+            with labels that are ignored.
+
+        Returns
+        -------
+        Reconstructed outputs : torch.Tensor
+            The reconstructed outputs from the autoencoder.
+        """
+
+        data = batch[0]
+        return self.forward(data)

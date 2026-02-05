@@ -239,7 +239,7 @@ def hyrax_model(cls):
         cls.prepare_inputs = staticmethod(default_prepare_inputs)
 
     # Update required methods to include prepare_inputs
-    required_methods = ["train_step", "forward", "__init__", "prepare_inputs"]
+    required_methods = ["train_batch", "infer_batch", "__init__", "prepare_inputs"]
     for name in required_methods:
         if not hasattr(cls, name):
             logger.error(f"Hyrax model {cls.__name__} missing required method {name}.")
