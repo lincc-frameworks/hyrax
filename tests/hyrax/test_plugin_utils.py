@@ -165,7 +165,7 @@ def test_torch_load_with_map_location(tmp_path):
         def forward(self, x):
             return self.linear(x)
 
-        def train_step(self, batch):
+        def train_batch(self, batch):
             return {"loss": 0.0}
 
     # Create config

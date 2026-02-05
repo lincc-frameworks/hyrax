@@ -234,11 +234,11 @@ opset_version = 20
 input_model_directory = false
 
 
-[data_request]
+# [data_request]
 # Top-level table that defines the dataset(s) used for training, validation, and inference.
+# Configure with [data_request.train], [data_request.validate], or [data_request.infer] sections.
 
-
-[model_inputs]
+# [model_inputs]
 # DEPRECATED: Use [data_request] instead. This will be removed in the next major release.
 
 
@@ -296,7 +296,7 @@ use_cache = true
 # If `true`, preload the in memory cache using many worker threads when the dataset is constructed 
 # to reduce the effect of filesystem latency on first epoch runtime. 
 # Warning: Only suitable for situations where the entire dataset fits in system memory
-preload_cache = true
+preload_cache = false
 
 # Override the name of the object_id column for FitsImageDataset, HSCDataset and DownloadedLSSTDataset
 object_id_column_name = false
