@@ -105,3 +105,50 @@ You can specify a random seed with the ``[data_set]`` ``seed`` configuration key
             $ cat hyrax_config.toml
             [data_set]
             seed = 1
+
+
+Saving and reloading split indexes
+-----------------------------------
+
+When training a model with percentage-based splits, Hyrax automatically saves the split indexes to the results 
+directory as ``split_indexes.npz``. This allows you to reproduce the exact same data splits in subsequent runs 
+such as testing or inference.
+
+The split indexes are saved automatically during training when using percentage-based splits (i.e., when not using 
+separate dataset configurations for train/validate/test). No additional configuration is needed.
+
+To load and use previously saved split indexes:
+
+.. tab-set::
+
+    .. tab-item:: Notebook
+
+        .. code-block:: python
+
+            from hyrax import Hyrax
+            from hyrax.pytorch_ignite import load_split_indexes, dist_data_loader, setup_dataset
+            
+            h = Hyrax()
+            
+            # Load the split indexes from a training run
+            results_dir = "/path/to/training/results"
+            indexes = load_split_indexes(results_dir)
+            
+            # Create dataset
+            dataset = setup_dataset(h.config)
+            
+            # Use the loaded indexes to create data loaders with the same splits
+            data_loaders = dist_data_loader(
+                dataset["train"], 
+                h.config, 
+                ["train", "test"], 
+                indexes=indexes
+            )
+
+    .. tab-item:: CLI
+
+        The split indexes are saved to the results directory during training and can be loaded 
+        programmatically using the ``load_split_indexes()`` function from ``hyrax.pytorch_ignite``.
+
+This feature ensures reproducibility by guaranteeing that the exact same data samples are used in each split 
+across different runs, which is critical for comparing model performance and debugging.
