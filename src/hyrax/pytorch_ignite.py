@@ -187,6 +187,7 @@ def dist_data_loader(
     dataset: Dataset,
     config: dict,
     split: Union[str, list[str], bool] = False,
+    indexes: dict = None,
 ):
     """Create Pytorch Ignite distributed data loaders
 
@@ -202,6 +203,10 @@ def dist_data_loader(
         The name(s) of the split we want to use from the data set.
         If this is false or not passed, then a single data loader is returned
         that corresponds to the entire dataset.
+    indexes : dict, optional
+        Pre-loaded split indexes. If provided, these indexes will be used instead
+        of creating new splits. The keys should be split names (e.g., 'train', 'test')
+        and values should be lists of integer indexes.
 
     Returns
     -------
@@ -254,13 +259,15 @@ def dist_data_loader(
 
     if dataset.is_iterable():
         ids = list(dataset.ids())
-        indexes = list(range(len(ids)))
+        indexes_list = list(range(len(ids)))
         dataloaders = {
-            s: (idist.auto_dataloader(dataset, pin_memory=True, **data_loader_kwargs), indexes) for s in split
+            s: (idist.auto_dataloader(dataset, pin_memory=True, **data_loader_kwargs), indexes_list)
+            for s in split
         }
     else:
-        # Create the indexes for all splits based on config.
-        indexes = create_splits(dataset, config)
+        # Create the indexes for all splits based on config, or use provided indexes
+        if indexes is None:
+            indexes = create_splits(dataset, config)
 
         # Create samplers and dataloaders for each split we are interested in
         samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
@@ -367,6 +374,64 @@ def create_splits(data_set: Dataset, config: dict):
         split_inds["validate"] = valid_idx
 
     return split_inds
+
+
+def save_split_indexes(
+    split_indexes: dict, output_dir: Union[str, Path], filename: str = "split_indexes.npz"
+):
+    """Save split indexes to a numpy .npz file.
+
+    Parameters
+    ----------
+    split_indexes : dict
+        Dictionary with split names as keys (e.g., 'train', 'test', 'validate')
+        and lists of indexes as values
+    output_dir : Union[str, Path]
+        Directory where the split indexes file should be saved
+    filename : str, optional
+        Name of the file to save (default: "split_indexes.npz")
+    """
+    output_dir = Path(output_dir) if not isinstance(output_dir, Path) else output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Convert lists to numpy arrays and save
+    split_arrays = {name: np.array(indexes) for name, indexes in split_indexes.items()}
+    save_path = output_dir / filename
+
+    np.savez(save_path, **split_arrays)
+    logger.info(f"Saved split indexes to {save_path}")
+
+
+def load_split_indexes(input_dir: Union[str, Path], filename: str = "split_indexes.npz") -> dict:
+    """Load split indexes from a numpy .npz file.
+
+    Parameters
+    ----------
+    input_dir : Union[str, Path]
+        Directory where the split indexes file is located
+    filename : str, optional
+        Name of the file to load (default: "split_indexes.npz")
+
+    Returns
+    -------
+    dict
+        Dictionary with split names as keys (e.g., 'train', 'test', 'validate')
+        and lists of indexes as values
+    """
+    input_dir = Path(input_dir) if not isinstance(input_dir, Path) else input_dir
+    load_path = input_dir / filename
+
+    if not load_path.exists():
+        raise FileNotFoundError(f"Split indexes file not found at {load_path}")
+
+    # Load the .npz file
+    loaded = np.load(load_path)
+
+    # Convert numpy arrays back to lists for consistency with create_splits
+    split_indexes = {name: loaded[name].tolist() for name in loaded.files}
+    logger.info(f"Loaded split indexes from {load_path}")
+
+    return split_indexes
 
 
 # ! Need to go through and clean up the variables here. I think `device` and `engine`

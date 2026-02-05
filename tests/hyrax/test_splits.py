@@ -1,6 +1,6 @@
 import pytest
 
-from hyrax.pytorch_ignite import create_splits
+from hyrax.pytorch_ignite import create_splits, dist_data_loader, load_split_indexes, save_split_indexes
 
 
 def mkconfig(train_size=0.2, test_size=0.6, validate_size=0.1, seed=False):
@@ -159,3 +159,156 @@ def test_split_values_rng():
     indexes_b = create_splits(fake_dataset, config)
 
     assert all([a == b for a, b in zip(indexes_a, indexes_b)])
+
+
+def test_save_and_load_split_indexes(tmp_path):
+    """Test saving and loading split indexes."""
+    fake_dataset = [1] * 100
+    config = mkconfig(test_size=0.6, train_size=0.2, validate_size=0.1, seed=42)
+
+    # Create splits
+    indexes = create_splits(fake_dataset, config)
+
+    # Save splits
+    save_split_indexes(indexes, tmp_path)
+
+    # Load splits
+    loaded_indexes = load_split_indexes(tmp_path)
+
+    # Verify all splits are present
+    assert set(loaded_indexes.keys()) == set(indexes.keys())
+
+    # Verify all indexes match
+    for split_name in indexes:
+        assert loaded_indexes[split_name] == indexes[split_name]
+
+
+def test_save_split_indexes_creates_directory(tmp_path):
+    """Test that save_split_indexes creates the output directory if it doesn't exist."""
+    fake_dataset = [1] * 100
+    config = mkconfig(seed=42)
+
+    # Create splits
+    indexes = create_splits(fake_dataset, config)
+
+    # Save to a non-existent subdirectory
+    output_dir = tmp_path / "subdir" / "nested"
+    save_split_indexes(indexes, output_dir)
+
+    # Verify the file was created
+    assert (output_dir / "split_indexes.npz").exists()
+
+
+def test_load_split_indexes_file_not_found(tmp_path):
+    """Test that load_split_indexes raises FileNotFoundError when file doesn't exist."""
+    with pytest.raises(FileNotFoundError):
+        load_split_indexes(tmp_path)
+
+
+def test_save_and_load_split_indexes_custom_filename(tmp_path):
+    """Test saving and loading split indexes with a custom filename."""
+    fake_dataset = [1] * 100
+    config = mkconfig(seed=42)
+
+    # Create splits
+    indexes = create_splits(fake_dataset, config)
+
+    # Save with custom filename
+    custom_filename = "my_splits.npz"
+    save_split_indexes(indexes, tmp_path, custom_filename)
+
+    # Load with custom filename
+    loaded_indexes = load_split_indexes(tmp_path, custom_filename)
+
+    # Verify all indexes match
+    for split_name in indexes:
+        assert loaded_indexes[split_name] == indexes[split_name]
+
+
+def test_save_and_load_split_indexes_no_validate(tmp_path):
+    """Test saving and loading split indexes when validate is not present."""
+    fake_dataset = [1] * 100
+    config = mkconfig(validate_size=False, seed=42)
+
+    # Create splits
+    indexes = create_splits(fake_dataset, config)
+
+    # Save splits
+    save_split_indexes(indexes, tmp_path)
+
+    # Load splits
+    loaded_indexes = load_split_indexes(tmp_path)
+
+    # Verify validate is not in loaded indexes
+    assert "validate" not in loaded_indexes
+
+    # Verify other splits match
+    assert loaded_indexes["train"] == indexes["train"]
+    assert loaded_indexes["test"] == indexes["test"]
+
+
+def test_dist_data_loader_with_preloaded_indexes(tmp_path):
+    """Test that dist_data_loader can use pre-loaded indexes."""
+    import hyrax
+    from hyrax.pytorch_ignite import create_splits, load_split_indexes, save_split_indexes, setup_dataset
+
+    # Create a Hyrax instance with random dataset
+    h = hyrax.Hyrax()
+    h.config["data_loader"]["batch_size"] = 4
+    h.config["data_loader"]["shuffle"] = False
+    h.config["data_loader"]["num_workers"] = 0
+    h.config["general"]["results_dir"] = str(tmp_path)
+    h.config["general"]["dev_mode"] = True
+
+    h.config["model_inputs"] = {
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path / "data_train"),
+                "primary_id_field": "object_id",
+            }
+        },
+        "infer": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path / "data_infer"),
+                "primary_id_field": "object_id",
+            }
+        },
+    }
+
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 50
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
+    h.config["data_set"]["train_size"] = 0.6
+    h.config["data_set"]["validate_size"] = 0.2
+    h.config["data_set"]["test_size"] = 0.2
+    h.config["data_set"]["seed"] = 42
+
+    # Create dataset using the same logic as in training
+    dataset = setup_dataset(h.config)
+    train_dataset = dataset["train"]
+
+    # Generate splits normally
+    original_indexes = create_splits(train_dataset, h.config)
+
+    # Save the splits
+    save_split_indexes(original_indexes, tmp_path)
+
+    # Load the splits back
+    loaded_indexes = load_split_indexes(tmp_path)
+
+    # Use the loaded indexes with dist_data_loader
+    data_loaders = dist_data_loader(train_dataset, h.config, ["train", "validate"], indexes=loaded_indexes)
+
+    # Extract the indexes from the data loaders
+    train_loader, train_indexes = data_loaders["train"]
+    validate_loader, validate_indexes = data_loaders["validate"]
+
+    # Verify that the indexes match the original
+    assert train_indexes == original_indexes["train"]
+    assert validate_indexes == original_indexes["validate"]
+
+    # Verify the sizes are correct
+    assert len(train_indexes) == 30  # 60% of 50
+    assert len(validate_indexes) == 10  # 20% of 50
