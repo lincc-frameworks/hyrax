@@ -87,7 +87,7 @@ class Umap(Verb):
         # Set up the results directory where we will store our umapped output
         results_dir = create_results_dir(self.config, "umap")
         logger.info(f"Saving UMAP results to {results_dir}")
-        umap_results = InferenceDataSetWriter(inference_results, results_dir)
+        umap_results = InferenceDataSetWriter(inference_results, results_dir, self.config)
 
         # Sample the data to fit
         config_sample_size = self.config["umap"]["fit_sample_size"]
