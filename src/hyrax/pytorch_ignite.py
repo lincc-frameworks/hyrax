@@ -504,7 +504,6 @@ def create_evaluator(
 def create_validator(
     model: torch.nn.Module,
     config: dict,
-    results_directory: Path,
     validation_data_loader: DataLoader,
     trainer: Engine,
 ) -> Engine:
@@ -517,8 +516,6 @@ def create_validator(
         The model to train
     config : dict
         Hyrax runtime configuration
-    results_directory : Path
-        The directory where training results will be saved
     validation_data_loader : DataLoader
         The data loader for the validation data
     trainer : pytorch-ignite.Engine
@@ -568,11 +565,7 @@ def create_validator(
     return validator
 
 
-def create_tester(
-    model: torch.nn.Module,
-    config: dict,
-    results_directory: Path,
-) -> Engine:
+def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """This function creates a Pytorch Ignite engine object that will be used to
     test the model and compute metrics without updating model weights.
 
@@ -582,8 +575,6 @@ def create_tester(
         The model to test
     config : dict
         Hyrax runtime configuration
-    results_directory : Path
-        The directory where test results will be saved
 
     Returns
     -------
@@ -759,6 +750,54 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pbar.attach(trainer)
 
     return trainer
+
+
+def create_save_batch_callback(dataset, results_dir):
+    """Create a callback function for saving batch results during inference or testing.
+
+    This factory function creates a closure that captures the dataset and output
+    directory, then returns a callback that can be used with create_evaluator to save
+    model outputs batch by batch.
+
+    Parameters
+    ----------
+    dataset : Dataset
+        The dataset being processed (must have an ids() method)
+    results_dir : Path
+        Directory where results should be saved
+
+    Returns
+    -------
+    callable
+        A callback function with signature (batch, batch_results) that saves results
+    """
+    from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
+
+    data_writer = InferenceDataSetWriter(dataset, results_dir)
+
+    def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
+        """Receive and write batch results to results_dir immediately."""
+        nonlocal data_writer
+
+        # Ensure the batch results are on CPU and detached from the computation graph
+        batch_results = batch_results.detach().to("cpu")
+
+        # Verify that batch contains object_id
+        if "object_id" not in batch:
+            msg = "The data batch is missing the key: 'object_id'. "
+            msg += "Cannot save the model output."
+            logger.error(msg)
+            raise RuntimeError(msg)
+
+        batch_object_ids = batch["object_id"]
+
+        # Ensure that everything to be written is in numpy format, and write it out
+        data_writer.write_batch(np.array(batch_object_ids), [t.numpy() for t in batch_results])
+
+    # Attach the data_writer to the callback so it can be accessed later
+    _save_batch.data_writer = data_writer  # type: ignore[attr-defined]
+
+    return _save_batch
 
 
 class HyraxEvents(EventEnum):
