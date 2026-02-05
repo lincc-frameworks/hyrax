@@ -289,7 +289,10 @@ class InferenceDataSet(HyraxDataset, Dataset):
             # Use LanceDB's native take_offsets for efficient random access.
             # This directly retrieves rows by their 0-indexed offset, returning
             # results in the same order as the input indices.
-            result = self.lance_table.take_offsets(idx.tolist()).to_arrow().to_pydict()
+            arrow_result = self.lance_table.take_offsets(idx.tolist()).to_arrow()
+            if not arrow_result:
+                raise IndexError("Indexes not found in database")
+            result = arrow_result.to_pydict()
 
             # Convert tensor lists to numpy array
             all_tensors = np.array(result["tensor"], dtype=self.tensor_dtype)
