@@ -18,6 +18,9 @@
 Set timeouts generously (at least 2× the typical duration). If a command appears to
 hang, it is almost certainly still working.
 
+**Network Issues:** Installation may fail with ReadTimeoutError due to PyPI connectivity. Retry installation 
+multiple times if needed.
+
 ## Validation Workflow
 
 After every change, run these three steps in order:
@@ -70,3 +73,13 @@ benchmarks/             ASV performance benchmarks
 ```
 
 See `HYRAX_GUIDE.md` for detailed structure and architecture.
+
+### Adding New Features
+Only skip these if specifically requested by the user, otherwise:
+
+1. **ALWAYS** run full validation first: `python -m pytest -m "not slow"`
+2. Make changes in appropriate `src/hyrax/` subdirectory
+3. Add tests in `tests/hyrax/` following existing patterns
+4. **ALWAYS** run: `ruff format src/ tests/ && ruff check src/ tests/`
+5. **ALWAYS** run: `python -m pytest -m "not slow"` (timeout: 10+ minutes)
+6. **ALWAYS** run: `pre-commit run --all-files` (timeout: 15+ minutes)

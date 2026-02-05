@@ -10,7 +10,8 @@ imaging surveys. It is built on PyTorch and PyTorch Ignite and handles the boile
 around downloading cutouts, building latent representations, interactive visualization,
 and anomaly detection so astronomers can focus on science.
 
-## Design Philosophy
+## Design Goals and North Stars
+**CRITICAL: Always keep these design principles in mind when making changes to Hyrax.**
 
 **"Configuration OR Code"** — Hyrax uses a deliberate three-tier system:
 
@@ -23,17 +24,37 @@ and anomaly detection so astronomers can focus on science.
 secondary interface, intended for HPC / Slurm batch jobs. The CLI should be able to do
 everything notebooks can.
 
+**Make Easy Things Easy, Hard Things Possible**
+- **Default workflows should "just work"**: Common use cases should require minimal configuration, but in 
+cases where configuration is necessary we do require it so the user is not surprised (e.g. Which ML model is 
+running?)
+- **Progressive complexity**: Simple tasks should be simple; advanced features available when needed
+- **Sensible defaults**: Default configurations in `hyrax_default_config.toml` should handle common scenarios
+- **Extensibility without complexity**: Advanced users can extend with custom models, datasets, and verbs
+- **Clear extension points**: Well-documented base classes (`Verb`, model base classes, dataset classes)
+
 **Results directories are the backbone of reproducibility.** Each run creates a
 timestamped directory (`YYYYMMDD-HHMMSS-<verb>-<uid>`) under `results/` containing
-model weights, config snapshots, and MLflow tracking data. MLflow is one piece of this
-system, not the whole story.
+model weights, config snapshots, and MLflow tracking data. 
+- **Configuration as documentation**: Config files serve as complete records of how experiments were run
+- **Version everything**: Track model versions, data versions, and configuration versions
+- **Manifest files**: Maintain manifests of downloaded data and processed results
+- **Deterministic defaults**: Random seeds and other sources of variability should be configurable
+- **Take your data to go**: Items in results directories should be self-contained an easy for a scientific 
+user to examine outside of hyrax.
+- **ONNX export**: Support model serialization for long-term reproducibility
+
 
 **Target scale:** 10M–100M objects on a unix filesystem.
 
 **Document current behavior.** When migrating away from old patterns, use clear error
 messages to guide users rather than silently supporting legacy behavior.
 
-**No changelogs** — use Git history.
+**Smooth and Legible Migration When APIs Change**
+- **Clear deprecation warnings**: When changing APIs, provide helpful deprecation messages
+- **Error guided Migration**: Documentation tells how the current thing works. Errors explain what 
+documentation to follow to move from old to new
+- **Backward compatibility when possible**: Maintain compatibility or provide clear upgrade path
 
 ## Development Setup
 
@@ -194,3 +215,59 @@ Each verb that produces output creates its own timestamped results directory.
 - **Manifest files** — FITS binary tables tracking download state. These are a **known
   compromise / anti-pattern**, not a design goal. They exist because there was no better
   option at the time.
+
+## Common Tasks and Workflows
+
+### Working with Models
+- Models defined in `src/hyrax/models/`
+- Built-in models: `HyraxAutoencoder`, `HyraxCNN`
+- Model registry system automatically discovers models
+- General model configuration in `[model]` section of config files
+- Configurations for specific models in `[model.<ModelName>]` sections
+- Training via `hyrax train` command
+- Export to ONNX format supported
+
+### Working with Data
+- Data loaders in `src/hyrax/data_sets/`
+- Built-in datasets: `HSCDataSet`, `HyraxCifarDataset`, `LSSTDataset`, `FitsImageDataSet`
+- Dataset splits: train/validation/test controlled by config
+- Configuration in `[data_set]` section
+- Default data directory: `./data/`
+- Sample data includes HSC1k dataset for testing
+
+### Working with Vector Databases
+- Implementations in `src/hyrax/vector_dbs/`
+- Supported: ChromaDB, Qdrant
+- Commands: `save_to_database`, `database_connection`
+- Configuration in `[vector_db]` section
+
+## Notebook Development
+- Jupyter integration via `holoviews`, `bokeh` for visualizations
+- Interactive visualization via `hyrax visualize` verb
+- Pre-executed examples in `docs/pre_executed/`
+
+## CI/CD and GitHub Workflows
+- Main workflows in `.github/workflows/`
+- **Testing**: `testing-and-coverage.yml` runs on PRs and main branch
+- **Smoke test**: `smoke-test.yml` runs daily
+- **Documentation**: `build-documentation.yml` builds docs
+- **Benchmarks**: ASV benchmarks via `asv-*.yml` workflows
+- **Pre-commit**: Automated via `pre-commit-ci.yml`
+
+## Troubleshooting
+- **Import errors**: Ensure `pip install -e .'[dev]'` completed successfully
+- **Network timeouts during install**: Retry installation multiple times, may require 3-5 attempts due to PyPI connectivity issues
+- **ReadTimeoutError**: Common during installation - wait 1-2 minutes and retry the same pip command
+- **CLI not found**: Verify installation with `pip list | grep hyrax`
+- **Tests failing**: Check if in virtual environment and dependencies installed
+- **Pre-commit issues**: Run `pre-commit install` if hooks not working
+- **Permission issues**: Use `--user` flag with pip if encountering permission errors
+- **Virtual environment**: Always use conda/venv to avoid system Python conflicts
+
+## Performance Notes
+- Vector database operations can be slow with large datasets
+- Benchmarks available in `benchmarks/` directory (run with `asv` tool)
+- Use `--timeout` parameters appropriately for long-running operations
+- ChromaDB performance degrades with vectors >10,000 elements
+- UMAP fitting limited to 1024 samples by default for performance
+- Benchmark tests include timing for CLI help commands, object construction, and vector DB operations
