@@ -10,14 +10,14 @@ log_destination = "stderr"
 # Lowest log level to emit. Options: "critical", "error", "warning", "info", "debug".
 log_level = "info"
 
-# Directory where data is stored.
-data_dir = "./data"
-
 #Top level directory for writing results.
 results_dir = "./results"
 
 
 [download]
+# Directory where downloaded cutout data is stored.
+data_dir = "./data"
+
 # Cut out width in arcseconds.
 sw = "22asec"
 
@@ -423,6 +423,8 @@ n_neighbors = 15
 
 
 [visualize]
+# Directory where cutout data is stored for visualization.
+data_dir = "./data"
 
 # List of metadata field names to use in visualizer. Must be available as metadata in your dataset
 fields = []

@@ -218,14 +218,14 @@ def generate_data_request_from_config(config):
             "train": {
                 "data": {
                     "dataset_class": config["data_set"]["name"],
-                    "data_location": config["general"]["data_dir"],
+                    "data_location": config["download"]["data_dir"],
                     "primary_id_field": "object_id",
                 },
             },
             "infer": {
                 "data": {
                     "dataset_class": config["data_set"]["name"],
-                    "data_location": config["general"]["data_dir"],
+                    "data_location": config["download"]["data_dir"],
                     "primary_id_field": "object_id",
                 },
             },

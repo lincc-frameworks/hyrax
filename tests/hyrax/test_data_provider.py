@@ -17,7 +17,7 @@ def test_generate_data_request_from_config():
     config.pop("data_request", None)
 
     config["data_set"]["name"] = "HyraxRandomDataset"
-    config["general"]["data_dir"] = "./data"
+    config["download"]["data_dir"] = "./data"
 
     ret_val = generate_data_request_from_config(config)
 

@@ -32,7 +32,6 @@ class DataCacheBenchmarks:
             )
 
         self.h.config["general"]["results_dir"] = str(data_dir)
-        self.h.config["general"]["data_dir"] = str(hsc_data_dir)
         self.h.config["data_request"] = {
             "train": {
                 "data": {
