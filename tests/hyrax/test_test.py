@@ -81,7 +81,9 @@ def test_test(loopback_hyrax_map_only):
 
     # Verify the results directory has the expected files
     assert result.results_dir.exists()
-    assert (result.results_dir / "batch_index.npy").exists()
+    assert (result.results_dir / "batch_index.npy").exists() or (
+        result.results_dir / "inference_data.lance"
+    ).exists()
     assert (result.results_dir / "test_weights.pth").exists()
 
 
