@@ -42,7 +42,7 @@ model weights, config snapshots, and MLflow tracking data.
 - **Version everything**: Track model versions, data versions, and configuration versions
 - **Manifest files**: Maintain manifests of downloaded data and processed results
 - **Deterministic defaults**: Random seeds and other sources of variability should be configurable
-- **Take your data to go**: Items in results directories should be self-contained an easy for a scientific 
+- **Take your data to go**: Items in results directories should be self-contained and easy for a scientific 
 user to examine outside of hyrax.
 - **ONNX export**: Support model serialization for long-term reproducibility
 
