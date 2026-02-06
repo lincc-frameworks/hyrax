@@ -170,22 +170,27 @@ def _handle_nan_zero_torch(batch):
 
 def generate_data_request_from_config(config):
     """This function handles the backward compatibility issue of defining the requested
-    dataset in the `[data_set]` table in the config. If a `[data_request]` table
-    is not defined, we will assemble a `data_request` dictionary from the values
-    defined elsewhere in the configuration file.
+    dataset using the deprecated `[model_inputs]` configuration key.
+    
+    If neither `[data_request]` nor `[model_inputs]` is defined, an error will be raised.
 
-    NOTE: We should anticipate deprecating the ability to define a data_request in
-    `[data_set]`, when that happens, we should be able to remove this function.
+    NOTE: The `[model_inputs]` key is deprecated and will be removed in a future version.
+    Users should migrate to using `[data_request]` instead.
 
     Parameters
     ----------
     config : dict
-        The Hyrax configuration that can is passed to each dataset instance.
+        The Hyrax configuration that is passed to each dataset instance.
 
     Returns
     -------
     dict
         A dictionary where keys are dataset names and values are lists of fields
+        
+    Raises
+    ------
+    RuntimeError
+        If neither `data_request` nor `model_inputs` is provided in the configuration.
     """
 
     # Support both 'data_request' (new) and 'model_inputs' (deprecated)
