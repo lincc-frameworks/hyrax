@@ -64,7 +64,6 @@ def _torch_load(self: nn.Module, load_path: Path):
 
     # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
     prepare_inputs_fn = load_prepare_inputs(load_path.parent)
-    to_tensor_fn = load_to_tensor(load_path.parent)
 
     if prepare_inputs_fn:
         # Successfully loaded prepare_inputs.py
@@ -72,21 +71,25 @@ def _torch_load(self: nn.Module, load_path: Path):
             self.prepare_inputs = prepare_inputs_fn
         else:
             self.prepare_inputs = staticmethod(prepare_inputs_fn)
-    elif to_tensor_fn:
-        # Backward compatibility: loading old model with to_tensor.py
-        logger.warning(
-            f"Found to_tensor function in {load_path.parent}. "
-            "to_tensor is deprecated, please re-save your model with the new version to use prepare_inputs."
-        )
-        if isinstance(to_tensor_fn, staticmethod):
-            self.prepare_inputs = to_tensor_fn
-        else:
-            self.prepare_inputs = staticmethod(to_tensor_fn)
     else:
-        logger.warning(
-            f"Could not find prepare_inputs or to_tensor function in {load_path.parent}. "
-            "Using the model's existing methods."
-        )
+        # Fall back to loading to_tensor for backward compatibility
+        to_tensor_fn = load_to_tensor(load_path.parent)
+        if to_tensor_fn:
+            # Backward compatibility: loading old model with to_tensor.py
+            logger.warning(
+                f"Found to_tensor function in {load_path.parent}. "
+                "to_tensor is deprecated, please re-save your model with the new version "
+                "to use prepare_inputs."
+            )
+            if isinstance(to_tensor_fn, staticmethod):
+                self.prepare_inputs = to_tensor_fn
+            else:
+                self.prepare_inputs = staticmethod(to_tensor_fn)
+        else:
+            logger.warning(
+                f"Could not find prepare_inputs or to_tensor function in {load_path.parent}. "
+                "Using the model's existing methods."
+            )
 
 
 def _torch_criterion(self: nn.Module):
