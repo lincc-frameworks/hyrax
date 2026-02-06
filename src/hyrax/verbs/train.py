@@ -37,9 +37,12 @@ class Train(Verb):
         from hyrax.config_utils import create_results_dir, log_runtime_config
         from hyrax.gpu_monitor import GpuMonitor
         from hyrax.pytorch_ignite import (
+            create_splits,
             create_trainer,
             create_validator,
             dist_data_loader,
+            load_split_indexes,
+            save_split_indexes,
             setup_dataset,
             setup_model,
         )
@@ -69,16 +72,37 @@ class Train(Verb):
         # the user has requested an iterable dataset. But we don't want to support that
         # for training right now.
         if isinstance(dataset, dict) and "validate" in dataset:
-            train_data_loader, _ = dist_data_loader(dataset["train"], config, False)
-            validation_data_loader, _ = dist_data_loader(dataset["validate"], config, False)
+            train_data_loader, train_indexes = dist_data_loader(dataset["train"], config, False)
+            validation_data_loader, val_indexes = dist_data_loader(dataset["validate"], config, False)
+            # No splits to save in this case since separate datasets are used
+            split_indexes = None
 
         # if `validate` isn't in the dataset dict, then we assume the user wants to
         # use percentage-based splits on the `train` dataset. Or the user has an
         # iterable dataset - but we don't support training with iterable datasets.
         else:
-            data_loaders = dist_data_loader(dataset["train"], config, ["train", "validate"])
-            train_data_loader, _ = data_loaders["train"]
-            validation_data_loader, _ = data_loaders.get("validate", (None, None))
+            # Check if it's an iterable dataset - those can't be split
+            if dataset["train"].is_iterable():
+                # For iterable datasets, we can't create splits, just use the whole dataset
+                train_data_loader, train_indexes = dist_data_loader(dataset["train"], config, False)
+                validation_data_loader, val_indexes = None, None
+                split_indexes = None
+            else:
+                # Create the splits
+                split_indexes = create_splits(dataset["train"], config)
+
+                # Save the split indexes immediately after creation
+                save_split_indexes(split_indexes, results_dir)
+
+                # Load the split indexes back to ensure consistency
+                split_indexes = load_split_indexes(results_dir, ["train", "validate"])
+
+                # Create data loaders using the loaded indexes
+                data_loaders = dist_data_loader(
+                    dataset["train"], config, ["train", "validate"], indexes=split_indexes
+                )
+                train_data_loader, train_indexes = data_loaders["train"]
+                validation_data_loader, val_indexes = data_loaders.get("validate", (None, None))
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir)
@@ -109,6 +133,7 @@ class Train(Verb):
 
         # Save the trained model
         model.save(results_dir / config["train"]["weights_filename"])
+
         monitor.stop()
 
         logger.info("Finished Training")
