@@ -605,7 +605,7 @@ class Visualize(Verb):
     def _make_image_pane(self, total_width: int = 500, *args, **kwargs):
         """
         Sample up to 6 of the selected object_ids,
-        load their FITS cutouts from [visualize][data_dir], and
+        load their FITS cutouts from [general][data_dir], and
         render as small hv.Image thumbnails in a grid.
         """
         import numpy as np
@@ -671,7 +671,7 @@ class Visualize(Verb):
             filenames = []
 
         crop_to = self.config["data_set"]["crop_to"]
-        base_dir = Path(self.config["visualize"]["data_dir"])
+        base_dir = Path(self.config["general"]["data_dir"])
 
         # Defining a Fallback Image to Display in case of errors
         # Matching Shape is important because otherwise Haloviews'

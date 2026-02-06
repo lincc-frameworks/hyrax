@@ -70,6 +70,7 @@ def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     """Fixture to configure and initialize the hyrax instance"""
     h = hyrax.Hyrax()
     dataset_class_name, sample_data = dataset_spec
+    h.config["general"]["data_dir"] = str(tmp_dataset_path)
     h.config["general"]["results_dir"] = str(tmp_path)
 
     # Configure dataset-specific settings

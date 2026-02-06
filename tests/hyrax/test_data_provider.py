@@ -16,7 +16,7 @@ def test_generate_data_request_from_config():
     config.pop("data_request", None)
 
     config["data_set"]["name"] = "HyraxRandomDataset"
-    config["download"]["data_dir"] = "./data"
+    config["general"]["data_dir"] = "./data"
 
     with pytest.raises(RuntimeError, match=r"The \[data_request\] table in the configuration is empty"):
         generate_data_request_from_config(config)
