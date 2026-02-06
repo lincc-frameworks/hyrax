@@ -525,13 +525,13 @@ class HSCDataSet(FitsImageDataSet):
         logger.info("Writing rebuilt manifest...")
         manifest_table = Table(columns)
 
-        manifest_file_path = Path(config["download"]["data_dir"]) / Downloader.MANIFEST_FILE_NAME
+        manifest_file_path = Path(self.data_location) / Downloader.MANIFEST_FILE_NAME
 
         # Rename the old manifest
         if manifest_file_path.exists():
             filename_safe_now = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
             new_file_name = Downloader.MANIFEST_FILE_NAME + f".archived.at.{filename_safe_now}"
-            manifest_file_path.rename(Path(config["download"]["data_dir"]) / new_file_name)
+            manifest_file_path.rename(Path(self.data_location) / new_file_name)
 
         # Replace the old manifest
         manifest_table.write(manifest_file_path, overwrite=True, format="fits")

@@ -107,6 +107,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         """
 
         self._config = config
+        self.data_location = data_location
         self.set_function_transform()
 
         self.object_id_column_name = (
