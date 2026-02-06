@@ -171,7 +171,7 @@ def _handle_nan_zero_torch(batch):
 def generate_data_request_from_config(config):
     """This function handles the backward compatibility issue of defining the requested
     dataset using the deprecated `[model_inputs]` configuration key.
-    
+
     If neither `[data_request]` nor `[model_inputs]` is defined, an error will be raised.
 
     NOTE: The `[model_inputs]` key is deprecated and will be removed in a future version.
@@ -186,7 +186,7 @@ def generate_data_request_from_config(config):
     -------
     dict
         A dictionary where keys are dataset names and values are lists of fields
-        
+
     Raises
     ------
     RuntimeError
