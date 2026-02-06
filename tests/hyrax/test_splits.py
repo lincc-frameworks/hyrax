@@ -172,6 +172,11 @@ def test_save_and_load_split_indexes(tmp_path):
     # Save splits
     save_split_indexes(indexes, tmp_path)
 
+    # Verify individual files were created
+    assert (tmp_path / "train.npy").exists()
+    assert (tmp_path / "test.npy").exists()
+    assert (tmp_path / "validate.npy").exists()
+
     # Load splits
     loaded_indexes = load_split_indexes(tmp_path)
 
@@ -195,34 +200,16 @@ def test_save_split_indexes_creates_directory(tmp_path):
     output_dir = tmp_path / "subdir" / "nested"
     save_split_indexes(indexes, output_dir)
 
-    # Verify the file was created
-    assert (output_dir / "split_indexes.npz").exists()
+    # Verify the files were created
+    assert (output_dir / "train.npy").exists()
+    assert (output_dir / "test.npy").exists()
+    assert (output_dir / "validate.npy").exists()
 
 
 def test_load_split_indexes_file_not_found(tmp_path):
     """Test that load_split_indexes raises FileNotFoundError when file doesn't exist."""
     with pytest.raises(FileNotFoundError):
         load_split_indexes(tmp_path)
-
-
-def test_save_and_load_split_indexes_custom_filename(tmp_path):
-    """Test saving and loading split indexes with a custom filename."""
-    fake_dataset = [1] * 100
-    config = mkconfig(seed=42)
-
-    # Create splits
-    indexes = create_splits(fake_dataset, config)
-
-    # Save with custom filename
-    custom_filename = "my_splits.npz"
-    save_split_indexes(indexes, tmp_path, custom_filename)
-
-    # Load with custom filename
-    loaded_indexes = load_split_indexes(tmp_path, custom_filename)
-
-    # Verify all indexes match
-    for split_name in indexes:
-        assert loaded_indexes[split_name] == indexes[split_name]
 
 
 def test_save_and_load_split_indexes_no_validate(tmp_path):
@@ -236,8 +223,13 @@ def test_save_and_load_split_indexes_no_validate(tmp_path):
     # Save splits
     save_split_indexes(indexes, tmp_path)
 
+    # Verify files were created
+    assert (tmp_path / "train.npy").exists()
+    assert (tmp_path / "test.npy").exists()
+    assert not (tmp_path / "validate.npy").exists()
+
     # Load splits
-    loaded_indexes = load_split_indexes(tmp_path)
+    loaded_indexes = load_split_indexes(tmp_path, ["train", "test"])
 
     # Verify validate is not in loaded indexes
     assert "validate" not in loaded_indexes

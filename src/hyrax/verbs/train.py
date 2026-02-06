@@ -37,9 +37,11 @@ class Train(Verb):
         from hyrax.config_utils import create_results_dir, log_runtime_config
         from hyrax.gpu_monitor import GpuMonitor
         from hyrax.pytorch_ignite import (
+            create_splits,
             create_trainer,
             create_validator,
             dist_data_loader,
+            load_split_indexes,
             save_split_indexes,
             setup_dataset,
             setup_model,
@@ -79,14 +81,19 @@ class Train(Verb):
         # use percentage-based splits on the `train` dataset. Or the user has an
         # iterable dataset - but we don't support training with iterable datasets.
         else:
-            data_loaders = dist_data_loader(dataset["train"], config, ["train", "validate"])
+            # Create the splits
+            split_indexes = create_splits(dataset["train"], config)
+
+            # Save the split indexes immediately after creation
+            save_split_indexes(split_indexes, results_dir)
+
+            # Load the split indexes back to ensure consistency
+            split_indexes = load_split_indexes(results_dir, ["train", "validate"])
+
+            # Create data loaders using the loaded indexes
+            data_loaders = dist_data_loader(dataset["train"], config, ["train", "validate"], indexes=split_indexes)
             train_data_loader, train_indexes = data_loaders["train"]
             validation_data_loader, val_indexes = data_loaders.get("validate", (None, None))
-
-            # Collect split indexes for saving
-            split_indexes = {"train": train_indexes}
-            if val_indexes is not None:
-                split_indexes["validate"] = val_indexes
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir)
@@ -117,10 +124,6 @@ class Train(Verb):
 
         # Save the trained model
         model.save(results_dir / config["train"]["weights_filename"])
-
-        # Save split indexes if they were created
-        if split_indexes is not None:
-            save_split_indexes(split_indexes, results_dir)
 
         monitor.stop()
 

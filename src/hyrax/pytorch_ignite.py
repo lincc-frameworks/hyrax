@@ -204,9 +204,9 @@ def dist_data_loader(
         If this is false or not passed, then a single data loader is returned
         that corresponds to the entire dataset.
     indexes : dict, optional
-        Pre-loaded split indexes. If provided, these indexes will be used instead
-        of creating new splits. The keys should be split names (e.g., 'train', 'test')
-        and values should be lists of integer indexes.
+        Pre-loaded split indexes. REQUIRED when splits are requested for non-iterable
+        datasets. The keys should be split names (e.g., 'train', 'test') and values
+        should be lists of integer indexes. Use create_splits() to generate these indexes.
 
     Returns
     -------
@@ -265,9 +265,12 @@ def dist_data_loader(
             for s in split
         }
     else:
-        # Create the indexes for all splits based on config, or use provided indexes
+        # Indexes must be provided when splits are requested
         if indexes is None:
-            indexes = create_splits(dataset, config)
+            raise ValueError(
+                "Split indexes must be provided when requesting splits. "
+                "Call create_splits() before dist_data_loader() and pass the result via the 'indexes' parameter."
+            )
 
         # Create samplers and dataloaders for each split we are interested in
         samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
@@ -376,10 +379,11 @@ def create_splits(data_set: Dataset, config: dict):
     return split_inds
 
 
-def save_split_indexes(
-    split_indexes: dict, output_dir: Union[str, Path], filename: str = "split_indexes.npz"
-):
-    """Save split indexes to a numpy .npz file.
+def save_split_indexes(split_indexes: dict, output_dir: Union[str, Path]):
+    """Save split indexes to separate .npy files, one per split.
+
+    Each split is saved as a separate file named after the split (e.g., 'train.npy',
+    'validate.npy', 'test.npy').
 
     Parameters
     ----------
@@ -387,49 +391,53 @@ def save_split_indexes(
         Dictionary with split names as keys (e.g., 'train', 'test', 'validate')
         and lists of indexes as values
     output_dir : Union[str, Path]
-        Directory where the split indexes file should be saved
-    filename : str, optional
-        Name of the file to save (default: "split_indexes.npz")
+        Directory where the split index files should be saved
     """
     output_dir = Path(output_dir) if not isinstance(output_dir, Path) else output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Convert lists to numpy arrays and save
-    split_arrays = {name: np.array(indexes) for name, indexes in split_indexes.items()}
-    save_path = output_dir / filename
+    # Save each split as a separate .npy file
+    for split_name, indexes in split_indexes.items():
+        save_path = output_dir / f"{split_name}.npy"
+        np.save(save_path, np.array(indexes))
+        logger.info(f"Saved {split_name} split indexes to {save_path}")
 
-    np.savez(save_path, **split_arrays)
-    logger.info(f"Saved split indexes to {save_path}")
 
+def load_split_indexes(input_dir: Union[str, Path], split_names: list[str] = None) -> dict:
+    """Load split indexes from separate .npy files.
 
-def load_split_indexes(input_dir: Union[str, Path], filename: str = "split_indexes.npz") -> dict:
-    """Load split indexes from a numpy .npz file.
+    Loads split indexes from individual .npy files (e.g., 'train.npy', 'validate.npy',
+    'test.npy'). If split_names is not provided, attempts to load all common split names.
 
     Parameters
     ----------
     input_dir : Union[str, Path]
-        Directory where the split indexes file is located
-    filename : str, optional
-        Name of the file to load (default: "split_indexes.npz")
+        Directory where the split index files are located
+    split_names : list[str], optional
+        List of split names to load (e.g., ['train', 'test', 'validate']).
+        If not provided, attempts to load ['train', 'test', 'validate'].
 
     Returns
     -------
     dict
         Dictionary with split names as keys (e.g., 'train', 'test', 'validate')
-        and lists of indexes as values
+        and lists of indexes as values. Only includes splits that were found.
     """
     input_dir = Path(input_dir) if not isinstance(input_dir, Path) else input_dir
-    load_path = input_dir / filename
 
-    if not load_path.exists():
-        raise FileNotFoundError(f"Split indexes file not found at {load_path}")
+    # Default to common split names if not provided
+    if split_names is None:
+        split_names = ["train", "test", "validate"]
 
-    # Load the .npz file
-    loaded = np.load(load_path)
+    split_indexes = {}
+    for split_name in split_names:
+        file_path = input_dir / f"{split_name}.npy"
+        if file_path.exists():
+            split_indexes[split_name] = np.load(file_path).tolist()
+            logger.info(f"Loaded {split_name} split indexes from {file_path}")
 
-    # Convert numpy arrays back to lists for consistency with create_splits
-    split_indexes = {name: loaded[name].tolist() for name in loaded.files}
-    logger.info(f"Loaded split indexes from {load_path}")
+    if not split_indexes:
+        raise FileNotFoundError(f"No split index files found in {input_dir}")
 
     return split_indexes
 
