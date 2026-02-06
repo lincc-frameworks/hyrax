@@ -18,7 +18,7 @@ class HyraxCifarBase:
         from astropy.table import Table
         from torchvision.datasets import CIFAR10
 
-        self.data_location = data_location if data_location else config["general"]["data_dir"]
+        self.data_location = data_location
 
         self.training_data = config["data_set"]["HyraxCifarDataset"]["use_training_data"]
 

@@ -8,8 +8,7 @@ from hyrax.data_sets.data_provider import DataProvider, generate_data_request_fr
 
 
 def test_generate_data_request_from_config():
-    """Test that we support generating a data request dictionary
-    outside of the `data_request` table."""
+    """Test that an error is raised when no data_request is provided."""
 
     h = Hyrax()
     config = dict(h.config)
@@ -19,17 +18,8 @@ def test_generate_data_request_from_config():
     config["data_set"]["name"] = "HyraxRandomDataset"
     config["general"]["data_dir"] = "./data"
 
-    ret_val = generate_data_request_from_config(config)
-
-    assert "train" in ret_val
-    assert "infer" in ret_val
-    for split in ["train", "infer"]:
-        ret_val_subset = ret_val[split]
-        assert "data" in ret_val_subset
-        assert "dataset_class" in ret_val_subset["data"]
-        assert ret_val_subset["data"]["dataset_class"] == "HyraxRandomDataset"
-        assert "data_location" in ret_val_subset["data"]
-        assert ret_val_subset["data"]["data_location"] == "./data"
+    with pytest.raises(RuntimeError, match=r"The \[data_request\] table in the configuration is empty"):
+        generate_data_request_from_config(config)
 
 
 def test_generate_data_request_passes_model_inputs():
