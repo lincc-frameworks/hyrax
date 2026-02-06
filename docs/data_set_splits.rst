@@ -111,11 +111,12 @@ Saving and reloading split indexes
 -----------------------------------
 
 When training a model with percentage-based splits, Hyrax automatically saves the split indexes to the results 
-directory as ``split_indexes.npz``. This allows you to reproduce the exact same data splits in subsequent runs 
-such as testing or inference.
+directory as separate files for each split (``train.npy``, ``validate.npy``, ``test.npy``). This allows you to 
+reproduce the exact same data splits in subsequent runs such as testing or inference.
 
 The split indexes are saved automatically during training when using percentage-based splits (i.e., when not using 
-separate dataset configurations for train/validate/test). No additional configuration is needed.
+separate dataset configurations for train/validate/test). No additional configuration is needed. Each split is 
+saved as an individual numpy array file named after the split.
 
 To load and use previously saved split indexes:
 
@@ -126,16 +127,25 @@ To load and use previously saved split indexes:
         .. code-block:: python
 
             from hyrax import Hyrax
-            from hyrax.pytorch_ignite import load_split_indexes, dist_data_loader, setup_dataset
+            from hyrax.pytorch_ignite import (
+                create_splits,
+                load_split_indexes, 
+                dist_data_loader, 
+                setup_dataset
+            )
             
             h = Hyrax()
             
             # Load the split indexes from a training run
             results_dir = "/path/to/training/results"
-            indexes = load_split_indexes(results_dir)
+            # Specify which splits to load (defaults to ["train", "test", "validate"])
+            indexes = load_split_indexes(results_dir, ["train", "test"])
             
             # Create dataset
             dataset = setup_dataset(h.config)
+            
+            # When creating splits manually, you must call create_splits first
+            # indexes = create_splits(dataset["train"], h.config)
             
             # Use the loaded indexes to create data loaders with the same splits
             data_loaders = dist_data_loader(
@@ -147,8 +157,18 @@ To load and use previously saved split indexes:
 
     .. tab-item:: CLI
 
-        The split indexes are saved to the results directory during training and can be loaded 
-        programmatically using the ``load_split_indexes()`` function from ``hyrax.pytorch_ignite``.
+        The split indexes are saved to the results directory during training as separate files:
+        
+        - ``train.npy`` - Indexes for the training split
+        - ``validate.npy`` - Indexes for the validation split (if used)
+        - ``test.npy`` - Indexes for the test split
+        
+        These can be loaded programmatically using the ``load_split_indexes()`` function from 
+        ``hyrax.pytorch_ignite``.
 
 This feature ensures reproducibility by guaranteeing that the exact same data samples are used in each split 
 across different runs, which is critical for comparing model performance and debugging.
+
+**Important Note**: When using ``dist_data_loader`` with splits, you must now provide the indexes explicitly 
+via the ``indexes`` parameter. This can be done either by creating new splits with ``create_splits()`` or 
+by loading previously saved splits with ``load_split_indexes()``.
