@@ -81,19 +81,28 @@ class Train(Verb):
         # use percentage-based splits on the `train` dataset. Or the user has an
         # iterable dataset - but we don't support training with iterable datasets.
         else:
-            # Create the splits
-            split_indexes = create_splits(dataset["train"], config)
+            # Check if it's an iterable dataset - those can't be split
+            if dataset["train"].is_iterable():
+                # For iterable datasets, we can't create splits, just use the whole dataset
+                train_data_loader, train_indexes = dist_data_loader(dataset["train"], config, False)
+                validation_data_loader, val_indexes = None, None
+                split_indexes = None
+            else:
+                # Create the splits
+                split_indexes = create_splits(dataset["train"], config)
 
-            # Save the split indexes immediately after creation
-            save_split_indexes(split_indexes, results_dir)
+                # Save the split indexes immediately after creation
+                save_split_indexes(split_indexes, results_dir)
 
-            # Load the split indexes back to ensure consistency
-            split_indexes = load_split_indexes(results_dir, ["train", "validate"])
+                # Load the split indexes back to ensure consistency
+                split_indexes = load_split_indexes(results_dir, ["train", "validate"])
 
-            # Create data loaders using the loaded indexes
-            data_loaders = dist_data_loader(dataset["train"], config, ["train", "validate"], indexes=split_indexes)
-            train_data_loader, train_indexes = data_loaders["train"]
-            validation_data_loader, val_indexes = data_loaders.get("validate", (None, None))
+                # Create data loaders using the loaded indexes
+                data_loaders = dist_data_loader(
+                    dataset["train"], config, ["train", "validate"], indexes=split_indexes
+                )
+                train_data_loader, train_indexes = data_loaders["train"]
+                validation_data_loader, val_indexes = data_loaders.get("validate", (None, None))
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir)

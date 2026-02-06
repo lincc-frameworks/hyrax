@@ -82,14 +82,18 @@ def test_train_percent_split(tmp_path):
 
     # Instead of running full training, validate that the legacy percent-based
     # split path creates both train and validate dataloaders with expected sizes.
-    from hyrax.pytorch_ignite import dist_data_loader, setup_dataset
+    from hyrax.pytorch_ignite import create_splits, dist_data_loader, setup_dataset
 
     # Create dataset dict using the same logic as training
     dataset = setup_dataset(h.config)
 
     assert "train" in dataset
 
-    data_loaders = dist_data_loader(dataset["train"], h.config, ["train", "validate"])
+    # Create splits first
+    split_indexes = create_splits(dataset["train"], h.config)
+
+    # Then create data loaders with the indexes
+    data_loaders = dist_data_loader(dataset["train"], h.config, ["train", "validate"], indexes=split_indexes)
 
     # Should have created both train and validate loaders
     assert "train" in data_loaders and "validate" in data_loaders
