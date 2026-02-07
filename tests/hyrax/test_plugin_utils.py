@@ -201,3 +201,128 @@ def test_torch_load_with_map_location(tmp_path):
         assert torch.allclose(
             model.state_dict()[key].to(expected_device), new_model.state_dict()[key].to(expected_device)
         )
+
+
+def test_torch_load_only_calls_to_tensor_if_prepare_inputs_missing(tmp_path, caplog):
+    """Test that load_to_tensor is only called when load_prepare_inputs returns None.
+
+    This verifies the fix for the issue where load_to_tensor would generate unnecessary
+    warnings even when prepare_inputs.py existed.
+    """
+    import logging
+
+    import torch.nn as nn
+
+    from hyrax.models.model_registry import hyrax_model
+
+    # Create a simple model with prepare_inputs
+    @hyrax_model
+    class SimpleModelWithPrepareInputs(nn.Module):
+        def __init__(self, config, data_sample=None):
+            super().__init__()
+            self.config = config
+            self.linear = nn.Linear(10, 5)
+
+        @staticmethod
+        def prepare_inputs(data_dict):
+            return (data_dict["data"]["image"],)
+
+        def forward(self, x):
+            return self.linear(x)
+
+        def train_batch(self, batch):
+            return {"loss": 0.0}
+
+        def infer_batch(self, batch):
+            return {}
+
+    # Create config
+    config = {
+        "criterion": {"name": "torch.nn.MSELoss"},
+        "optimizer": {"name": "torch.optim.SGD"},
+        "torch.optim.SGD": {"lr": 0.01},
+    }
+
+    # Create and save a model (this will create prepare_inputs.py)
+    model = SimpleModelWithPrepareInputs(config)
+    weights_path = tmp_path / "test_weights.pth"
+    model.save(weights_path)
+
+    # Verify prepare_inputs.py was created
+    assert (tmp_path / "prepare_inputs.py").exists()
+
+    # Create a new model instance and load the weights
+    new_model = SimpleModelWithPrepareInputs(config)
+
+    # Clear the log before loading to ensure we only capture load warnings
+    caplog.clear()
+
+    with caplog.at_level(logging.WARNING):
+        new_model.load(weights_path)
+
+    # Verify that load_to_tensor was NOT called (no warning about to_tensor.py not found)
+    # The warning "to_tensor.py file not found" should NOT appear in the logs
+    assert "to_tensor.py file not found" not in caplog.text
+
+    # Verify that the model loaded successfully with prepare_inputs
+    assert hasattr(new_model, "prepare_inputs")
+
+
+def test_torch_load_calls_to_tensor_when_prepare_inputs_missing(tmp_path, caplog):
+    """Test that load_to_tensor is called when load_prepare_inputs returns None.
+
+    This verifies backward compatibility - when prepare_inputs.py doesn't exist,
+    we should fall back to loading to_tensor.py.
+    """
+    import logging
+
+    import torch.nn as nn
+
+    from hyrax.models.model_registry import hyrax_model
+
+    # Create a simple model
+    @hyrax_model
+    class SimpleModelNoInputs(nn.Module):
+        def __init__(self, config, data_sample=None):
+            super().__init__()
+            self.config = config
+            self.linear = nn.Linear(10, 5)
+
+        def forward(self, x):
+            return self.linear(x)
+
+        def train_batch(self, batch):
+            return {"loss": 0.0}
+
+        def infer_batch(self, batch):
+            return {}
+
+    # Create config
+    config = {
+        "criterion": {"name": "torch.nn.MSELoss"},
+        "optimizer": {"name": "torch.optim.SGD"},
+        "torch.optim.SGD": {"lr": 0.01},
+    }
+
+    # Create and save a model (no prepare_inputs defined in class, so won't create prepare_inputs.py)
+    model = SimpleModelNoInputs(config)
+    weights_path = tmp_path / "test_weights.pth"
+    model.save(weights_path)
+
+    # Verify prepare_inputs.py was NOT created (model uses default)
+    # Note: The default prepare_inputs is not saved to a file
+
+    # Create a new model instance and load the weights
+    new_model = SimpleModelNoInputs(config)
+
+    # Clear the log before loading to ensure we only capture load warnings
+    caplog.clear()
+
+    with caplog.at_level(logging.WARNING):
+        new_model.load(weights_path)
+
+    # Verify that load_to_tensor WAS called (warning about to_tensor.py not found should appear)
+    assert "to_tensor.py file not found" in caplog.text
+
+    # Also verify we get the warning about not finding either function
+    assert "Could not find prepare_inputs or to_tensor function" in caplog.text
