@@ -174,7 +174,7 @@ lr = 0.01
 
 [scheduler]
 # name of the learning rate scheduler
-# With gamma=1, expontntialLR will keep the learning rate constant
+# With gamma=1, ExponentialLR will keep the learning rate constant
 # https://docs.pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html
 name = "torch.optim.lr_scheduler.ExponentialLR"
 

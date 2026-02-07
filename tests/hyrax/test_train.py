@@ -119,8 +119,8 @@ def test_constant_scheduler(loopback_hyrax):
     h.config[h.config["optimizer"]["name"]]["lr"] = 128
     model = h.train()
 
-    assert hasattr(model, "lrs")
-    assert model.lrs == [[initial_lr * factor]] * 4 + [[initial_lr]] * 2
+    assert hasattr(model, "_learning_rates_history")
+    assert model._learning_rates_history == [[initial_lr * factor]] * 4 + [[initial_lr]] * 2
 
 
 def test_exponential_scheduler(loopback_hyrax):
@@ -136,8 +136,10 @@ def test_exponential_scheduler(loopback_hyrax):
     h.config[h.config["optimizer"]["name"]]["lr"] = initial_lr
     model = h.train()
 
-    assert hasattr(model, "lrs")
-    assert model.lrs == [[initial_lr * gamma**i] for i in range(h.config["train"]["epochs"])]
+    assert hasattr(model, "_learning_rates_history")
+    assert model._learning_rates_history == [
+        [initial_lr * gamma**i] for i in range(h.config["train"]["epochs"])
+    ]
 
 
 def test_exponential_scheduler_checkpointing(loopback_hyrax, tmp_path):
@@ -162,8 +164,8 @@ def test_exponential_scheduler_checkpointing(loopback_hyrax, tmp_path):
     model = h.train()
 
     # first 3 epochs working as expected
-    assert hasattr(model, "lrs")
-    assert model.lrs == [[initial_lr * gamma**i] for i in range(3)]
+    assert hasattr(model, "_learning_rates_history")
+    assert model._learning_rates_history == [[initial_lr * gamma**i] for i in range(3)]
 
     # find the model file in the most recent results directory
     results_dir = find_most_recent_results_dir(h.config, "train")
@@ -177,8 +179,8 @@ def test_exponential_scheduler_checkpointing(loopback_hyrax, tmp_path):
     # Resume training
     model = h.train()
 
-    assert hasattr(model, "lrs")
-    assert model.lrs == [[initial_lr * gamma**i] for i in range(3, 5)]
+    assert hasattr(model, "_learning_rates_history")
+    assert model._learning_rates_history == [[initial_lr * gamma**i] for i in range(3, 5)]
 
 
 def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
@@ -203,8 +205,8 @@ def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
     model = h.train()
 
     # first 2 epochs working as expected
-    assert hasattr(model, "lrs")
-    assert model.lrs == [[initial_lr * factor]] * h.config["train"]["epochs"]
+    assert hasattr(model, "_learning_rates_history")
+    assert model._learning_rates_history == [[initial_lr * factor]] * h.config["train"]["epochs"]
 
     # find the model file in the most recent results directory
     results_dir = find_most_recent_results_dir(h.config, "train")
@@ -218,5 +220,5 @@ def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
     # Resume training
     model = h.train()
 
-    assert hasattr(model, "lrs")
-    assert model.lrs == [[initial_lr * factor]] + [[initial_lr]] * 2
+    assert hasattr(model, "_learning_rates_history")
+    assert model._learning_rates_history == [[initial_lr * factor]] + [[initial_lr]] * 2
