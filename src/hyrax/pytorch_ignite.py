@@ -656,12 +656,16 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     fixup_engine(trainer)
 
     optimizer = extract_model_method(model, "optimizer")
+    scheduler = extract_model_method(model, "scheduler")
 
     to_save = {
         "model": model,
         "optimizer": optimizer,
         "trainer": trainer,
     }
+
+    if scheduler:
+        to_save["scheduler"] = scheduler
 
     #! We may want to move the checkpointing logic over to the `validator`.
     #! It was created here initially because this was the only place where the
@@ -724,6 +728,17 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
                     f"training/training/epoch/{m}", epoch_metrics[m], global_step=epoch_number
                 )
                 mlflow.log_metrics({f"training/epoch/{m}": epoch_metrics[m]}, step=epoch_number)
+
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def scheduler_step(trainer):
+        if model.scheduler:
+            if not hasattr(model, "_learning_rates_history"):
+                model._learning_rates_history = []
+            epoch_lr = model.scheduler.get_last_lr()
+            epoch_number = trainer.state.epoch - 1
+            model._learning_rates_history.append(epoch_lr)
+            tensorboardx_logger.add_scalar("training/training/epoch/lr", epoch_lr, global_step=epoch_number)
+            model.scheduler.step()
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)

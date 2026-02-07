@@ -172,6 +172,19 @@ momentum = 0.9
 # learning rate for torch.optim.SGD optimizer.
 lr = 0.01
 
+[scheduler]
+# name of the learning rate scheduler
+# With gamma=1, ExponentialLR will keep the learning rate constant
+# https://docs.pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html
+name = "torch.optim.lr_scheduler.ExponentialLR"
+
+["torch.optim.lr_scheduler.ExponentialLR"]
+# the decay multipler on each epoch
+gamma = 1
+
+["torch.optim.lr_scheduler.ConstantLR"]
+
+last_epoch = -1
 
 [train]
 # The name of the file were the model weights will be saved after training.

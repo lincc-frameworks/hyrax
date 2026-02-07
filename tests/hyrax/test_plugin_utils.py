@@ -173,6 +173,7 @@ def test_torch_load_with_map_location(tmp_path):
         "criterion": {"name": "torch.nn.MSELoss"},
         "optimizer": {"name": "torch.optim.SGD"},
         "torch.optim.SGD": {"lr": 0.01},
+        "scheduler": {"name": None},
     }
 
     # Get the expected device from idist (same as _torch_load uses)
@@ -240,6 +241,7 @@ def test_torch_load_only_calls_to_tensor_if_prepare_inputs_missing(tmp_path, cap
         "criterion": {"name": "torch.nn.MSELoss"},
         "optimizer": {"name": "torch.optim.SGD"},
         "torch.optim.SGD": {"lr": 0.01},
+        "scheduler": {"name": None},
     }
 
     # Create and save a model (this will create prepare_inputs.py)
@@ -301,6 +303,7 @@ def test_torch_load_calls_to_tensor_when_prepare_inputs_missing(tmp_path, caplog
         "criterion": {"name": "torch.nn.MSELoss"},
         "optimizer": {"name": "torch.optim.SGD"},
         "torch.optim.SGD": {"lr": 0.01},
+        "scheduler": {"name": None},
     }
 
     # Create and save a model (no prepare_inputs defined in class, so won't create prepare_inputs.py)
