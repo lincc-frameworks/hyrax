@@ -1,8 +1,10 @@
 from unittest.mock import MagicMock, call, patch
 
+import numpy as np
 import pytest
+import torch
 
-from hyrax.pytorch_ignite import setup_dataset
+from hyrax.pytorch_ignite import _inner_loop, setup_dataset
 
 
 class TestSetupDataset:
@@ -158,3 +160,104 @@ class TestSetupDataset:
                     mock_dataset_cls.assert_has_calls([expected_call, expected_call])
                     assert result["train"] == mock_dataset_instance
                     assert result["infer"] == mock_dataset_instance
+
+
+class TestInnerLoop:
+    """Tests for the _inner_loop function, specifically focused on None handling."""
+
+    def test_inner_loop_with_tuple_containing_none(self):
+        """Test that _inner_loop handles tuples with None values correctly."""
+        # Create test data
+        test_array = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        test_batch = (test_array, None)  # Simulate missing labels
+
+        # Mock functions
+        def mock_prepare_inputs(batch):
+            return batch
+
+        mock_func = MagicMock(return_value={"loss": 1.0})
+        device = torch.device("cpu")
+        config = {}
+        engine = MagicMock()
+
+        # Call _inner_loop
+        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+
+        # Verify the function was called with a tuple where the second element is None
+        assert mock_func.called
+        called_batch = mock_func.call_args[0][0]
+        assert isinstance(called_batch, tuple)
+        assert len(called_batch) == 2
+        assert isinstance(called_batch[0], torch.Tensor)
+        assert called_batch[1] is None
+
+    def test_inner_loop_with_none_batch(self):
+        """Test that _inner_loop handles None batch correctly."""
+        # Create test data
+        test_batch = None
+
+        # Mock functions
+        def mock_prepare_inputs(batch):
+            return batch
+
+        mock_func = MagicMock(return_value={"loss": 1.0})
+        device = torch.device("cpu")
+        config = {}
+        engine = MagicMock()
+
+        # Call _inner_loop - should not raise an error
+        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+
+        # Verify the function was called with None
+        assert mock_func.called
+        called_batch = mock_func.call_args[0][0]
+        assert called_batch is None
+
+    def test_inner_loop_with_normal_tuple(self):
+        """Test that _inner_loop still works correctly with normal tuples (no None)."""
+        # Create test data
+        test_array1 = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        test_array2 = np.array([0, 1], dtype=np.int64)
+        test_batch = (test_array1, test_array2)
+
+        # Mock functions
+        def mock_prepare_inputs(batch):
+            return batch
+
+        mock_func = MagicMock(return_value={"loss": 1.0})
+        device = torch.device("cpu")
+        config = {}
+        engine = MagicMock()
+
+        # Call _inner_loop
+        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+
+        # Verify the function was called with tensors
+        assert mock_func.called
+        called_batch = mock_func.call_args[0][0]
+        assert isinstance(called_batch, tuple)
+        assert len(called_batch) == 2
+        assert isinstance(called_batch[0], torch.Tensor)
+        assert isinstance(called_batch[1], torch.Tensor)
+
+    def test_inner_loop_with_single_array(self):
+        """Test that _inner_loop works with a single array (not a tuple)."""
+        # Create test data
+        test_array = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+
+        # Mock functions
+        def mock_prepare_inputs(batch):
+            return batch
+
+        mock_func = MagicMock(return_value={"loss": 1.0})
+        device = torch.device("cpu")
+        config = {}
+        engine = MagicMock()
+
+        # Call _inner_loop
+        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_array)
+
+        # Verify the function was called with a tensor
+        assert mock_func.called
+        called_batch = mock_func.call_args[0][0]
+        assert isinstance(called_batch, torch.Tensor)
