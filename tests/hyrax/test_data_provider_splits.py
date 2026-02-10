@@ -13,6 +13,9 @@ from hyrax.pytorch_ignite import create_splits, dist_data_loader, setup_dataset
 class TestDataProviderWithSplits:
     """Tests for DataProvider interaction with data split configurations."""
 
+    # Number of samples to test from splits
+    SAMPLE_SIZE = 5
+
     def test_data_provider_with_train_validate_splits(self):
         """Test that DataProvider works correctly with train and validate splits."""
         h = Hyrax()
@@ -197,7 +200,7 @@ class TestDataProviderWithSplits:
         assert len(splits["test"]) == 12  # 15% of 80
 
         # Test data retrieval from split indices
-        for idx in splits["train"][:5]:  # Test first 5 samples
+        for idx in splits["train"][: self.SAMPLE_SIZE]:  # Test first samples
             data = dp[idx]
             assert "images" in data
             assert "labels" in data
@@ -294,7 +297,7 @@ class TestDataProviderWithSplits:
         splits = create_splits(dp, h.config)
 
         # Get a batch from train split
-        batch_size = 5
+        batch_size = self.SAMPLE_SIZE
         train_batch = [dp[idx] for idx in splits["train"][:batch_size]]
 
         # Collate the batch
@@ -411,10 +414,10 @@ class TestDataProviderWithSplits:
         splits1 = create_splits(dp, h.config)
         splits2 = create_splits(dp, h.config)
 
-        # Verify splits are identical
-        assert splits1["train"] == splits2["train"]
-        assert splits1["validate"] == splits2["validate"]
-        assert splits1["test"] == splits2["test"]
+        # Verify splits are identical (convert to lists for proper comparison)
+        assert list(splits1["train"]) == list(splits2["train"])
+        assert list(splits1["validate"]) == list(splits2["validate"])
+        assert list(splits1["test"]) == list(splits2["test"])
 
     def test_data_provider_metadata_with_splits(self):
         """Test that DataProvider metadata methods work correctly with split indices."""
@@ -450,11 +453,11 @@ class TestDataProviderWithSplits:
         assert "object_id" in train_metadata_fields
 
         # Get metadata for specific indices from train split
-        train_indices = splits["train"][:5]
+        train_indices = splits["train"][: self.SAMPLE_SIZE]
         metadata = dp.metadata(idxs=train_indices, fields=["meta_field_1_data"])
 
         # Verify metadata was retrieved correctly
-        assert len(metadata) == 5
+        assert len(metadata) == self.SAMPLE_SIZE
 
     def test_data_provider_ids_with_splits(self):
         """Test that DataProvider ids method works with split indices."""
@@ -487,8 +490,8 @@ class TestDataProviderWithSplits:
         all_ids = list(dp.ids())
 
         # Verify IDs can be accessed for split indices
-        train_ids = [all_ids[idx] for idx in splits["train"][:5]]
+        train_ids = [all_ids[idx] for idx in splits["train"][: self.SAMPLE_SIZE]]
 
         # Verify we got IDs
-        assert len(train_ids) == 5
+        assert len(train_ids) == self.SAMPLE_SIZE
         assert all(isinstance(id_val, str) for id_val in train_ids)
