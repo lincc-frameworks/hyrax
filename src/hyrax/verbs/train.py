@@ -2,6 +2,8 @@ import logging
 
 from colorama import Back, Fore, Style
 
+from hyrax.data_sets.data_request import DataRequest
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -55,6 +57,9 @@ class Train(Verb):
         init_tensorboard_logger(log_dir=results_dir)
 
         # Instantiate the model and dataset
+        data_request = DataRequest(config, required_splits=["train"], optional_splits=["validate", "test"])
+        data_request.validate_data_request()
+
         dataset = setup_dataset(config)
         model = setup_model(config, dataset["train"])
         logger.info(

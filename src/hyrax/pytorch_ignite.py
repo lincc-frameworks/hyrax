@@ -183,6 +183,45 @@ def load_collate_function(data_loader_kwargs: dict) -> Callable | None:
     return collate_fn
 
 
+def setup_dataloader(config, dataset, split_definition_file=None):
+    """This function will instantiate and return a distributed dataloader for the
+    given dataset and split definiton file.
+
+    If ``split_definition_file`` is None, we assume that _all_ of the data in a given split
+    should be used. Otherwise ``split_definition_file`` should be a file path that
+    will be used to define the sampler for the dataloader.
+
+
+    Parameters
+    ----------
+    config : dict
+        The runtime configuration
+    dataset : DataProvider
+        The DataProvider instance that will furnish data to the model.
+    split_definition_file : str, optional
+        The path to the file defining the split, by default None
+
+    Returns
+    -------
+    Pytorch DataLoader
+        A DataLoader object for the dataset and split defined in the config,
+        with samplers defined by the split definition file if provided.
+    """
+    # Extract the config dictionary that will be provided as kwargs to the DataLoader
+    data_loader_kwargs = dict(config["data_loader"])
+
+    # The dataset is a DataProvider instance, use its collate function.
+    data_loader_kwargs["collate_fn"] = dataset.collate
+
+    # Create the sampler and dataloader
+    indexes = None
+    if Path(split_definition_file).exists():
+        indexes = np.load(split_definition_file).tolist()
+
+    sampler = SubsetSequentialSampler(indexes) if indexes else None
+    return idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs)
+
+
 def dist_data_loader(
     dataset: Dataset,
     config: dict,

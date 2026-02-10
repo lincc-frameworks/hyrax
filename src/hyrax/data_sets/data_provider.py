@@ -1,13 +1,11 @@
-import copy
 import functools
 import logging
 import time
-import warnings
 from typing import Any
 
 import numpy as np
 
-from hyrax.data_sets.data_set_registry import DATASET_REGISTRY, fetch_dataset_class
+from hyrax.data_sets.data_set_registry import fetch_dataset_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
@@ -166,90 +164,6 @@ def _handle_nan_zero_torch(batch):
         batch = torch.nan_to_num(batch, nan=0.0)
 
     return batch
-
-
-def generate_data_request_from_config(config):
-    """This function handles the backward compatibility issue of defining the requested
-    dataset using the deprecated `[model_inputs]` configuration key.
-
-    If neither `[data_request]` nor `[model_inputs]` is defined, an error will be raised.
-
-    NOTE: The `[model_inputs]` key is deprecated and will be removed in a future version.
-    Users should migrate to using `[data_request]` instead.
-
-    Parameters
-    ----------
-    config : dict
-        The Hyrax configuration that is passed to each dataset instance.
-
-    Returns
-    -------
-    dict
-        A dictionary where keys are dataset names and values are lists of fields
-
-    Raises
-    ------
-    RuntimeError
-        If neither `data_request` nor `model_inputs` is provided in the configuration.
-    """
-
-    # Support both 'data_request' (new) and 'model_inputs' (deprecated)
-    # Priority: use data_request if it has content, otherwise check model_inputs
-    has_data_request = "data_request" in config and config["data_request"]
-    has_model_inputs = "model_inputs" in config and config["model_inputs"]
-
-    if has_data_request:
-        data_request = copy.deepcopy(config["data_request"])
-    elif has_model_inputs:
-        warnings.warn(
-            "The [model_inputs] configuration key is deprecated and will be removed in a future version. "
-            "Please use [data_request] instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        data_request = copy.deepcopy(config["model_inputs"])
-    elif "data_request" in config or "model_inputs" in config:
-        # One of the keys exists but is empty - use the empty dict to trigger error below
-        data_request = config.get("data_request") or config.get("model_inputs")
-    else:
-        # Neither key exists, set empty to trigger error message
-        data_request = {}
-
-    # Check if data_request is empty and provide helpful error message
-    if not data_request:
-        available_datasets = sorted(DATASET_REGISTRY.keys())
-        error_msg = """The [data_request] table in your configuration is empty.
-
-You must provide dataset definitions for training and/or inference:
-  - For training: provide "train" and optionally "validate" dataset definitions
-  - For inference: provide "infer" dataset definition
-
-Example configuration:
-  [data_request.train]
-  [data_request.train.data]
-  dataset_class = "HyraxRandomDataset"
-  data_location = "./data"
-  primary_id_field = "object_id"
-
-  [data_request.infer]
-  [data_request.infer.data]
-  dataset_class = "HyraxRandomDataset"
-  data_location = "./data"
-  primary_id_field = "object_id"
-
-"""
-        if available_datasets:
-            error_msg += "Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
-            error_msg += "\n\n"
-        error_msg += """For more information and examples, see the documentation at:
-  https://hyrax.readthedocs.io/en/latest/notebooks/model_input_1.html"""
-        logger.error(error_msg)
-        raise RuntimeError(
-            "The [data_request] table in the configuration is empty. "
-            "Check the preceding error log for details and help."
-        )
-
-    return data_request
 
 
 class DataProvider:
