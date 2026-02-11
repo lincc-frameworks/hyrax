@@ -71,7 +71,8 @@ Key details:
 - Constructor takes only `original_dataset` and `result_dir`. No `config` parameter —
   the original dataset config for `original_dataset_config.toml` comes from
   `original_dataset.config`.
-- On first `write_batch`, create a LanceDB connection and table via `db.create_table()`
+- On first `write_batch`, create a LanceDB connection to `result_dir/lance_db/` via
+  `lancedb.connect(result_dir / "lance_db")` and create the table via `db.create_table()`
   with an explicit PyArrow schema derived from the first tensor's dtype and shape.
 - On subsequent `write_batch` calls, use `table.add()` to append data incrementally.
   This avoids accumulating all data in memory (a flaw in the prototype).
@@ -141,7 +142,7 @@ Key details:
   dataset_class = "ResultDataset"
   data_location = "./results/infer_20250201_120000"
   ```
-- Opens a `lancedb.connect(data_location)` and `db.open_table("results")`.
+- Opens a `lancedb.connect(data_location / "lance_db")` and `db.open_table("results")`.
 - `__len__` returns `table.count_rows()`.
 - `__getitem__` uses `table.take_offsets([idx])` for O(1) random access. Supports single int,
   list, slice, and numpy array indexing. Returns `torch.Tensor`.
@@ -200,7 +201,7 @@ Similarly, a factory selects the reader by detecting what's on disk:
 
 ```python
 def load_results_dataset(config, results_dir):
-    if (Path(results_dir) / "results.lance").exists():
+    if (Path(results_dir) / "lance_db" / "results.lance").exists():
         return ResultDataset(config, results_dir)
     else:
         return InferenceDataSet(config, results_dir)
@@ -332,7 +333,7 @@ These questions were raised during design and resolved through discussion.
 
 | # | Question | Resolution |
 |---|----------|------------|
-| A1 | Table name | `results` (materializes as `results.lance/`) |
+| A1 | Table name | `results` (materializes as `lance_db/results.lance/`) |
 | A2 | Tensor dtype | Store dtype in Arrow schema metadata; support arbitrary dtypes |
 | A3 | `visualize` verb migration | Deferred to a separate effort; `visualize` works only with `.npy` until updated |
 | A4 | `batch_num` column | Dropped; it is an artifact of the `.npy` layout |
@@ -395,11 +396,11 @@ the Lance data and compares it element-wise against the original `.npy` data.
 
 ### R7. Disk layout conflicts
 
-`lancedb.connect(results_dir)` treats `results_dir` as a LanceDB database directory. If
-there are other files in that directory (e.g., `original_dataset_config.toml`, model
-weight files from `test` verb), LanceDB may be confused or may ignore them. **Mitigation:**
-Test that LanceDB coexists peacefully with non-Lance files in the same directory. If not,
-use a subdirectory (e.g., `results_dir/lance_db/`) for the LanceDB connection.
+Hyrax results directories already contain non-Lance artifacts (e.g.,
+`original_dataset_config.toml`, model weight files from `test` verb). To avoid confusion
+or conflicts, the LanceDB database is always stored in a dedicated subdirectory:
+`lancedb.connect(results_dir / "lance_db")`. This keeps all LanceDB-related files
+isolated from other result artifacts and ensures clean coexistence.
 
 ### R8. Thread safety during writes
 
