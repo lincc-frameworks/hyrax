@@ -69,8 +69,9 @@ class ResultDatasetWriter:
 
 Key details:
 - Constructor takes only `original_dataset` and `result_dir`. No `config` parameter —
-  the original dataset config for `original_dataset_config.toml` comes from
-  `original_dataset.config`.
+  the original dataset config for `original_dataset_config.toml` is taken from
+  `original_dataset.original_config` when available (e.g., when `original_dataset` is an
+  `InferenceDataSet`), otherwise from `original_dataset.config`.
 - On first `write_batch`, create a LanceDB connection to `results_dir/lance_db/` via
   `lancedb.connect(result_dir / "lance_db")` and create the table via `db.create_table()`
   with an explicit PyArrow schema derived from the first tensor's dtype and shape.
