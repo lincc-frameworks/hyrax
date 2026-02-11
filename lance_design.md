@@ -30,6 +30,9 @@ This document describes a stepwise implementation plan.
 - **No dual-backend in one class.** The prototype's approach of `if lance: ... else: npy: ...`
   throughout `InferenceDataSet` leads to high complexity. Instead, `ResultDataset` is a new,
   Lance-only class, and `InferenceDataSet` stays as-is for `.npy` reads.
+- **Sunset .npy files.** When the Hyrax user community has migrated forward and fully
+  adopted the LanceDB format, and used the CLI migration tool to convert their existing
+  `.npy` file sets, we can stop reading `.npy` files.
 - **Write Lance incrementally.** Per the issue discussion, use `table.add()` inside the batch
   loop and `table.optimize()` at the end, rather than accumulating all data in memory.
 - **Use the LanceDB async API if needed.** The LanceDB docs warn against wrapping calls in
@@ -45,27 +48,7 @@ This document describes a stepwise implementation plan.
 
 **Goal:** Add dependencies and prepare the ground for new classes.
 
-### 0a. Add `lancedb` and `pyarrow` as dependencies
-
-Add to `pyproject.toml` dependencies, as the prototype does.
-
-### 0b. Add `results.storage_format` config
-
-Add to `hyrax_default_config.toml` under the `[results]` section:
-
-```toml
-[results]
-# Storage format for result datasets. Options: "lance", "npy".
-# "lance" uses LanceDB columnar format (default for new writes).
-# "npy" uses legacy NumPy structured arrays.
-storage_format = "lance"
-```
-
-Add the corresponding field to the Pydantic config schema:
-
-```python
-storage_format: Literal["lance", "npy"] = "lance"
-```
+Add `lancedb` and `pyarrow` to `pyproject.toml` dependencies, as the prototype does.
 
 ---
 
@@ -101,12 +84,12 @@ Key details:
 
 ### Schema
 
-The Lance table `results` will have columns:
+The Lance table `results` will have these columns:
 
-| Column   | Type                              | Notes                                   |
-|----------|-----------------------------------|-----------------------------------------|
-| `id`     | `string`                          | Object ID, stored as string             |
-| `tensor` | `fixed_size_list(<dtype>, N)`     | Flattened tensor of length N            |
+| Column      | Type                              | Notes                                   |
+|-------------|-----------------------------------|-----------------------------------------|
+| `object_id` | `string`                          | Object ID, stored as string             |
+| `data`      | `fixed_size_list(<dtype>, N)`     | Flattened tensor-like data of length N  |
 
 The `batch_num` column from the prototype is **not included** — it is an artifact of the
 `.npy` batch-file layout and has no meaning in Lance.
@@ -147,7 +130,6 @@ class ResultDataset(HyraxDataset, Dataset):
     def __getitem__(self, idx)      # returns torch.Tensor (for backward compat)
     def get_tensor(self, idx)       # getter for HyraxQL
     def get_object_id(self, idx)    # getter for HyraxQL
-    def ids(self)                   # generator of IDs
 ```
 
 Key details:
