@@ -62,16 +62,13 @@ Create `src/hyrax/data_sets/result_dataset.py` containing `ResultDatasetWriter`.
 
 ```python
 class ResultDatasetWriter:
-    def __init__(self, original_dataset, result_dir)
-    def write_batch(self, ids, tensors)
+    def __init__(self, result_dir)
+    def write_batch(self, object_ids, data)
     def commit(self)   # finalizes: calls table.optimize(), writes config
 ```
 
 Key details:
-- Constructor takes only `original_dataset` and `result_dir`. No `config` parameter —
-  the original dataset config for `original_dataset_config.toml` is taken from
-  `original_dataset.original_config` when available (e.g., when `original_dataset` is an
-  `InferenceDataSet`), otherwise from `original_dataset.config`.
+- Constructor takes only `result_dir`.
 - On first `write_batch`, create a LanceDB connection to `results_dir/lance_db/` via
   `lancedb.connect(result_dir / "lance_db")` and create the table via `db.create_table()`
   with an explicit PyArrow schema derived from the first tensor's dtype and shape.
@@ -130,7 +127,7 @@ class ResultDataset(HyraxDataset, Dataset):
     def __init__(self, config, data_location)
     def __len__(self)
     def __getitem__(self, idx)      # returns torch.Tensor (for backward compat)
-    def get_tensor(self, idx)       # getter for HyraxQL
+    def get_data(self, idx)         # getter for HyraxQL
     def get_object_id(self, idx)    # getter for HyraxQL
 ```
 
@@ -149,7 +146,7 @@ Key details:
   list, slice, and numpy array indexing. Returns `torch.Tensor`.
 - Must raise `IndexError` for out-of-range indices (critical — the prototype had a bug here
   that caused `test_nan.py` to hang).
-- `get_tensor(idx)` and `get_object_id(idx)` are the HyraxQL getter methods. `DataProvider`
+- `get_data(idx)` and `get_object_id(idx)` are the HyraxQL getter methods. `DataProvider`
   will auto-discover these via its `get_*` introspection. These are the only getters;
   additional getters (aliases, specialized names) can be added later if needed.
 - `ids()` yields IDs by scanning only the `id` column (projection pushdown).
@@ -160,13 +157,6 @@ Key details:
 - **No `verb` parameter.** `ResultDataset` does not know which verb produced it. The
   verb-based auto-discovery of the most recent results directory is the verb's responsibility,
   not the dataset's.
-
-### Results Directory Resolution
-
-Verbs that need to find a results directory (e.g., `umap` looking for inference results)
-use the existing `_resolve_results_dir` logic, factored out into a shared utility function.
-This function lives outside of `ResultDataset` and is called by verbs before constructing
-the dataset.
 
 ---
 
