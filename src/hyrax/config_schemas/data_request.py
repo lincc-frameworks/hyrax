@@ -7,21 +7,13 @@ the Hyrax framework.
 
 from __future__ import annotations
 
-import warnings
+from collections import defaultdict
+from pathlib import Path
 from typing import Any
 
-from pydantic import ConfigDict, Field, field_validator, model_validator
+from pydantic import Field, RootModel, field_validator, model_validator
 
 from .base import BaseConfigModel
-
-# Suppress Pydantic warning about 'validate' field shadowing BaseModel.validate().
-# This is intentional - we use 'validate' as a field name to match the TOML config
-# structure, and we don't need the legacy validate() classmethod on this model.
-warnings.filterwarnings(
-    "ignore",
-    message=r'Field name "validate" in "DataRequestDefinition" shadows an attribute',
-    category=UserWarning,
-)
 
 
 class DataRequestConfig(BaseConfigModel):
@@ -36,10 +28,31 @@ class DataRequestConfig(BaseConfigModel):
         None, description="Name of the primary identifier field in the dataset."
     )
 
+    split_fraction: float | None = Field(
+        None,
+        description="Fraction of the dataset to use, between 0.0 and 1.0 inclusive.",
+        ge=0.0,
+        le=1.0,
+    )
+
     dataset_config: dict | None = Field(
         None,
         description="Dataset-specific configuration as a free-form dictionary.",
     )
+
+    @field_validator("data_location")
+    @classmethod
+    def resolve_data_location(cls, v: str) -> str:
+        """Fully resolve the data_location path, expanding user home directories
+        and converting relative paths to absolute paths."""
+        return str(Path(v).expanduser().resolve())
+
+    @model_validator(mode="after")
+    def require_primary_id_for_split_fraction(self) -> DataRequestConfig:
+        """Ensure that split_fraction is only set when primary_id_field is also provided."""
+        if self.split_fraction is not None and self.primary_id_field is None:
+            raise ValueError("'split_fraction' can only be specified when 'primary_id_field' is also set.")
+        return self
 
     @model_validator(mode="before")
     @classmethod
@@ -60,133 +73,170 @@ class DataRequestConfig(BaseConfigModel):
         return self.model_dump(exclude_unset=exclude_unset)
 
 
-# Suppress Pydantic warning about 'validate' field shadowing BaseModel.validate().
-# This is intentional - we use 'validate' as a field name to match the TOML config
-# structure, and we don't need the legacy validate() classmethod on this model.
-with warnings.catch_warnings():
-    warnings.filterwarnings(
-        "ignore",
-        message=r'Field name "validate" in "DataRequestDefinition" shadows an attribute',
-        category=UserWarning,
-    )
+# Type alias for a dataset group value: either a single config or a dict of named configs.
+DatasetGroupValue = DataRequestConfig | dict[str, DataRequestConfig]
 
-    class DataRequestDefinition(BaseConfigModel):
-        """Typed representation of the full ``data_request`` table."""
 
-        model_config = ConfigDict(protected_namespaces=())
+def _normalize_dataset_group(value: Any) -> DatasetGroupValue:
+    """Normalize a single dataset group value into a ``DataRequestConfig``
+    or a ``dict[str, DataRequestConfig]``.
 
-        train: DataRequestConfig | dict[str, DataRequestConfig] | None = Field(
-            None, description="Dataset configuration(s) used for training."
-        )
-        validate: DataRequestConfig | dict[str, DataRequestConfig] | None = Field(
-            None, description="Dataset configuration(s) used for validation."
-        )
-        infer: DataRequestConfig | dict[str, DataRequestConfig] | None = Field(
-            None, description="Dataset configuration(s) used for inference."
-        )
+    Handles:
+    - A ``DataRequestConfig`` instance (returned as-is)
+    - A dict that looks like a single config (has ``dataset_class`` or ``data`` key)
+    - A dict of multiple configs (values are dicts with ``dataset_class``)
+    """
 
-        @field_validator("train", "validate", "infer", mode="before")
-        @classmethod
-        def normalize_dataset_configs(cls, value: Any) -> Any:
-            """
-            Normalize dataset config input.
+    if isinstance(value, DataRequestConfig):
+        return value
 
-            Handles:
-            - Single DataRequestConfig (or dict that can become one)
-            - Dict of multiple DataRequestConfig instances
-            - Wrapped in {"data": ...} format (already handled by DataRequestConfig)
-            """
-
-            if value is None:
-                return None
-
-            # If it's already a DataRequestConfig, return as-is
-            if isinstance(value, DataRequestConfig):
-                return value
-
-            # If it's a dict, check if it's a single config or a dict of configs
-            if isinstance(value, dict):
-                # Check if this looks like a single config (has dataset_class)
-                # or a dict of configs (values are dicts with dataset_class)
-                if "dataset_class" in value or "data" in value:
-                    # Single config - will be parsed as DataRequestConfig
-                    return value
+    if isinstance(value, dict):
+        # Check if this looks like a single config (has dataset_class)
+        # or a dict of configs (values are dicts with dataset_class)
+        if "dataset_class" in value or "data" in value:
+            # Single config
+            return DataRequestConfig.model_validate(value)
+        else:
+            # Dict of configs - parse each value
+            parsed_dict = {}
+            for key, val in value.items():
+                if isinstance(val, DataRequestConfig):
+                    parsed_dict[key] = val
                 else:
-                    # Appears to be dict of configs - parse each value
-                    parsed_dict = {}
-                    for key, val in value.items():
-                        if isinstance(val, DataRequestConfig):
-                            parsed_dict[key] = val
-                        else:
-                            parsed_dict[key] = DataRequestConfig.model_validate(val)
-                    return parsed_dict
+                    parsed_dict[key] = DataRequestConfig.model_validate(val)
+            return parsed_dict
 
-            return value
+    raise ValueError(f"Cannot parse dataset group value of type {type(value).__name__}")
 
-        @model_validator(mode="after")
-        def require_at_least_one_dataset(self) -> DataRequestDefinition:
-            """Ensure at least one of train, validate, or infer is provided."""
-            if self.train is None and self.validate is None and self.infer is None:
-                raise ValueError("At least one of 'train', 'validate', or 'infer' must be provided.")
-            return self
 
-        @model_validator(mode="after")
-        def validate_primary_id_fields(self) -> DataRequestDefinition:
-            """
-            Validate that exactly one DataRequestConfig in each dataset group
-            has a non-None primary_id_field.
+def _iter_all_configs(
+    groups: dict[str, DatasetGroupValue],
+) -> list[tuple[str, DataRequestConfig]]:
+    """Yield ``(group_name, config)`` pairs across all groups."""
+    result = []
+    for group_name, group_value in groups.items():
+        configs_dict = group_value if isinstance(group_value, dict) else {"_default": group_value}
+        for config in configs_dict.values():
+            result.append((group_name, config))
+    return result
 
-            This ensures that when multiple datasets are requested (e.g., train
-            contains a dict of multiple DataRequestConfig instances), exactly
-            one of them specifies which field to use as the primary identifier.
-            """
 
-            # Check each field that can contain dataset configs
-            for field_name in ("train", "validate", "infer"):
-                field_value = getattr(self, field_name)
+class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
+    """Typed representation of the full ``data_request`` table.
 
-                if field_value is None:
-                    continue
+    Accepts any number of arbitrarily-named dataset groups (e.g. ``train``,
+    ``validate``, ``infer``, ``test``, ``finetune``, …).  Each group value is
+    either a single ``DataRequestConfig`` or a ``dict`` of named
+    ``DataRequestConfig`` instances.
+    """
 
-                # Normalize to dict for uniform processing
-                configs_dict = field_value if isinstance(field_value, dict) else {"_default": field_value}
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_all_groups(cls, value: Any) -> dict[str, DatasetGroupValue]:
+        """Parse every top-level key into the expected group format."""
+        if not isinstance(value, dict):
+            raise ValueError("DataRequestDefinition expects a dictionary of dataset groups.")
 
-                # Count how many configs have primary_id_field set
-                primary_count = sum(
-                    1 for config in configs_dict.values() if config.primary_id_field is not None
+        normalized: dict[str, DatasetGroupValue] = {}
+        for group_name, group_value in value.items():
+            if group_value is None:
+                continue
+            normalized[group_name] = _normalize_dataset_group(group_value)
+
+        return normalized
+
+    @model_validator(mode="after")
+    def require_at_least_one_dataset(self) -> DataRequestDefinition:
+        """Ensure at least one dataset group is provided."""
+        if not self.root:
+            raise ValueError("At least one dataset group must be provided.")
+        return self
+
+    @model_validator(mode="after")
+    def validate_primary_id_fields(self) -> DataRequestDefinition:
+        """Validate that exactly one DataRequestConfig in each dataset group
+        has a non-None primary_id_field.
+
+        This ensures that when multiple datasets are requested (e.g., a group
+        contains a dict of multiple DataRequestConfig instances), exactly
+        one of them specifies which field to use as the primary identifier.
+        """
+        for group_name, group_value in self.root.items():
+            configs_dict = group_value if isinstance(group_value, dict) else {"_default": group_value}
+
+            primary_count = sum(1 for config in configs_dict.values() if config.primary_id_field is not None)
+
+            if primary_count == 0:
+                raise ValueError(
+                    f"'{group_name}' must have exactly one DataRequestConfig with "
+                    f"'primary_id_field' set, but found none."
+                )
+            elif primary_count > 1:
+                raise ValueError(
+                    f"'{group_name}' must have exactly one DataRequestConfig with "
+                    f"'primary_id_field' set, but found {primary_count}."
                 )
 
-                # Validate exactly one
-                if primary_count == 0:
-                    raise ValueError(
-                        f"'{field_name}' must have exactly one DataRequestConfig with "
-                        f"'primary_id_field' set, but found none."
-                    )
-                elif primary_count > 1:
-                    raise ValueError(
-                        f"'{field_name}' must have exactly one DataRequestConfig with "
-                        f"'primary_id_field' set, but found {primary_count}."
-                    )
+        return self
 
-            return self
+    @model_validator(mode="after")
+    def validate_split_fraction_sums(self) -> DataRequestDefinition:
+        """Validate that the sum of split_fraction values for configs sharing
+        the same data_location does not exceed 1.0.
 
-        def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
-            """Export as a nested dictionary compatible with existing configs."""
+        This check spans across all dataset groups to ensure that the total
+        fraction requested from a single data source is not more than 100%.
+        """
+        fractions_by_location: dict[str, list[float]] = defaultdict(list)
 
-            output: dict[str, Any] = {}
+        for _group_name, config in _iter_all_configs(self.root):
+            if config.split_fraction is not None:
+                fractions_by_location[config.data_location].append(config.split_fraction)
 
-            for name in ("train", "validate", "infer"):
-                value = getattr(self, name)
-                if value is not None:
-                    # Handle both single config and dict of configs
-                    if isinstance(value, dict):
-                        # Dict of configs - wrap each in {"data": ...}
-                        output[name] = {
-                            key: {"data": cfg.as_dict(exclude_unset=exclude_unset)}
-                            for key, cfg in value.items()
-                        }
-                    else:
-                        # Single config - wrap in {"data": ...}
-                        output[name] = {"data": value.as_dict(exclude_unset=exclude_unset)}
+        for location, fractions in fractions_by_location.items():
+            total = sum(fractions)
+            if total > 1.0:
+                raise ValueError(
+                    f"The sum of split_fraction values for data_location '{location}' "
+                    f"is {total}, which exceeds 1.0."
+                )
 
-            return output
+        return self
+
+    # ------------------------------------------------------------------
+    # Convenience accessors — provide attribute-style access for common
+    # group names so existing code like ``definition.train`` keeps working.
+    # ------------------------------------------------------------------
+
+    def __getattr__(self, name: str) -> DatasetGroupValue | None:
+        """Allow attribute-style access to dataset groups (e.g. ``self.train``).
+
+        .. note::
+
+            Names that collide with methods inherited from Pydantic's
+            ``RootModel`` (e.g. ``validate``) cannot be accessed this way.
+            Use bracket access instead: ``definition[\"validate\"]``.
+        """
+        if name.startswith("_"):
+            raise AttributeError(name)
+        return self.root.get(name)
+
+    def __contains__(self, key: str) -> bool:
+        return key in self.root
+
+    def __getitem__(self, key: str) -> DatasetGroupValue:
+        return self.root[key]
+
+    def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
+        """Export as a nested dictionary compatible with existing configs."""
+        output: dict[str, Any] = {}
+
+        for name, value in self.root.items():
+            if isinstance(value, dict):
+                output[name] = {
+                    key: {"data": cfg.as_dict(exclude_unset=exclude_unset)} for key, cfg in value.items()
+                }
+            else:
+                output[name] = {"data": value.as_dict(exclude_unset=exclude_unset)}
+
+        return output
