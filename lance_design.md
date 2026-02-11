@@ -64,7 +64,7 @@ Create `src/hyrax/data_sets/result_dataset.py` containing `ResultDatasetWriter`.
 class ResultDatasetWriter:
     def __init__(self, original_dataset, result_dir)
     def write_batch(self, ids, tensors)
-    def write_index(self)   # finalizes: calls table.optimize(), writes config
+    def commit(self)   # finalizes: calls table.optimize(), writes config
 ```
 
 Key details:
