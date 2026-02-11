@@ -574,21 +574,21 @@ def test_split_fraction_sum_exceeds_one_same_location():
     assert "exceeds 1.0" in str(exc_info.value)
 
 
-def test_split_fraction_sum_with_none_fractions_ignored():
-    """Configs without split_fraction (None) don't contribute to the sum."""
+def test_split_fraction_sum_with_none_fractions_different_locations():
+    """Configs without split_fraction at a different location don't affect the sum."""
     definition = DataRequestDefinition(
         {
             "train": DataRequestConfig(
                 dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
+                data_location="/tmp/data_a",
                 primary_id_field="id",
                 split_fraction=0.8,
             ),
             "validate": DataRequestConfig(
                 dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
+                data_location="/tmp/data_b",
                 primary_id_field="id",
-                # No split_fraction — should not count toward the sum
+                # No split_fraction — different location, so no conflict
             ),
         }
     )
@@ -754,3 +754,83 @@ def test_none_groups_are_skipped():
     assert definition.train is not None
     assert definition.root.get("validate") is None
     assert "validate" not in definition
+
+
+def test_split_fraction_consistency_mixed_raises():
+    """If one config has split_fraction for a location, all must."""
+    with pytest.raises(ValidationError) as exc_info:
+        DataRequestDefinition(
+            {
+                "train": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.5,
+                ),
+                "infer": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    # Missing split_fraction
+                ),
+            }
+        )
+    assert "split_fraction" in str(exc_info.value)
+    assert "infer" in str(exc_info.value)
+
+
+def test_split_fraction_consistency_all_set_passes():
+    """All configs sharing a location with split_fraction set passes."""
+    definition = DataRequestDefinition(
+        {
+            "train": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.6,
+            ),
+            "infer": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.4,
+            ),
+        }
+    )
+    assert definition.train.split_fraction == 0.6
+    assert definition.infer.split_fraction == 0.4
+
+
+def test_split_fraction_consistency_none_set_passes():
+    """No configs having split_fraction for a shared location passes."""
+    definition = DataRequestDefinition(
+        {
+            "train": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+            ),
+            "infer": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+            ),
+        }
+    )
+    assert definition.train.split_fraction is None
+    assert definition.infer.split_fraction is None
+
+
+def test_split_fraction_consistency_single_config_no_issue():
+    """A single config with split_fraction doesn't trigger the consistency check."""
+    definition = DataRequestDefinition(
+        {
+            "train": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.7,
+            ),
+        }
+    )
+    assert definition.train.split_fraction == 0.7

@@ -203,6 +203,39 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
 
         return self
 
+    @model_validator(mode="after")
+    def validate_split_fraction_consistency(self) -> DataRequestDefinition:
+        """Validate that if any config specifies a split_fraction for a given
+        data_location, then all other configs sharing that data_location must
+        also specify a split_fraction.
+
+        This prevents ambiguous situations where some configs claim a fraction
+        of a dataset while others implicitly claim the remainder or the whole.
+        """
+        # Group all configs by data_location
+        configs_by_location: dict[str, list[tuple[str, DataRequestConfig]]] = defaultdict(list)
+
+        for group_name, config in _iter_all_configs(self.root):
+            configs_by_location[config.data_location].append((group_name, config))
+
+        for location, group_configs in configs_by_location.items():
+            if len(group_configs) < 2:
+                continue
+
+            has_fraction = [cfg.split_fraction is not None for _, cfg in group_configs]
+
+            if any(has_fraction) and not all(has_fraction):
+                missing_groups = [
+                    group_name for (group_name, cfg) in group_configs if cfg.split_fraction is None
+                ]
+                raise ValueError(
+                    f"All configs sharing data_location '{location}' must specify "
+                    f"'split_fraction' when any of them does. Missing in: "
+                    f"{', '.join(missing_groups)}."
+                )
+
+        return self
+
     # ------------------------------------------------------------------
     # Convenience accessors — provide attribute-style access for common
     # group names so existing code like ``definition.train`` keeps working.
