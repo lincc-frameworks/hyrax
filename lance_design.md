@@ -16,7 +16,7 @@ expands the scope beyond a format swap to include:
 
 1. Creating a new `ResultDataset` class (not just renaming `InferenceDataSet`)
 2. Integrating `ResultDataset` with HyraxQL (getter-based data access via `DataProvider`)
-3. Removing the `original_configuration` metadata-bridging machinery
+3. Removing the `original_config` / `original_dataset` metadata-bridging machinery
 4. Providing an `.npy`-to-Lance migration script
 5. Deprecating `InferenceDataSet` over time
 
@@ -152,8 +152,8 @@ Key details:
   will auto-discover these via its `get_*` introspection. These are the only getters;
   additional getters (aliases, specialized names) can be added later if needed.
 - `ids()` yields IDs by scanning only the `id` column (projection pushdown).
-- **No `original_configuration` machinery.** Metadata bridging to the original dataset is
-  not needed — users control combined datasets via HyraxQL / `DataProvider`.
+- **No `original_config` / `original_dataset` machinery.** Metadata bridging to the original
+  dataset is not needed — users control combined datasets via HyraxQL / `DataProvider`.
 - **No `metadata()` override.** If users need metadata alongside results, they configure
   both datasets in `data_request` and `DataProvider` joins them.
 - **No `verb` parameter.** `ResultDataset` does not know which verb produced it. The
@@ -234,7 +234,7 @@ Replace direct `InferenceDataSet(...)` construction in each verb with the
 ### Visualize Verb — Deferred
 
 The `visualize` verb relies on `InferenceDataSet.metadata()` and the
-`original_configuration` bridging. Refactoring `visualize` to use `DataProvider` for
+`original_config` / `original_dataset` bridging. Refactoring `visualize` to use `DataProvider` for
 metadata is a separate effort. Until that work is done:
 
 - `visualize` continues to use `InferenceDataSet` and works only with `.npy` results.
@@ -382,7 +382,7 @@ correctly.
 
 ### R5. `visualize` verb breakage
 
-`ResultDataset` drops the `original_configuration` / `metadata()` bridge. Until
+`ResultDataset` drops the `original_config` / `original_dataset` / `metadata()` bridge. Until
 `visualize` is refactored, it will not work with Lance results.
 **Mitigation:** `visualize` detects Lance results and emits a clear error message
 directing users to either use `.npy` results or wait for the `visualize` update.
