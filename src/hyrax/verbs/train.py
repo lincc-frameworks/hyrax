@@ -90,7 +90,7 @@ class Train(Verb):
         monitor = GpuMonitor()
 
         # Go up to the parent of the results dir so all mlflow results show up in the same directory.
-        mlflow_dir = (results_dir / ".." / "mlflow").resolve()
+        mlflow_dir = (results_dir.parent / "mlflow").resolve()
         mlflow.set_tracking_uri("file://" + str(mlflow_dir))
 
         # Get experiment_name and cast to string (it's a tomlkit.string by default)
