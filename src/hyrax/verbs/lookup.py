@@ -81,6 +81,6 @@ class Lookup(Verb):
             result = inference_dataset[lookup_index[0]]
             return np.asarray(result)
         elif len(lookup_index) > 1:
-            raise RuntimeError(f"Inference result directory has duplicate ID numbers")
+            raise RuntimeError("Inference result directory has duplicate ID numbers")
 
         return None

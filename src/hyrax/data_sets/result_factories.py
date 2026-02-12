@@ -89,7 +89,9 @@ def create_results_writer(original_dataset: Dataset, result_dir: Union[str, Path
     return ResultDatasetWriter(result_dir)
 
 
-def load_results_dataset(config: dict, results_dir: Union[Path, str, None] = None, verb: Union[str, None] = None):
+def load_results_dataset(
+    config: dict, results_dir: Union[Path, str, None] = None, verb: Union[str, None] = None
+):
     """Load a results dataset, auto-detecting format.
 
     This factory auto-detects whether the results are in Lance or .npy format

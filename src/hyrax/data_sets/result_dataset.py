@@ -149,7 +149,9 @@ class ResultDatasetWriter:
             metadata=metadata,
         )
 
-        logger.debug(f"Created schema for tensors with shape {self.tensor_shape} and dtype {self.tensor_dtype}")
+        logger.debug(
+            f"Created schema for tensors with shape {self.tensor_shape} and dtype {self.tensor_dtype}"
+        )
 
 
 class ResultDataset(HyraxDataset, Dataset):
