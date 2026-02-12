@@ -275,7 +275,8 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 
 ### Phase 2 (next release): Hard deprecation
 - `InferenceDataSet` emits a louder warning (or is removed, depending on user migration).
-- The `storage_format = "npy"` config option is removed.
+- No `storage_format` configuration option is introduced; result format selection is always
+  based on auto-detection of the on-disk files when reading.
 
 ---
 
