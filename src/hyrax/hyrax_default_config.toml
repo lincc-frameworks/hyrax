@@ -406,6 +406,11 @@ vector_size_warning = 10000
 vector_size = 64
 
 
+[vector_db.lancedb]
+# LanceDB-specific configuration options can be added here if needed in the future.
+# Currently, LanceDB uses sensible defaults for vector storage and retrieval.
+
+
 [results]
 # Path to inference results to use for visualization and lookups. Uses latest inference run if none provided.
 inference_dir = false

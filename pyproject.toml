@@ -56,6 +56,7 @@ dependencies = [
     "psutil", # Used for memory monitoring
     "tqdm", # Used to show progress bars
     "qdrant-client", # Vector database for similarity search
+    "lancedb", # Vector database for similarity search
     "colorama", # Used to color terminal output
     "numba==0.63.1",
 ]
