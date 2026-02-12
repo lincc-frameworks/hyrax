@@ -786,9 +786,9 @@ def create_save_batch_callback(dataset, results_dir):
     callable
         A callback function with signature (batch, batch_results) that saves results
     """
-    from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
+    from hyrax.data_sets.result_factories import create_results_writer
 
-    data_writer = InferenceDataSetWriter(dataset, results_dir)
+    data_writer = create_results_writer(dataset, results_dir)
 
     def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
         """Receive and write batch results to results_dir immediately."""
