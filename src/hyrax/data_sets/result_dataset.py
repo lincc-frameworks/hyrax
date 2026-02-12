@@ -164,7 +164,7 @@ class ResultDataset(HyraxDataset, Dataset):
 
         self.db = lancedb.connect(str(self.lance_dir))
         self.table = self.db.open_table(TABLE_NAME)
-        
+
         # Get the underlying lance dataset for efficient access
         self.lance_dataset = self.table.to_lance()
 
@@ -207,10 +207,7 @@ class ResultDataset(HyraxDataset, Dataset):
             idx = [int(idx)]
         else:
             idx = np.asarray(idx)
-            if len(idx.shape) == 0:  # scalar array
-                idx = [int(idx)]
-            else:
-                idx = idx.tolist()
+            idx = [int(idx)] if len(idx.shape) == 0 else idx.tolist()  # scalar array
 
         # Validate indices
         table_len = len(self)
