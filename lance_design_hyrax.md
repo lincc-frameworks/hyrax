@@ -11,7 +11,7 @@ faster random-access reads than Parquet or raw NumPy. See
 This is **not** a format swap bolted onto `InferenceDataSet`. It's a clean break:
 
 - **`ResultDatasetWriter`** — new Lance-only writer.
-- **`ResultDataset`** — new Lance-only reader, integrated with HyraxQL (`get_tensor`,
+- **`ResultDataset`** — new Lance-only reader, integrated with HyraxQL (`get_data`,
   `get_object_id` getters auto-discovered by `DataProvider`).
 - **`InferenceDataSet`** — stays read-only for `.npy`; deprecated over two releases.
 
@@ -33,10 +33,12 @@ Both live in a new `result_dataset.py` alongside the existing `inference_dataset
 4. **Standard `(config, data_location)` constructor.** `ResultDataset` plugs into
    `data_request` the same way any other `HyraxDataset` does — no special `verb` parameter.
 
-5. **Factory-based selection.** A writer factory reads
-   `config["results"]["storage_format"]` (`"lance"` default, `"npy"` fallback). A reader
-   factory auto-detects the format on disk (`lance_db/results.lance/` present → Lance,
-   otherwise `.npy`).
+5. **Factory-based selection (Lance-only for now).** A writer factory is wired into
+   `infer`, `test`, `umap`, and `engine` and always produces a Lance-backed
+   `ResultDatasetWriter` (there is currently no `storage_format` knob or `.npy` writer
+   fallback). A reader factory is responsible for opening Lance results; legacy `.npy`
+   outputs continue to be handled by `InferenceDataSet` via auto-detection on disk
+   (`lance_db/` subdirectory present → Lance, otherwise `.npy`).
 
 6. **LanceDB files isolated in `lance_db/` subdirectory** inside the results dir, avoiding
    collisions with existing artifacts like `original_dataset_config.toml`.

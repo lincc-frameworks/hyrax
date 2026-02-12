@@ -60,7 +60,7 @@ dependencies = [
     "numba==0.63.1",
     "lancedb", # Used for columnar storage of inference results
     "pyarrow", # Used by lancedb for data interchange
-    "pylance", # Used by lancedb for data access
+    "pylance", # Used by lancedb for Lance dataset access
 ]
 
 [project.scripts]

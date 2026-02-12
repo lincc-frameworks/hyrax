@@ -81,7 +81,8 @@ def test_writer_different_dtypes(tmp_path):
     dtypes = [np.float32, np.float64, np.int32, np.int64]
 
     for dtype in dtypes:
-        result_dir = tmp_path / f"test_{dtype}"
+        dtype_name = np.dtype(dtype).name
+        result_dir = tmp_path / f"test_{dtype_name}"
         result_dir.mkdir()
 
         writer = ResultDatasetWriter(result_dir)

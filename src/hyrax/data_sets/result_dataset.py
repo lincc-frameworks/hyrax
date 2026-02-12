@@ -38,13 +38,15 @@ class ResultDatasetWriter:
         result_dir : Union[str, Path]
             Directory where Lance database will be created
         """
-        self.result_dir = result_dir if isinstance(result_dir, Path) else Path(result_dir)
+        self.result_dir = Path(result_dir)
         self.result_dir.mkdir(parents=True, exist_ok=True)
 
         self.lance_dir = self.result_dir / LANCE_DB_DIR
         self.db = None
         self.table = None
         self.schema = None
+        self.tensor_dtype = None
+        self.tensor_shape = None
         self.batch_count = 0
 
     def write_batch(self, object_ids: np.ndarray, data: list[np.ndarray]):
@@ -80,6 +82,19 @@ class ResultDatasetWriter:
                 schema=self.schema,
             )
             self.table = self.db.create_table(TABLE_NAME, empty_data, mode="overwrite")
+        else:
+            # Validate that all tensors match the established schema
+            for i, tensor in enumerate(data):
+                if tensor.dtype != self.tensor_dtype:
+                    raise ValueError(
+                        f"Tensor at index {i} has dtype {tensor.dtype}, "
+                        f"but schema expects {self.tensor_dtype}"
+                    )
+                if tensor.shape != tuple(self.tensor_shape):
+                    raise ValueError(
+                        f"Tensor at index {i} has shape {tensor.shape}, "
+                        f"but schema expects {tuple(self.tensor_shape)}"
+                    )
 
         # Flatten tensors for storage
         flattened_data = [tensor.flatten() for tensor in data]
@@ -113,17 +128,17 @@ class ResultDatasetWriter:
             Sample tensor to determine dtype and shape
         """
         # Get dtype and shape from sample
-        dtype = sample_tensor.dtype
-        shape = sample_tensor.shape
-        flattened_size = int(np.prod(shape))
+        self.tensor_dtype = sample_tensor.dtype
+        self.tensor_shape = list(sample_tensor.shape)
+        flattened_size = int(np.prod(self.tensor_shape))
 
         # Map numpy dtype to PyArrow type
-        pa_type = pa.from_numpy_dtype(dtype)
+        pa_type = pa.from_numpy_dtype(self.tensor_dtype)
 
         # Create schema with metadata
         metadata = {
-            b"tensor_shape": json.dumps(list(shape)).encode("utf-8"),
-            b"tensor_dtype": str(dtype).encode("utf-8"),
+            b"tensor_shape": json.dumps(self.tensor_shape).encode("utf-8"),
+            b"tensor_dtype": str(self.tensor_dtype).encode("utf-8"),
         }
 
         self.schema = pa.schema(
@@ -134,7 +149,7 @@ class ResultDatasetWriter:
             metadata=metadata,
         )
 
-        logger.debug(f"Created schema for tensors with shape {shape} and dtype {dtype}")
+        logger.debug(f"Created schema for tensors with shape {self.tensor_shape} and dtype {self.tensor_dtype}")
 
 
 class ResultDataset(HyraxDataset, Dataset):
@@ -155,7 +170,7 @@ class ResultDataset(HyraxDataset, Dataset):
         """
         super().__init__(config)
 
-        self.data_location = data_location if isinstance(data_location, Path) else Path(data_location)
+        self.data_location = Path(data_location)
         self.lance_dir = self.data_location / LANCE_DB_DIR
 
         # Open Lance database and table
@@ -227,10 +242,7 @@ class ResultDataset(HyraxDataset, Dataset):
             tensors.append(tensor)
 
         # Return single tensor or array of tensors
-        if is_single:
-            return tensors[0]
-        else:
-            return np.array(tensors)
+        return tensors[0] if is_single else np.array(tensors)
 
     def get_data(self, idx: int):
         """Get data tensor at index (HyraxQL getter).
@@ -264,6 +276,7 @@ class ResultDataset(HyraxDataset, Dataset):
             raise IndexError(f"Index {idx} is out of range for dataset of length {len(self)}")
 
         result = self.lance_dataset.take([idx])
+        # Extract first row's object_id since we're taking a single index
         return result["object_id"][0].as_py()
 
     def ids(self) -> Generator[str, None, None]:

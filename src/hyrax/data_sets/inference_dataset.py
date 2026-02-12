@@ -392,6 +392,10 @@ class InferenceDataSetWriter:
         # Write out the config needed to re-constitute the original dataset we came from.
         log_runtime_config(self.original_dataset_config, self.result_dir, ORIGINAL_DATASET_CONFIG_FILENAME)
 
+    def commit(self):
+        """Alias for write_index() to maintain compatibility with ResultDatasetWriter API."""
+        self.write_index()
+
     def _save_batch_index(self):
         """Save a batch index in the result directory provided"""
         batch_index_dtype = np.dtype([("id", self.id_dtype), ("batch_num", np.int64)])

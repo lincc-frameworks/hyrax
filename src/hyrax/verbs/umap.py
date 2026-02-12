@@ -96,7 +96,7 @@ class Umap(Verb):
         index_choices = rng.choice(np.arange(total_length), size=sample_size, replace=False)
 
         # If the input to umap is not of the shape [samples,input_dims] we reshape the input accordingly
-        data_sample = inference_results[index_choices].numpy().reshape((sample_size, -1))
+        data_sample = np.asarray(inference_results[index_choices]).reshape((sample_size, -1))
 
         self._log_memory_usage("Before fitting umap")
         logger.info("Fitting the UMAP")
