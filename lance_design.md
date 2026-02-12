@@ -330,7 +330,7 @@ These questions were raised during design and resolved through discussion.
 | A3 | `visualize` verb migration | Deferred to a separate effort; `visualize` works only with `.npy` until updated |
 | A4 | `batch_num` column | Dropped; it is an artifact of the `.npy` layout |
 | A5 | Getter methods | `get_data` and `get_object_id` only; more can be added later |
-| A6 | Config key naming | `results.storage_format` (values: `"lance"`, `"npy"`) |
+| A6 | Config key naming | No explicit config; storage format is auto-detected from on-disk results at read time |
 | A7 | Config threading to writer | Not needed; factory reads `original_dataset.config`; writer constructors stay clean |
 | A8 | `ResultDataset` in `data_request` | Yes; constructor signature is `(config, data_location)` like other datasets; no `verb` parameter |
 
