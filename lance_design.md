@@ -149,7 +149,7 @@ Key details:
 - `get_data(idx)` and `get_object_id(idx)` are the HyraxQL getter methods. `DataProvider`
   will auto-discover these via its `get_*` introspection. These are the only getters;
   additional getters (aliases, specialized names) can be added later if needed.
-- `ids()` yields IDs by scanning only the `id` column (projection pushdown).
+- `ids()` yields IDs by scanning only the `object_id` column (projection pushdown).
 - **No `original_config` / `original_dataset` machinery.** Metadata bridging to the original
   dataset is not needed — users control combined datasets via HyraxQL / `DataProvider`.
 - **No `metadata()` override.** If users need metadata alongside results, they configure
