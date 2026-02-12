@@ -101,7 +101,7 @@ class ResultDatasetWriter:
         """Finalize the write by optimizing the table."""
         if self.table is not None:
             logger.info(f"Optimizing Lance table after {self.batch_count} batches")
-            self.table.optimize.compact_files()
+            self.table.optimize()
             logger.info("Lance table optimization complete")
 
     def _create_schema(self, sample_tensor: np.ndarray):
@@ -164,6 +164,9 @@ class ResultDataset(HyraxDataset, Dataset):
 
         self.db = lancedb.connect(str(self.lance_dir))
         self.table = self.db.open_table(TABLE_NAME)
+        
+        # Get the underlying lance dataset for efficient access
+        self.lance_dataset = self.table.to_lance()
 
         # Get schema metadata
         schema_metadata = self.table.schema.metadata
@@ -215,8 +218,8 @@ class ResultDataset(HyraxDataset, Dataset):
             if i < 0 or i >= table_len:
                 raise IndexError(f"Index {i} is out of range for dataset of length {table_len}")
 
-        # Use take_offsets for O(1) random access
-        result = self.table.take_offsets(idx)
+        # Use take for O(1) random access
+        result = self.lance_dataset.take(idx)
 
         # Extract data column and reshape
         data_column = result["data"].to_pylist()
@@ -263,7 +266,7 @@ class ResultDataset(HyraxDataset, Dataset):
         if idx < 0 or idx >= len(self):
             raise IndexError(f"Index {idx} is out of range for dataset of length {len(self)}")
 
-        result = self.table.take_offsets([idx])
+        result = self.lance_dataset.take([idx])
         return result["object_id"][0].as_py()
 
     def ids(self) -> Generator[str, None, None]:
@@ -274,8 +277,8 @@ class ResultDataset(HyraxDataset, Dataset):
         str
             Object IDs in order
         """
-        # Use projection pushdown to only read object_id column
-        scanner = self.table.to_lance().scanner(columns=["object_id"])
+        # Use scanner with projection to only read object_id column
+        scanner = self.lance_dataset.scanner(columns=["object_id"])
         for batch in scanner.to_batches():
             for oid in batch["object_id"]:
                 yield oid.as_py()
