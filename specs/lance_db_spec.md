@@ -64,7 +64,7 @@ Create `src/hyrax/data_sets/result_dataset.py` containing `ResultDatasetWriter`.
 class ResultDatasetWriter:
     def __init__(self, result_dir)
     def write_batch(self, object_ids, data)
-    def commit(self)   # finalizes: calls table.optimize(), writes config
+    def commit(self)   # finalizes: calls table.optimize()
 ```
 
 Key details:
@@ -74,9 +74,7 @@ Key details:
   with an explicit PyArrow schema derived from the first tensor's dtype and shape.
 - On subsequent `write_batch` calls, use `table.add()` to append data incrementally.
   This avoids accumulating all data in memory (a flaw in the prototype).
-- `write_index()` calls `table.optimize()` to consolidate fragments,
-  then writes `original_dataset_config.toml` (reusing existing logic from
-  `InferenceDataSetWriter`).
+- `commit()` calls `table.optimize()` to consolidate fragments
 - No multiprocessing pool. LanceDB uses its own internal async I/O. If benchmarks show
   this is a bottleneck, the LanceDB async API (`AsyncConnection`, `AsyncTable`) can be
   adopted later.
@@ -136,8 +134,8 @@ class ResultDataset(HyraxDataset, Dataset):
     def __init__(self, config, data_location)
     def __len__(self)
     def __getitem__(self, idx)      # returns torch.Tensor (for backward compat)
-    def get_data(self, idx)         # getter for HyraxQL
     def get_object_id(self, idx)    # getter for HyraxQL
+    def get_data(self, idx)         # getter for HyraxQL
 ```
 
 Key details:
@@ -152,7 +150,7 @@ Key details:
 - Opens a `lancedb.connect(data_location / "lance_db")` and `db.open_table("results")`.
 - `__len__` returns `table.count_rows()`.
 - `__getitem__` uses `table.take_offsets([idx])` for O(1) random access. Supports single int,
-  list, slice, and numpy array indexing. Returns `torch.Tensor`.
+  and numpy array indexing. Returns a NumPy array.
 - Must raise `IndexError` for out-of-range indices (critical — the prototype had a bug here
   that caused `test_nan.py` to hang).
 - `get_data(idx)` and `get_object_id(idx)` are the HyraxQL getter methods. `DataProvider`
