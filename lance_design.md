@@ -297,7 +297,7 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 - `__getitem__` with out-of-range index raises `IndexError`.
 - `__len__` matches expected count.
 - `ids()` returns all IDs.
-- `get_tensor(idx)` and `get_object_id(idx)` return correct values.
+- `get_data(idx)` and `get_object_id(idx)` return correct values.
 - Chaining: write inference results, read as `ResultDataset`, write umap, read as
   `ResultDataset` — verify end-to-end.
 - Usable as a `data_request` dataset class via `DataProvider`.
