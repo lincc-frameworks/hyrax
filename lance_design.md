@@ -163,32 +163,26 @@ Key details:
 ## Step 3: Wire Writer Into Verbs
 
 **Goal:** Verbs that produce results (`infer`, `test`, `umap`, `engine`) use
-`ResultDatasetWriter` when the config calls for Lance.
+`ResultDatasetWriter` for new writes.
 
 ### Approach
 
-A factory function selects the writer class based on
-`config["results"]["storage_format"]`:
+A factory function creates the writer:
 
 ```python
-def create_results_writer(original_dataset, result_dir):
-    storage_format = original_dataset.config["results"].get("storage_format", "lance")
-    if storage_format == "npy":
-        return InferenceDataSetWriter(original_dataset, result_dir)
-    else:
-        return ResultDatasetWriter(original_dataset, result_dir)
+def create_results_writer(result_dir):
+    return ResultDatasetWriter(result_dir)
 ```
 
-The factory reads `storage_format` from `original_dataset.config` — no separate `config`
-parameter needed, since the dataset is always prepared from the runtime config moments
-earlier in the same verb run.
+Since Lance is the default format going forward, new writes always use `ResultDatasetWriter`.
+No config option is needed to control the storage format.
 
 This function is called by:
 - `create_save_batch_callback` in `pytorch_ignite.py` (for `infer` and `test`)
 - `Umap.run` in `verbs/umap.py`
 - `Engine.run` in `verbs/engine.py`
 
-Similarly, a factory selects the reader by detecting what's on disk:
+A separate factory selects the reader by detecting what's on disk:
 
 ```python
 def load_results_dataset(config, results_dir):
@@ -199,7 +193,8 @@ def load_results_dataset(config, results_dir):
 ```
 
 This auto-detection on read means users can freely mix old `.npy` results and new Lance
-results without changing config.
+results without changing config. Users with existing `.npy` files will continue to read
+them via this auto-detection.
 
 ---
 
@@ -275,7 +270,6 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 
 ### Phase 2 (next release): Hard deprecation
 - `InferenceDataSet` emits a louder warning (or is removed, depending on user migration).
-- The `storage_format = "npy"` config option is removed.
 
 ---
 
@@ -328,9 +322,9 @@ These questions were raised during design and resolved through discussion.
 | A2 | Tensor dtype | Store dtype in Arrow schema metadata; support arbitrary dtypes |
 | A3 | `visualize` verb migration | Deferred to a separate effort; `visualize` works only with `.npy` until updated |
 | A4 | `batch_num` column | Dropped; it is an artifact of the `.npy` layout |
-| A5 | Getter methods | `get_tensor` and `get_object_id` only; more can be added later |
-| A6 | Config key naming | `results.storage_format` (values: `"lance"`, `"npy"`) |
-| A7 | Config threading to writer | Not needed; factory reads `original_dataset.config`; writer constructors stay clean |
+| A5 | Getter methods | `get_data` and `get_object_id` only; more can be added later |
+| A6 | Storage format selection | No config option; new writes always use Lance; auto-detection on read |
+| A7 | Config threading to writer | Not needed; writer constructors stay clean |
 | A8 | `ResultDataset` in `data_request` | Yes; constructor signature is `(config, data_location)` like other datasets; no `verb` parameter |
 
 ---
