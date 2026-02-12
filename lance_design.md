@@ -99,10 +99,19 @@ and faster layout for uniform-length vectors.
 ### Tensor Storage
 
 Multi-dimensional tensors are flattened to 1D for storage. Shape and dtype metadata are
-stored in the Arrow schema's metadata dict:
+stored in the **Arrow table schema's custom metadata dictionary**, accessible via
+`table.schema.metadata`. This metadata is stored as byte strings in PyArrow's schema metadata,
+so values must be serialized appropriately:
 
-```json
-{"tensor_shape": "[2, 3]", "tensor_dtype": "float32"}
+```python
+import json
+
+# When creating the schema, serialize shape as JSON
+metadata = {
+    b"tensor_shape": json.dumps([2, 3]).encode('utf-8'),  # "[2, 3]" as bytes
+    b"tensor_dtype": b"float32"                            # dtype as bytes
+}
+schema = pa.schema([...], metadata=metadata)
 ```
 
 On read, tensors are reshaped and cast accordingly. The dtype is derived from the first
