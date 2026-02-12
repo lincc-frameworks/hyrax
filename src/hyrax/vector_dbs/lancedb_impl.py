@@ -25,12 +25,12 @@ class LanceDB(VectorDB):
         """
         results_dir = self.context["results_dir"]
         self.db = lancedb.connect(results_dir)
-        
+
         # Check if table already exists
         table_names = self.db.table_names()
         if self.table_name in table_names:
             self.table = self.db.open_table(self.table_name)
-        
+
         return self.db
 
     def create(self):
@@ -49,7 +49,7 @@ class LanceDB(VectorDB):
             self.table = None
         else:
             self.table = self.db.open_table(self.table_name)
-        
+
         return self.table
 
     def insert(self, ids: list[Union[str, int]], vectors: list[np.ndarray]):
@@ -67,13 +67,13 @@ class LanceDB(VectorDB):
 
         # Convert ids to strings for consistency
         str_ids = [str(id) for id in ids]
-        
+
         # Prepare data in the format LanceDB expects
         data = [
             {"id": str_id, "vector": vector.tolist()}
             for str_id, vector in zip(str_ids, vectors)
         ]
-        
+
         # Create or append to table
         if self.table is None:
             # First insert - create the table
@@ -85,7 +85,7 @@ class LanceDB(VectorDB):
                 existing_data = self.table.to_pandas()
                 existing_ids = set(existing_data["id"].tolist())
                 data = [d for d in data if d["id"] not in existing_ids]
-                
+
                 if len(data) > 0:
                     self.table.add(data)
             except Exception:
@@ -120,17 +120,17 @@ class LanceDB(VectorDB):
 
         # Convert id to string for consistency
         str_id = str(id)
-        
+
         # Get the vector for the given id
         vectors = self.get_by_id([str_id])
-        
+
         if not vectors or str_id not in vectors:
             return {}
-        
+
         # Use the vector to search for nearest neighbors
         vector = vectors[str_id]
         results = self.search_by_vector([np.array(vector)], k=k)
-        
+
         # Return in the expected format
         return {id: results[0]}
 
@@ -166,11 +166,11 @@ class LanceDB(VectorDB):
             vectors = [vectors]
 
         result_dict = {}
-        
+
         for i, vector in enumerate(vectors):
             # LanceDB search returns results ordered by distance
             search_results = self.table.search(vector.tolist()).limit(k).to_pandas()
-            
+
             # Extract the ids from the results
             neighbor_ids = search_results["id"].tolist()
             result_dict[i] = neighbor_ids
@@ -198,10 +198,10 @@ class LanceDB(VectorDB):
 
         # Convert all ids to strings for consistency
         str_ids = [str(id) for id in ids]
-        
+
         # Query the table for the given ids
         df = self.table.to_pandas()
-        
+
         result = {}
         for str_id, original_id in zip(str_ids, ids):
             matching_rows = df[df["id"] == str_id]
@@ -209,5 +209,5 @@ class LanceDB(VectorDB):
                 vector = matching_rows.iloc[0]["vector"]
                 # Return with original id type
                 result[original_id] = vector
-        
+
         return result
