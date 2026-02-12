@@ -74,7 +74,7 @@ Key details:
   with an explicit PyArrow schema derived from the first tensor's dtype and shape.
 - On subsequent `write_batch` calls, use `table.add()` to append data incrementally.
   This avoids accumulating all data in memory (a flaw in the prototype).
-- `write_index()` calls `table.optimize.compact_files()` to consolidate fragments,
+- `write_index()` calls `table.optimize()` to consolidate fragments,
   then writes `original_dataset_config.toml` (reusing existing logic from
   `InferenceDataSetWriter`).
 - No multiprocessing pool. LanceDB uses its own internal async I/O. If benchmarks show
@@ -149,7 +149,7 @@ Key details:
 - `get_data(idx)` and `get_object_id(idx)` are the HyraxQL getter methods. `DataProvider`
   will auto-discover these via its `get_*` introspection. These are the only getters;
   additional getters (aliases, specialized names) can be added later if needed.
-- `ids()` yields IDs by scanning only the `id` column (projection pushdown).
+- `ids()` yields IDs by scanning only the `object_id` column (projection pushdown).
 - **No `original_config` / `original_dataset` machinery.** Metadata bridging to the original
   dataset is not needed — users control combined datasets via HyraxQL / `DataProvider`.
 - **No `metadata()` override.** If users need metadata alongside results, they configure
@@ -163,30 +163,26 @@ Key details:
 ## Step 3: Wire Writer Into Verbs
 
 **Goal:** Verbs that produce results (`infer`, `test`, `umap`, `engine`) use
-`ResultDatasetWriter` by default, with fallback to `InferenceDataSetWriter` for
-compatibility during the deprecation period.
+`ResultDatasetWriter` for new writes.
 
 ### Approach
 
-A factory function selects the writer class. New code always uses `ResultDatasetWriter`
-(Lance format):
+A factory function creates the writer:
 
 ```python
-def create_results_writer(original_dataset, result_dir):
-    # Always use Lance format for new writes
+def create_results_writer(result_dir):
     return ResultDatasetWriter(result_dir)
 ```
 
-The old `InferenceDataSetWriter` remains available for legacy compatibility but is not
-used by default. Users with specific needs for `.npy` format can still construct
-`InferenceDataSetWriter` directly if needed.
+Since Lance is the default format going forward, new writes always use `ResultDatasetWriter`.
+No config option is needed to control the storage format.
 
 This function is called by:
 - `create_save_batch_callback` in `pytorch_ignite.py` (for `infer` and `test`)
 - `Umap.run` in `verbs/umap.py`
 - `Engine.run` in `verbs/engine.py`
 
-Similarly, a factory selects the reader by detecting what's on disk:
+A separate factory selects the reader by detecting what's on disk:
 
 ```python
 def load_results_dataset(config, results_dir):
@@ -197,7 +193,8 @@ def load_results_dataset(config, results_dir):
 ```
 
 This auto-detection on read means users can freely mix old `.npy` results and new Lance
-results without changing config.
+results without changing config. Users with existing `.npy` files will continue to read
+them via this auto-detection.
 
 ---
 
@@ -273,6 +270,8 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 
 ### Phase 2 (next release): Hard deprecation
 - `InferenceDataSet` emits a louder warning (or is removed, depending on user migration).
+- No `storage_format` configuration option is introduced; result format selection is always
+  based on auto-detection of the on-disk files when reading.
 
 ---
 
@@ -293,7 +292,7 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 - `__getitem__` with out-of-range index raises `IndexError`.
 - `__len__` matches expected count.
 - `ids()` returns all IDs.
-- `get_tensor(idx)` and `get_object_id(idx)` return correct values.
+- `get_data(idx)` and `get_object_id(idx)` return correct values.
 - Chaining: write inference results, read as `ResultDataset`, write umap, read as
   `ResultDataset` — verify end-to-end.
 - Usable as a `data_request` dataset class via `DataProvider`.
@@ -325,9 +324,9 @@ These questions were raised during design and resolved through discussion.
 | A2 | Tensor dtype | Store dtype in Arrow schema metadata; support arbitrary dtypes |
 | A3 | `visualize` verb migration | Deferred to a separate effort; `visualize` works only with `.npy` until updated |
 | A4 | `batch_num` column | Dropped; it is an artifact of the `.npy` layout |
-| A5 | Getter methods | `get_tensor` and `get_object_id` only; more can be added later |
-| A6 | Writer selection | Always use `ResultDatasetWriter` (Lance format) for new writes; no config flag needed |
-| A7 | Config threading to writer | Not needed; factory reads `original_dataset.config`; writer constructors stay clean |
+| A5 | Getter methods | `get_data` and `get_object_id` only; more can be added later |
+| A6 | Storage format selection | No config option; new writes always use Lance; auto-detection on read |
+| A7 | Config threading to writer | Not needed; writer constructors stay clean |
 | A8 | `ResultDataset` in `data_request` | Yes; constructor signature is `(config, data_location)` like other datasets; no `verb` parameter |
 
 ---
