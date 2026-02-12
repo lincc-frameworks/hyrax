@@ -104,7 +104,7 @@ class Engine(Verb):
         # optimize this, because we know that we'll only need the `infer` part
         # of the data_request dictionary. And we can assume that we'll be working
         # with map-style datasets. But for now, this gets us going.
-        dataset = setup_dataset(config)
+        dataset = setup_dataset(config, splits=("infer",), shuffle=False)
 
         # In the `train` and `infer` verbs, we use `dist_data_loader` to create
         # our data loaders. But here in `engine`, we can assume that we can simply

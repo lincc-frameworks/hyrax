@@ -67,7 +67,12 @@ def is_iterable_dataset_requested(data_request: dict) -> bool:
     return is_iterable
 
 
-def setup_dataset(config: dict) -> Dataset:
+def setup_dataset(
+    config: dict,
+    *,
+    splits: tuple[str, ...] | None = None,
+    shuffle: bool = True,
+) -> Dataset:
     """This function creates an instance of the requested dataset specified in the
     runtime configuration. There are two modes encapsulated here:
 
@@ -80,6 +85,16 @@ def setup_dataset(config: dict) -> Dataset:
     ----------
     config : dict
         The runtime configuration
+    splits : tuple[str, ...] | None, optional
+        When provided, only create DataProvider instances for the groups whose
+        names appear in *splits*.  Groups present in the data_request but not
+        listed here are silently skipped.  When ``None`` (the default) every
+        group in the data_request is loaded — preserving backward compatibility.
+    shuffle : bool, optional
+        Whether to shuffle indices when computing ``split_fraction``-based
+        partitions via :func:`create_splits_from_fractions`.  Defaults to
+        ``True``.  Set to ``False`` for inference / test verbs where
+        deterministic ordering is required.
 
     Returns
     -------
@@ -108,7 +123,10 @@ def setup_dataset(config: dict) -> Dataset:
         # generate instance of the iterable dataset. Again, because the only mode of
         # operation for iterable-style datasets that Hyrax supports is 1 iterable
         # dataset at a time, we can just take the first (and only) item in the data_request.
-        for set_name in ["train", "infer"]:
+        set_names = splits if splits is not None else ("train", "infer")
+        for set_name in set_names:
+            if set_name not in data_request:
+                continue
             data_definition = next(iter(data_request[set_name].values()))
 
             dataset_class = data_definition.get("dataset_class", None)
@@ -120,11 +138,30 @@ def setup_dataset(config: dict) -> Dataset:
             dataset[set_name] = ds
 
     else:
-        # We know that `data_request` will always have at least 2 sub-tables, `train`
-        # and `infer`. It may have additional sub-tables such as `validate`.
-        for key, value in data_request.items():
-            ds = DataProvider(config, value)
+        # Create DataProvider instances for the requested splits.  When
+        # ``splits`` is None we load every group in the data_request.
+        keys_to_load = splits if splits is not None else tuple(data_request.keys())
+        for key in keys_to_load:
+            if key not in data_request:
+                continue
+            ds = DataProvider(config, data_request[key])
             dataset[key] = ds
+
+        # --- Compute split indices for providers that define split_fraction ---
+        # Group DataProvider instances by their primary_data_location.  Only
+        # providers whose split_fraction is set participate in the partitioning.
+        from collections import defaultdict
+
+        providers_by_location: dict[str, dict[str, DataProvider]] = defaultdict(dict)
+        for group_name, provider in dataset.items():
+            if isinstance(provider, DataProvider) and provider.split_fraction is not None:
+                loc = provider.primary_data_location
+                providers_by_location[loc][group_name] = provider
+
+        for _loc, providers in providers_by_location.items():
+            split_indices = create_splits_from_fractions(providers, config, shuffle=shuffle)
+            for group_name, indices in split_indices.items():
+                providers[group_name].split_indices = indices
 
     return dataset
 
@@ -236,11 +273,17 @@ def dist_data_loader(
             indexes = list(range(len(ids)))
         else:
             indexes = list(range(len(dataset)))
-
+        # If the dataset is a DataProvider with pre-computed split_indices
+        # (set by setup_dataset from split_fraction), use a sampler to
+        # restrict the dataloader to only those indices.
+        sampler = None
+        if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
+            indexes = dataset.split_indices
+            sampler = SubsetSequentialSampler(indexes)
         # Note that when sampler=None, a default sampler is used. The default config
         # defines shuffle=False, which should prevent any shuffling of of the data.
         # We expect that this will be the primary use case when running inference.
-        return idist.auto_dataloader(dataset, sampler=None, **data_loader_kwargs), indexes
+        return idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes
 
     # Sanitize split argument
     if isinstance(split, str):
@@ -367,6 +410,86 @@ def create_splits(data_set: Dataset, config: dict):
         split_inds["validate"] = valid_idx
 
     return split_inds
+
+
+def create_splits_from_fractions(
+    dataset_providers: dict[str, Any],
+    config: dict,
+    *,
+    shuffle: bool = True,
+) -> dict[str, list[int]]:
+    """Partition a shared set of indices across dataset groups using the
+    ``split_fraction`` defined on each :class:`DataProvider`.
+
+    All providers in *dataset_providers* are expected to wrap the **same
+    underlying data source** (same ``data_location``).  The full index range
+    ``[0, len)`` of the first provider is shuffled deterministically (when
+    *shuffle* is ``True``) using ``config["data_set"]["seed"]``, then sliced
+    into contiguous, non-overlapping segments proportional to each provider's
+    ``split_fraction``.
+
+    Parameters
+    ----------
+    dataset_providers : dict[str, DataProvider]
+        Mapping of group name (e.g. ``"train"``, ``"validate"``) to a
+        :class:`DataProvider` instance whose ``split_fraction`` is set.
+    config : dict
+        The Hyrax runtime configuration.  Only ``config["data_set"]["seed"]``
+        is used here.
+    shuffle : bool, optional
+        Whether to shuffle the index array before slicing.  Defaults to
+        ``True``.  Set to ``False`` for inference / test workloads where
+        deterministic sequential ordering is required.
+
+    Returns
+    -------
+    dict[str, list[int]]
+        Mapping of group name → list of indices assigned to that group.
+
+    Raises
+    ------
+    RuntimeError
+        If any provider is missing a ``split_fraction``, or if the fractions
+        sum to more than 1.0.
+    """
+
+    # --- Validate inputs ---------------------------------------------------
+    fractions: dict[str, float] = {}
+    for name, provider in dataset_providers.items():
+        frac = getattr(provider, "split_fraction", None)
+        if frac is None:
+            raise RuntimeError(
+                f"DataProvider for group '{name}' does not have a split_fraction set. "
+                "All providers passed to create_splits_from_fractions must define one."
+            )
+        fractions[name] = frac
+
+    total = sum(fractions.values())
+    if np.round(total, decimals=5) > 1.0:
+        raise RuntimeError(f"split_fraction values sum to {total}, which exceeds 1.0. Fractions: {fractions}")
+
+    # --- Determine the full index set from the first provider ---------------
+    first_provider = next(iter(dataset_providers.values()))
+    data_set_size = len(first_provider)
+    indices = list(range(data_set_size))
+
+    # --- Optionally shuffle using the configured seed -----------------------
+    if shuffle:
+        seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
+        np.random.seed(seed)
+        np.random.shuffle(indices)
+
+    # --- Slice indices proportionally ---------------------------------------
+    split_indices: dict[str, list[int]] = {}
+    offset = 0
+    for name, frac in fractions.items():
+        count = int(np.round(data_set_size * frac))
+        # Clamp to avoid overrunning the index list
+        count = min(count, data_set_size - offset)
+        split_indices[name] = indices[offset : offset + count]
+        offset += count
+
+    return split_indices
 
 
 # ! Need to go through and clean up the variables here. I think `device` and `engine`
