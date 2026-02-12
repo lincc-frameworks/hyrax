@@ -74,7 +74,7 @@ Key details:
   with an explicit PyArrow schema derived from the first tensor's dtype and shape.
 - On subsequent `write_batch` calls, use `table.add()` to append data incrementally.
   This avoids accumulating all data in memory (a flaw in the prototype).
-- `write_index()` calls `table.optimize.compact_files()` to consolidate fragments,
+- `write_index()` calls `table.optimize()` to consolidate fragments,
   then writes `original_dataset_config.toml` (reusing existing logic from
   `InferenceDataSetWriter`).
 - No multiprocessing pool. LanceDB uses its own internal async I/O. If benchmarks show
@@ -114,15 +114,8 @@ metadata = {
 schema = pa.schema([...], metadata=metadata)
 ```
 
-Example resulting metadata (as Python dict after decoding):
-```json
-{"tensor_shape": "[2, 3]", "tensor_dtype": "float32"}
-```
-
-On read, the metadata is retrieved via `table.schema.metadata`, decoded from bytes, and the
-shape is deserialized using `json.loads()` to recover the original list `[2, 3]`. Tensors are
-then reshaped and cast accordingly. The dtype is derived from the first tensor in the first
-batch. All tensors in a given table must share the same dtype and shape.
+On read, tensors are reshaped and cast accordingly. The dtype is derived from the first
+tensor in the first batch. All tensors in a given table must share the same dtype and shape.
 
 This approach supports arbitrary tensor dtypes (float16, float32, float64) without hardcoding
 assumptions, which is important for a general-purpose framework.
@@ -165,7 +158,7 @@ Key details:
 - `get_data(idx)` and `get_object_id(idx)` are the HyraxQL getter methods. `DataProvider`
   will auto-discover these via its `get_*` introspection. These are the only getters;
   additional getters (aliases, specialized names) can be added later if needed.
-- `ids()` yields IDs by scanning only the `id` column (projection pushdown).
+- `ids()` yields IDs by scanning only the `object_id` column (projection pushdown).
 - **No `original_config` / `original_dataset` machinery.** Metadata bridging to the original
   dataset is not needed — users control combined datasets via HyraxQL / `DataProvider`.
 - **No `metadata()` override.** If users need metadata alongside results, they configure
@@ -179,32 +172,26 @@ Key details:
 ## Step 3: Wire Writer Into Verbs
 
 **Goal:** Verbs that produce results (`infer`, `test`, `umap`, `engine`) use
-`ResultDatasetWriter` when the config calls for Lance.
+`ResultDatasetWriter` for new writes.
 
 ### Approach
 
-A factory function selects the writer class based on
-`config["results"]["storage_format"]`:
+A factory function creates the writer:
 
 ```python
-def create_results_writer(original_dataset, result_dir):
-    storage_format = original_dataset.config["results"].get("storage_format", "lance")
-    if storage_format == "npy":
-        return InferenceDataSetWriter(original_dataset, result_dir)
-    else:
-        return ResultDatasetWriter(original_dataset, result_dir)
+def create_results_writer(result_dir):
+    return ResultDatasetWriter(result_dir)
 ```
 
-The factory reads `storage_format` from `original_dataset.config` — no separate `config`
-parameter needed, since the dataset is always prepared from the runtime config moments
-earlier in the same verb run.
+Since Lance is the default format going forward, new writes always use `ResultDatasetWriter`.
+No config option is needed to control the storage format.
 
 This function is called by:
 - `create_save_batch_callback` in `pytorch_ignite.py` (for `infer` and `test`)
 - `Umap.run` in `verbs/umap.py`
 - `Engine.run` in `verbs/engine.py`
 
-Similarly, a factory selects the reader by detecting what's on disk:
+A separate factory selects the reader by detecting what's on disk:
 
 ```python
 def load_results_dataset(config, results_dir):
@@ -215,7 +202,8 @@ def load_results_dataset(config, results_dir):
 ```
 
 This auto-detection on read means users can freely mix old `.npy` results and new Lance
-results without changing config.
+results without changing config. Users with existing `.npy` files will continue to read
+them via this auto-detection.
 
 ---
 
@@ -346,8 +334,8 @@ These questions were raised during design and resolved through discussion.
 | A3 | `visualize` verb migration | Deferred to a separate effort; `visualize` works only with `.npy` until updated |
 | A4 | `batch_num` column | Dropped; it is an artifact of the `.npy` layout |
 | A5 | Getter methods | `get_data` and `get_object_id` only; more can be added later |
-| A6 | Config key naming | `results.storage_format` (values: `"lance"`, `"npy"`) |
-| A7 | Config threading to writer | Not needed; factory reads `original_dataset.config`; writer constructors stay clean |
+| A6 | Storage format selection | No config option; new writes always use Lance; auto-detection on read |
+| A7 | Config threading to writer | Not needed; writer constructors stay clean |
 | A8 | `ResultDataset` in `data_request` | Yes; constructor signature is `(config, data_location)` like other datasets; no `verb` parameter |
 
 ---
