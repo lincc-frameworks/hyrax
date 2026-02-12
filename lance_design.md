@@ -163,25 +163,23 @@ Key details:
 ## Step 3: Wire Writer Into Verbs
 
 **Goal:** Verbs that produce results (`infer`, `test`, `umap`, `engine`) use
-`ResultDatasetWriter` when the config calls for Lance.
+`ResultDatasetWriter` by default, with fallback to `InferenceDataSetWriter` for
+compatibility during the deprecation period.
 
 ### Approach
 
-A factory function selects the writer class based on
-`config["results"]["storage_format"]`:
+A factory function selects the writer class. New code always uses `ResultDatasetWriter`
+(Lance format):
 
 ```python
 def create_results_writer(original_dataset, result_dir):
-    storage_format = original_dataset.config["results"].get("storage_format", "lance")
-    if storage_format == "npy":
-        return InferenceDataSetWriter(original_dataset, result_dir)
-    else:
-        return ResultDatasetWriter(original_dataset, result_dir)
+    # Always use Lance format for new writes
+    return ResultDatasetWriter(result_dir)
 ```
 
-The factory reads `storage_format` from `original_dataset.config` — no separate `config`
-parameter needed, since the dataset is always prepared from the runtime config moments
-earlier in the same verb run.
+The old `InferenceDataSetWriter` remains available for legacy compatibility but is not
+used by default. Users with specific needs for `.npy` format can still construct
+`InferenceDataSetWriter` directly if needed.
 
 This function is called by:
 - `create_save_batch_callback` in `pytorch_ignite.py` (for `infer` and `test`)
@@ -275,7 +273,6 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 
 ### Phase 2 (next release): Hard deprecation
 - `InferenceDataSet` emits a louder warning (or is removed, depending on user migration).
-- The `storage_format = "npy"` config option is removed.
 
 ---
 
@@ -329,7 +326,7 @@ These questions were raised during design and resolved through discussion.
 | A3 | `visualize` verb migration | Deferred to a separate effort; `visualize` works only with `.npy` until updated |
 | A4 | `batch_num` column | Dropped; it is an artifact of the `.npy` layout |
 | A5 | Getter methods | `get_tensor` and `get_object_id` only; more can be added later |
-| A6 | Config key naming | `results.storage_format` (values: `"lance"`, `"npy"`) |
+| A6 | Writer selection | Always use `ResultDatasetWriter` (Lance format) for new writes; no config flag needed |
 | A7 | Config threading to writer | Not needed; factory reads `original_dataset.config`; writer constructors stay clean |
 | A8 | `ResultDataset` in `data_request` | Yes; constructor signature is `(config, data_location)` like other datasets; no `verb` parameter |
 
