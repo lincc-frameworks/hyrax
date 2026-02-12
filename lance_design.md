@@ -74,7 +74,7 @@ Key details:
   with an explicit PyArrow schema derived from the first tensor's dtype and shape.
 - On subsequent `write_batch` calls, use `table.add()` to append data incrementally.
   This avoids accumulating all data in memory (a flaw in the prototype).
-- `write_index()` calls `table.optimize.compact_files()` to consolidate fragments,
+- `write_index()` calls `table.optimize()` to consolidate fragments,
   then writes `original_dataset_config.toml` (reusing existing logic from
   `InferenceDataSetWriter`).
 - No multiprocessing pool. LanceDB uses its own internal async I/O. If benchmarks show
@@ -149,7 +149,7 @@ Key details:
 - `get_data(idx)` and `get_object_id(idx)` are the HyraxQL getter methods. `DataProvider`
   will auto-discover these via its `get_*` introspection. These are the only getters;
   additional getters (aliases, specialized names) can be added later if needed.
-- `ids()` yields IDs by scanning only the `id` column (projection pushdown).
+- `ids()` yields IDs by scanning only the `object_id` column (projection pushdown).
 - **No `original_config` / `original_dataset` machinery.** Metadata bridging to the original
   dataset is not needed — users control combined datasets via HyraxQL / `DataProvider`.
 - **No `metadata()` override.** If users need metadata alongside results, they configure
@@ -270,6 +270,8 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 
 ### Phase 2 (next release): Hard deprecation
 - `InferenceDataSet` emits a louder warning (or is removed, depending on user migration).
+- No `storage_format` configuration option is introduced; result format selection is always
+  based on auto-detection of the on-disk files when reading.
 
 ---
 
@@ -290,7 +292,7 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 - `__getitem__` with out-of-range index raises `IndexError`.
 - `__len__` matches expected count.
 - `ids()` returns all IDs.
-- `get_tensor(idx)` and `get_object_id(idx)` return correct values.
+- `get_data(idx)` and `get_object_id(idx)` return correct values.
 - Chaining: write inference results, read as `ResultDataset`, write umap, read as
   `ResultDataset` — verify end-to-end.
 - Usable as a `data_request` dataset class via `DataProvider`.
