@@ -1,5 +1,4 @@
 import logging
-from pathlib import Path
 
 from colorama import Back, Fore, Style
 
@@ -90,8 +89,9 @@ class Train(Verb):
 
         monitor = GpuMonitor()
 
-        results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-        mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
+        # Go up to the parent of the results dir so all mlflow results show up in the same directory.
+        mlflow_dir = (results_dir / ".." / "mlflow").resolve()
+        mlflow.set_tracking_uri("file://" + str(mlflow_dir))
 
         # Get experiment_name and cast to string (it's a tomlkit.string by default)
         experiment_name = str(config["train"]["experiment_name"])
