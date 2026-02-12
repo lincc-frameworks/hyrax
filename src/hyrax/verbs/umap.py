@@ -166,7 +166,7 @@ class Umap(Verb):
         umap_results.commit()
         logger.info("Finished transforming all data through UMAP")
 
-        return load_results_dataset(self.config, results_dir)
+        return results_dir
 
     def _transform_batch(self, batch_tuple: tuple):
         """Private helper to transform a single batch
