@@ -74,7 +74,7 @@ Key details:
   with an explicit PyArrow schema derived from the first tensor's dtype and shape.
 - On subsequent `write_batch` calls, use `table.add()` to append data incrementally.
   This avoids accumulating all data in memory (a flaw in the prototype).
-- `write_index()` calls `table.optimize.compact_files()` to consolidate fragments,
+- `write_index()` calls `table.optimize()` to consolidate fragments,
   then writes `original_dataset_config.toml` (reusing existing logic from
   `InferenceDataSetWriter`).
 - No multiprocessing pool. LanceDB uses its own internal async I/O. If benchmarks show
