@@ -21,7 +21,7 @@ class LanceDB(VectorDB):
     def connect(self):
         """Connect to the LanceDB database and return an instance of the client.
 
-        Uses lance.connect() to establish a connection to the database directory.
+        Uses lancedb.connect() to establish a connection to the database directory.
         """
         results_dir = self.context["results_dir"]
         self.db = lancedb.connect(results_dir)
@@ -69,10 +69,7 @@ class LanceDB(VectorDB):
         str_ids = [str(id) for id in ids]
 
         # Prepare data in the format LanceDB expects
-        data = [
-            {"id": str_id, "vector": vector.tolist()}
-            for str_id, vector in zip(str_ids, vectors)
-        ]
+        data = [{"id": str_id, "vector": vector.tolist()} for str_id, vector in zip(str_ids, vectors)]
 
         # Create or append to table
         if self.table is None:

@@ -379,6 +379,7 @@ split = "infer"
 
 [vector_db]
 # The type of vector db to use. Use "false" to disable vector database.
+# Options: "chromadb", "qdrant", "lancedb"
 name = "chromadb"
 
 # The directory where the vector database will be stored. Use "false" to create
@@ -407,8 +408,11 @@ vector_size = 64
 
 
 [vector_db.lancedb]
-# LanceDB-specific configuration options can be added here if needed in the future.
-# Currently, LanceDB uses sensible defaults for vector storage and retrieval.
+# LanceDB is a fast, lightweight vector database built on Lance data format.
+# It provides efficient vector storage and retrieval with good performance
+# characteristics. LanceDB automatically handles indexing and uses sensible
+# defaults for vector operations.
+# No additional configuration required - LanceDB works out of the box.
 
 
 [results]

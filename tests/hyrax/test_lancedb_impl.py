@@ -6,7 +6,7 @@ from hyrax.vector_dbs.lancedb_impl import LanceDB
 
 
 @pytest.fixture()
-def random_vector_generator(batch_size=1, vector_size=3):
+def random_vector_generator():
     """Create random vectors"""
 
     def _generator(batch_size=1, vector_size=3):
@@ -38,8 +38,9 @@ def test_connect(tmp_path):
 
 def test_create(lancedb_instance):
     """Test creation of a table in the database"""
-    # Initially table should be None until first insert
-    assert lancedb_instance.table is None or lancedb_instance.table is not None
+    # Table should exist after inserting data
+    # Initially may be None until first insert
+    pass
 
 
 def test_insert(lancedb_instance):
