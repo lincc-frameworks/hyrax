@@ -3,11 +3,8 @@ import sys
 
 import numpy as np
 import pytest
-from astropy.table import Table
-from torch.utils.data import Dataset, IterableDataset
 
 import hyrax
-from hyrax.data_sets import HyraxDataset
 from hyrax.data_sets.data_provider import DataProvider
 
 logger = logging.getLogger(__name__)
@@ -35,64 +32,7 @@ def pytest_configure(config):
             raise RuntimeError(msg) from e
 
 
-class RandomDataset(HyraxDataset, Dataset):
-    """Dataset yielding pairs of random numbers. Requires a seed to emulate
-    static data on the filesystem between instantiations"""
-
-    def __init__(self, config, data_directory):
-        size = config["data_set"]["size"]
-
-        dim_1_length = 2
-        if "dimension_1_length" in config["data_set"]:
-            dim_1_length = config["data_set"]["dimension_1_length"]
-
-        dim_2_length = 0
-        if "dimension_2_length" in config["data_set"]:
-            dim_2_length = config["data_set"]["dimension_2_length"]
-
-        seed = config["data_set"]["seed"]
-        rng = np.random.default_rng(seed)
-
-        print(f"Initialized dataset with dim 1: {dim_1_length}, dim 2: {dim_2_length}")
-
-        if dim_2_length > 0:
-            self.data = rng.random((size, dim_1_length, dim_2_length), np.float32)
-        else:
-            self.data = rng.random((size, dim_1_length), np.float32)
-
-        # Start our IDs at a random integer between 0 and 100
-        id_start = rng.integers(100)
-        self.id_list = list(range(id_start, id_start + size))
-
-        metadata_table = Table({"object_id": np.array(list(self.ids()))})
-
-        super().__init__(config, metadata_table)
-
-    def __getitem__(self, idx):
-        return np.array(self.data[idx])
-
-    def __len__(self):
-        return len(self.data)
-
-    def ids(self):
-        """Yield IDs for the dataset"""
-        for id_item in self.id_list:
-            yield str(id_item)
-
-    def get_ids(self, idx):
-        """Returns the ids given an index."""
-        return self.id_list[idx]
-
-
-class RandomIterableDataset(RandomDataset, IterableDataset):
-    """Iterable version of RandomDataset"""
-
-    def __iter__(self):
-        for item in self.data:
-            yield item
-
-
-@pytest.fixture(scope="function", params=["HyraxRandomDataset", "HyraxRandomIterableDataset"])
+@pytest.fixture(scope="function", params=["HyraxRandomDataset"])
 def loopback_hyrax(tmp_path_factory, request):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model

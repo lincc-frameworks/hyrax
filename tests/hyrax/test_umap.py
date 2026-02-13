@@ -43,8 +43,8 @@ def test_umap_order(loopback_inferred_hyrax):
     dataset = dataset["infer"]
 
     umap_results = h.umap()
-    umap_result_ids = list(umap_results.ids())
-    original_dataset_ids = list(dataset.ids())
+    umap_result_ids = umap_results.ids()
+    original_dataset_ids = dataset.ids()
 
     if dataset.is_iterable():
         dataset = list(dataset)

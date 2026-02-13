@@ -281,7 +281,7 @@ def test_apply_configurations(multimodal_config):
     assert merged_config["general"] == base_config["general"]
 
 
-def test_primary_or_first_dataset(multimodal_config):
+def test_primary_dataset(multimodal_config):
     """Test that if no primary dataset is specified, the first dataset
     in the config is returned."""
 
@@ -306,14 +306,9 @@ def test_primary_or_first_dataset(multimodal_config):
     model_inputs["train"]["random_0"].pop("primary_id_field", None)
     h.config["model_inputs"] = model_inputs
 
-    dp = DataProvider(h.config, model_inputs["train"])
-    dp.prepare_datasets()
-
-    assert dp.primary_dataset is None
-    assert dp.primary_dataset_id_field_name is None
-
-    primary_dataset = dp._primary_or_first_dataset()
-    assert primary_dataset.data_location == "./in_memory_0"
+    with pytest.raises(RuntimeError) as execinfo:
+        dp = DataProvider(h.config, model_inputs["train"])
+        assert "No Primary Dataset Defined" in execinfo.value
 
     # Tertiary case with `primary_id_field` defined on `random_1`
     model_inputs["train"]["random_1"]["primary_id_field"] = "object_id"
@@ -500,10 +495,17 @@ def test_data_provider_ids(data_provider):
     dp = data_provider
     dp.prepare_datasets()
 
-    ids = list(dp.ids())
+    ids = dp.ids()
 
-    random_0_ids = list(dp.prepped_datasets["random_0"].ids())
-    random_1_ids = list(dp.prepped_datasets["random_1"].ids())
+    random_0_ids = [
+        dp.prepped_datasets["random_0"].get_object_id(idx)
+        for idx in range(len(dp.prepped_datasets["random_0"]))
+    ]
+
+    random_1_ids = [
+        dp.prepped_datasets["random_1"].get_object_id(idx)
+        for idx in range(len(dp.prepped_datasets["random_1"]))
+    ]
 
     assert len(ids) == len(random_0_ids)
     assert all(i == j for i, j in zip(ids, random_0_ids))

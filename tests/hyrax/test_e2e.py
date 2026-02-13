@@ -18,7 +18,6 @@ def model_class_name(request):
     params=[
         ("HSCDataSet", "hsc1k"),
         ("HyraxCifarDataset", None),
-        ("HyraxCifarIterableDataset", None),
         ("FitsImageDataSet", "hsc1k"),
     ],
 )

@@ -294,6 +294,10 @@ class DataProvider:
 
         self.prepare_datasets()
 
+        if self.primary_dataset is None or self.primary_dataset_id_field_name is None:
+            msg = "No Primary Dataset Defined. Somehow a DataProvider was made without pydantic validation."
+            raise RuntimeError(msg)
+
         self.pull_up_primary_dataset_methods()
 
         # Required because of circular import.
@@ -566,17 +570,22 @@ class DataProvider:
         """
         return self[0]
 
-    # ^ What is the appropriate return when there is no ``ids()`` method in the
-    # ^ primary_or_first dataset? Perhaps a generator that yields stop iteration error?
-    def ids(self):
+    def get_object_id(self, idx) -> Any:
+        """Returns the ID at a particular index.
+
+        IDs are provided by the primary dataset's primary ID column.
+        """
+        return self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name](idx)
+
+    def ids(self) -> list[Any]:
         """Returns the IDs of the dataset.
 
-        If the primary dataset is defined it will return those ids, if not,
-        it will return the ids of the first dataset in the list of
-        prepped_dataset.keys()."""
+        IDs flow from the primary dataset and the primary ID column.
 
-        primary_dataset = self._primary_or_first_dataset()
-        return primary_dataset.ids() if hasattr(primary_dataset, "ids") else []
+        data_provider.ids() is canonically the same as
+        [data_provider.get_object_id(i) for i in range(len(data_provider))]
+        """
+        return [self.get_object_id(idx) for idx in range(len(self))]
 
     def resolve_data(self, idx: int) -> dict:
         """This method requests the field data from the prepared datasets by index.
@@ -610,8 +619,7 @@ class DataProvider:
         if self.primary_dataset:
             # If the primary id field wasn't already requested, we fetch it now.
             if self.primary_dataset_id_field_name not in returned_data[self.primary_dataset]:
-                get_fn = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
-                object_id = get_fn(idx)
+                object_id = self.get_object_id(idx)
             else:
                 object_id = returned_data[self.primary_dataset][self.primary_dataset_id_field_name]
 

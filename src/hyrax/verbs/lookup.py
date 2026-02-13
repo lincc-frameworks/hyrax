@@ -93,7 +93,7 @@ class Lookup(Verb):
 
         inference_dataset = InferenceDataSet(self.config, results_dir=results_dir)
 
-        all_ids = np.array(list(inference_dataset.ids()))
+        all_ids = np.array(inference_dataset.ids())
         lookup_index = np.argwhere(all_ids == id)
 
         if len(lookup_index) == 1:
