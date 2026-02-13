@@ -280,12 +280,25 @@ def dist_data_loader(
         if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
             indexes = dataset.split_indices
             sampler = SubsetSequentialSampler(indexes)
+
+        # PyTorch DataLoader does not allow both sampler and shuffle=True.
+        # When a sampler is present, we must force shuffle=False in the kwargs.
+        loader_kwargs = data_loader_kwargs.copy()
+        if sampler is not None:
+            loader_kwargs["shuffle"] = False
+
         # Note that when sampler=None, a default sampler is used. The default config
         # defines shuffle=False, which should prevent any shuffling of of the data.
         # We expect that this will be the primary use case when running inference.
-        return idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes
+        return idist.auto_dataloader(dataset, sampler=sampler, **loader_kwargs), indexes
 
-    # Sanitize split argument
+    # NOTE: The logic below is deprecated. It is kept for backward compatibility
+    # with older configuration that define data splits with ["data_set"]["train_size"],
+    # ["data_set"]["validate_size"], ["data_set"]["test_size"] rather than defining
+    # separate groups in the data_request with split_fraction.
+    # We should anticipate removing this legacy logic in a future release once
+    # users have had time to migrate their configs to the new style of defining
+    # splits.
     if isinstance(split, str):
         split = [split]
 
@@ -328,6 +341,13 @@ def create_splits(data_set: Dataset, config: dict):
     dataset. The allocation of indexes in the underlying dataset to samplers depends on
     the data_set section of the config dict.
 
+    .. deprecated::
+        This function and the associated configuration style using
+        ``config["data_set"]["train_size"]``, ``config["data_set"]["validate_size"]``,
+        and ``config["data_set"]["test_size"]`` is deprecated and will be removed in a
+        future release. Please migrate to defining separate dataset groups in
+        ``[data_request]`` with ``split_fraction`` for each group.
+
     Parameters
     ----------
     data_set : Dataset
@@ -337,6 +357,44 @@ def create_splits(data_set: Dataset, config: dict):
     split : str
         Name of the split to use.
     """
+    warnings.warn(
+        "\n\n"
+        "DEPRECATION WARNING: Legacy split configuration detected\n\n"
+        "Defining dataset splits via config['data_set'] fields (train_size,\n"
+        "validate_size, test_size) is DEPRECATED and will be removed in a future\n"
+        "release.\n\n"
+        "Please migrate to the new split_fraction approach by:\n"
+        "  1. Defining separate dataset groups in [data_request] (e.g., [data_request.train],\n"
+        "     [data_request.validate], [data_request.test])\n"
+        "  2. Adding 'split_fraction' to each group's configuration\n"
+        "  3. Ensuring all groups share the same 'data_location' and 'primary_id_field'\n\n"
+        "Example migration:\n"
+        "  OLD STYLE:\n"
+        "    [data_set]\n"
+        "    train_size = 0.7\n"
+        "    validate_size = 0.15\n"
+        "    test_size = 0.15\n\n"
+        "  NEW STYLE:\n"
+        "    [data_request.train.data]\n"
+        "    dataset_class = 'YourDataset'\n"
+        "    data_location = '/path/to/data'\n"
+        "    primary_id_field = 'id'\n"
+        "    split_fraction = 0.7\n\n"
+        "    [data_request.validate.data]\n"
+        "    dataset_class = 'YourDataset'\n"
+        "    data_location = '/path/to/data'\n"
+        "    primary_id_field = 'id'\n"
+        "    split_fraction = 0.15\n\n"
+        "    [data_request.test.data]\n"
+        "    dataset_class = 'YourDataset'\n"
+        "    data_location = '/path/to/data'\n"
+        "    primary_id_field = 'id'\n"
+        "    split_fraction = 0.15\n\n"
+        "For more information, see: https://hyrax.readthedocs.io/\n",
+        FutureWarning,
+        stacklevel=2,
+    )
+
     data_set_size = len(data_set)  # type: ignore[arg-type]
 
     # Init the splits based on config values
@@ -449,8 +507,8 @@ def create_splits_from_fractions(
     Raises
     ------
     RuntimeError
-        If any provider is missing a ``split_fraction``, or if the fractions
-        sum to more than 1.0.
+        If any provider is missing a ``split_fraction``, if the fractions
+        sum to more than 1.0, or if providers have mismatched lengths.
     """
 
     # --- Validate inputs ---------------------------------------------------
@@ -468,7 +526,23 @@ def create_splits_from_fractions(
     if np.round(total, decimals=5) > 1.0:
         raise RuntimeError(f"split_fraction values sum to {total}, which exceeds 1.0. Fractions: {fractions}")
 
+    # --- Validate that all providers have the same length ------------------
+    # Even though providers sharing the same data_location are expected to
+    # wrap identical underlying data, configuration differences (e.g.,
+    # dataset_config filters, caching issues, or implementation bugs) could
+    # lead to length mismatches. We validate this assumption explicitly to
+    # prevent silent out-of-range errors or incorrect data access.
+    provider_lengths = {name: len(provider) for name, provider in dataset_providers.items()}
+    unique_lengths = set(provider_lengths.values())
+    if len(unique_lengths) > 1:
+        raise RuntimeError(
+            f"All providers passed to create_splits_from_fractions must have the same length. "
+            f"Got lengths: {provider_lengths}"
+        )
+
     # --- Determine the full index set from the first provider ---------------
+    # We have verified that all providers have the same length, so we can safely
+    # use the length of the first provider to determine the full index range.
     first_provider = next(iter(dataset_providers.values()))
     data_set_size = len(first_provider)
     indices = list(range(data_set_size))
@@ -480,14 +554,27 @@ def create_splits_from_fractions(
         np.random.shuffle(indices)
 
     # --- Slice indices proportionally ---------------------------------------
+    # The iteration order over fractions.items() determines which split receives
+    # which contiguous block of indices. Since dicts maintain insertion order
+    # (Python 3.7+), this preserves the order from setup_dataset's `splits`
+    # parameter. When splits is None, the order comes from data_request.keys()
+    # (TOML table order). This ensures deterministic, reproducible partitioning.
     split_indices: dict[str, list[int]] = {}
     offset = 0
+    last_split_name = None
     for name, frac in fractions.items():
         count = int(np.round(data_set_size * frac))
         # Clamp to avoid overrunning the index list
         count = min(count, data_set_size - offset)
         split_indices[name] = indices[offset : offset + count]
         offset += count
+        last_split_name = name
+
+    # Assign any leftover indices to the last split, but only if the fractions
+    # sum to approximately 1.0 (i.e., the user intended to use all indices).
+    # When fractions sum to < 1.0, leftover indices should remain unassigned.
+    if offset < data_set_size and last_split_name is not None and total >= 1.0 - 1e-5:
+        split_indices[last_split_name].extend(indices[offset:])
 
     return split_indices
 

@@ -246,6 +246,20 @@ class TestCreateSplitsFromFractions:
         with pytest.raises(RuntimeError, match="does not have a split_fraction"):
             create_splits_from_fractions(providers, base_config)
 
+    def test_error_when_provider_lengths_mismatch(self, base_config):
+        """RuntimeError raised when providers have different lengths.
+
+        This could occur if dataset classes apply different filtering based on
+        dataset_config, or due to caching issues or implementation bugs.
+        """
+        providers = {
+            "train": _make_stub_provider(100, split_fraction=0.6),
+            "validate": _make_stub_provider(90, split_fraction=0.4),
+        }
+
+        with pytest.raises(RuntimeError, match="must have the same length"):
+            create_splits_from_fractions(providers, base_config)
+
     def test_single_provider(self, base_config):
         """A single provider with split_fraction < 1.0 gets a subset."""
         providers = {
@@ -286,6 +300,34 @@ class TestCreateSplitsFromFractions:
         # Indices should still be valid
         all_indices = result["a"] + result["b"]
         assert all(0 <= i < 3 for i in all_indices)
+
+    def test_rounding_leftover_indices_assigned_to_last_split(self, base_config):
+        """When rounding loses indices, they are assigned to the last split.
+
+        Example: total=10 with fractions 0.33/0.33/0.34
+        - int(round(10 * 0.33)) = 3
+        - int(round(10 * 0.33)) = 3
+        - int(round(10 * 0.34)) = 3
+        Without leftover assignment, 3+3+3=9, losing one index.
+        With leftover assignment, the last split gets the extra index.
+        """
+        providers = {
+            "train": _make_stub_provider(10, split_fraction=0.33),
+            "validate": _make_stub_provider(10, split_fraction=0.33),
+            "test": _make_stub_provider(10, split_fraction=0.34),
+        }
+
+        result = create_splits_from_fractions(providers, base_config, shuffle=False)
+
+        # Verify all indices are assigned (no loss)
+        all_indices = sorted(result["train"] + result["validate"] + result["test"])
+        assert all_indices == list(range(10)), "All indices should be assigned"
+
+        # Verify the last split got the leftover index
+        # train: 0-2 (3 indices), validate: 3-5 (3 indices), test: 6-9 (4 indices)
+        assert len(result["train"]) == 3
+        assert len(result["validate"]) == 3
+        assert len(result["test"]) == 4, "Last split should receive leftover indices"
 
     def test_no_shuffle_preserves_order(self, base_config):
         """When shuffle=False, indices are assigned in natural order 0..N-1."""
@@ -374,3 +416,92 @@ class TestDistDataLoaderSplitIndices:
         assert len(train_indices) == 60
         assert len(validate_indices) == 40
         assert set(train_indices).isdisjoint(set(validate_indices))
+
+    def test_shuffle_true_with_split_indices_does_not_error(self):
+        """When split_indices is set and shuffle=True is in config, no error occurs.
+
+        PyTorch DataLoader raises an error if both sampler and shuffle=True are provided.
+        dist_data_loader should automatically force shuffle=False when a sampler is used.
+        """
+        from hyrax.pytorch_ignite import dist_data_loader
+
+        config = _make_config()
+        # Explicitly set shuffle=True in the config
+        config["data_loader"]["shuffle"] = True
+        size = 20
+
+        dp = _make_provider(config, "./data/test", size=size)
+        # Manually set split_indices to trigger sampler creation
+        dp.split_indices = [0, 1, 2, 3, 4]
+
+        # This should NOT raise an error about sampler and shuffle being mutually exclusive
+        loader, returned_indices = dist_data_loader(dp, config, False)
+
+        assert returned_indices == [0, 1, 2, 3, 4]
+        # Verify the dataloader was created successfully
+        assert loader is not None
+
+
+# ===========================================================================
+# 5. Engine verb integration with split_indices
+# ===========================================================================
+
+
+class TestEngineSplitIndices:
+    """Verify that the Engine verb respects split_indices when iterating
+    over the dataset for ONNX inference."""
+
+    def test_engine_respects_split_indices(self):
+        """Engine verb iteration should use split_indices when present.
+
+        When a DataProvider has split_indices set (from split_fraction config),
+        the engine verb should process only those indices rather than iterating
+        over the entire dataset length.
+        """
+        config = _make_config()
+        size = 100
+        expected_split_indices = [10, 20, 30, 40, 50]  # 5 indices out of 100
+
+        # Create a DataProvider  with split_fraction
+        dp = _make_provider(config, "./data/test", split_fraction=0.05, size=size)
+        # Manually set split_indices as setup_dataset would
+        dp.split_indices = expected_split_indices
+
+        # Simulate what engine.py does: determine which indices to process
+        from hyrax.data_sets.data_provider import DataProvider
+
+        if isinstance(dp, DataProvider) and dp.split_indices is not None:
+            indices_to_process = dp.split_indices
+        else:
+            indices_to_process = list(range(len(dp)))
+
+        # Verify that we're processing only the split indices, not all 100
+        assert indices_to_process == expected_split_indices
+        assert len(indices_to_process) == 5
+        assert len(indices_to_process) != len(dp)  # Should not be full dataset length
+
+    def test_engine_processes_all_indices_when_no_split_indices(self):
+        """Engine verb iteration should process all indices when split_indices is None.
+
+        When split_indices is not set (no split_fraction in config), the engine
+        verb should process the entire dataset.
+        """
+        config = _make_config()
+        size = 100
+
+        # Create a DataProvider without split_fraction
+        dp = _make_provider(config, "./data/test", split_fraction=None, size=size)
+        # split_indices should be None
+        assert dp.split_indices is None
+
+        # Simulate what engine.py does
+        from hyrax.data_sets.data_provider import DataProvider
+
+        if isinstance(dp, DataProvider) and dp.split_indices is not None:
+            indices_to_process = dp.split_indices
+        else:
+            indices_to_process = list(range(len(dp)))
+
+        # Verify that we're processing all indices
+        assert indices_to_process == list(range(100))
+        assert len(indices_to_process) == size

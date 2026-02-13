@@ -51,9 +51,9 @@ def test_data_request_definition_collects_known_fields():
         }
     )
 
-    assert isinstance(definition.train, DataRequestConfig)
+    assert isinstance(definition["train"], DataRequestConfig)
     assert isinstance(definition["validate"], DataRequestConfig)
-    assert isinstance(definition.infer, DataRequestConfig)
+    assert isinstance(definition["infer"], DataRequestConfig)
 
 
 def test_data_request_definition_as_dict_shape():
@@ -229,7 +229,7 @@ def test_single_config_with_primary_id_valid():
             )
         }
     )
-    assert definition.train.primary_id_field == "object_id"
+    assert definition["train"].primary_id_field == "object_id"
 
 
 def test_single_config_without_primary_id_fails():
@@ -266,9 +266,9 @@ def test_dict_configs_one_primary_id_valid():
             }
         }
     )
-    assert isinstance(definition.train, dict)
-    assert definition.train["data_0"].primary_id_field == "some_field"
-    assert definition.train["data_1"].primary_id_field is None
+    assert isinstance(definition["train"], dict)
+    assert definition["train"]["data_0"].primary_id_field == "some_field"
+    assert definition["train"]["data_1"].primary_id_field is None
 
 
 def test_dict_configs_no_primary_id_fails():
@@ -340,9 +340,9 @@ def test_multiple_dataset_groups_each_validated():
             ),
         }
     )
-    assert definition.train.primary_id_field == "train_id"
+    assert definition["train"].primary_id_field == "train_id"
     assert definition["validate"].primary_id_field == "validate_id"
-    assert definition.infer.primary_id_field == "infer_id"
+    assert definition["infer"].primary_id_field == "infer_id"
 
     # Invalid: train missing primary_id_field
     with pytest.raises(ValidationError) as exc_info:
@@ -382,8 +382,8 @@ def test_dict_key_names_dont_matter():
             }
         }
     )
-    assert "my_custom_name" in definition.train
-    assert "another_name" in definition.train
+    assert "my_custom_name" in definition["train"]
+    assert "another_name" in definition["train"]
 
 
 def test_from_dict_format():
@@ -402,9 +402,9 @@ def test_from_dict_format():
         }
     }
     definition = DataRequestDefinition.model_validate(config_dict)
-    assert isinstance(definition.train, dict)
-    assert definition.train["dataset_0"].primary_id_field == "obj_id"
-    assert definition.train["dataset_1"].primary_id_field is None
+    assert isinstance(definition["train"], dict)
+    assert definition["train"]["dataset_0"].primary_id_field == "obj_id"
+    assert definition["train"]["dataset_1"].primary_id_field is None
 
 
 def test_as_dict_with_single_config():
@@ -461,9 +461,9 @@ def test_split_fraction_not_present():
     assert cfg.split_fraction is None
 
 
-@pytest.mark.parametrize("fraction", [0.0, 0.1, 0.5, 0.99, 1.0])
+@pytest.mark.parametrize("fraction", [0.1, 0.5, 0.99, 1.0])
 def test_split_fraction_valid_values(fraction):
-    """split_fraction accepts values in the range [0.0, 1.0]."""
+    """split_fraction accepts values in the range (0.0, 1.0]."""
     cfg = DataRequestConfig(
         dataset_class="HyraxRandomDataset",
         data_location="/dev/null",
@@ -473,9 +473,9 @@ def test_split_fraction_valid_values(fraction):
     assert cfg.split_fraction == fraction
 
 
-@pytest.mark.parametrize("fraction", [-0.1, -1.0, 1.01, 2.0, 100.0])
+@pytest.mark.parametrize("fraction", [0.0, -0.1, -1.0, 1.01, 2.0, 100.0])
 def test_split_fraction_invalid_values(fraction):
-    """split_fraction rejects values outside [0.0, 1.0]."""
+    """split_fraction rejects values outside (0.0, 1.0]."""
     with pytest.raises(ValidationError):
         DataRequestConfig(
             dataset_class="HyraxRandomDataset",
@@ -526,8 +526,37 @@ def test_split_fraction_sum_valid_same_location():
             ),
         }
     )
-    assert definition.train.split_fraction == 0.6
+    assert definition["train"].split_fraction == 0.6
     assert definition["validate"].split_fraction == 0.4
+
+
+def test_split_fraction_sum_fp_rounding_at_one_passes():
+    """Floating-point rounding at 1.0 does not trigger a false validation error."""
+    definition = DataRequestDefinition(
+        {
+            "train": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.1,
+            ),
+            "validate": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.2,
+            ),
+            "infer": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.7,
+            ),
+        }
+    )
+    assert definition["train"].split_fraction == 0.1
+    assert definition["validate"].split_fraction == 0.2
+    assert definition["infer"].split_fraction == 0.7
 
 
 def test_split_fraction_sum_valid_different_locations():
@@ -548,7 +577,7 @@ def test_split_fraction_sum_valid_different_locations():
             ),
         }
     )
-    assert definition.train.split_fraction == 0.8
+    assert definition["train"].split_fraction == 0.8
     assert definition["validate"].split_fraction == 0.9
 
 
@@ -592,7 +621,7 @@ def test_split_fraction_sum_with_none_fractions_different_locations():
             ),
         }
     )
-    assert definition.train.split_fraction == 0.8
+    assert definition["train"].split_fraction == 0.8
     assert definition["validate"].split_fraction is None
 
 
@@ -696,8 +725,8 @@ def test_arbitrary_group_names_accepted():
             ),
         }
     )
-    assert definition.test.dataset_class == "HyraxRandomDataset"
-    assert definition.finetune.dataset_class == "HyraxCifarDataset"
+    assert definition["test"].dataset_class == "HyraxRandomDataset"
+    assert definition["finetune"].dataset_class == "HyraxCifarDataset"
     assert "test" in definition
     assert "finetune" in definition
 
@@ -729,7 +758,7 @@ def test_missing_group_returns_none():
             ),
         }
     )
-    assert definition.nonexistent is None
+    assert definition.root.get("nonexistent") is None
     assert "nonexistent" not in definition
 
 
@@ -751,7 +780,7 @@ def test_none_groups_are_skipped():
             "validate": None,
         }
     )
-    assert definition.train is not None
+    assert definition["train"] is not None
     assert definition.root.get("validate") is None
     assert "validate" not in definition
 
@@ -797,8 +826,8 @@ def test_split_fraction_consistency_all_set_passes():
             ),
         }
     )
-    assert definition.train.split_fraction == 0.6
-    assert definition.infer.split_fraction == 0.4
+    assert definition["train"].split_fraction == 0.6
+    assert definition["infer"].split_fraction == 0.4
 
 
 def test_split_fraction_consistency_none_set_passes():
@@ -817,8 +846,8 @@ def test_split_fraction_consistency_none_set_passes():
             ),
         }
     )
-    assert definition.train.split_fraction is None
-    assert definition.infer.split_fraction is None
+    assert definition["train"].split_fraction is None
+    assert definition["infer"].split_fraction is None
 
 
 def test_split_fraction_consistency_single_config_no_issue():
@@ -833,4 +862,4 @@ def test_split_fraction_consistency_single_config_no_issue():
             ),
         }
     )
-    assert definition.train.split_fraction == 0.7
+    assert definition["train"].split_fraction == 0.7

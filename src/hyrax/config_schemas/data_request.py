@@ -11,6 +11,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 from pydantic import Field, RootModel, field_validator, model_validator
 
 from .base import BaseConfigModel
@@ -30,8 +31,8 @@ class DataRequestConfig(BaseConfigModel):
 
     split_fraction: float | None = Field(
         None,
-        description="Fraction of the dataset to use, between 0.0 and 1.0 inclusive.",
-        ge=0.0,
+        description="Fraction of the dataset to use, must be greater than 0.0 and at most 1.0.",
+        gt=0.0,
         le=1.0,
     )
 
@@ -195,7 +196,7 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
 
         for location, fractions in fractions_by_location.items():
             total = sum(fractions)
-            if total > 1.0:
+            if np.round(total, decimals=5) > 1.0:
                 raise ValueError(
                     f"The sum of split_fraction values for data_location '{location}' "
                     f"is {total}, which exceeds 1.0."
@@ -235,24 +236,6 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
                 )
 
         return self
-
-    # ------------------------------------------------------------------
-    # Convenience accessors — provide attribute-style access for common
-    # group names so existing code like ``definition.train`` keeps working.
-    # ------------------------------------------------------------------
-
-    def __getattr__(self, name: str) -> DatasetGroupValue | None:
-        """Allow attribute-style access to dataset groups (e.g. ``self.train``).
-
-        .. note::
-
-            Names that collide with methods inherited from Pydantic's
-            ``RootModel`` (e.g. ``validate``) cannot be accessed this way.
-            Use bracket access instead: ``definition[\"validate\"]``.
-        """
-        if name.startswith("_"):
-            raise AttributeError(name)
-        return self.root.get(name)
 
     def __contains__(self, key: str) -> bool:
         return key in self.root
