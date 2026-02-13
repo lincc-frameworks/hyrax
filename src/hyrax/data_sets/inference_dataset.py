@@ -87,6 +87,33 @@ class InferenceDataSet(HyraxDataset, Dataset):
             self.results_dir / ORIGINAL_DATASET_CONFIG_FILENAME
         )
 
+        # Backward compatibility: convert old [data_set] configs to [data_request] format.
+        # Saved original_dataset_config.toml files from before HyraxQL use the old [data_set]
+        # format. Convert to [data_request] so setup_dataset can process them.
+        if (
+            "data_request" not in self._original_dataset_config
+            and "model_inputs" not in self._original_dataset_config
+            and "data_set" in self._original_dataset_config
+        ):
+            logger.warning(
+                "Found legacy [data_set] config in saved results at %s. "
+                "Converting to [data_request] format for backward compatibility.",
+                self.results_dir / ORIGINAL_DATASET_CONFIG_FILENAME,
+            )
+            old_ds = self._original_dataset_config["data_set"]
+            data_location = self._original_dataset_config.get("general", {}).get("data_dir", "")
+            self._original_dataset_config["data_request"] = {
+                "infer": {
+                    "data": {
+                        "dataset_class": old_ds.get("name", ""),
+                        "data_location": data_location,
+                        "primary_id_field": old_ds.get("object_id_column_name", "object_id"),
+                        "fields": ["image"],
+                        "dataset_config": dict(old_ds),
+                    }
+                }
+            }
+
         # Disable cache preloading on this dataset because it will only be used for its metadata
         # TODO: May want to add some sort of metadata_only optional arg to dataset constructor
         #       so we can opt-out of expensive dataset operations conditional on us only needing metadata
