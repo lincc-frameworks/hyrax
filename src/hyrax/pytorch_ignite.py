@@ -187,6 +187,7 @@ def dist_data_loader(
     dataset: Dataset,
     config: dict,
     split: Union[str, list[str], bool] = False,
+    indexes: dict = None,
 ):
     """Create Pytorch Ignite distributed data loaders
 
@@ -202,6 +203,10 @@ def dist_data_loader(
         The name(s) of the split we want to use from the data set.
         If this is false or not passed, then a single data loader is returned
         that corresponds to the entire dataset.
+    indexes : dict, optional
+        Pre-loaded split indexes. REQUIRED when splits are requested for non-iterable
+        datasets. The keys should be split names (e.g., 'train', 'test') and values
+        should be lists of integer indexes. Use create_splits() to generate these indexes.
 
     Returns
     -------
@@ -254,13 +259,18 @@ def dist_data_loader(
 
     if dataset.is_iterable():
         ids = list(dataset.ids())
-        indexes = list(range(len(ids)))
+        indexes_list = list(range(len(ids)))
         dataloaders = {
-            s: (idist.auto_dataloader(dataset, pin_memory=True, **data_loader_kwargs), indexes) for s in split
+            s: (idist.auto_dataloader(dataset, pin_memory=True, **data_loader_kwargs), indexes_list)
+            for s in split
         }
     else:
-        # Create the indexes for all splits based on config.
-        indexes = create_splits(dataset, config)
+        # Indexes must be provided when splits are requested
+        if indexes is None:
+            raise ValueError(
+                "Split indexes must be provided when requesting splits. "
+                "Call create_splits() before dist_data_loader() and pass the result via the 'indexes' parameter."
+            )
 
         # Create samplers and dataloaders for each split we are interested in
         samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
@@ -367,6 +377,69 @@ def create_splits(data_set: Dataset, config: dict):
         split_inds["validate"] = valid_idx
 
     return split_inds
+
+
+def save_split_indexes(split_indexes: dict, output_dir: Union[str, Path]):
+    """Save split indexes to separate .npy files, one per split.
+
+    Each split is saved as a separate file named after the split (e.g., 'train.npy',
+    'validate.npy', 'test.npy').
+
+    Parameters
+    ----------
+    split_indexes : dict
+        Dictionary with split names as keys (e.g., 'train', 'test', 'validate')
+        and lists of indexes as values
+    output_dir : Union[str, Path]
+        Directory where the split index files should be saved
+    """
+    output_dir = Path(output_dir) if not isinstance(output_dir, Path) else output_dir
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save each split as a separate .npy file
+    for split_name, indexes in split_indexes.items():
+        save_path = output_dir / f"{split_name}.npy"
+        np.save(save_path, np.array(indexes))
+        logger.info(f"Saved {split_name} split indexes to {save_path}")
+
+
+def load_split_indexes(input_dir: Union[str, Path], split_names: list[str] = None) -> dict:
+    """Load split indexes from separate .npy files.
+
+    Loads split indexes from individual .npy files (e.g., 'train.npy', 'validate.npy',
+    'test.npy'). If split_names is not provided, attempts to load all common split names.
+
+    Parameters
+    ----------
+    input_dir : Union[str, Path]
+        Directory where the split index files are located
+    split_names : list[str], optional
+        List of split names to load (e.g., ['train', 'test', 'validate']).
+        If not provided, attempts to load ['train', 'test', 'validate'].
+
+    Returns
+    -------
+    dict
+        Dictionary with split names as keys (e.g., 'train', 'test', 'validate')
+        and lists of indexes as values. Only includes splits that were found.
+    """
+    input_dir = Path(input_dir) if not isinstance(input_dir, Path) else input_dir
+
+    # Default to common split names if not provided
+    if split_names is None:
+        split_names = ["train", "test", "validate"]
+
+    split_indexes = {}
+    for split_name in split_names:
+        file_path = input_dir / f"{split_name}.npy"
+        if file_path.exists():
+            split_indexes[split_name] = np.load(file_path).tolist()
+            logger.info(f"Loaded {split_name} split indexes from {file_path}")
+
+    if not split_indexes:
+        raise FileNotFoundError(f"No split index files found in {input_dir}")
+
+    return split_indexes
 
 
 # ! Need to go through and clean up the variables here. I think `device` and `engine`
