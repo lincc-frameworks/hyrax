@@ -120,7 +120,7 @@ class Umap(Verb):
         num_batches = int(np.ceil(total_length / batch_size))
 
         all_indexes = np.arange(0, total_length)
-        all_ids = np.array(list(inference_results.ids()))
+        all_ids = np.array(inference_results.ids())
 
         # Generator expression that gives a batch tuple composed of:
         # batch ids, inference results

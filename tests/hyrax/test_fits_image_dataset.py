@@ -64,7 +64,7 @@ def test_prepare(test_hyrax_small_dataset_hscstars):
         assert "SNR" in a.metadata_fields("data")
 
         # IDs are correct and in the correct order
-        assert list(a.ids()) == [
+        assert a.ids() == [
             "36411452835238206",
             "36411452835248579",
             "36411452835249051",

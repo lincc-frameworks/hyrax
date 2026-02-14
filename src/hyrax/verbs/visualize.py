@@ -359,7 +359,7 @@ class Visualize(Verb):
         elif self._called_tap(kwargs):
             _, idx = self.tree.query([kwargs["x"], kwargs["y"]])
             self.points = np.array([self.umap_results[idx].numpy()])
-            self.points_id = np.array([list(self.umap_results.ids())[idx]])
+            self.points_id = np.array([self.umap_results.get_object_id(idx)])
             self.points_idx = np.array([idx])
         elif self._called_box_select(kwargs):
             self.points, self.points_id, self.points_idx = self.box_select_points(
@@ -429,7 +429,7 @@ class Visualize(Verb):
         if any(mask):
             points = points_coarse[mask]
             point_indexes = np.array(point_indexes_coarse)[mask]
-            points_id = np.array(list(self.umap_results.ids()))[point_indexes]
+            points_id = np.array([self.umap_results.get_object_id(idx) for idx in point_indexes])
             return points, points_id, point_indexes
         else:
             return np.array([[]]), np.array([]), np.array([])
@@ -455,7 +455,7 @@ class Visualize(Verb):
         import numpy as np
 
         indexes = self.box_select_indexes(x_range, y_range)
-        ids = np.array(list(self.umap_results.ids()))[indexes]
+        ids = np.array([self.umap_results.get_object_id(idx) for idx in indexes])
         points = self.umap_results[indexes].numpy()
         return points, ids, indexes
 

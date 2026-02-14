@@ -273,7 +273,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             return None
 
         # Get all object_ids in enumeration order
-        sorted_object_ids = np.array([int(id) for id in self.ids()])
+        sorted_object_ids = np.array([int(id) for id in self._all_ids()])
 
         # Filter for a single reference filter to deduplicate object_id rows
         first_filter_dict = next(iter(self.files.values()))
@@ -419,8 +419,8 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         filter = filter_names[index % self.num_filters]
         return self._file_to_path(filters[filter])
 
-    def ids(self, log_every=None) -> Generator[str]:
-        """Public read-only iterator over all object_ids that enforces a strict total order across
+    def _all_ids(self, log_every=None) -> Generator[str]:
+        """Private read-only iterator over all object_ids that enforces a strict total order across
         objects. Will not work prior to self.files initialization in __init__
 
         Yields
@@ -447,7 +447,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         Path
             The path to the file.
         """
-        for object_id in self.ids():
+        for object_id in self._all_ids():
             for filename in self._object_files(object_id):
                 yield filename
 
