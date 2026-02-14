@@ -70,35 +70,17 @@ class Lookup(Verb):
         Optional[np.ndarray]
             The output tensor of the model for the given input.
         """
-        from hyrax.config_utils import find_most_recent_results_dir
-        from hyrax.data_sets.inference_dataset import InferenceDataSet
+        from hyrax.data_sets.result_factories import load_results_dataset
 
-        if results_dir is None:
-            if self.config["results"]["inference_dir"]:
-                results_dir = self.config["results"]["inference_dir"]
-            else:
-                results_dir = find_most_recent_results_dir(self.config, verb="infer")
-                msg = f"Using most recent results dir {results_dir} for lookup."
-                msg += "Use the [results] inference_dir config to set a directory or pass it to this verb."
-                logger.info(msg)
-
-        if results_dir is None:
-            msg = "Could not find a results directory. Run infer or use "
-            msg += "[results] inference_dir config to specify a directory"
-            logger.error(msg)
-            return None
-
-        if isinstance(results_dir, str):
-            results_dir = Path(results_dir)
-
-        inference_dataset = InferenceDataSet(self.config, results_dir=results_dir)
+        inference_dataset = load_results_dataset(self.config, results_dir=results_dir, verb="infer")
 
         all_ids = np.array(list(inference_dataset.ids()))
         lookup_index = np.argwhere(all_ids == id)
 
         if len(lookup_index) == 1:
-            return np.array(inference_dataset[lookup_index[0]].numpy())
+            result = inference_dataset[lookup_index[0]]
+            return np.asarray(result)
         elif len(lookup_index) > 1:
-            raise RuntimeError(f"Inference result directory {results_dir} has duplicate ID numbers")
+            raise RuntimeError("Inference result directory has duplicate ID numbers")
 
         return None

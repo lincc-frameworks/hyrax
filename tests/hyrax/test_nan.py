@@ -85,7 +85,7 @@ def test_nan_handling(loopback_hyrax_nan):
     assert any(original_nans)
 
     for result in inference_results:
-        assert not any(isnan(result))
+        assert not np.any(np.isnan(result))
 
 
 def test_nan_handling_zero_values(loopback_hyrax_nan):
@@ -104,7 +104,7 @@ def test_nan_handling_zero_values(loopback_hyrax_nan):
     assert any(original_nans)
 
     for result in inference_results:
-        assert not any(isnan(result))
+        assert not np.any(np.isnan(result))
 
 
 def test_nan_handling_off(loopback_hyrax_nan):
@@ -122,8 +122,8 @@ def test_nan_handling_off(loopback_hyrax_nan):
         original_nans = tensor([any(isnan(item)) for item in dataset])
     assert any(original_nans)
 
-    result_nans = tensor([any(isnan(item)) for item in inference_results])
-    assert any(result_nans)
+    result_nans = np.array([np.any(np.isnan(item)) for item in inference_results])
+    assert np.any(result_nans)
 
 
 def test_nan_handling_off_returns_input(loopback_hyrax_nan):

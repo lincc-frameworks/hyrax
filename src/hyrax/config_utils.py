@@ -631,6 +631,58 @@ def find_most_recent_results_dir(config: dict, verb: str) -> Path | None:
     return best_path
 
 
+def resolve_results_dir(config: dict, results_dir: Union[Path, str, None], verb: Union[str, None]) -> Path:
+    """Resolve the results directory path with auto-discovery support.
+
+    This helper handles auto-discovery of the most recent results directory if not provided.
+    It checks the config for an explicit inference_dir first, then falls back to finding
+    the most recent directory for the given verb.
+
+    Parameters
+    ----------
+    config : dict
+        The hyrax config dictionary
+    results_dir : Union[Path, str, None]
+        The results subdirectory to load from. If None, will attempt auto-discovery.
+    verb : Union[str, None]
+        The name of the verb that generated the results (for auto-discovery).
+        Defaults to "infer" if None.
+
+    Returns
+    -------
+    Path
+        Resolved path to results directory
+
+    Raises
+    ------
+    RuntimeError
+        If results directory cannot be found or does not exist
+    """
+    verb = "infer" if verb is None else verb
+
+    if results_dir is None:
+        if config["results"]["inference_dir"]:
+            results_dir = config["results"]["inference_dir"]
+            if not isinstance(results_dir, str):
+                raise RuntimeError("Configured [results_dir] is not a string")
+        else:
+            results_dir = find_most_recent_results_dir(config, verb=verb)
+            if results_dir is None:
+                msg = "Could not find a results directory. Run infer or use "
+                msg += "[results] inference_dir config to specify a directory."
+                raise RuntimeError(msg)
+            msg = f"Using most recent results dir {results_dir} for lookup."
+            msg += " Use the [results] inference_dir config to set a directory or pass it to this verb."
+            logger.debug(msg)
+
+    retval = Path(results_dir) if isinstance(results_dir, str) else results_dir
+
+    if not retval.exists():
+        raise RuntimeError(f"Inference directory {results_dir} does not exist")
+
+    return retval
+
+
 def log_runtime_config(runtime_config: dict, output_path: Path, file_name: str = "runtime_config.toml"):
     """Log a runtime configuration.
 
