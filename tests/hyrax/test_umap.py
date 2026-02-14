@@ -61,7 +61,7 @@ def test_umap_order(loopback_inferred_hyrax):
         else:
             raise AssertionError("Failed to find a corresponding ID")
 
-        umap_result = umap_results[idx].cpu().numpy().reshape(data_shape)
+        umap_result = umap_results[idx].reshape(data_shape)
 
         print(f"orig idx: {dataset_idx}, umap idx: {idx}")
         print(f"orig data: {dataset[dataset_idx]}, umap data: {umap_result}")

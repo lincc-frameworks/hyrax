@@ -47,7 +47,7 @@ class Test(Verb):
             create_results_dir,
             log_runtime_config,
         )
-        from hyrax.data_sets.inference_dataset import InferenceDataSet
+        from hyrax.data_sets.result_factories import load_results_dataset
         from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
             create_evaluator,
@@ -130,13 +130,13 @@ class Test(Verb):
             test_engine.run(test_data_loader)
 
         # Write out a dictionary to map IDs->Batch
-        save_batch_callback.data_writer.write_index()  # type: ignore[attr-defined]
+        save_batch_callback.data_writer.commit()  # type: ignore[attr-defined]
 
         logger.info("Finished Testing")
         tensorboardx_logger.close()
 
-        # Return the InferenceDataSet for further analysis
-        return InferenceDataSet(config, results_dir)
+        # Return the ResultDataset for further analysis
+        return load_results_dataset(config, results_dir)
 
     @staticmethod
     def _log_params(config, results_dir):

@@ -295,7 +295,7 @@ Given the small user base (~5 people), this can be simple and single-threaded.
 ### Unit Tests for `ResultDataset`
 
 - Read from a Lance directory written by `ResultDatasetWriter`.
-- `__getitem__` with int, list, slice, numpy array.
+- `__getitem__` with int, numpy array.
 - `__getitem__` with out-of-range index raises `IndexError`.
 - `__len__` matches expected count.
 - `ids()` returns all IDs.
