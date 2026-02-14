@@ -98,30 +98,39 @@ class Train(Verb):
         #    calling dist_data_loader with split=["train", "validate"] which
         #    uses config["data_set"] train_size / validate_size.
 
-        # Collect all split names that this verb cares about and that are
-        # present in the dataset dict returned by setup_dataset.
-        all_splits = list(Train.REQUIRED_SPLITS) + [s for s in Train.OPTIONAL_SPLITS if s in dataset]
+        # Collect split names in two ways:
+        # - all_splits: all split names that this verb knows about
+        #   (required + optional), used for legacy percentage-based
+        #   splitting where only a "train" group may be defined.
+        # - dataset_splits: those desired splits that are actually present
+        #   in the dataset dict returned by setup_dataset, used by the
+        #   multi-provider path where each split is an explicit group.
+        all_splits = list(Train.REQUIRED_SPLITS) + list(Train.OPTIONAL_SPLITS)
+        dataset_splits = [s for s in all_splits if s in dataset]
 
-        # Check whether the data_request defines separate split groups
-        # (paths 1 & 2 above).  This is true when optional splits exist in
-        # the dataset dict, OR when the required split's DataProvider already
-        # has split_indices assigned (i.e. split_fraction was configured even
-        # if no optional groups were defined).
-        has_split_groups = isinstance(dataset, dict) and (
-            any(s in dataset for s in Train.OPTIONAL_SPLITS)
-            or any(
-                hasattr(dataset.get(s), "split_indices") and dataset[s].split_indices is not None
-                for s in Train.REQUIRED_SPLITS
-            )
+        # Check whether split_fraction was used (path 2 above).
+        # This is true when the required split's DataProvider has split_indices assigned.
+        # Path 1 (separate groups without split_fraction) will be handled in the else block.
+        has_split_groups = isinstance(dataset, dict) and any(
+            hasattr(dataset.get(s), "split_indices") and dataset[s].split_indices is not None
+            for s in Train.REQUIRED_SPLITS
         )
 
         data_loaders: dict[str, tuple] = {}
 
         if has_split_groups:
-            # Paths 1 & 2: each group has its own DataProvider (with or
-            # without split_indices).  Create a dataloader per group.
-            for split_name in all_splits:
+            # Path 2: split_fraction was used — each DataProvider has split_indices.
+            # Create a dataloader per group with split_indices already applied.
+            # NOTE: Paths 1 and 3 will be completely deprecated in a future release,
+            # and this will be the only path for training.
+            for split_name in dataset_splits:
                 data_loaders[split_name] = dist_data_loader(dataset[split_name], config, False)
+        elif len(dataset) > 1:
+            # Path 1: separate dataset groups defined in data_request without split_fraction.
+            # Each group is an independent DataProvider pointing to different data_locations.
+            # Create a dataloader per group.
+            for split_name in dataset_splits:
+                data_loaders[split_name] = dist_data_loader(dataset[split_name], config, split_name)
         else:
             # Path 3 (legacy): only "train" exists — use percentage-based
             # splitting from config["data_set"].

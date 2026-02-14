@@ -106,6 +106,86 @@ def test_train_percent_split(tmp_path):
     h.train()
 
 
+def test_train_split_fraction(tmp_path):
+    """
+    Test training with split_fraction on groups sharing the same data_location.
+    This should exercise Path 2 where setup_dataset assigns split_indices to
+    each DataProvider, and the train verb creates dataloaders with those
+    split_indices applied via SubsetSequentialSampler.
+    """
+    import hyrax
+
+    h = hyrax.Hyrax()
+    h.config["model"]["name"] = "HyraxLoopback"
+    h.config["train"]["epochs"] = 1
+    h.config["data_loader"]["batch_size"] = 4
+    h.config["general"]["results_dir"] = str(tmp_path)
+    h.config["general"]["dev_mode"] = True
+
+    # Define train and validate groups pointing to the SAME data_location
+    # with split_fraction set on each.
+    shared_location = str(tmp_path / "shared_data")
+    h.config["data_request"] = {
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": shared_location,
+                "primary_id_field": "object_id",
+                "split_fraction": 0.7,
+            }
+        },
+        "validate": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": shared_location,
+                "primary_id_field": "object_id",
+                "split_fraction": 0.3,
+            }
+        },
+        "infer": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path / "data_infer"),
+                "primary_id_field": "object_id",
+            }
+        },
+    }
+
+    # Configure the underlying random dataset
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 30
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 42
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
+
+    # Run training - this should use Path 2 (split_fraction)
+    model = h.train()
+
+    # Verify training completed
+    assert model is not None
+
+    # Additional verification: check that split_indices were properly set
+    from hyrax.pytorch_ignite import setup_dataset
+
+    dataset = setup_dataset(h.config, splits=("train", "validate"))
+
+    # Both train and validate should have split_indices
+    assert hasattr(dataset["train"], "split_indices")
+    assert hasattr(dataset["validate"], "split_indices")
+    assert dataset["train"].split_indices is not None
+    assert dataset["validate"].split_indices is not None
+
+    # Verify expected sizes: 70% of 30 = 21, 30% of 30 = 9
+    assert len(dataset["train"].split_indices) == 21
+    assert len(dataset["validate"].split_indices) == 9
+
+    # Verify indices are non-overlapping
+    train_set = set(dataset["train"].split_indices)
+    validate_set = set(dataset["validate"].split_indices)
+    assert len(train_set & validate_set) == 0
+
+    # Verify indices cover the full range
+    assert train_set | validate_set == set(range(30))
+
+
 def test_constant_scheduler(loopback_hyrax):
     """
     Ensure that setting a ConstantLR works properly
