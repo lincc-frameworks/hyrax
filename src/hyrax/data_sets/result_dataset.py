@@ -4,6 +4,7 @@ This module provides ResultDataset and ResultDatasetWriter classes that store
 inference results in Lance columnar format instead of batched .npy files.
 """
 
+import asyncio
 import json
 import logging
 from collections.abc import Generator
@@ -26,28 +27,34 @@ LANCE_DB_DIR = "lance_db"
 class ResultDatasetWriter:
     """Writer for Lance-based inference results.
 
-    Writes inference results incrementally to Lance format using table.add()
-    for each batch, avoiding memory accumulation.
+    Writes inference results incrementally to Lance format using async operations
+    for improved performance, while maintaining a synchronous API for compatibility.
     """
 
-    def __init__(self, result_dir: Union[str, Path]):
+    def __init__(self, result_dir: Union[str, Path], use_async: bool = True):
         """Initialize the writer.
 
         Parameters
         ----------
         result_dir : Union[str, Path]
             Directory where Lance database will be created
+        use_async : bool, default True
+            Whether to use async Lance operations internally for better performance.
+            Set to False to use synchronous operations (not recommended for performance).
         """
         self.result_dir = Path(result_dir)
         self.result_dir.mkdir(parents=True, exist_ok=True)
 
         self.lance_dir = self.result_dir / LANCE_DB_DIR
+        self.use_async = use_async
         self.db = None
         self.table = None
         self.schema = None
         self.tensor_dtype = None
         self.tensor_shape = None
         self.batch_count = 0
+        self._async_table = None
+        self._async_db = None
 
     def write_batch(self, object_ids: np.ndarray, data: list[np.ndarray]):
         """Write a batch of results incrementally.
@@ -59,6 +66,68 @@ class ResultDatasetWriter:
         data : list[np.ndarray]
             List of numpy arrays (tensors) to write
         """
+        if self.use_async:
+            asyncio.run(self._write_batch_async(object_ids, data))
+        else:
+            self._write_batch_sync(object_ids, data)
+
+    async def _write_batch_async(self, object_ids: np.ndarray, data: list[np.ndarray]):
+        """Async implementation of write_batch for better performance."""
+        if len(object_ids) != len(data):
+            raise ValueError("Length of object_ids must match length of data")
+
+        if len(data) == 0:
+            return
+
+        # Convert data to numpy array for uniform handling
+        data_array = np.array(data)
+        first_tensor = data_array[0]
+
+        # On first write, create the schema and table
+        if self.schema is None:
+            self._create_schema(first_tensor)
+            self._async_db = await lancedb.connect_async(str(self.lance_dir))
+            # Create empty table with schema
+            empty_data = pa.table(
+                {
+                    "object_id": pa.array([], type=pa.string()),
+                    "data": pa.array([], type=self.schema.field("data").type),
+                },
+                schema=self.schema,
+            )
+            self._async_table = await self._async_db.create_table(TABLE_NAME, empty_data, mode="overwrite")
+        else:
+            # Validate that all tensors match the established schema
+            for i, tensor in enumerate(data):
+                if tensor.dtype != self.tensor_dtype:
+                    raise ValueError(
+                        f"Tensor at index {i} has dtype {tensor.dtype}, "
+                        f"but schema expects {self.tensor_dtype}"
+                    )
+                if tensor.shape != tuple(self.tensor_shape):
+                    raise ValueError(
+                        f"Tensor at index {i} has shape {tensor.shape}, "
+                        f"but schema expects {tuple(self.tensor_shape)}"
+                    )
+
+        # Flatten tensors for storage
+        flattened_data = [tensor.flatten() for tensor in data]
+
+        # Create PyArrow record batch
+        batch_data = {
+            "object_id": pa.array([str(oid) for oid in object_ids], type=pa.string()),
+            "data": pa.array(flattened_data, type=self.schema.field("data").type),
+        }
+
+        # Convert to PyArrow table and add to Lance
+        arrow_table = pa.table(batch_data, schema=self.schema)
+        await self._async_table.add(arrow_table)
+        self.batch_count += 1
+
+        logger.debug(f"Wrote batch {self.batch_count} with {len(object_ids)} records (async)")
+
+    def _write_batch_sync(self, object_ids: np.ndarray, data: list[np.ndarray]):
+        """Synchronous implementation of write_batch (fallback)."""
         if len(object_ids) != len(data):
             raise ValueError("Length of object_ids must match length of data")
 
@@ -110,12 +179,36 @@ class ResultDatasetWriter:
         self.table.add(arrow_table)
         self.batch_count += 1
 
-        logger.debug(f"Wrote batch {self.batch_count} with {len(object_ids)} records")
+        logger.debug(f"Wrote batch {self.batch_count} with {len(object_ids)} records (sync)")
 
-    def commit(self):
-        """Finalize the write by optimizing the table."""
+    def commit(self, optimize: bool = False):
+        """Finalize the write.
+        
+        Parameters
+        ----------
+        optimize : bool, default False
+            Whether to optimize the table after writing. Optimization can be slow
+            and is typically only needed after many batches (100k+ records or 20+ operations).
+            For best write performance during inference, leave this as False and run
+            optimization separately if needed.
+        """
+        if optimize:
+            if self.use_async:
+                asyncio.run(self._commit_async())
+            else:
+                self._commit_sync()
+
+    async def _commit_async(self):
+        """Async commit with optimization."""
+        if self._async_table is not None:
+            logger.info(f"Optimizing Lance table after {self.batch_count} batches (async)")
+            await self._async_table.optimize()
+            logger.info("Lance table optimization complete")
+
+    def _commit_sync(self):
+        """Sync commit with optimization."""
         if self.table is not None:
-            logger.info(f"Optimizing Lance table after {self.batch_count} batches")
+            logger.info(f"Optimizing Lance table after {self.batch_count} batches (sync)")
             self.table.optimize()
             logger.info("Lance table optimization complete")
 
