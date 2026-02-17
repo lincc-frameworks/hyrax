@@ -657,6 +657,10 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     optimizer = extract_model_method(model, "optimizer")
     scheduler = extract_model_method(model, "scheduler")
+    # Extract unwrapped model for attribute access (scheduler attributes like _learning_rates_history)
+    unwrapped_model = (
+        model.module if (type(model) is DataParallel or type(model) is DistributedDataParallel) else model
+    )
 
     to_save = {
         "model": model,
@@ -731,14 +735,14 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def scheduler_step(trainer):
-        if model.scheduler:
-            if not hasattr(model, "_learning_rates_history"):
-                model._learning_rates_history = []
-            epoch_lr = model.scheduler.get_last_lr()
+        if scheduler:
+            if not hasattr(unwrapped_model, "_learning_rates_history"):
+                unwrapped_model._learning_rates_history = []
+            epoch_lr = scheduler.get_last_lr()
             epoch_number = trainer.state.epoch - 1
-            model._learning_rates_history.append(epoch_lr)
+            unwrapped_model._learning_rates_history.append(epoch_lr)
             tensorboardx_logger.add_scalar("training/training/epoch/lr", epoch_lr, global_step=epoch_number)
-            model.scheduler.step()
+            scheduler.step()
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
