@@ -1,9 +1,11 @@
 import logging
 import random
 from argparse import ArgumentParser, Namespace
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
+import numpy as np
 import numpy.typing as npt
 import torch
 from matplotlib.colors import LogNorm
@@ -11,6 +13,60 @@ from matplotlib.colors import LogNorm
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class CatalogOverlay:
+    """Specification for an external catalog overlay on the UMAP plot.
+
+    Parameters
+    ----------
+    catalog : pd.DataFrame or str or Path
+        External catalog as a DataFrame, or a path to a .parquet/.csv/.fits file.
+    id_column : str
+        Column name in ``catalog`` containing object IDs to match against the UMAP dataset.
+    color : str, default "red"
+        Flat color for matched points (used when ``value_column`` is None).
+    value_column : str or None, default None
+        Column in catalog to use for value-based coloring. When set, points are colored
+        by this column's values using ``cmap`` instead of the flat ``color``.
+    cmap : str, default "plasma"
+        Colormap when ``value_column`` is set.
+    marker : str, default "x"
+        Bokeh marker glyph name (e.g., "x", "circle", "square", "triangle").
+    size : int, default 8
+        Marker size for overlay points.
+    label : str, default "Overlay"
+        Legend label for this overlay.
+    threshold : float or None, default None
+        If set together with ``value_column``, only include rows where
+        ``value_column >= threshold``.
+    """
+
+    catalog: object  # pd.DataFrame or str or Path
+    id_column: str
+    color: str = "red"
+    value_column: Optional[str] = None
+    cmap: str = "plasma"
+    marker: str = "x"
+    size: int = 8
+    label: str = "Overlay"
+    threshold: Optional[float] = None
+
+
+@dataclass
+class ProcessedOverlay:
+    """Pre-computed overlay data ready for rendering."""
+
+    umap_indices: np.ndarray  # Indices into the UMAP dataset
+    coords: np.ndarray  # (N, 2) array of UMAP x,y coordinates
+    values: Optional[np.ndarray]  # Per-point values if value_column was set
+    color: str
+    cmap: str
+    marker: str
+    size: int
+    label: str
+    value_column: Optional[str]
 
 
 @hyrax_verb
@@ -35,6 +91,7 @@ class Visualize(Verb):
         *,
         return_verb: bool = False,
         make_lupton_rgb_opts: dict | None = None,
+        overlays: list[dict | CatalogOverlay] | None = None,
         **kwargs,
     ):
         """Generate an interactive notebook visualization of a latent space that has been umapped down to 2d.
@@ -58,6 +115,32 @@ class Visualize(Verb):
             Default is {"stretch": 5, "Q": 8}. Common parameters include stretch (brightness/contrast)
             and Q (softening parameter for asinh transformation).
 
+        overlays : list of dict or CatalogOverlay, optional
+            External catalog overlays to render on top of the UMAP scatter plot. Each overlay
+            cross-matches an external catalog against the UMAP dataset by object ID and renders
+            matched points with distinct markers. Each element can be a ``CatalogOverlay`` instance
+            or a dict with the same fields. Supported fields:
+
+            - ``catalog``: pd.DataFrame or path to .parquet/.csv/.fits file (required)
+            - ``id_column``: column name in catalog with object IDs to match (required)
+            - ``color``: flat marker color, default "red"
+            - ``value_column``: column for value-based coloring (default None = flat color)
+            - ``cmap``: colormap for value_column, default "plasma"
+            - ``marker``: Bokeh marker glyph, default "x"
+            - ``size``: marker size, default 8
+            - ``label``: legend label, default "Overlay"
+            - ``threshold``: minimum value_column value for inclusion (default None)
+
+            Example::
+
+                h.visualize(overlays=[
+                    {"catalog": lens_df, "id_column": "rubin_object_id",
+                     "color": "red", "marker": "x", "label": "Lens Candidates"},
+                    {"catalog": gz_df, "id_column": "rubin_object_id",
+                     "value_column": "merging_merger_fraction", "threshold": 0.7,
+                     "cmap": "hot", "marker": "triangle", "label": "Mergers"},
+                ])
+
         kwargs :
             Keyword arguments are passed through as options for the plot object as
             ``plot_pane.opts(**plot_options)``. It is not recommended to override the "tools" plot option,
@@ -71,7 +154,6 @@ class Visualize(Verb):
         tuple of (pane, Visualize), if return_verb = True
            Returns a 2-tuple with the pane and the verb instance.
         """
-        import numpy as np
         import panel as pn
         from holoviews import DynamicMap, extension
         from holoviews.operation.datashader import dynspread, rasterize
@@ -157,8 +239,6 @@ class Visualize(Verb):
                     metadata = self.umap_results.metadata(all_indices, [self.color_column])
                     self.color_values = metadata[self.color_column]
                     logger.info(f"Successfully loaded color values from column '{self.color_column}'")
-                    import numpy as np
-
                     logger.debug(
                         f"Color values range: {np.nanmin(self.color_values)} "
                         f"to {np.nanmax(self.color_values)}"
@@ -169,6 +249,13 @@ class Visualize(Verb):
                 logger.warning("Proceeding without coloring")
                 self.color_column = False
                 self.color_values = None
+
+        # Process external catalog overlays
+        self.overlays = self._process_overlays(overlays) if overlays else []
+
+        if self.overlays and self.config["visualize"]["rasterize_plot"]:
+            logger.warning("Rasterization is not compatible with overlays. Disabling rasterize_plot.")
+            self.config["visualize"]["rasterize_plot"] = False
 
         # Initialize holoviews with bokeh.
         extension("bokeh")
@@ -186,7 +273,7 @@ class Visualize(Verb):
         self.plot_options.update(kwargs)
 
         if self.color_column:
-            # For colored plots, show all points to preserve colorbar
+            # For colored plots, show all points to preserve colorbar.
             # This is a current Hack to overcome the fact that the
             # RangeXY stream breaks the colorbar. Needs to be investigated
             # further for permanent solution.
@@ -203,6 +290,19 @@ class Visualize(Verb):
             plot_pane = dynspread(rasterize(plot_dm).opts(**self.plot_options))
         else:
             plot_pane = plot_dm.opts(**self.plot_options)
+
+        # Overlay catalog markers as a separate DynamicMap combined via *.
+        # Keeping base and overlay DynamicMaps separate ensures that selection
+        # streams (Lasso, Tap, SelectionXY) remain attached to the base Points
+        # element and continue to work correctly.
+        # Overlay points are always shown at full extent (no viewport filtering)
+        # because overlays are small catalogs and sharing a RangeXY stream instance
+        # between two DynamicMaps is not straightforward.
+        if self.overlays:
+            overlay_dm = DynamicMap(self._overlay_layers)
+            plot_pane_display = (plot_pane * overlay_dm).opts(legend_position="top_right")
+        else:
+            plot_pane_display = plot_pane
 
         # Setup the table pane event handler
         self.prev_kwargs = {
@@ -256,7 +356,7 @@ class Visualize(Verb):
 
             images_panel = pn.pane.HoloViews(image_pane)
 
-            plot_panel = pn.panel(plot_pane)
+            plot_panel = pn.panel(plot_pane_display)
 
             # Set the table pane to be max 30% of the height
             table_h = int(self.plot_options["height"] * 0.3)
@@ -268,7 +368,7 @@ class Visualize(Verb):
 
         else:
             # Plot pane and table pane side by side
-            pane = plot_pane + table_pane
+            pane = plot_pane_display + table_pane
 
         # We attempt to display the pane (fails outside a notebook)
         try:
@@ -298,9 +398,8 @@ class Visualize(Verb):
         Returns
         -------
         hv.Points
-            Points lying inside the bounding box passed
+            Points lying inside the bounding box passed.
         """
-        import numpy as np
         from holoviews import Points
 
         if x_range is None or y_range is None:
@@ -336,6 +435,49 @@ class Visualize(Verb):
             pts = Points(points)
 
         return pts
+
+    def _overlay_layers(self):
+        """Generate an hv.Overlay of all external catalog markers.
+
+        This is intentionally separate from visible_points so that selection streams
+        remain attached to the base Points element and continue to work correctly.
+        All overlay points are always rendered at full extent since the catalogs are
+        small and sharing a RangeXY stream between two DynamicMaps is not straightforward.
+
+        Returns
+        -------
+        hv.Overlay
+            Overlay of Points elements, one per external catalog overlay.
+        """
+        from holoviews import Overlay, Points
+
+        layers = []
+
+        for ov in self.overlays:
+            if len(ov.coords) == 0:
+                continue
+
+            if ov.values is not None and ov.value_column is not None:
+                # Value-colored overlay
+                data = np.column_stack([ov.coords, ov.values])
+                overlay_pts = Points(data, vdims=[ov.value_column], label=ov.label).opts(
+                    color=ov.value_column,
+                    cmap=ov.cmap,
+                    colorbar=True,
+                    marker=ov.marker,
+                    size=ov.size,
+                )
+            else:
+                # Flat-color overlay
+                overlay_pts = Points(ov.coords, label=ov.label).opts(
+                    color=ov.color,
+                    marker=ov.marker,
+                    size=ov.size,
+                )
+
+            layers.append(overlay_pts)
+
+        return Overlay(layers) if layers else Overlay([])
 
     def update_points(self, **kwargs) -> None:
         """
@@ -568,9 +710,96 @@ class Visualize(Verb):
 
         return (xmin, xmax, ymin, ymax)
 
-    def get_selected_df(self):
+    def _process_overlays(self, overlays: list[dict | CatalogOverlay]) -> list[ProcessedOverlay]:
+        """Cross-match external catalogs against the UMAP dataset and prepare overlay data.
+
+        Parameters
+        ----------
+        overlays : list of dict or CatalogOverlay
+            Overlay specifications. Dicts are converted to CatalogOverlay.
+
+        Returns
+        -------
+        list of ProcessedOverlay
+            Pre-computed overlay data ready for rendering.
+        """
+        import pandas as pd
+
+        # Build ID-to-UMAP-index mapping (once for all overlays)
+        all_ids = list(self.umap_results.ids())
+        id_to_umap_idx = {str(oid): i for i, oid in enumerate(all_ids)}
+
+        processed = []
+        for spec in overlays:
+            if isinstance(spec, dict):
+                spec = CatalogOverlay(**spec)
+
+            catalog = spec.catalog
+
+            # Load from file if a path was given
+            if isinstance(catalog, str | Path):
+                path = Path(catalog)
+                if path.suffix == ".parquet":
+                    catalog = pd.read_parquet(path)
+                elif path.suffix == ".csv":
+                    catalog = pd.read_csv(path)
+                elif path.suffix in (".fits", ".fit"):
+                    from astropy.table import Table as AstropyTable
+
+                    catalog = AstropyTable.read(path).to_pandas()
+                else:
+                    raise ValueError(f"Unsupported catalog format: {path.suffix}")
+
+            # Apply threshold filter if specified
+            if spec.threshold is not None and spec.value_column is not None:
+                catalog = catalog[catalog[spec.value_column] >= spec.threshold]
+
+            # Cross-match catalog IDs against UMAP dataset IDs
+            matched_umap_idxs = []
+            matched_values = []
+            for _, row in catalog.iterrows():
+                oid = str(row[spec.id_column])
+                if oid in id_to_umap_idx:
+                    matched_umap_idxs.append(id_to_umap_idx[oid])
+                    if spec.value_column is not None:
+                        matched_values.append(row[spec.value_column])
+
+            if not matched_umap_idxs:
+                logger.warning(f"Overlay '{spec.label}': no matches found")
+                continue
+
+            umap_indices = np.array(matched_umap_idxs)
+            coords = np.array([self.umap_results[i].numpy() for i in umap_indices])
+            values = np.array(matched_values, dtype=float) if matched_values else None
+
+            processed.append(
+                ProcessedOverlay(
+                    umap_indices=umap_indices,
+                    coords=coords,
+                    values=values,
+                    color=spec.color,
+                    cmap=spec.cmap,
+                    marker=spec.marker,
+                    size=spec.size,
+                    label=spec.label,
+                    value_column=spec.value_column,
+                )
+            )
+            logger.info(
+                f"Overlay '{spec.label}': {len(umap_indices)} matches out of {len(catalog)} catalog rows"
+            )
+
+        return processed
+
+    def get_selected_df(self, tag_overlays: bool = False):
         r"""
         Retrieve a pandas DataFrame containing the currently selected points and their associated metadata.
+
+        Parameters
+        ----------
+        tag_overlays : bool, default False
+            If True and overlays are present, add boolean columns ``in_<label>`` for each
+            overlay indicating whether each selected point belongs to that overlay's catalog.
 
         Returns
         -------
@@ -590,7 +819,14 @@ class Visualize(Verb):
 
         cols = [self.object_id_column_name, "x", "y"] + self.data_fields
         result = pd.concat([df.reset_index(drop=True), meta_df.reset_index(drop=True)], axis=1)
-        return result.reindex(columns=cols)
+        result = result.reindex(columns=cols)
+
+        if tag_overlays and self.overlays:
+            for ov in self.overlays:
+                ov_set = set(ov.umap_indices.tolist())
+                result[f"in_{ov.label}"] = [idx in ov_set for idx in self.points_idx]
+
+        return result
 
     def _load_images(self, **kwargs):
         # Turn on spinner manually before loading
