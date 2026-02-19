@@ -6,12 +6,18 @@ inference results in Lance columnar format instead of batched .npy files.
 
 import json
 import logging
+import os
 from collections.abc import Generator
 from pathlib import Path
 from typing import Union
 
+# Suppress Lance's Rust-level WARN about creating new datasets (normal on first write)
+if "LANCE_LOG" not in os.environ:
+    os.environ["LANCE_LOG"] = "error"
+
 import lancedb
 import numpy as np
+import numpy.typing as npt
 import pyarrow as pa
 from torch.utils.data import Dataset
 
@@ -21,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 TABLE_NAME = "results"
 LANCE_DB_DIR = "lance_db"
+ORIGINAL_DATASET_CONFIG_FILENAME = "original_dataset_config.toml"
 
 
 class ResultDatasetWriter:
@@ -30,13 +37,17 @@ class ResultDatasetWriter:
     for each batch, avoiding memory accumulation.
     """
 
-    def __init__(self, result_dir: Union[str, Path]):
+    def __init__(self, result_dir: Union[str, Path], original_dataset_config: Union[dict, None] = None):
         """Initialize the writer.
 
         Parameters
         ----------
         result_dir : Union[str, Path]
             Directory where Lance database will be created
+        original_dataset_config : Union[dict, None], optional
+            Configuration of the original dataset used to generate these results.
+            When provided, this config is saved alongside the Lance database on commit()
+            so that ResultDataset can reconstruct the original dataset for metadata queries.
         """
         self.result_dir = Path(result_dir)
         self.result_dir.mkdir(parents=True, exist_ok=True)
@@ -48,6 +59,7 @@ class ResultDatasetWriter:
         self.tensor_dtype = None
         self.tensor_shape = None
         self.batch_count = 0
+        self.original_dataset_config = original_dataset_config
 
     def write_batch(self, object_ids: np.ndarray, data: list[np.ndarray]):
         """Write a batch of results incrementally.
@@ -113,11 +125,18 @@ class ResultDatasetWriter:
         logger.debug(f"Wrote batch {self.batch_count} with {len(object_ids)} records")
 
     def commit(self):
-        """Finalize the write by optimizing the table."""
+        """Finalize the write by optimizing the table and saving metadata."""
         if self.table is not None:
             logger.info(f"Optimizing Lance table after {self.batch_count} batches")
             self.table.optimize()
             logger.info("Lance table optimization complete")
+
+        if self.original_dataset_config is not None:
+            from hyrax.config_utils import log_runtime_config
+
+            log_runtime_config(
+                self.original_dataset_config, self.result_dir, ORIGINAL_DATASET_CONFIG_FILENAME
+            )
 
     def _create_schema(self, sample_tensor: np.ndarray):
         """Create PyArrow schema with tensor metadata.
@@ -195,6 +214,19 @@ class ResultDataset(HyraxDataset, Dataset):
         self.tensor_dtype = np.dtype(schema_metadata[b"tensor_dtype"].decode("utf-8"))
 
         logger.debug(f"Opened Lance table with shape {self.tensor_shape} and dtype {self.tensor_dtype}")
+
+        # Load the original dataset config if available, for metadata access
+        self._original_dataset_config = None
+        self.original_dataset = None
+        original_config_path = self.data_location / ORIGINAL_DATASET_CONFIG_FILENAME
+        if original_config_path.exists():
+            from hyrax.config_utils import ConfigManager
+            from hyrax.pytorch_ignite import setup_dataset
+
+            self._original_dataset_config = ConfigManager().read_runtime_config(original_config_path)
+            self._original_dataset_config["data_set"]["preload_cache"] = False
+            original_ds = setup_dataset(self._original_dataset_config)
+            self.original_dataset = original_ds["infer"] if isinstance(original_ds, dict) else original_ds
 
     def __len__(self) -> int:
         """Return the number of records in the dataset."""
@@ -294,3 +326,55 @@ class ResultDataset(HyraxDataset, Dataset):
         for batch in scanner.to_batches():
             for oid in batch["object_id"]:
                 yield oid.as_py()
+
+    @property
+    def results_dir(self) -> Path:
+        """Path to the results directory (alias for data_location)."""
+        return self.data_location
+
+    @property
+    def original_config(self) -> Union[dict, None]:
+        """Get the original configuration for the dataset used to generate these results."""
+        return self._original_dataset_config
+
+    def metadata_fields(self) -> list[str]:
+        """Get metadata fields from the original dataset used to generate these results."""
+        if self.original_dataset is not None:
+            return self.original_dataset.metadata_fields()
+        return []
+
+    def metadata(self, idxs: npt.ArrayLike, fields: list[str]) -> npt.ArrayLike:
+        """Get metadata from the original dataset, indexed according to this dataset.
+
+        Parameters
+        ----------
+        idxs : npt.ArrayLike
+            Indexes in this ResultDataset for which metadata is desired
+        fields : list[str]
+            Metadata fields requested
+
+        Returns
+        -------
+        npt.ArrayLike
+            Metadata array where rows correspond to the passed indexes
+        """
+        if self.original_dataset is None:
+            raise RuntimeError(
+                "Metadata is not available: no original dataset config was saved with these results."
+            )
+
+        idxs = np.asarray(idxs)
+
+        # Get the requested IDs in the order they were requested
+        ids_requested = np.array(list(self.ids()))[idxs]
+
+        # Get all original dataset IDs
+        original_ids = np.array(list(self.original_dataset.ids()))
+
+        # Create mapping from original ID to original index
+        id_to_original_idx = {str(oid): i for i, oid in enumerate(original_ids)}
+
+        # Map requested IDs to original indices, preserving order
+        original_idxs = [id_to_original_idx[str(req_id)] for req_id in ids_requested]
+
+        return self.original_dataset.metadata(original_idxs, fields)
