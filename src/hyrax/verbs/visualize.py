@@ -78,7 +78,8 @@ class Visualize(Verb):
         from holoviews.streams import Lasso, Params, RangeXY, SelectionXY, Tap
         from scipy.spatial import KDTree
 
-        from hyrax.data_sets.inference_dataset import InferenceDataSet
+        from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
+        from hyrax.data_sets.result_factories import load_results_dataset
 
         if self.config["data_set"]["object_id_column_name"]:
             self.object_id_column_name = self.config["data_set"]["object_id_column_name"]
@@ -106,10 +107,16 @@ class Visualize(Verb):
             )
 
         # Get the umap data and put it in a kdtree for indexing.
-        self.umap_results = InferenceDataSet(self.config, results_dir=input_dir, verb="umap")
+        self.umap_results = load_results_dataset(self.config, results_dir=input_dir, verb="umap")
         logger.info(f"Rendering UMAP from the following directory: {self.umap_results.results_dir}")
 
-        available_fields = self.umap_results.metadata_fields()
+        # Build a DataProvider from the live config for metadata access.
+        # This avoids implicit coupling between result datasets and their original data sources.
+        data_request = generate_data_request_from_config(self.config)
+        infer_request = data_request.get("infer", next(iter(data_request.values())))
+        self.metadata_provider = DataProvider(self.config, infer_request)
+
+        available_fields = self.metadata_provider.metadata_fields()
         for field in fields.copy():
             if field not in available_fields:
                 logger.warning(f"Field {field} is unavailable for this dataset")
@@ -142,7 +149,7 @@ class Visualize(Verb):
         if self.color_column:
             try:
                 # Check if column exists
-                available_fields = self.umap_results.metadata_fields()
+                available_fields = self.metadata_provider.metadata_fields()
                 if self.color_column not in available_fields:
                     logger.warning(
                         f"Column '{self.color_column}' not found in dataset."
@@ -154,7 +161,7 @@ class Visualize(Verb):
                     all_indices = list(range(len(self.umap_results)))
 
                     # Extract metadata for the specified column
-                    metadata = self.umap_results.metadata(all_indices, [self.color_column])
+                    metadata = self.metadata_provider.metadata(all_indices, [self.color_column])
                     self.color_values = metadata[self.color_column]
                     logger.info(f"Successfully loaded color values from column '{self.color_column}'")
                     import numpy as np
@@ -527,7 +534,7 @@ class Visualize(Verb):
 
         # These are the rest of the columns, pulled from metadata
         try:
-            metadata = self.umap_results.metadata(self.points_idx, self.data_fields)
+            metadata = self.metadata_provider.metadata(self.points_idx, self.data_fields)
         except Exception as e:
             # Leave in this try/catch beause some notebook implementations dont
             # allow us to return an exception to the console.
@@ -585,7 +592,7 @@ class Visualize(Verb):
 
         df = pd.DataFrame(self.points, columns=["x", "y"])
         df[self.object_id_column_name] = self.points_id
-        meta = self.umap_results.metadata(self.points_idx, self.data_fields)
+        meta = self.metadata_provider.metadata(self.points_idx, self.data_fields)
         meta_df = pd.DataFrame(meta, columns=self.data_fields)
 
         cols = [self.object_id_column_name, "x", "y"] + self.data_fields
@@ -656,7 +663,7 @@ class Visualize(Verb):
             sampled_ids = [id_map[idx] for idx in chosen_idx]
 
             # Get metadata - this is in the same order as chosen_idx
-            meta = self.umap_results.metadata(
+            meta = self.metadata_provider.metadata(
                 chosen_idx, [self.object_id_column_name, self.filename_column_name]
             )
 
