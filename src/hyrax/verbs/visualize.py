@@ -78,8 +78,8 @@ class Visualize(Verb):
         from holoviews.streams import Lasso, Params, RangeXY, SelectionXY, Tap
         from scipy.spatial import KDTree
 
-        from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
         from hyrax.data_sets.result_factories import load_results_dataset
+        from hyrax.pytorch_ignite import setup_dataset
 
         if self.config["data_set"]["object_id_column_name"]:
             self.object_id_column_name = self.config["data_set"]["object_id_column_name"]
@@ -112,16 +112,15 @@ class Visualize(Verb):
 
         # Build a DataProvider from the live config for metadata access.
         # This avoids implicit coupling between result datasets and their original data sources.
-        data_request = generate_data_request_from_config(self.config)
-        if "infer" not in data_request:
-            available_keys = ", ".join(sorted(data_request.keys())) or "<none>"
+        datasets = setup_dataset(self.config)
+        if "infer" not in datasets:
+            available_keys = ", ".join(sorted(datasets.keys())) or "<none>"
             msg = (
                 "Visualize requires an 'infer' dataset entry in the data request configuration, "
                 f"but none was found. Available dataset keys: {available_keys}"
             )
             raise RuntimeError(msg)
-        infer_request = data_request["infer"]
-        self.metadata_provider = DataProvider(self.config, infer_request)
+        self.metadata_provider = datasets["infer"]
 
         available_fields = self.metadata_provider.metadata_fields()
         for field in fields.copy():
