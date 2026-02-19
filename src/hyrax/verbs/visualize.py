@@ -113,7 +113,14 @@ class Visualize(Verb):
         # Build a DataProvider from the live config for metadata access.
         # This avoids implicit coupling between result datasets and their original data sources.
         data_request = generate_data_request_from_config(self.config)
-        infer_request = data_request.get("infer", next(iter(data_request.values())))
+        if "infer" not in data_request:
+            available_keys = ", ".join(sorted(data_request.keys())) or "<none>"
+            msg = (
+                "Visualize requires an 'infer' dataset entry in the data request configuration, "
+                f"but none was found. Available dataset keys: {available_keys}"
+            )
+            raise RuntimeError(msg)
+        infer_request = data_request["infer"]
         self.metadata_provider = DataProvider(self.config, infer_request)
 
         available_fields = self.metadata_provider.metadata_fields()
