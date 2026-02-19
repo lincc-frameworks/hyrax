@@ -76,18 +76,18 @@ class Umap(Verb):
         from tqdm.auto import tqdm
 
         from hyrax.config_utils import create_results_dir
-        from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
+        from hyrax.data_sets.result_factories import create_results_writer, load_results_dataset
 
         self.reducer = umap.UMAP(**self.config["umap"]["UMAP"])
 
         # Load all the latent space data.
-        inference_results = InferenceDataSet(self.config, results_dir=input_dir)
+        inference_results = load_results_dataset(self.config, results_dir=input_dir, verb="infer")
         total_length = len(inference_results)
 
         # Set up the results directory where we will store our umapped output
         results_dir = create_results_dir(self.config, "umap")
         logger.info(f"Saving UMAP results to {results_dir}")
-        umap_results = InferenceDataSetWriter(inference_results, results_dir)
+        umap_results = create_results_writer(inference_results, results_dir)
 
         # Sample the data to fit
         config_sample_size = self.config["umap"]["fit_sample_size"]
@@ -96,7 +96,7 @@ class Umap(Verb):
         index_choices = rng.choice(np.arange(total_length), size=sample_size, replace=False)
 
         # If the input to umap is not of the shape [samples,input_dims] we reshape the input accordingly
-        data_sample = inference_results[index_choices].numpy().reshape((sample_size, -1))
+        data_sample = np.asarray(inference_results[index_choices]).reshape((sample_size, -1))
 
         self._log_memory_usage("Before fitting umap")
         logger.info("Fitting the UMAP")
@@ -130,7 +130,7 @@ class Umap(Verb):
                 # We flatten all dimensions of the input array except the dimension
                 # corresponding to batch elements. This ensures that all inputs to
                 # the UMAP algorithm are flattend per input item in the batch
-                inference_results[batch_indexes].numpy().reshape(len(batch_indexes), -1),
+                inference_results[batch_indexes].reshape(len(batch_indexes), -1),
             )
             for batch_indexes in np.array_split(all_indexes, num_batches)
         )
@@ -163,10 +163,10 @@ class Umap(Verb):
                 self._log_memory_usage(f"During transformation of batch of shape {batch.shape}")
                 umap_results.write_batch(batch_ids, transformed_batch)
 
-        umap_results.write_index()
+        umap_results.commit()
         logger.info("Finished transforming all data through UMAP")
 
-        return InferenceDataSet(self.config, results_dir)
+        return load_results_dataset(self.config, results_dir)
 
     def _transform_batch(self, batch_tuple: tuple):
         """Private helper to transform a single batch

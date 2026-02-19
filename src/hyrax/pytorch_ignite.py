@@ -941,14 +941,14 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def scheduler_step(trainer):
-        if model.scheduler:
+        if scheduler:
             if not hasattr(model, "_learning_rates_history"):
                 model._learning_rates_history = []
-            epoch_lr = model.scheduler.get_last_lr()
+            epoch_lr = scheduler.get_last_lr()
             epoch_number = trainer.state.epoch - 1
             model._learning_rates_history.append(epoch_lr)
             tensorboardx_logger.add_scalar("training/training/epoch/lr", epoch_lr, global_step=epoch_number)
-            model.scheduler.step()
+            scheduler.step()
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
@@ -996,9 +996,9 @@ def create_save_batch_callback(dataset, results_dir):
     callable
         A callback function with signature (batch, batch_results) that saves results
     """
-    from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
+    from hyrax.data_sets.result_factories import create_results_writer
 
-    data_writer = InferenceDataSetWriter(dataset, results_dir)
+    data_writer = create_results_writer(dataset, results_dir)
 
     def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
         """Receive and write batch results to results_dir immediately."""

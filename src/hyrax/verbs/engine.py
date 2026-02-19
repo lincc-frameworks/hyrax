@@ -56,7 +56,7 @@ class Engine(Verb):
             find_most_recent_results_dir,
         )
         from hyrax.data_sets.data_provider import DataProvider
-        from hyrax.data_sets.inference_dataset import InferenceDataSetWriter
+        from hyrax.data_sets.result_factories import create_results_writer
         from hyrax.plugin_utils import load_prepare_inputs, load_to_tensor
         from hyrax.pytorch_ignite import setup_dataset
 
@@ -113,13 +113,9 @@ class Engine(Verb):
         infer_dataset = dataset["infer"]
         batch_size = config["data_loader"]["batch_size"]
 
-        # Initialize the InferenceDatasetWriter to persist results of inference
-        # Note that the inference_dataset.py module takes a dependency on
-        # torch.utils.data.Dataset, but InferenceDatasetWrite only uses Dataset
-        # as a type hint. So we may need to separate InferenceDataset and IDWriter
-        # to remove that dependency.
+        # Initialize the ResultDatasetWriter to persist results of inference
         result_dir = create_results_dir(config, "engine")
-        self.results_writer = InferenceDataSetWriter(infer_dataset, result_dir)
+        self.results_writer = create_results_writer(infer_dataset, result_dir)
 
         # Determine which indices to iterate over
         # If split_fraction is configured, setup_dataset will have already
@@ -175,4 +171,4 @@ class Engine(Verb):
             self.results_writer.write_batch(collated_batch["object_id"], [i for i in onnx_results[0]])
 
         # Write the final index file for the inference results.
-        self.results_writer.write_index()
+        self.results_writer.commit()
