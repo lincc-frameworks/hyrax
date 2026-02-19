@@ -15,6 +15,10 @@ class Test(Verb):
     cli_name = "test"
     add_parser_kwargs = {}
 
+    # Dataset groups that the Test verb knows about.
+    REQUIRED_SPLITS = ("test",)
+    OPTIONAL_SPLITS = ()
+
     @staticmethod
     def setup_parser(parser):
         """We don't need any parser setup for CLI opts"""
@@ -67,7 +71,11 @@ class Test(Verb):
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)
 
         # Instantiate the model and dataset
-        dataset = setup_dataset(config)
+        dataset = setup_dataset(
+            config,
+            splits=Test.REQUIRED_SPLITS + Test.OPTIONAL_SPLITS,
+            shuffle=False,
+        )
 
         # Verify that test dataset exists
         if not isinstance(dataset, dict) or "test" not in dataset:
