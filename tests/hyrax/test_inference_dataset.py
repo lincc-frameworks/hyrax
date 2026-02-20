@@ -43,8 +43,8 @@ def inference_dataset(tmp_path_factory, request):
         indexes = np.array(range(20))
         np.random.shuffle(indexes)
 
-        # On the first iteration we will will get a DataProvider, but subsequent iterations
-        # We have an InferenceDataSet. This method of enumeration always works.
+        # On the first iteration, we get a DataProvider, but on subsequent iterations we have
+        # an InferenceDataSet; this method of enumeration always works.
         data_set_ids = np.array(current_data_set.ids())
 
         data_writer.write_batch(
