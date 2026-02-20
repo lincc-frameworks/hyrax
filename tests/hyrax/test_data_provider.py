@@ -310,8 +310,8 @@ def test_primary_dataset(multimodal_config):
 
     with pytest.raises(RuntimeError) as execinfo:
         dp = DataProvider(h.config, model_inputs["train"])
-        assert "No Primary Dataset Defined" in execinfo.value
 
+    assert "No Primary Dataset Defined" in str(execinfo.value)
     # Tertiary case with `primary_id_field` defined on `random_1`
     model_inputs["train"]["random_1"]["primary_id_field"] = "object_id"
     h.config["model_inputs"] = model_inputs
