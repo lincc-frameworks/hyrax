@@ -222,3 +222,39 @@ def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
 
     assert hasattr(model, "_learning_rates_history")
     assert model._learning_rates_history == [[initial_lr * factor]] + [[initial_lr]] * 2
+
+def test_training_info_returned_on_model(loopback_hyrax):
+    """
+    Test that scheduler works correctly when model is wrapped in DataParallel.
+    This test validates the fix for PR #652 AttributeError bug.
+    """
+    from unittest.mock import patch
+
+    from torch.nn.parallel import DataParallel
+
+    h, _ = loopback_hyrax
+    gamma = 0.5
+    h.config["scheduler"]["name"] = "torch.optim.lr_scheduler.ExponentialLR"
+    h.config["torch.optim.lr_scheduler.ExponentialLR"] = {"gamma": gamma}
+    h.config["train"]["epochs"] = 2
+    initial_lr = 64
+    h.config[h.config["optimizer"]["name"]]["lr"] = initial_lr
+
+    # Mock idist.auto_model to wrap the model in DataParallel
+    # This simulates what happens in distributed training environments
+
+    def mock_auto_model(model):
+        # Wrap the model in DataParallel to test the fix
+        return DataParallel(model)
+
+    # Patch idist.auto_model in the pytorch_ignite module
+    with patch("hyrax.pytorch_ignite.idist.auto_model", side_effect=mock_auto_model):
+        # This should not raise AttributeError: 'DataParallel' object has no attribute 'scheduler'
+        model = h.train()
+
+    # Verify the scheduler worked correctly
+    assert hasattr(model, "_learning_rates_history")
+    assert hasattr(model, "final_training_metrics")
+    assert hasattr(model, "final_validation_metrics")
+    expected_history = [[initial_lr * gamma**i] for i in range(h.config["train"]["epochs"])]
+    assert model._learning_rates_history == expected_history
