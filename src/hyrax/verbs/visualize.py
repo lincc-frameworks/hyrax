@@ -20,6 +20,13 @@ class Visualize(Verb):
     cli_name = "visualize"
     add_parser_kwargs = {}
 
+    # Dataset groups that the Visualize verb knows about.
+    # REQUIRED_SPLITS must be present in the data request configuration.
+    # OPTIONAL_SPLITS are used when present but do not cause an error if absent.
+    # Note: "umap" results may also be required in the future.
+    REQUIRED_SPLITS = ("infer",)
+    OPTIONAL_SPLITS = ()
+
     @staticmethod
     def setup_parser(parser: ArgumentParser):
         """CLI not implemented for this verb"""
