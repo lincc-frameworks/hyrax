@@ -180,10 +180,9 @@ with warnings.catch_warnings():
                 if value is not None:
                     # Handle both single config and dict of configs
                     if isinstance(value, dict):
-                        # Dict of configs - wrap each in {"data": ...}
+                        # Dict of configs - keys are already friendly names
                         output[name] = {
-                            key: {"data": cfg.as_dict(exclude_unset=exclude_unset)}
-                            for key, cfg in value.items()
+                            key: cfg.as_dict(exclude_unset=exclude_unset) for key, cfg in value.items()
                         }
                     else:
                         # Single config - wrap in {"data": ...}
