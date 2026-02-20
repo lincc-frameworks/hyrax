@@ -115,12 +115,11 @@ class Visualize(Verb):
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = load_results_dataset(self.config, results_dir=input_dir, verb="umap")
-        logger.info(f"Rendering UMAP from the following directory: {self.umap_results.results_dir}")
 
         # Build a DataProvider from the live config for metadata access.
         # This avoids implicit coupling between result datasets and their original data sources.
         datasets = setup_dataset(self.config)
-        if not Visualize.REQUIRED_SPLITS.intersection(set(datasets.keys())):
+        if not set(Visualize.REQUIRED_SPLITS).intersection(set(datasets.keys())):
             required_keys = ", ".join(sorted(Visualize.REQUIRED_SPLITS))
             available_keys = ", ".join(sorted(datasets.keys())) or "<none>"
             msg = (
