@@ -133,7 +133,17 @@ class Visualize(Verb):
         # extended if needed.
         self.metadata_provider = datasets[Visualize.REQUIRED_SPLITS[0]]
 
-        available_fields = self.metadata_provider.metadata_fields()
+        # Determine the dataset friendly name, if possible, so that we can request
+        # unsuffixed metadata field names that match the plain names from config.
+        friendly_name = None
+        if isinstance(infer_request, dict) and len(infer_request) == 1:
+            friendly_name = next(iter(infer_request))
+
+        if friendly_name is not None:
+            available_fields = set(self.metadata_provider.metadata_fields(friendly_name=friendly_name))
+        else:
+            # Fallback to the original behavior if we cannot determine a single friendly name.
+            available_fields = set(self.metadata_provider.metadata_fields())
         for field in fields.copy():
             if field not in available_fields:
                 logger.warning(f"Field {field} is unavailable for this dataset")
