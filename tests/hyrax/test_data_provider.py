@@ -282,8 +282,10 @@ def test_apply_configurations(multimodal_config):
 
 
 def test_primary_dataset(multimodal_config):
-    """Test that if no primary dataset is specified, the first dataset
-    in the config is returned."""
+    """Test primary dataset selection behavior:
+    - uses the dataset with a defined ``primary_id_field`` as primary,
+    - raises if no dataset defines ``primary_id_field``,
+    - and switches primary when another dataset defines ``primary_id_field``."""
 
     from hyrax import Hyrax
 
