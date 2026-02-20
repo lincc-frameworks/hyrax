@@ -773,7 +773,7 @@ def create_save_batch_callback(dataset, results_dir):
     Parameters
     ----------
     dataset : Dataset
-        The dataset being processed (must have an ids() method)
+        The dataset being processed (must be a DataProvider or InferenceDataset that has an ids() method)
     results_dir : Path
         Directory where results should be saved
 

@@ -35,9 +35,6 @@ class HyraxDataset:
 
     Optional interfaces:
 
-    ``ids()`` -> Subclasses may override this directly with their own ids function
-    returning a generator of strings
-
     ``metadata`` -> Subclasses may pass an astropy table of metadata to ``__init__`` in the
     superclass. This table of metadata will be available through the ``metadata_fields`` and
     ``metadata`` functions.  If desired, a subclass may override these functions directly
