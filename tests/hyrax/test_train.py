@@ -1,4 +1,28 @@
+from pathlib import Path
+from unittest.mock import patch
+
 from hyrax.config_utils import find_most_recent_results_dir
+
+
+def test_mlflow_tracking_uri_set_to_root_results_dir(loopback_hyrax):
+    """
+    Verify that MLflow tracking URI is set to the root results directory,
+    not the per-run results directory. This is a regression test for the fix
+    that ensures MLflow stores its backend in the correct location.
+    """
+    h, _ = loopback_hyrax
+
+    # Get the expected root results directory
+    expected_root_dir = Path(h.config["general"]["results_dir"]).expanduser().resolve()
+    expected_tracking_uri = "file://" + str(expected_root_dir / "mlflow")
+
+    # Mock mlflow.set_tracking_uri to capture the call
+    # Since mlflow is imported inside the run() method, we need to patch it at the mlflow module level
+    with patch("mlflow.set_tracking_uri") as mock_set_tracking_uri:
+        h.train()
+
+        # Verify set_tracking_uri was called with the root results directory
+        mock_set_tracking_uri.assert_called_once_with(expected_tracking_uri)
 
 
 def test_train(loopback_hyrax):
