@@ -321,7 +321,7 @@ class Visualize(Verb):
 
         if np.any(np.isinf([x_range, y_range])):
             # Show all points without filtering
-            points = np.array([point.numpy() for point in self.umap_results])
+            points = np.array([np.asarray(point) for point in self.umap_results])
             point_indices = list(range(len(self.umap_results)))
         else:
             # Use existing filtering logic
@@ -371,7 +371,7 @@ class Visualize(Verb):
             self.points, self.points_id, self.points_idx = self.poly_select_points(kwargs["geometry"])
         elif self._called_tap(kwargs):
             _, idx = self.tree.query([kwargs["x"], kwargs["y"]])
-            self.points = np.array([self.umap_results[idx].numpy()])
+            self.points = np.array([np.asarray(self.umap_results[idx])])
             self.points_id = np.array([list(self.umap_results.ids())[idx]])
             self.points_idx = np.array([idx])
         elif self._called_box_select(kwargs):
@@ -432,7 +432,7 @@ class Visualize(Verb):
         # Coarse grain the points within the axis-aligned bounding box of the geometry
         (xmin, xmax, ymin, ymax) = Visualize._bounding_box(geometry)
         point_indexes_coarse = self.box_select_indexes([xmin, xmax], [ymin, ymax])
-        points_coarse = self.umap_results[point_indexes_coarse].numpy()
+        points_coarse = np.asarray(self.umap_results[point_indexes_coarse])
 
         tri = Delaunay(geometry)
         mask = tri.find_simplex(points_coarse) != -1
@@ -469,7 +469,7 @@ class Visualize(Verb):
 
         indexes = self.box_select_indexes(x_range, y_range)
         ids = np.array(list(self.umap_results.ids()))[indexes]
-        points = self.umap_results[indexes].numpy()
+        points = np.asarray(self.umap_results[indexes])
         return points, ids, indexes
 
     def box_select_indexes(self, x_range: Union[tuple, list], y_range: Union[tuple, list]):
@@ -508,7 +508,7 @@ class Visualize(Verb):
             return x > xmin and x < xmax and y > ymin and y < ymax
 
         # Filter for points properly inside the box
-        return [i for i in indexes if _inside_box(self.umap_results[i].numpy())]
+        return [i for i in indexes if _inside_box(np.asarray(self.umap_results[i]))]
 
     def selected_objects(self, **kwargs):
         """
@@ -564,8 +564,10 @@ class Visualize(Verb):
         return (xmin, xmax, ymin, ymax)
 
     def _even_aspect_bounding_box(self):
+        import numpy as np
+
         # Bring aspect ratio to 1:1 by expanding the smaller axis range
-        (xmin, xmax, ymin, ymax) = Visualize._bounding_box(point.numpy() for point in self.umap_results)
+        (xmin, xmax, ymin, ymax) = Visualize._bounding_box(np.asarray(point) for point in self.umap_results)
 
         x_dim = xmax - xmin
         x_center = (xmax + xmin) / 2.0
@@ -709,12 +711,12 @@ class Visualize(Verb):
                         if len(self.torch_tensor_bands) == 1:
                             # Single-band extraction
                             band_idx = self.torch_tensor_bands[0]
-                            arr = tensor[band_idx].numpy()
+                            arr = np.asarray(tensor[band_idx])
                         else:
                             # RGB extraction (3 bands)
                             rgb_arrays = []
                             for band_idx in self.torch_tensor_bands:
-                                rgb_arrays.append(tensor[band_idx].numpy())
+                                rgb_arrays.append(np.asarray(tensor[band_idx]))
                             # Stack along new axis to create (H, W, 3) RGB array
                             arr = np.stack(rgb_arrays, axis=-1)
                     else:
