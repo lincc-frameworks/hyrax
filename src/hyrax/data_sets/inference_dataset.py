@@ -125,8 +125,8 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         IDs flow from the primary dataset and the primary ID column.
 
-        data_provider.ids() is canonically the same as
-        [data_provider.get_object_id(i) for i in range(len(data_provider))]
+        For an InferenceDataSet instance, ``self.ids()`` is canonically the same as
+        ``[self.get_object_id(i) for i in range(len(self))]``.
         """
         return [self.get_object_id(i) for i in range(len(self))]
 
