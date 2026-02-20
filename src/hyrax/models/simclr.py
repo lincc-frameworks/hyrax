@@ -1,13 +1,103 @@
 # ruff: noqa: D101, D102
 
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torchvision.models as models
 import torchvision.transforms as T  # noqa N812
+from scipy.ndimage import shift
+from skimage.transform import warp_polar
 
 from hyrax.models.model_registry import hyrax_model
+
+
+class APCTTransform(torch.nn.Module):
+    """
+    Perform Adaptive Polar Coordinate Transformation (APCT), mostly based on Fang et al 2023
+
+    To be used with `torchvision.transforms`
+    """
+
+    def __init__(self, ref_channel=3):
+        super().__init__()
+
+        # The index of channels used as pivot for all channels
+        # Default at 3 (LSST's i-channel)
+        self.ref_channel = ref_channel
+
+    # TODO: Check if this argument signature aligns with that of SimCLR
+    def forward(self, imgs):
+        # Transform the image
+        new_imgs = self.transform_apct_nchannels(imgs, self.ref_channel)
+
+        # No change in label
+        return new_imgs
+
+    def transform_apct_nchannels(self, imgs, ref_channel):
+        """
+        Multiple-channel implementation of APCT in Fang et al. 2023
+
+        This routine assumes Rubin's 6 channels data by default
+
+        Parameters
+        ----------
+        imgs : array_like
+            An array of images of length N that need to be transform. Should have N channels.
+        ref_channel : int, default=3
+            The index of the channels to be used as a reference. Default to i-channel.
+
+        Returns
+        -------
+        unrolled_img : ndarray
+            An array of length N of polar-transformed images.
+        """
+        # Get the shape of the image
+        shape = imgs.shape[1:3]
+
+        # This routine uses the reference channel as an anchor and
+        # applies the same transformation to the other channels
+        ref_img = imgs[ref_channel, :, :]
+
+        # Sort the flux in all pixels, in an ascending order
+        argsorted_indices = np.argsort(ref_img.flatten())
+
+        # Locate the maximum
+        max_flat_index = argsorted_indices[-1]
+        max_indices = np.unravel_index(max_flat_index, shape)
+
+        # Locate the minimum
+        min_flat_index = argsorted_indices[1]
+        min_indices = np.unravel_index(min_flat_index, shape)
+
+        ## Transform to polar coordinate
+        # Use the maximum as the origin and the reference angle toward the minimum
+        ref_angle = np.atan2(min_indices[1] - max_indices[1], min_indices[0] - max_indices[0])
+
+        # Warp the image and transform to polar coordinates
+        # Apply to all images with the channel axis being 0
+        unrolled_imgs = warp_polar(
+            imgs,
+            center=(max_indices[0], max_indices[1]),
+            output_shape=(125, shape[0] // 2),
+            radius=shape[0] // 2 * np.sqrt(2),
+            scaling="linear",
+            channel_axis=0,
+        )
+
+        # Shift the unrolled image to align with the reference vector
+        # Each x-pixel correspond to 0.05 radian increment. Wrap the images around
+        def unroll(unrolled_img):
+            return shift(unrolled_img, (-np.round(ref_angle / 0.05), 0), mode="wrap")
+
+        unrolled_imgs_shifted = np.array([unroll(im) for im in unrolled_imgs])
+
+        # Mirror the image along y axis
+        mirroreds = np.concatenate([np.flip(unrolled_imgs_shifted, axis=2), unrolled_imgs_shifted], axis=2)
+
+        # The end result is rotated so that it's in landscape orientation with (0, 0) on the left side
+        return np.rot90(mirroreds, k=-1, axes=(1, 2))
 
 
 class NTXentLoss(nn.Module):
@@ -66,15 +156,30 @@ class PositiveRescale:
 class SimCLR(nn.Module):
     """SimCLR model. Implementation based on Chen, 2020"""
 
-    def __init__(self, config, shape):
+    def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config
-        self.shape = shape
+
+        if data_sample is None:
+            raise ValueError("A `data_sample` must be provided for dynamic sizing.")
+
+        self.shape = data_sample[0].shape
         proj_dim = config["model"]["SimCLR"]["projection_dimension"]
         temperature = config["model"]["SimCLR"]["temperature"]
 
         backbone = models.resnet18(pretrained=False)
-        backbone.fc = nn.Identity()
+        # final_layer = self.config["model"].get("final_layer", "tanh")
+        # if final_layer == "sigmoid":
+        #     self.final_activation = nn.Sigmoid()
+        # elif final_layer == "tanh":
+        #     self.final_activation = nn.Tanh()
+        # elif final_layer == "arcsinh":
+        #     self.final_activation = ArcsinhActivation()
+        # elif final_layer == "identity":
+        #     self.final_activation = nn.Identity()
+        # else:
+        #     self.final_activation = nn.Tanh()
+        backbone.fc = self.final_activation
         self.backbone = backbone
 
         self.projection_head = nn.Sequential(
@@ -82,13 +187,18 @@ class SimCLR(nn.Module):
             nn.ReLU(inplace=True),
             nn.Linear(512, proj_dim),
         )
-        self.criterion = NTXentLoss(temperature)
+
+        # TODO: Make sure to revisit this and properly implement custom criterion
+        self.the_criterion = NTXentLoss(temperature)
 
     def forward(self, x):
         feats = self.backbone(x)
         return self.projection_head(feats)
 
     def train_batch(self, x):
+        # Extract the tensors from the single-element tuple
+        x = x[0]
+
         aug = T.Compose(
             [
                 T.RandomResizedCrop(size=x.shape[-1]),
@@ -118,6 +228,9 @@ class SimCLR(nn.Module):
         return {"loss": loss.item()}
 
     def validate_batch(self, x):
+        # Extract the tensors from the single-element tuple
+        x = x[0]
+
         aug = T.Compose(
             [
                 T.RandomResizedCrop(size=x.shape[-1]),
