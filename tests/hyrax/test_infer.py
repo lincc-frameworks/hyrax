@@ -15,8 +15,8 @@ def test_infer_order(loopback_hyrax, shuffle):
 
     dataset = dataset["infer"]
     inference_results = h.infer()
-    inference_result_ids = list(inference_results.ids())
-    original_dataset_ids = list(dataset.ids())
+    inference_result_ids = inference_results.ids()
+    original_dataset_ids = dataset.ids()
 
     if dataset.is_iterable():
         dataset = list(dataset)

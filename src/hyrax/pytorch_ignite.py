@@ -231,11 +231,7 @@ def dist_data_loader(
     if isinstance(split, bool):
         # We still need to return the list of indexes used by the dataloader,
         # but here, it will simply be the indexes for the entire dataset.
-        if dataset.is_iterable():
-            ids = list(dataset.ids())
-            indexes = list(range(len(ids)))
-        else:
-            indexes = list(range(len(dataset)))
+        indexes = list(range(len(dataset)))
 
         # Note that when sampler=None, a default sampler is used. The default config
         # defines shuffle=False, which should prevent any shuffling of of the data.
@@ -777,7 +773,7 @@ def create_save_batch_callback(dataset, results_dir):
     Parameters
     ----------
     dataset : Dataset
-        The dataset being processed (must have an ids() method)
+        The dataset being processed (must be a DataProvider or InferenceDataset that has an ids() method)
     results_dir : Path
         Directory where results should be saved
 

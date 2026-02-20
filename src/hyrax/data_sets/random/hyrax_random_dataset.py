@@ -1,6 +1,6 @@
 import numpy as np
 from astropy.table import Table
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import Dataset
 
 from hyrax.data_sets.data_set_registry import HyraxDataset
 
@@ -197,53 +197,3 @@ class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
         """Get the total number of samples in this dataset. This should be return
         the same value as the `size` parameter in the configuration."""
         return len(self.data)
-
-    def ids(self):
-        """This function yields IDs for the dataset. It can be used as an iterable
-        in a loop, or converted to a list by wrapping the function call in ``list(...)``."""
-        for id_item in self.id_list:
-            yield str(id_item)
-
-
-class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableDataset):
-    """This dataset is stand-in for a iterable-style, or streaming, dataset.
-    It will produce random numpy arrays and, optionally, labels randomly
-    selected from the provided list of possible labels.
-
-    .. note::
-
-        While ids will be generated automatically for this dataset, calling the
-        ``ids`` method of this dataset will return the index instead of the id.
-    """
-
-    def __iter__(self):
-        """Yield the next data sample. The returned dictionary will have the
-        following form:
-
-        - ``data``: A dictionary containing:
-
-          - ``index``: The index of the data sample.
-          - ``object_id``: The value will be the same as ``index`` for this dataset.
-          - ``image``: The data sample as a numpy array.
-          - ``label``: The label of the data sample (if provided).
-
-        Returns
-        -------
-        dict
-            A dictionary containing a data sample and its metadata.
-
-        """
-        for idx, _ in enumerate(self.data):
-            ret = {
-                "data": {
-                    "index": idx,
-                    "object_id": self.get_object_id(idx),
-                    "image": self.get_image(idx),
-                },
-                "object_id": self.get_object_id(idx),
-            }
-
-            if self.provided_labels:
-                ret["data"]["label"] = self.get_label(idx)
-
-            yield ret
