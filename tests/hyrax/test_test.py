@@ -64,7 +64,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
 def test_test(loopback_hyrax_map_only):
     """
     Simple test that testing succeeds with the loopback
-    model in use and returns an InferenceDataSet.
+    model in use and returns a ResultDataset.
     """
     h, _ = loopback_hyrax_map_only
     # First train a model to have weights to test
@@ -73,16 +73,16 @@ def test_test(loopback_hyrax_map_only):
     # Now test the model
     result = h.test()
 
-    # Verify we got an InferenceDataSet back
-    from hyrax.data_sets.inference_dataset import InferenceDataSet
+    # Verify we got a ResultDataset back
+    from hyrax.data_sets.result_dataset import ResultDataset
 
     assert result is not None
-    assert isinstance(result, InferenceDataSet)
+    assert isinstance(result, ResultDataset)
 
     # Verify the results directory has the expected files
-    assert result.results_dir.exists()
-    assert (result.results_dir / "batch_index.npy").exists()
-    assert (result.results_dir / "test_weights.pth").exists()
+    assert result.data_location.exists()
+    assert (result.data_location / "lance_db").exists()
+    assert (result.data_location / "test_weights.pth").exists()
 
 
 def test_test_with_explicit_weights(loopback_hyrax_map_only, tmp_path):
@@ -106,11 +106,11 @@ def test_test_with_explicit_weights(loopback_hyrax_map_only, tmp_path):
     # Run test
     result = h.test()
 
-    # Verify we got an InferenceDataSet back
-    from hyrax.data_sets.inference_dataset import InferenceDataSet
+    # Verify we got a ResultDataset back
+    from hyrax.data_sets.result_dataset import ResultDataset
 
     assert result is not None
-    assert isinstance(result, InferenceDataSet)
+    assert isinstance(result, ResultDataset)
 
 
 def test_test_auto_detects_weights(loopback_hyrax_map_only, tmp_path):
@@ -131,11 +131,11 @@ def test_test_auto_detects_weights(loopback_hyrax_map_only, tmp_path):
     # Run test - should auto-detect weights from train
     result = h.test()
 
-    # Verify we got an InferenceDataSet back
-    from hyrax.data_sets.inference_dataset import InferenceDataSet
+    # Verify we got a ResultDataset back
+    from hyrax.data_sets.result_dataset import ResultDataset
 
     assert result is not None
-    assert isinstance(result, InferenceDataSet)
+    assert isinstance(result, ResultDataset)
 
 
 def test_test_saves_weights_file(loopback_hyrax_map_only, tmp_path):

@@ -8,8 +8,6 @@ import numpy as np
 import numpy.typing as npt
 from torch.utils.data import Dataset
 
-from hyrax.config_utils import find_most_recent_results_dir
-
 from .data_set_registry import HyraxDataset
 
 logger = logging.getLogger(__name__)
@@ -57,11 +55,11 @@ class InferenceDataSet(HyraxDataset, Dataset):
         RuntimeError
             When the provided results directory is corrupt, or cannot be found.
         """
-        from hyrax.config_utils import ConfigManager
+        from hyrax.config_utils import ConfigManager, resolve_results_dir
         from hyrax.pytorch_ignite import setup_dataset
 
         super().__init__(config)
-        self.results_dir = self._resolve_results_dir(config, results_dir, verb)
+        self.results_dir = resolve_results_dir(config, results_dir, verb)
 
         # Open the batch index numpy file.
         # Loop over files and create if it does not exist
@@ -288,36 +286,6 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         return self.cached_batch[np.isin(self.cached_batch["id"], ids)]
 
-    def _resolve_results_dir(self, config, results_dir: Union[Path, str] | None, verb: str | None) -> Path:
-        """Initialize an inference results directory as a data source. Accepts an override of what
-        directory to use"""
-
-        verb = "infer" if verb is None else verb
-
-        if results_dir is None:
-            if self.config["results"]["inference_dir"]:
-                results_dir = self.config["results"]["inference_dir"]
-                if not isinstance(results_dir, str):
-                    msg = "Configured [results_dir] is not a string"
-                    raise RuntimeError(msg)
-            else:
-                results_dir = find_most_recent_results_dir(self.config, verb=verb)
-                if results_dir is None:
-                    msg = "Could not find a results directory. Run infer or use "
-                    msg += "[results] inference_dir config to specify a directory."
-                    raise RuntimeError(msg)
-                msg = f"Using most recent results dir {results_dir} for lookup."
-                msg += " Use the [results] inference_dir config to set a directory or pass it to this verb."
-                logger.debug(msg)
-
-        retval = Path(results_dir) if isinstance(results_dir, str) else results_dir
-
-        if not retval.exists():
-            msg = f"Inference directory {results_dir} does not exist"
-            raise RuntimeError(msg)
-
-        return retval
-
 
 class InferenceDataSetWriter:
     """Class to write out inference datasets. Used by infer, umap to consistently write out numpy
@@ -411,6 +379,10 @@ class InferenceDataSetWriter:
 
         # Write out the config needed to re-constitute the original dataset we came from.
         log_runtime_config(self.original_dataset_config, self.result_dir, ORIGINAL_DATASET_CONFIG_FILENAME)
+
+    def commit(self):
+        """Alias for write_index() to maintain compatibility with ResultDatasetWriter API."""
+        self.write_index()
 
     def _save_batch_index(self):
         """Save a batch index in the result directory provided"""

@@ -68,6 +68,8 @@ from .random.hyrax_random_dataset import (
     HyraxRandomDatasetBase,
 )
 from .inference_dataset import InferenceDataSet
+from .result_dataset import ResultDataset, ResultDatasetWriter
+from .result_factories import create_results_writer, load_results_dataset
 from .data_set_registry import HyraxDataset, iterable_dataset_collate
 from .hyrax_cifar_dataset import HyraxCifarBase
 from .hyrax_csv_dataset import HyraxCSVDataset
@@ -78,6 +80,10 @@ __all__ = [
     "FitsImageDataSet",
     "HSCDataSet",
     "InferenceDataSet",
+    "ResultDataset",
+    "ResultDatasetWriter",
+    "create_results_writer",
+    "load_results_dataset",
     "HyraxDataset",
     "LSSTDataset",
     "DownloadedLSSTDataset",
