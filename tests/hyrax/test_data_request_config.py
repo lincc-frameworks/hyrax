@@ -410,6 +410,6 @@ def test_as_dict_with_dict_configs():
     assert "train" in as_dict
     assert "data_0" in as_dict["train"]
     assert "data_1" in as_dict["train"]
-    assert as_dict["train"]["data_0"]["data"]["dataset_class"] == "HyraxRandomDataset"
-    assert as_dict["train"]["data_0"]["data"]["primary_id_field"] == "id"
-    assert as_dict["train"]["data_1"]["data"]["dataset_class"] == "HyraxCifarDataset"
+    assert as_dict["train"]["data_0"]["dataset_class"] == "HyraxRandomDataset"
+    assert as_dict["train"]["data_0"]["primary_id_field"] == "id"
+    assert as_dict["train"]["data_1"]["dataset_class"] == "HyraxCifarDataset"

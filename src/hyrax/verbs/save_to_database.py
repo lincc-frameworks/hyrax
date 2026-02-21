@@ -69,7 +69,7 @@ class SaveToDatabase(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
-        from hyrax.data_sets.inference_dataset import InferenceDataSet
+        from hyrax.data_sets.result_factories import load_results_dataset
         from hyrax.tensorboardx_logger import (
             close_tensorboard_logger,
             get_tensorboard_logger,
@@ -98,8 +98,8 @@ class SaveToDatabase(Verb):
         if not inference_results_path.is_dir():
             raise RuntimeError(f"Input directory {inference_results_path} does not exist.")
 
-        # Create an instance of the InferenceDataSet
-        inference_data_set = InferenceDataSet(config, inference_results_path)
+        # Create an instance of the results dataset (auto-detects Lance vs .npy)
+        inference_data_set = load_results_dataset(config, inference_results_path, verb="infer")
 
         # Get the vector db output directory by using the --output-dir parameter or
         # config value or creating a new directory, in that order.
@@ -137,31 +137,32 @@ class SaveToDatabase(Verb):
         init_tensorboard_logger(log_dir=vector_db_path)
         tensorboardx_logger = get_tensorboard_logger()
 
-        # Use the batch_index to get the list of batches.
-        batches = np.unique(inference_data_set.batch_index["batch_num"])
+        # Process data in batches
+        batch_size = config["data_loader"]["batch_size"]
+        total_items = len(inference_data_set)
+        num_batches = int(np.ceil(total_items / batch_size))
 
-        logger.debug(f"Number of inference result batches to index: {len(batches)}.")
+        logger.debug(f"Number of inference result batches to index: {num_batches}.")
 
         total_insertion_time = 0.0
         batch_count = 0
 
-        for batch in tqdm(batches):
-            # Get all the indices where inference_data_set.batch_index['batch_num'] == batch
-            index_mask = inference_data_set.batch_index["batch_num"] == batch
+        for batch_idx in tqdm(range(num_batches)):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, total_items)
+            indices = np.arange(start_idx, end_idx)
 
-            # Get the ids of the data in this batch file
-            ids = inference_data_set.batch_index["id"][index_mask]
-
-            # Retrieve the vectors from the batch file using the ids. We use the
-            # ids here so that we only have to open one file to get the vectors.
-            inference_data = inference_data_set._load_from_batch_file(batch, ids)
-
-            # Flatten the vectors and turn them into a list of np.arrays.
-            vectors = list(inference_data["tensor"].reshape(len(inference_data["tensor"]), -1))
+            # Get the vectors and ids for this batch
+            vectors = []
+            ids = []
+            for idx in indices:
+                vector = np.asarray(inference_data_set[idx]).flatten()
+                vectors.append(vector)
+                ids.append(inference_data_set.get_object_id(idx))
 
             # Time the vector database insertion
             start_time = time.time()
-            vector_db.insert(ids=list(inference_data["id"]), vectors=vectors)
+            vector_db.insert(ids=ids, vectors=vectors)
             insertion_time = time.time() - start_time
 
             # Log insertion metrics to Tensorboard
@@ -175,8 +176,8 @@ class SaveToDatabase(Verb):
             tensorboardx_logger.add_scalar("vector_db/insertion_rate_vectors_per_second", rate, batch_count)
 
             logger.debug(
-                f"Batch {batch}: Inserted {vectors_inserted} vectors in {insertion_time:.3f}s "
-                f"({vectors_inserted / insertion_time:.1f} vectors/sec)"
+                f"Batch {batch_idx}: Inserted {vectors_inserted} vectors in {insertion_time:.3f}s "
+                f"({rate:.1f} vectors/sec)"
             )
 
         # Log total insertion metrics

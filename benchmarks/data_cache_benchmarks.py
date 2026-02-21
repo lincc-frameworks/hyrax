@@ -1,25 +1,43 @@
 import os
+from pathlib import Path
 
+import pooch
 import psutil
 
 from hyrax import Hyrax
 
+HSC1K_EXTRACTED_DIRNAME = "hsc_8asec_1000"
+HSC1K_ARCHIVE_URL = "doi:10.5281/zenodo.14498536/hsc_demo_data.zip"
+HSC1K_ARCHIVE_HASH = "md5:1be05a6b49505054de441a7262a09671"
+
 
 class DataCacheBenchmarks:
-    """Timing benchmarks for requesting data from the Hyrax random dataset"""
+    """Timing benchmarks for preloading the data cache with the HSC1k dataset."""
 
     def setup_cache(self):
-        """Download CIFAR dataset only once"""
+        """Download the HSC1k dataset only once."""
         self.h = Hyrax()
 
         # asv caches the cwd for each benchmark run
-        self.h.config["general"]["results_dir"] = "./cifar"
+        data_dir = Path("./hsc1k").resolve()
+        data_dir.mkdir(exist_ok=True)
+        hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
+        if not hsc_data_dir.exists():
+            pooch.retrieve(
+                url=HSC1K_ARCHIVE_URL,
+                known_hash=HSC1K_ARCHIVE_HASH,
+                fname="hsc_demo_data.zip",
+                path=data_dir,
+                processor=pooch.Unzip(extract_dir="."),
+            )
+
+        self.h.config["general"]["results_dir"] = str(data_dir)
         self.h.config["data_request"] = {
             "train": {
                 "data": {
-                    "dataset_class": "HyraxCifarDataset",
-                    "data_location": "./cifar",
-                    "fields": ["image", "label", "object_id"],
+                    "dataset_class": "HSCDataSet",
+                    "data_location": str(hsc_data_dir),
+                    "fields": ["image"],
                 }
             },
         }
@@ -29,13 +47,13 @@ class DataCacheBenchmarks:
 
     def setup(self):
         """
-        Prepare for benchmark by defining and setting up the same random dataset
-        Despite calling setup_cache this should not trigger another cifar download.
+        Prepare for benchmark by defining and setting up the same dataset.
+        Despite calling setup_cache this should not trigger another HSC1k download.
         """
         self.setup_cache()
         self.h.config["data_set"]["preload_cache"] = True
 
-    def time_preload_cache_cifar(self):
+    def time_preload_cache_hsc1k(self):
         """Benchmark the amount of time needed to preload the cache of all data"""
         try:
             from hyrax.data_sets.data_cache import DataCache
@@ -45,11 +63,11 @@ class DataCacheBenchmarks:
         self.data_cache.start_preload_thread()
         self.data_cache._preload_thread.join()
 
-    def track_cache_cifar_hyrax_size_undercount(self):
-        """Benchmark the amount of memory needed to preload the cache with Cifar data"""
+    def track_cache_hsc1k_hyrax_size_undercount(self):
+        """Benchmark the amount of memory needed to preload the cache with HSC1k data"""
         initial = psutil.Process(os.getpid()).memory_info().rss
 
-        self.time_preload_cache_cifar()
+        self.time_preload_cache_hsc1k()
 
         final = psutil.Process(os.getpid()).memory_info().rss
         os_size = final - initial
@@ -57,4 +75,4 @@ class DataCacheBenchmarks:
         hyrax_undercount = os_size - hyrax_size
         return (hyrax_undercount / os_size) * 100
 
-    track_cache_cifar_hyrax_size_undercount.units = "percent"
+    track_cache_hsc1k_hyrax_size_undercount.units = "percent"

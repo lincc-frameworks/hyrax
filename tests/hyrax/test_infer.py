@@ -38,7 +38,7 @@ def test_infer_order(loopback_hyrax, shuffle):
 
 def test_load_model_weights_updates_config_when_auto_detected(tmp_path):
     """Test that config is updated when model_weights_file is auto-detected from train directory"""
-    from hyrax.verbs.infer import Infer
+    from hyrax.models.model_utils import load_model_weights
 
     # Create a mock config with no model_weights_file specified
     config = {}
@@ -58,7 +58,7 @@ def test_load_model_weights_updates_config_when_auto_detected(tmp_path):
     # Mock find_most_recent_results_dir to return our fake train directory
     with patch("hyrax.config_utils.find_most_recent_results_dir", return_value=train_dir):
         # Call load_model_weights
-        Infer.load_model_weights(config, mock_model)
+        load_model_weights(config, mock_model, "infer")
 
     # Verify that config was updated with the actual weights file path
     assert config["infer"]["model_weights_file"] == str(weights_file)
@@ -70,7 +70,7 @@ def test_load_model_weights_preserves_explicit_config():
     """Test that config is still updated when model_weights_file is explicitly provided"""
     from tempfile import NamedTemporaryFile
 
-    from hyrax.verbs.infer import Infer
+    from hyrax.models.model_utils import load_model_weights
 
     # Create a temporary weights file
     with NamedTemporaryFile(suffix=".pth", delete=False) as tmp_file:
@@ -87,7 +87,7 @@ def test_load_model_weights_preserves_explicit_config():
         mock_model = MagicMock()
 
         # Call load_model_weights
-        Infer.load_model_weights(config, mock_model)
+        load_model_weights(config, mock_model, "infer")
 
         # Verify that config still contains the weights file path (converted to string)
         assert config["infer"]["model_weights_file"] == str(weights_path)

@@ -66,7 +66,7 @@ def plotter(ax, data_tuple):
     ax.axis("off")  # Hide the axis
 
 
-def sort_objects_by_median_distance(all_embeddings, median_dist_all_nn, data_directory):
+def sort_objects_by_median_distance(object_ids, median_dist_all_nn, data_directory):
     """Order all the objects according to median distance to nearest neighbor.
     Return a tuple for easy plotting: (object id, rounded median distance, file name)."""
 
@@ -74,7 +74,7 @@ def sort_objects_by_median_distance(all_embeddings, median_dist_all_nn, data_dir
     data_directory = Path(data_directory).expanduser().resolve()
     objects = []
     for indx in np.argsort(median_dist_all_nn):
-        object_id = all_embeddings["ids"][indx]
+        object_id = object_ids[indx]
 
         found_files = glob.glob(f"{data_directory / object_id}*.fits")
         file_name = found_files[0][:-11]
@@ -86,9 +86,12 @@ def sort_objects_by_median_distance(all_embeddings, median_dist_all_nn, data_dir
 
 def plot_umap(results_dir):
     """Reads in the UMAP results and plots them as a scatter plot"""
-    a = np.load(results_dir / "batch_0.npy")
-    b = np.load(results_dir / "batch_1.npy")
-    out = np.concatenate((a["tensor"], b["tensor"]), axis=0)
+    from hyrax.data_sets.result_factories import load_results_dataset
+
+    # Load UMAP results from Lance (or .npy fallback)
+    result_ds = load_results_dataset({}, results_dir)
+    out = np.array([result_ds[i] for i in range(len(result_ds))])
+
     fig, ax = plt.subplots(figsize=(12, 12))
     fig.patch.set_facecolor("darkslategrey")
     ax.set_facecolor("darkslategrey")

@@ -85,11 +85,13 @@ class Train(Verb):
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:
-            create_validator(model, config, results_dir, validation_data_loader, trainer)
+            create_validator(model, config, validation_data_loader, trainer)
 
         monitor = GpuMonitor()
 
-        mlflow.set_tracking_uri("file://" + str(results_dir / "mlflow"))
+        # Go up to the parent of the results dir so all mlflow results show up in the same directory.
+        mlflow_dir = (results_dir.parent / "mlflow").resolve()
+        mlflow.set_tracking_uri("file://" + str(mlflow_dir))
 
         # Get experiment_name and cast to string (it's a tomlkit.string by default)
         experiment_name = str(config["train"]["experiment_name"])
