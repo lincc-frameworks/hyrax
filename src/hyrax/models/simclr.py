@@ -7,8 +7,6 @@ import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 import torchvision.models as models
 import torchvision.transforms as T  # noqa N812
-from scipy.ndimage import shift
-from skimage.transform import warp_polar
 
 from hyrax.models.model_registry import hyrax_model
 
@@ -35,69 +33,71 @@ class APCTTransform(torch.nn.Module):
         # No change in label
         return new_imgs
 
-    def transform_apct_nchannels(self, imgs, ref_channel):
+    def transform_apct_nchannels(self, image: torch.Tensor, ref_channel: int = 2):
         """
         Multiple-channel implementation of APCT in Fang et al. 2023
 
-        This routine assumes Rubin's 6 channels data by default
-
         Parameters
         ----------
-        imgs : array_like
-            An array of images of length N that need to be transform. Should have N channels.
-        ref_channel : int, default=3
+        image : tensor
+            tensor image to be transformed
+        ref_channel : int
             The index of the channels to be used as a reference. Default to i-channel.
-
-        Returns
-        -------
-        unrolled_img : ndarray
-            An array of length N of polar-transformed images.
         """
-        # Get the shape of the image
-        shape = imgs.shape[1:3]
+        if image.dim() == 3:
+            image = image.unsqueeze(0)  # -> (1, C, H, W)
 
-        # This routine uses the reference channel as an anchor and
-        # applies the same transformation to the other channels
-        ref_img = imgs[ref_channel, :, :]
+        batches, channels, height, width = image.shape
+        # Find the center of the image
+        cx, cy = width / 2.0, height / 2.0
+        radius = np.sqrt(cx**2 + cy**2)
+
+        ref_img = image[:, ref_channel, :, :]
 
         # Sort the flux in all pixels, in an ascending order
-        argsorted_indices = np.argsort(ref_img.flatten())
+        argsorted_indices = torch.argsort(ref_img.flatten())
 
         # Locate the maximum
         max_flat_index = argsorted_indices[-1]
-        max_indices = np.unravel_index(max_flat_index, shape)
+        max_indices = torch.unravel_index(max_flat_index, (height, width))
 
         # Locate the minimum
         min_flat_index = argsorted_indices[1]
-        min_indices = np.unravel_index(min_flat_index, shape)
+        min_indices = torch.unravel_index(min_flat_index, (height, width))
 
         ## Transform to polar coordinate
         # Use the maximum as the origin and the reference angle toward the minimum
-        ref_angle = np.atan2(min_indices[1] - max_indices[1], min_indices[0] - max_indices[0])
-
-        # Warp the image and transform to polar coordinates
-        # Apply to all images with the channel axis being 0
-        unrolled_imgs = warp_polar(
-            imgs,
-            center=(max_indices[0], max_indices[1]),
-            output_shape=(125, shape[0] // 2),
-            radius=shape[0] // 2 * np.sqrt(2),
-            scaling="linear",
-            channel_axis=0,
+        ref_angle = np.atan2(
+            min_indices[1].cpu() - max_indices[1].cpu(), min_indices[0].cpu() - max_indices[0].cpu()
         )
 
-        # Shift the unrolled image to align with the reference vector
-        # Each x-pixel correspond to 0.05 radian increment. Wrap the images around
-        def unroll(unrolled_img):
-            return shift(unrolled_img, (-np.round(ref_angle / 0.05), 0), mode="wrap")
+        n_angles, n_radii = (max(height, width), int(radius))
 
-        unrolled_imgs_shifted = np.array([unroll(im) for im in unrolled_imgs])
+        # Build sampling grid in polar space
+        theta = torch.linspace(0, 2 * torch.pi, 125, device=image.device) - np.round(ref_angle / 0.05)
+        r = torch.linspace(0, radius, n_radii, device=image.device)
 
-        # Mirror the image along y axis
-        mirroreds = np.concatenate([np.flip(unrolled_imgs_shifted, axis=2), unrolled_imgs_shifted], axis=2)
+        # Meshgrid: (n_angles, n_radii)
+        theta_grid, r_grid = torch.meshgrid(theta, r, indexing="ij")
 
-        # The end result is rotated so that it's in landscape orientation with (0, 0) on the left side
-        return np.rot90(mirroreds, k=-1, axes=(1, 2))
+        # Convert polar -> Cartesian pixel coords
+        x = r_grid * torch.cos(theta_grid) + cx
+        y = r_grid * torch.sin(theta_grid) + cy
+
+        # Normalize to [-1, 1] as required by grid_sample
+        x_norm = (x / (width - 1)) * 2 - 1
+        y_norm = (y / (height - 1)) * 2 - 1
+
+        grid = torch.stack([x_norm, y_norm], dim=-1)  # (n_angles, n_radii, 2)
+
+        grid = grid.unsqueeze(0).expand(batches, -1, -1, -1)  # (B, n_angles, n_radii, 2)
+
+        warped = F.grid_sample(image, grid, mode="bilinear", padding_mode="zeros", align_corners=True)
+
+        mirroreds = torch.concatenate([torch.flip(warped, dims=(3,)), warped], dim=3)
+
+        rotated_mirroreds = torch.rot90(mirroreds, k=-1, dims=(2, 3))
+        return rotated_mirroreds  # (B, C, 2 * n_radii, n_angles)
 
 
 class NTXentLoss(nn.Module):
@@ -179,6 +179,8 @@ class SimCLR(nn.Module):
         #     self.final_activation = nn.Identity()
         # else:
         #     self.final_activation = nn.Tanh()
+
+        self.final_activation = nn.Tanh()
         backbone.fc = self.final_activation
         self.backbone = backbone
 
@@ -189,7 +191,7 @@ class SimCLR(nn.Module):
         )
 
         # TODO: Make sure to revisit this and properly implement custom criterion
-        self.the_criterion = NTXentLoss(temperature)
+        self.criterion = NTXentLoss(temperature)
 
     def forward(self, x):
         feats = self.backbone(x)
@@ -199,24 +201,26 @@ class SimCLR(nn.Module):
         # Extract the tensors from the single-element tuple
         x = x[0]
 
-        aug = T.Compose(
-            [
-                T.RandomResizedCrop(size=x.shape[-1]),
-                T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
-                T.RandomApply(
-                    [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
-                    p=self.config["model"]["SimCLR"]["color_jitter_probability"],
-                ),
-                T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
-                T.GaussianBlur(
-                    kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
-                    sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
-                ),
-            ]
-        )
+        # aug = T.Compose(
+        #     [
+        #         APCTTransform(ref_channel=2),
+        #         # T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
+        #         # T.RandomApply(
+        #         #     [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
+        #         #     p=self.config["model"]["SimCLR"]["color_jitter_probability"],
+        #         # ),
+        #         # T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
+        #         # T.GaussianBlur(
+        #         #     kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
+        #         #     sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
+        #         # ),
+        #     ]
+        # )
 
-        x1 = torch.stack([aug(img) for img in x])
-        x2 = torch.stack([aug(img) for img in x])
+        aug = APCTTransform(ref_channel=2)
+
+        x1 = torch.stack([aug(img) for img in x]).squeeze(1)
+        x2 = torch.stack([aug(img) for img in x]).squeeze(1)
 
         z1 = self.forward(x1)
         z2 = self.forward(x2)
@@ -231,24 +235,26 @@ class SimCLR(nn.Module):
         # Extract the tensors from the single-element tuple
         x = x[0]
 
-        aug = T.Compose(
-            [
-                T.RandomResizedCrop(size=x.shape[-1]),
-                T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
-                T.RandomApply(
-                    [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
-                    p=self.config["model"]["SimCLR"]["color_jitter_probability"],
-                ),
-                T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
-                T.GaussianBlur(
-                    kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
-                    sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
-                ),
-            ]
-        )
+        # aug = T.Compose(
+        #     [
+        #         APCTTransform(ref_channel=2),
+        #         # T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
+        #         # T.RandomApply(
+        #         #     [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
+        #         #     p=self.config["model"]["SimCLR"]["color_jitter_probability"],
+        #         # ),
+        #         # T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
+        #         # T.GaussianBlur(
+        #         #     kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
+        #         #     sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
+        #         # ),
+        #     ]
+        # )
 
-        x1 = torch.stack([aug(img) for img in x])
-        x2 = torch.stack([aug(img) for img in x])
+        aug = APCTTransform(ref_channel=2)
+
+        x1 = torch.stack([aug(img) for img in x]).squeeze(1)
+        x2 = torch.stack([aug(img) for img in x]).squeeze(1)
 
         z1 = self.forward(x1)
         z2 = self.forward(x2)
@@ -272,4 +278,7 @@ class SimCLR(nn.Module):
         torch.Tensor
             Output tensor of shape (batch_size, projection_dimension).
         """
-        return self.forward(x)
+        print(x[0].shape)
+        print(x[1].shape)
+        # We don't need to include the projection head during the inference
+        return self.backbone(x[0])
