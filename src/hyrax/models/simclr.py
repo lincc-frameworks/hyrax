@@ -33,7 +33,7 @@ class APCTTransform(torch.nn.Module):
         # No change in label
         return new_imgs
 
-    def transform_apct_nchannels(self, image: torch.Tensor, ref_channel: int = 2):
+    def transform_apct_nchannels(self, image: torch.Tensor, ref_channel: int = 2, output_size: tuple[int, int] = (106, 125)):
         """
         Multiple-channel implementation of APCT in Fang et al. 2023
 
@@ -48,9 +48,6 @@ class APCTTransform(torch.nn.Module):
             image = image.unsqueeze(0)  # -> (1, C, H, W)
 
         batches, channels, height, width = image.shape
-        # Find the center of the image
-        cx, cy = width / 2.0, height / 2.0
-        radius = np.sqrt(cx**2 + cy**2)
 
         ref_img = image[:, ref_channel, :, :]
 
@@ -71,11 +68,15 @@ class APCTTransform(torch.nn.Module):
             min_indices[1].cpu() - max_indices[1].cpu(), min_indices[0].cpu() - max_indices[0].cpu()
         )
 
-        n_angles, n_radii = (max(height, width), int(radius))
+        # Find the center of the image
+        # The center of the image is the indices of the maximum pixel + 1
+        cx, cy = max_indices[0].cpu() + 1, max_indices[1].cpu() + 1
+        radius = np.sqrt(cx**2 + cy**2)
 
         # Build sampling grid in polar space
-        theta = torch.linspace(0, 2 * torch.pi, 125, device=image.device) - np.round(ref_angle / 0.05)
-        r = torch.linspace(0, radius, n_radii, device=image.device)
+        # Offset theta space by the angle from +x
+        theta = torch.linspace(0, 2 * torch.pi, output_size[1], device=image.device) - np.round(ref_angle / 0.05)
+        r = torch.linspace(0, radius, output_size[0], device=image.device)
 
         # Meshgrid: (n_angles, n_radii)
         theta_grid, r_grid = torch.meshgrid(theta, r, indexing="ij")
@@ -201,23 +202,23 @@ class SimCLR(nn.Module):
         # Extract the tensors from the single-element tuple
         x = x[0]
 
-        # aug = T.Compose(
-        #     [
-        #         APCTTransform(ref_channel=2),
-        #         # T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
-        #         # T.RandomApply(
-        #         #     [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
-        #         #     p=self.config["model"]["SimCLR"]["color_jitter_probability"],
-        #         # ),
-        #         # T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
-        #         # T.GaussianBlur(
-        #         #     kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
-        #         #     sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
-        #         # ),
-        #     ]
-        # )
+        aug = T.Compose(
+            [
+                APCTTransform(ref_channel=2),
+                # T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
+                T.RandomApply(
+                    [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
+                    p=self.config["model"]["SimCLR"]["color_jitter_probability"],
+                ),
+                T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
+                T.GaussianBlur(
+                    kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
+                    sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
+                ),
+            ]
+        )
 
-        aug = APCTTransform(ref_channel=2)
+        # aug = APCTTransform(ref_channel=2)
 
         x1 = torch.stack([aug(img) for img in x]).squeeze(1)
         x2 = torch.stack([aug(img) for img in x]).squeeze(1)
@@ -235,21 +236,21 @@ class SimCLR(nn.Module):
         # Extract the tensors from the single-element tuple
         x = x[0]
 
-        # aug = T.Compose(
-        #     [
-        #         APCTTransform(ref_channel=2),
-        #         # T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
-        #         # T.RandomApply(
-        #         #     [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
-        #         #     p=self.config["model"]["SimCLR"]["color_jitter_probability"],
-        #         # ),
-        #         # T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
-        #         # T.GaussianBlur(
-        #         #     kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
-        #         #     sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
-        #         # ),
-        #     ]
-        # )
+        aug = T.Compose(
+            [
+                APCTTransform(ref_channel=2),
+                # T.RandomHorizontalFlip(self.config["model"]["SimCLR"]["horizontal_flip_probability"]),
+                T.RandomApply(
+                    [PositiveRescale(T.ColorJitter(*self.config["model"]["SimCLR"]["color_jitter_params"]))],
+                    p=self.config["model"]["SimCLR"]["color_jitter_probability"],
+                ),
+                T.RandomGrayscale(p=self.config["model"]["SimCLR"]["grayscale_probability"]),
+                T.GaussianBlur(
+                    kernel_size=self.config["model"]["SimCLR"]["gaussian_blur_kernel_size"],
+                    sigma=self.config["model"]["SimCLR"]["gaussian_blur_sigma_range"],
+                ),
+            ]
+        )
 
         aug = APCTTransform(ref_channel=2)
 
@@ -278,7 +279,5 @@ class SimCLR(nn.Module):
         torch.Tensor
             Output tensor of shape (batch_size, projection_dimension).
         """
-        print(x[0].shape)
-        print(x[1].shape)
         # We don't need to include the projection head during the inference
         return self.backbone(x[0])
