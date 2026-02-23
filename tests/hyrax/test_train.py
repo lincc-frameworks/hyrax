@@ -223,6 +223,7 @@ def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
     assert hasattr(model, "_learning_rates_history")
     assert model._learning_rates_history == [[initial_lr * factor]] + [[initial_lr]] * 2
 
+
 def test_training_info_returned_on_model(loopback_hyrax):
     """
     Test that scheduler works correctly when model is wrapped in DataParallel.
