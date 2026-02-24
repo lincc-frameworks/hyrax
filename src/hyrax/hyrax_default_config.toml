@@ -298,6 +298,13 @@ use_cache = true
 # Warning: Only suitable for situations where the entire dataset fits in system memory
 preload_cache = false
 
+# Number of threads to use for cache preload. cache preload is most effective when your dataset has many small 
+# files. The optimal number for this is experimentally determined, and only affects your first epoch of 
+# training (or only epoch of inference). 
+# If cache preloading is using all of your CPU when enabled, lower this number
+# If cache preloading is not making epoch 1 appreciably faster when enabled, increase this number.
+preload_threads = 50
+
 # Override the name of the object_id column for FitsImageDataset, HSCDataset and DownloadedLSSTDataset
 object_id_column_name = false
 
