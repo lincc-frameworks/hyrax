@@ -6,9 +6,14 @@ inference results in Lance columnar format instead of batched .npy files.
 
 import json
 import logging
+import os
 from collections.abc import Generator
 from pathlib import Path
 from typing import Union
+
+# Suppress Lance's Rust-level WARN about creating new datasets (normal on first write)
+if "LANCE_LOG" not in os.environ:
+    os.environ["LANCE_LOG"] = "error"
 
 import lancedb
 import numpy as np

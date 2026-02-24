@@ -22,7 +22,7 @@ def test_data_request_config_basic_fields():
 
     dumped = cfg.as_dict()
     assert dumped["dataset_class"].endswith("HyraxCSVDataset")
-    assert dumped["data_location"] == "/tmp/data"
+    assert dumped["data_location"] == str(Path("/tmp/data").expanduser().resolve())
     assert dumped["fields"] == ["image", "label"]
     assert dumped["primary_id_field"] == "object_id"
     assert dumped["dataset_config"] == {"shuffle": True}
@@ -505,7 +505,7 @@ def test_data_location_unchanged_when_absolute():
         data_location="/tmp/absolute/path",
         primary_id_field="id",
     )
-    assert cfg.data_location == "/tmp/absolute/path"
+    assert cfg.data_location == str(Path("/tmp/absolute/path").expanduser().resolve())
 
 
 def test_split_fraction_sum_valid_same_location():
