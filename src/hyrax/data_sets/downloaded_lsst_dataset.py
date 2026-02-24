@@ -73,7 +73,7 @@ class DownloadedLSSTDataset(LSSTDataset):
     File Organization:
     - Cutouts saved as: cutout_{object_id}.pt or cutout_{index:04d}.pt
     - Manifest saved as: manifest.fits (Astropy) or manifest.parquet (HATS)
-    - All files stored in config["general"]["data_dir"]
+    - All files stored in the data_location provided during initialization
     """
 
     def __init__(self, config, data_location):
@@ -181,7 +181,7 @@ class DownloadedLSSTDataset(LSSTDataset):
                 msg = "Cannot find any data source. There is no existing manifest, and there is no "
                 msg += "butler available. Please try to run this on an RSP where a butler is available or "
                 msg += "ensure a proper manifest and cutouts are available in "
-                msg += f"{self.config['general']['data_dir']}"
+                msg += f"{self.download_dir}"
                 raise RuntimeError(msg)
 
             # Create new manifest (no existing manifest found)

@@ -4,6 +4,7 @@ from typing import Any, cast
 
 import numpy as np
 import torch.nn as nn
+import torch.optim as optim
 
 from hyrax.plugin_utils import (
     get_or_load_class,
@@ -64,7 +65,6 @@ def _torch_load(self: nn.Module, load_path: Path):
 
     # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
     prepare_inputs_fn = load_prepare_inputs(load_path.parent)
-    to_tensor_fn = load_to_tensor(load_path.parent)
 
     if prepare_inputs_fn:
         # Successfully loaded prepare_inputs.py
@@ -72,21 +72,25 @@ def _torch_load(self: nn.Module, load_path: Path):
             self.prepare_inputs = prepare_inputs_fn
         else:
             self.prepare_inputs = staticmethod(prepare_inputs_fn)
-    elif to_tensor_fn:
-        # Backward compatibility: loading old model with to_tensor.py
-        logger.warning(
-            f"Found to_tensor function in {load_path.parent}. "
-            "to_tensor is deprecated, please re-save your model with the new version to use prepare_inputs."
-        )
-        if isinstance(to_tensor_fn, staticmethod):
-            self.prepare_inputs = to_tensor_fn
-        else:
-            self.prepare_inputs = staticmethod(to_tensor_fn)
     else:
-        logger.warning(
-            f"Could not find prepare_inputs or to_tensor function in {load_path.parent}. "
-            "Using the model's existing methods."
-        )
+        # Fall back to loading to_tensor for backward compatibility
+        to_tensor_fn = load_to_tensor(load_path.parent)
+        if to_tensor_fn:
+            # Backward compatibility: loading old model with to_tensor.py
+            logger.warning(
+                f"Found to_tensor function in {load_path.parent}. "
+                "to_tensor is deprecated, please re-save your model with the new version "
+                "to use prepare_inputs."
+            )
+            if isinstance(to_tensor_fn, staticmethod):
+                self.prepare_inputs = to_tensor_fn
+            else:
+                self.prepare_inputs = staticmethod(to_tensor_fn)
+        else:
+            logger.warning(
+                f"Could not find prepare_inputs or to_tensor function in {load_path.parent}. "
+                "Using the model's existing methods."
+            )
 
 
 def _torch_criterion(self: nn.Module):
@@ -146,6 +150,39 @@ def _torch_optimizer(self: nn.Module):
     return optimizer_cls(self.parameters(), **arguments)
 
 
+def _torch_schedulers(self: nn.Module):
+    """Load the scheduler classes using the names defined in the config and
+    instantiate it with the arguments defined in the config."""
+
+    config = cast(dict[str, Any], self.config)
+
+    # Load the class and get any parameters from the config dictionary
+    scheduler_name = config["scheduler"]["name"]
+    if not scheduler_name:
+        logger.warning("No scheduler specified in config or self.scheduler in model.")
+        return None
+
+    scheduler_cls = get_or_load_class(scheduler_name)
+
+    arguments = {}
+    if scheduler_name in config:
+        arguments = config[scheduler_name]
+
+    # Print some debugging info about the scheduler function and parameters used
+    log_string = f"Setting model's self.scheduler from config: {scheduler_name}\n"
+    if arguments:
+        log_string += f"with arguments: {arguments}."
+    else:
+        log_string += "with default arguments."
+    logger.info(log_string)
+
+    if not isinstance(self.optimizer, optim.Optimizer):
+        raise RuntimeError("Model optimizer must be a torch.optim.Optimizer")
+
+    scheduler = scheduler_cls(self.optimizer, **arguments)
+    return scheduler
+
+
 def hyrax_model(cls):
     """Decorator to register a model with the model registry, and to add common interface functions
 
@@ -185,6 +222,18 @@ def hyrax_model(cls):
                 )
             crit_name = f"{type(self.criterion).__module__}.{type(self.criterion).__qualname__}"
             logger.info(f"Using self.criterion defined in model: {crit_name}")
+
+        if not hasattr(self, "scheduler"):
+            self.scheduler = _torch_schedulers(self)
+        else:
+            if config["scheduler"]["name"]:
+                logger.warning(
+                    "Both model and config define a scheduler. "
+                    "Hyrax will use self.scheduler defined in the model."
+                )
+
+            sched_name = f"{type(self.scheduler).__module__}.{type(self.scheduler).__qualname__}"
+            logger.info(f"Using self.scheduler defined in model: {sched_name}")
 
     cls.__init__ = wrapped_init
 

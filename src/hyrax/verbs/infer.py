@@ -14,6 +14,10 @@ class Infer(Verb):
     cli_name = "infer"
     add_parser_kwargs = {}
 
+    # Dataset groups that the Infer verb knows about.
+    REQUIRED_SPLITS = ("infer",)
+    OPTIONAL_SPLITS = ()
+
     @staticmethod
     def setup_parser(parser):
         """We don't need any parser setup for CLI opts"""
@@ -38,7 +42,7 @@ class Infer(Verb):
             create_results_dir,
             log_runtime_config,
         )
-        from hyrax.data_sets.inference_dataset import InferenceDataSet
+        from hyrax.data_sets.result_factories import load_results_dataset
         from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
             create_evaluator,
@@ -58,7 +62,11 @@ class Infer(Verb):
         # Create a tensorboardX logger
         init_tensorboard_logger(log_dir=results_dir)
 
-        dataset = setup_dataset(config)
+        dataset = setup_dataset(
+            config,
+            splits=Infer.REQUIRED_SPLITS + Infer.OPTIONAL_SPLITS,
+            shuffle=False,
+        )
         model = setup_model(config, dataset["infer"])
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL} "
@@ -77,6 +85,11 @@ class Infer(Verb):
 
         # If `dataset` is a dict containing the key "infer", we'll pull that out.
         # The only time it wouldn't be is if the dataset is an iterable dataset.
+        #
+        # When split_fraction is defined on the "infer" group, setup_dataset
+        # will have already computed split_indices on the DataProvider.
+        # dist_data_loader with split=False will automatically apply a
+        # SubsetSequentialSampler to restrict the dataloader to those indices.
         if isinstance(dataset, dict) and "infer" in dataset:
             dataset = dataset["infer"]
             if dataset.is_map():
@@ -101,7 +114,7 @@ class Infer(Verb):
         evaluator.run(data_loader)
 
         # Write out a dictionary to map IDs->Batch
-        save_batch_callback.data_writer.write_index()  # type: ignore[attr-defined]
+        save_batch_callback.data_writer.commit()  # type: ignore[attr-defined]
 
         # Write out our tensorboard stuff
         close_tensorboard_logger()
@@ -109,4 +122,4 @@ class Infer(Verb):
         # Log completion
         logger.info("Inference Complete.")
 
-        return InferenceDataSet(config, results_dir)
+        return load_results_dataset(config, results_dir)

@@ -172,6 +172,19 @@ momentum = 0.9
 # learning rate for torch.optim.SGD optimizer.
 lr = 0.01
 
+[scheduler]
+# name of the learning rate scheduler
+# With gamma=1, ExponentialLR will keep the learning rate constant
+# https://docs.pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html
+name = "torch.optim.lr_scheduler.ExponentialLR"
+
+["torch.optim.lr_scheduler.ExponentialLR"]
+# the decay multipler on each epoch
+gamma = 1
+
+["torch.optim.lr_scheduler.ConstantLR"]
+
+last_epoch = -1
 
 [train]
 # The name of the file were the model weights will be saved after training.
@@ -284,6 +297,13 @@ use_cache = true
 # to reduce the effect of filesystem latency on first epoch runtime. 
 # Warning: Only suitable for situations where the entire dataset fits in system memory
 preload_cache = false
+
+# Number of threads to use for cache preload. cache preload is most effective when your dataset has many small 
+# files. The optimal number for this is experimentally determined, and only affects your first epoch of 
+# training (or only epoch of inference). 
+# If cache preloading is using all of your CPU when enabled, lower this number
+# If cache preloading is not making epoch 1 appreciably faster when enabled, increase this number.
+preload_threads = 50
 
 # Override the name of the object_id column for FitsImageDataset, HSCDataset and DownloadedLSSTDataset
 object_id_column_name = false

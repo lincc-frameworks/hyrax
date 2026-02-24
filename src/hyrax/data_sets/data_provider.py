@@ -170,22 +170,27 @@ def _handle_nan_zero_torch(batch):
 
 def generate_data_request_from_config(config):
     """This function handles the backward compatibility issue of defining the requested
-    dataset in the `[data_set]` table in the config. If a `[data_request]` table
-    is not defined, we will assemble a `data_request` dictionary from the values
-    defined elsewhere in the configuration file.
+    dataset using the deprecated `[model_inputs]` configuration key.
 
-    NOTE: We should anticipate deprecating the ability to define a data_request in
-    `[data_set]`, when that happens, we should be able to remove this function.
+    If neither `[data_request]` nor `[model_inputs]` is defined, an error will be raised.
+
+    NOTE: The `[model_inputs]` key is deprecated and will be removed in a future version.
+    Users should migrate to using `[data_request]` instead.
 
     Parameters
     ----------
     config : dict
-        The Hyrax configuration that can is passed to each dataset instance.
+        The Hyrax configuration that is passed to each dataset instance.
 
     Returns
     -------
     dict
         A dictionary where keys are dataset names and values are lists of fields
+
+    Raises
+    ------
+    RuntimeError
+        If neither `data_request` nor `model_inputs` is provided in the configuration.
     """
 
     # Support both 'data_request' (new) and 'model_inputs' (deprecated)
@@ -207,29 +212,8 @@ def generate_data_request_from_config(config):
         # One of the keys exists but is empty - use the empty dict to trigger error below
         data_request = config.get("data_request") or config.get("model_inputs")
     else:
-        # Neither key exists, create fallback from old [data_set] table
-        warnings.warn(
-            "The [data_set] configuration table is deprecated and will be removed in a future version. "
-            "Please use [data_request] instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        data_request = {
-            "train": {
-                "data": {
-                    "dataset_class": config["data_set"]["name"],
-                    "data_location": config["general"]["data_dir"],
-                    "primary_id_field": "object_id",
-                },
-            },
-            "infer": {
-                "data": {
-                    "dataset_class": config["data_set"]["name"],
-                    "data_location": config["general"]["data_dir"],
-                    "primary_id_field": "object_id",
-                },
-            },
-        }
+        # Neither key exists, set empty to trigger error message
+        data_request = {}
 
     # Check if data_request is empty and provide helpful error message
     if not data_request:
@@ -307,6 +291,13 @@ class DataProvider:
 
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
+        self.split_fraction = None
+        self.primary_data_location = None
+
+        # Assigned externally by setup_dataset after construction when
+        # split_fraction-based partitioning is in use.  When set, this
+        # contains the list of indices that this provider should serve.
+        self.split_indices = None
 
         self.prepare_datasets()
 
@@ -375,6 +366,8 @@ class DataProvider:
                 repr_str += f"  Dataset class: {data['dataset_class']}\n"
                 if "data_location" in data:
                     repr_str += f"  Data location: {data['data_location']}\n"
+                if "split_fraction" in data:
+                    repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
                 if self.primary_dataset_id_field_name:
                     repr_str += f"  Primary ID field: {self.primary_dataset_id_field_name}\n"
                 if "fields" in data:
@@ -484,6 +477,14 @@ class DataProvider:
             if "primary_id_field" in dataset_definition:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
+
+                # Store the split_fraction and data_location from the primary
+                # dataset's definition.  The Pydantic validator on
+                # DataRequestConfig guarantees that split_fraction is only
+                # present when primary_id_field is set, so we only need to
+                # look for it here.
+                self.split_fraction = dataset_definition.get("split_fraction", None)
+                self.primary_data_location = dataset_definition.get("data_location", None)
 
             # Cache the requested fields for each dataset as a tuple.
             # Tuples are immutable (preventing accidental modification) and can
