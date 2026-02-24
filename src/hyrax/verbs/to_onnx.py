@@ -90,7 +90,7 @@ class ToOnnx(Verb):
 
         # Use the config in the model directory to load the dataset(s) and create
         # The data loader instance to provide a data sample to the ONNX exporter.
-        dataset = setup_dataset(config_from_training)
+        dataset = setup_dataset(config_from_training, splits=("infer",), shuffle=False)
         model = setup_model(config_from_training, dataset["infer"])
         # Load the trained weights and send the model to the CPU for ONNX export.
         model.load(weights_file_path)

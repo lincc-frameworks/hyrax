@@ -1,4 +1,5 @@
 import logging
+import warnings
 
 from colorama import Back, Fore, Style
 
@@ -13,6 +14,12 @@ class Train(Verb):
 
     cli_name = "train"
     add_parser_kwargs = {}
+
+    # Dataset groups that the Train verb knows about.
+    # REQUIRED_SPLITS must be present in the dataset dict returned by setup_dataset.
+    # OPTIONAL_SPLITS are used when present but do not cause an error if absent.
+    REQUIRED_SPLITS = ("train",)
+    OPTIONAL_SPLITS = ("validate", "test")
 
     @staticmethod
     def setup_parser(parser):
@@ -55,7 +62,10 @@ class Train(Verb):
         init_tensorboard_logger(log_dir=results_dir)
 
         # Instantiate the model and dataset
-        dataset = setup_dataset(config)
+        dataset = setup_dataset(
+            config,
+            splits=Train.REQUIRED_SPLITS + Train.OPTIONAL_SPLITS,
+        )
         model = setup_model(config, dataset["train"])
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
@@ -68,17 +78,84 @@ class Train(Verb):
         # The only instance in which a dataset would not be a dictionary is if
         # the user has requested an iterable dataset. But we don't want to support that
         # for training right now.
-        if isinstance(dataset, dict) and "validate" in dataset:
-            train_data_loader, _ = dist_data_loader(dataset["train"], config, False)
-            validation_data_loader, _ = dist_data_loader(dataset["validate"], config, False)
+        #
+        # There are three ways splits can be defined:
+        #
+        # 1) Separate dataset groups: the user defined distinct "train" and
+        #    "validate" groups in their data_request (possibly pointing to
+        #    different data_locations).  Each DataProvider is loaded
+        #    independently and we pass split=False to dist_data_loader.
+        #
+        # 2) split_fraction on shared data: the user defined "train" and
+        #    "validate" groups pointing to the *same* data_location with
+        #    split_fraction values.  setup_dataset has already computed
+        #    non-overlapping split_indices on each DataProvider, so
+        #    dist_data_loader with split=False will automatically apply a
+        #    SubsetSequentialSampler.  This path is handled identically to (1).
+        #
+        # 3) Legacy percentage-based splits: only a "train" group exists and
+        #    no split_fraction is set.  We fall back to the old behaviour of
+        #    calling dist_data_loader with split=["train", "validate"] which
+        #    uses config["data_set"] train_size / validate_size.
 
-        # if `validate` isn't in the dataset dict, then we assume the user wants to
-        # use percentage-based splits on the `train` dataset. Or the user has an
-        # iterable dataset - but we don't support training with iterable datasets.
+        # Collect split names in two ways:
+        # - all_splits: all split names that this verb knows about
+        #   (required + optional), used for legacy percentage-based
+        #   splitting where only a "train" group may be defined.
+        # - dataset_splits: those desired splits that are actually present
+        #   in the dataset dict returned by setup_dataset, used by the
+        #   multi-provider path where each split is an explicit group.
+        all_splits = list(Train.REQUIRED_SPLITS) + list(Train.OPTIONAL_SPLITS)
+        dataset_splits = [s for s in all_splits if s in dataset]
+
+        # Check whether split_fraction was used (path 2 above).
+        # This is true when the required split's DataProvider has split_indices assigned.
+        # Path 1 (separate groups without split_fraction) will be handled in the else block.
+        has_split_groups = isinstance(dataset, dict) and any(
+            hasattr(dataset.get(s), "split_indices") and dataset[s].split_indices is not None
+            for s in Train.REQUIRED_SPLITS
+        )
+
+        data_loaders: dict[str, tuple] = {}
+
+        if has_split_groups:
+            # Path 2: split_fraction was used — each DataProvider has split_indices.
+            # Create a dataloader per group with split_indices already applied.
+            # NOTE: Paths 1 and 3 will be completely deprecated in a future release,
+            # and this will be the only path for training.
+            for split_name in dataset_splits:
+                data_loaders[split_name] = dist_data_loader(dataset[split_name], config, False)
+        elif len(dataset) > 1:
+            # Path 1: separate dataset groups defined in data_request without split_fraction.
+            # Each group is an independent DataProvider pointing to different data_locations.
+            # Create a dataloader per group.
+            for split_name in dataset_splits:
+                data_loaders[split_name] = dist_data_loader(dataset[split_name], config, split_name)
         else:
-            data_loaders = dist_data_loader(dataset["train"], config, ["train", "validate"])
-            train_data_loader, _ = data_loaders["train"]
-            validation_data_loader, _ = data_loaders.get("validate", (None, None))
+            # Path 3 (legacy): only "train" exists — use percentage-based
+            # splitting from config["data_set"].
+            warnings.warn(
+                "Defining dataset splits via config['data_set'] "
+                "(train_size / validate_size / test_size) is deprecated. "
+                "Please define separate dataset groups with 'split_fraction' "
+                "in the [data_request] configuration instead. "
+                "See https://hyrax.readthedocs.io for migration guidance.",
+                DeprecationWarning,
+                stacklevel=1,
+            )
+            raw = dist_data_loader(dataset["train"], config, all_splits)
+            # dist_data_loader returns a bare (DataLoader, indices) tuple
+            # when given a single split name, or a dict when given multiple.
+            if isinstance(raw, dict):
+                for split_name in all_splits:
+                    if split_name in raw:
+                        data_loaders[split_name] = raw[split_name]
+            else:
+                # Single split — raw is already the (DataLoader, indices) tuple.
+                data_loaders[all_splits[0]] = raw
+
+        train_data_loader, _ = data_loaders["train"]
+        validation_data_loader, _ = data_loaders.get("validate", (None, None))
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir)

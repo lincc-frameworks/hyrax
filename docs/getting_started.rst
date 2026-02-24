@@ -93,6 +93,7 @@ https://www.cs.toronto.edu/~kriz/cifar.html
                 "data_location": "./data",
                 "fields": ["image", "label"],
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             },
         }
     }
@@ -139,6 +140,7 @@ inference.
            "dataset_config": {
                "use_training_data": False,
            },
+           "split_fraction": 1.0,
        },
    }
 
