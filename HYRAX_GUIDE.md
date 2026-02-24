@@ -24,7 +24,9 @@ and anomaly detection so astronomers can focus on science.
 
 **Jupyter notebooks are the primary interface.** The CLI (`hyrax` command) is the
 secondary interface, intended for HPC / Slurm batch jobs. The CLI should be able to do
-everything notebooks can.
+everything notebooks can. Also, design hyrax such that any dataset or model class 
+(or other customization) should be authorable in a notebook, and moved to an external 
+class later.
 
 **Make Easy Things Easy, Hard Things Possible**
 - **Default workflows should "just work"**: Common use cases should require minimal configuration, but in 
@@ -34,6 +36,13 @@ running?)
 - **Sensible defaults**: Default configurations in `hyrax_default_config.toml` should handle common scenarios
 - **Extensibility without complexity**: Advanced users can extend with custom models, datasets, and verbs
 - **Clear extension points**: Well-documented base classes (`Verb`, model base classes, dataset classes)
+- **Avoid adding Verbs**: Only add a new verb if specifically told to do so.
+- **Avoid adding new configs**: Too many configs present a harder learning curve for the user. If you must 
+add a config, prefer a default that works for 90% of use cases.
+- **Remember our users and extenders ARE NOT Software Engineers**: Externally facing notebook interfaces and 
+even user-defined (dataset, model) classes need to be written so they can be understood by hyrax users. The 
+vast majority of hyrax users can write python code in a single file or notebook, but don't really understand 
+classes, multi-file projects, or anything more complex. 
 
 **Results directories are the backbone of reproducibility.** Each run creates a
 timestamped directory (`YYYYMMDD-HHMMSS-<verb>-<uid>`) under `results/` containing
@@ -46,17 +55,36 @@ model weights, config snapshots, and MLflow tracking data.
 user to examine outside of hyrax.
 - **ONNX export**: Support model serialization for long-term reproducibility
 
-
 **Target scale:** 10M–100M objects on a unix filesystem.
 
 **Document current behavior.** When migrating away from old patterns, use clear error
-messages to guide users rather than silently supporting legacy behavior.
+messages to guide users rather than silently supporting legacy behavior. When writing documentation, prefer 
+compact inspirational examples to demonstrate the breadth of the framework.
 
 **Smooth and Legible Migration When APIs Change**
 - **Clear deprecation warnings**: When changing APIs, provide helpful deprecation messages
 - **Error guided Migration**: Documentation tells how the current thing works. Errors explain what 
-documentation to follow to move from old to new
+documentation to follow to move from old to new.
 - **Backward compatibility when possible**: Maintain compatibility or provide clear upgrade path
+
+## Aspirational Goals
+**Leave space for these to be implemented someday by keeping the "right now" invariants but DO NOT IMPLEMENT THE ASPIRATIONAL GOAL**
+
+**Hyrax will someday support non-pytorch ML frameworks**
+- Right now we keep all ML tensors in numpy format until the moment PyTorch needs them
+- Right now all verb and dataset classes communicate in numpy format over their interfaces
+
+**Someday there will be an ecosystem of datasets and models easily selectable by the user**
+- Right now Dataset classes should work with each other a-la-carte via DataProvider
+- Most dataset classes will be external libraries, but not many examples exist presently.
+
+**Someday we will support iterable datasets**
+- Right now Datasets and DataProvider always have a length and map-style access by index, and are presumed to fit in memory.
+- Future iterable datasets will have Datasets and DataProvider as a finite and loadable subset of an infinite data stream
+
+## Coding advice
+When changing code, ensure that the current assumptions of the change appear to have always been true. Leave code better than 
+you find it over keeping old assumptions around.
 
 ## Development Setup
 
