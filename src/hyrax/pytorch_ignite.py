@@ -472,8 +472,8 @@ def create_evaluator(
     """
     device = idist.device()
     model.eval()
-    model = idist.auto_model(model)
-    evaluator = create_engine("infer_batch", device, model, config)
+    wrapped_model = idist.auto_model(model)
+    evaluator = create_engine("infer_batch", device, wrapped_model, config)
 
     @evaluator.on(Events.STARTED)
     def log_eval_start(evaluator):
@@ -525,19 +525,19 @@ def create_validator(
     """
 
     device = idist.device()
-    model = idist.auto_model(model)
+    wrapped_model = idist.auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
-    validator = create_engine("validate_batch", device, model, config)
+    validator = create_engine("validate_batch", device, wrapped_model, config)
     fixup_engine(validator)
 
     @validator.on(Events.STARTED)
     def set_model_to_eval_mode():
-        model.eval()
+        wrapped_model.eval()
 
     @validator.on(Events.COMPLETED)
     def set_model_to_train_mode():
-        model.train()
+        wrapped_model.train()
 
     @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss():
@@ -579,15 +579,15 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """
 
     device = idist.device()
-    model = idist.auto_model(model)
+    wrapped_model = idist.auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
-    tester = create_engine("test_batch", device, model, config)
+    tester = create_engine("test_batch", device, wrapped_model, config)
     fixup_engine(tester)
 
     @tester.on(Events.STARTED)
     def set_model_to_eval_mode():
-        model.eval()
+        wrapped_model.eval()
 
     # Track average loss
     from ignite.metrics import RunningAverage
@@ -646,22 +646,19 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     """
     device = idist.device()
     model.train()
-    model = idist.auto_model(model)
-    trainer = create_engine("train_batch", device, model, config)
+    wrapped_model = idist.auto_model(model)
+    trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
 
-    optimizer = extract_model_method(model, "optimizer")
-    scheduler = extract_model_method(model, "scheduler")
-
     to_save = {
-        "model": model,
-        "optimizer": optimizer,
+        "model": wrapped_model,
+        "optimizer": model.optimizer,
         "trainer": trainer,
     }
 
-    if scheduler:
-        to_save["scheduler"] = scheduler
+    if model.scheduler:
+        to_save["scheduler"] = model.scheduler
 
     #! We may want to move the checkpointing logic over to the `validator`.
     #! It was created here initially because this was the only place where the
@@ -727,14 +724,14 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def scheduler_step(trainer):
-        if scheduler:
+        if model.scheduler:
             if not hasattr(model, "_learning_rates_history"):
                 model._learning_rates_history = []
-            epoch_lr = scheduler.get_last_lr()
+            epoch_lr = model.scheduler.get_last_lr()
             epoch_number = trainer.state.epoch - 1
             model._learning_rates_history.append(epoch_lr)
             tensorboardx_logger.add_scalar("training/training/epoch/lr", epoch_lr, global_step=epoch_number)
-            scheduler.step()
+            model.scheduler.step()
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
