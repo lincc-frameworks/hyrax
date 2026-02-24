@@ -1,0 +1,17 @@
+[model]
+name = "HyraxCNN"
+
+[data_request.train.data]
+dataset_class = "HyraxCifarDataset"
+data_location = "./data"
+fields = ["image", "label"]
+primary_id_field = "object_id"
+
+[data_request.infer.data]
+dataset_class = "HyraxCifarDataset"
+data_location = "./data"
+fields = ["image", "object_id"]
+primary_id_field = "object_id"
+
+[data_request.infer.data.dataset_config]
+use_training_data = false
