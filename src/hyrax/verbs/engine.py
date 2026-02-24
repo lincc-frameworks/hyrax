@@ -55,6 +55,7 @@ class Engine(Verb):
             create_results_dir,
             find_most_recent_results_dir,
         )
+        from hyrax.data_sets.data_provider import DataProvider
         from hyrax.data_sets.result_factories import create_results_writer
         from hyrax.plugin_utils import load_prepare_inputs, load_to_tensor
         from hyrax.pytorch_ignite import setup_dataset
@@ -104,7 +105,7 @@ class Engine(Verb):
         # optimize this, because we know that we'll only need the `infer` part
         # of the data_request dictionary. And we can assume that we'll be working
         # with map-style datasets. But for now, this gets us going.
-        dataset = setup_dataset(config)
+        dataset = setup_dataset(config, splits=("infer",), shuffle=False)
 
         # In the `train` and `infer` verbs, we use `dist_data_loader` to create
         # our data loaders. But here in `engine`, we can assume that we can simply
@@ -116,10 +117,20 @@ class Engine(Verb):
         result_dir = create_results_dir(config, "engine")
         self.results_writer = create_results_writer(infer_dataset, result_dir)
 
+        # Determine which indices to iterate over
+        # If split_fraction is configured, setup_dataset will have already
+        # computed and assigned split_indices to the DataProvider. We need
+        # to respect those indices rather than iterating over the full dataset.
+        if isinstance(infer_dataset, DataProvider) and infer_dataset.split_indices is not None:
+            indices_to_process = infer_dataset.split_indices
+        else:
+            indices_to_process = list(range(len(infer_dataset)))
+
         # Work through the dataset in steps of `batch_size`
-        for start_idx in range(0, len(infer_dataset), batch_size):
-            end_idx = min(start_idx + batch_size, len(infer_dataset))
-            batch = [infer_dataset[i] for i in range(start_idx, end_idx)]
+        for start_idx in range(0, len(indices_to_process), batch_size):
+            end_idx = min(start_idx + batch_size, len(indices_to_process))
+            batch_indices = indices_to_process[start_idx:end_idx]
+            batch = [infer_dataset[i] for i in batch_indices]
 
             # Here we convert the batch from a list of dictionaries into a
             # dictionary of lists by using the DataProvider.collate function.

@@ -92,7 +92,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
         #       Alternatively this may be an opportunity for a metadata mixin sort of class structure where
         #       we can bring up Only the metadata for a dataset, without constructing the whole thing.
         self._original_dataset_config["data_set"]["preload_cache"] = False
-        self.original_dataset = setup_dataset(self._original_dataset_config)  # type: ignore[arg-type]
+        self.original_dataset = setup_dataset(self._original_dataset_config, splits=("infer",), shuffle=False)  # type: ignore[arg-type]
         self.original_dataset = (
             self.original_dataset["infer"]
             if isinstance(self.original_dataset, dict)

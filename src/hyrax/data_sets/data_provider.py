@@ -291,6 +291,13 @@ class DataProvider:
 
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
+        self.split_fraction = None
+        self.primary_data_location = None
+
+        # Assigned externally by setup_dataset after construction when
+        # split_fraction-based partitioning is in use.  When set, this
+        # contains the list of indices that this provider should serve.
+        self.split_indices = None
 
         self.prepare_datasets()
 
@@ -363,6 +370,8 @@ class DataProvider:
                 repr_str += f"  Dataset class: {data['dataset_class']}\n"
                 if "data_location" in data:
                     repr_str += f"  Data location: {data['data_location']}\n"
+                if "split_fraction" in data:
+                    repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
                 if self.primary_dataset_id_field_name:
                     repr_str += f"  Primary ID field: {self.primary_dataset_id_field_name}\n"
                 if "fields" in data:
@@ -472,6 +481,14 @@ class DataProvider:
             if "primary_id_field" in dataset_definition:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
+
+                # Store the split_fraction and data_location from the primary
+                # dataset's definition.  The Pydantic validator on
+                # DataRequestConfig guarantees that split_fraction is only
+                # present when primary_id_field is set, so we only need to
+                # look for it here.
+                self.split_fraction = dataset_definition.get("split_fraction", None)
+                self.primary_data_location = dataset_definition.get("data_location", None)
 
             # Cache the requested fields for each dataset as a tuple.
             # Tuples are immutable (preventing accidental modification) and can
