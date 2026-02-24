@@ -480,7 +480,7 @@ class Visualize(Verb):
         indexes = self.box_select_indexes(x_range, y_range)
         ids = np.array([self.umap_results.get_object_id(idx) for idx in indexes])
         points = np.asarray(self.umap_results[indexes])
-        
+
         return points, ids, indexes
 
     def box_select_indexes(self, x_range: Union[tuple, list], y_range: Union[tuple, list]):
