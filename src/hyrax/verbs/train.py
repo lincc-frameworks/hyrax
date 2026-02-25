@@ -16,10 +16,10 @@ class Train(Verb):
     add_parser_kwargs = {}
 
     # Dataset groups that the Train verb knows about.
-    # REQUIRED_SPLITS must be present in the dataset dict returned by setup_dataset.
-    # OPTIONAL_SPLITS are used when present but do not cause an error if absent.
-    REQUIRED_SPLITS = ("train",)
-    OPTIONAL_SPLITS = ("validate", "test")
+    # REQUIRED_DATA_GROUPS must be present in the dataset dict returned by setup_dataset.
+    # OPTIONAL_DATA_GROUPS are used when present but do not cause an error if absent.
+    REQUIRED_DATA_GROUPS = ("train",)
+    OPTIONAL_DATA_GROUPS = ("validate", "test")
 
     @staticmethod
     def setup_parser(parser):
@@ -64,7 +64,7 @@ class Train(Verb):
         # Instantiate the model and dataset
         dataset = setup_dataset(
             config,
-            splits=Train.REQUIRED_SPLITS + Train.OPTIONAL_SPLITS,
+            splits=Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS,
         )
         model = setup_model(config, dataset["train"])
         logger.info(
@@ -105,7 +105,7 @@ class Train(Verb):
         # - dataset_splits: those desired splits that are actually present
         #   in the dataset dict returned by setup_dataset, used by the
         #   multi-provider path where each split is an explicit group.
-        all_splits = list(Train.REQUIRED_SPLITS) + list(Train.OPTIONAL_SPLITS)
+        all_splits = list(Train.REQUIRED_DATA_GROUPS) + list(Train.OPTIONAL_DATA_GROUPS)
         dataset_splits = [s for s in all_splits if s in dataset]
 
         # Check whether split_fraction was used (path 2 above).
@@ -113,7 +113,7 @@ class Train(Verb):
         # Path 1 (separate groups without split_fraction) will be handled in the else block.
         has_split_groups = isinstance(dataset, dict) and any(
             hasattr(dataset.get(s), "split_indices") and dataset[s].split_indices is not None
-            for s in Train.REQUIRED_SPLITS
+            for s in Train.REQUIRED_DATA_GROUPS
         )
 
         data_loaders: dict[str, tuple] = {}
