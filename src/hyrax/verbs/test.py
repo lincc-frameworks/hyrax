@@ -16,8 +16,8 @@ class Test(Verb):
     add_parser_kwargs = {}
 
     # Dataset groups that the Test verb knows about.
-    REQUIRED_SPLITS = ("test",)
-    OPTIONAL_SPLITS = ()
+    REQUIRED_DATA_GROUPS = ("test",)
+    OPTIONAL_DATA_GROUPS = ()
 
     @staticmethod
     def setup_parser(parser):
@@ -73,7 +73,7 @@ class Test(Verb):
         # Instantiate the model and dataset
         dataset = setup_dataset(
             config,
-            splits=Test.REQUIRED_SPLITS + Test.OPTIONAL_SPLITS,
+            splits=Test.REQUIRED_DATA_GROUPS + Test.OPTIONAL_DATA_GROUPS,
             shuffle=False,
         )
 
