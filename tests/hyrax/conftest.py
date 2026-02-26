@@ -32,13 +32,13 @@ def pytest_configure(config):
             raise RuntimeError(msg) from e
 
 
-@pytest.fixture(scope="function", params=["HyraxRandomDataset"])
+@pytest.fixture(scope="function")
 def loopback_hyrax(tmp_path_factory, request):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model
     and a simple dataset yielding random numbers
     """
-    results_dir = tmp_path_factory.mktemp(f"loopback_hyrax_{request.param}")
+    results_dir = tmp_path_factory.mktemp("loopback_hyrax_HyraxRandomDataset")
 
     h = hyrax.Hyrax()
     h.config["model"]["name"] = "HyraxLoopback"
@@ -50,28 +50,28 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["model_inputs"] = {
         "train": {
             "data": {
-                "dataset_class": request.param,
+                "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
             },
         },
         "validate": {
             "data": {
-                "dataset_class": request.param,
+                "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
             },
         },
         "test": {
             "data": {
-                "dataset_class": request.param,
+                "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
             },
         },
         "infer": {
             "data": {
-                "dataset_class": request.param,
+                "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data_infer")),
                 "primary_id_field": "object_id",
             },
@@ -84,9 +84,6 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["data_set"]["validate_size"] = 0.2
     h.config["data_set"]["test_size"] = 0.2
     h.config["data_set"]["train_size"] = 0.6
-
-    if request.param == "HyraxRandomIterableDataset":
-        h.config["data_loader"]["collate_fn"] = "hyrax.data_sets.iterable_dataset_collate"
 
     weights_file = results_dir / "fakeweights"
     with open(weights_file, "a"):
