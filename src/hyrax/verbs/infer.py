@@ -15,8 +15,8 @@ class Infer(Verb):
     add_parser_kwargs = {}
 
     # Dataset groups that the Infer verb knows about.
-    REQUIRED_SPLITS = ("infer",)
-    OPTIONAL_SPLITS = ()
+    REQUIRED_DATA_GROUPS = ("infer",)
+    OPTIONAL_DATA_GROUPS = ()
 
     @staticmethod
     def setup_parser(parser):
@@ -64,7 +64,7 @@ class Infer(Verb):
 
         dataset = setup_dataset(
             config,
-            splits=Infer.REQUIRED_SPLITS + Infer.OPTIONAL_SPLITS,
+            splits=Infer.REQUIRED_DATA_GROUPS + Infer.OPTIONAL_DATA_GROUPS,
             shuffle=False,
         )
         model = setup_model(config, dataset["infer"])

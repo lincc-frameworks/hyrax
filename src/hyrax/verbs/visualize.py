@@ -21,11 +21,11 @@ class Visualize(Verb):
     add_parser_kwargs = {}
 
     # Dataset groups that the Visualize verb knows about.
-    # REQUIRED_SPLITS must be present in the data request configuration.
-    # OPTIONAL_SPLITS are used when present but do not cause an error if absent.
+    # REQUIRED_DATA_GROUPS must be present in the data request configuration.
+    # OPTIONAL_DATA_GROUPS are used when present but do not cause an error if absent.
     # Note: "umap" results may also be required in the future.
-    REQUIRED_SPLITS = ("infer",)
-    OPTIONAL_SPLITS = ()
+    REQUIRED_DATA_GROUPS = ("infer",)
+    OPTIONAL_DATA_GROUPS = ()
 
     @staticmethod
     def setup_parser(parser: ArgumentParser):
@@ -119,8 +119,8 @@ class Visualize(Verb):
         # Build a DataProvider from the live config for metadata access.
         # This avoids implicit coupling between result datasets and their original data sources.
         datasets = setup_dataset(self.config)
-        if not set(Visualize.REQUIRED_SPLITS).intersection(set(datasets.keys())):
-            required_keys = ", ".join(sorted(Visualize.REQUIRED_SPLITS))
+        if not set(Visualize.REQUIRED_DATA_GROUPS).intersection(set(datasets.keys())):
+            required_keys = ", ".join(sorted(Visualize.REQUIRED_DATA_GROUPS))
             available_keys = ", ".join(sorted(datasets.keys())) or "<none>"
             msg = (
                 f"Visualize requires dataset entries {required_keys} in the data request configuration "
@@ -130,7 +130,7 @@ class Visualize(Verb):
         # NOTE: this presently depends on only a single required
         # split, but here is here the data provider logic would be
         # extended if needed.
-        self.metadata_provider = datasets[Visualize.REQUIRED_SPLITS[0]]
+        self.metadata_provider = datasets[Visualize.REQUIRED_DATA_GROUPS[0]]
 
         available_fields = self.metadata_provider.metadata_fields()
         for field in fields.copy():
