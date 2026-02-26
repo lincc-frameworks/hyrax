@@ -598,8 +598,8 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     # We use torch.from_numpy() over torch.tensor() to avoid the copy of data that occurs in the latter.
 
     if isinstance(batch, tuple):
-        batch = tuple(torch.from_numpy(i).to(device) for i in batch)
-    else:
+        batch = tuple(torch.from_numpy(i).to(device) if i is not None else None for i in batch)
+    elif batch is not None:
         batch = torch.from_numpy(batch).to(device)
 
     return func(batch)
