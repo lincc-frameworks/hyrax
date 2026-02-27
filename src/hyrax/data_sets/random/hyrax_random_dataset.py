@@ -2,7 +2,7 @@ import numpy as np
 from astropy.table import Table
 from torch.utils.data import Dataset, IterableDataset
 
-from hyrax.data_sets.data_set_registry import HyraxDataset, iterable_dataset_collate
+from hyrax.data_sets.data_set_registry import HyraxDataset
 
 INVALID_VALUES = {
     "nan": np.nan,
@@ -247,7 +247,3 @@ class HyraxRandomIterableDataset(HyraxRandomDatasetBase, HyraxDataset, IterableD
                 ret["data"]["label"] = self.get_label(idx)
 
             yield ret
-
-    def collate(self, batch):
-        """Collate function for iterable dataset batches."""
-        return iterable_dataset_collate(batch)
