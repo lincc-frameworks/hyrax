@@ -145,9 +145,6 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["data_set"]["test_size"] = 0.2
     h.config["data_set"]["train_size"] = 0.6
 
-    if request.param == "HyraxRandomIterableDataset":
-        h.config["data_loader"]["collate_fn"] = "hyrax.data_sets.iterable_dataset_collate"
-
     weights_file = results_dir / "fakeweights"
     with open(weights_file, "a"):
         pass

@@ -1342,14 +1342,14 @@ _format_rect_member: dict[str, Callable[[str], Any]] = {
     "rerun": str,
     "type": str,
     "filter": str,
-    "tract": lambda x: ("any" if x == ANYTRACT else str(x)),
+    "tract": lambda x: "any" if x == ANYTRACT else str(x),
     "ra": lambda x: f"{x:.16e}deg",
     "dec": lambda x: f"{x:.16e}deg",
     "sw": lambda x: f"{x:.16e}deg",
     "sh": lambda x: f"{x:.16e}deg",
-    "image": lambda x: ("true" if x else "false"),
-    "mask": lambda x: ("true" if x else "false"),
-    "variance": lambda x: ("true" if x else "false"),
+    "image": lambda x: "true" if x else "false",
+    "mask": lambda x: "true" if x else "false",
+    "variance": lambda x: "true" if x else "false",
 }
 
 

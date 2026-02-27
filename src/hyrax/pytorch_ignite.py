@@ -256,13 +256,7 @@ def dist_data_loader(
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
     data_loader_kwargs = dict(config["data_loader"])
 
-    # If the dataset is a DataProvider instance, use its collate function.
-    # Else use the collate function defined in the config, or None (Torch's default)
-    if isinstance(dataset, DataProvider):
-        collation_func = dataset.collate
-    else:
-        collation_func = load_collate_function(data_loader_kwargs)
-    data_loader_kwargs["collate_fn"] = collation_func
+    data_loader_kwargs["collate_fn"] = dataset.collate
 
     # Handle case where no split is needed.
     if isinstance(split, bool):
