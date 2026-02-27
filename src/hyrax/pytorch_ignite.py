@@ -25,7 +25,6 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
-from hyrax.plugin_utils import get_or_load_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
@@ -200,26 +199,6 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
 
 
-def load_collate_function(data_loader_kwargs: dict) -> Callable | None:
-    """Load a collate function if one is specified in the config. Otherwise return None.
-    Returning None will cause the DataLoader to use PyTorch's default collate function.
-
-    Parameters
-    ----------
-    data_loader_kwargs : dict
-        The configuration dictionary that will be passed as kwargs to the DataLoader
-
-    Returns
-    -------
-    Optional[Callable]
-        The collate function if specified, else None
-    """
-    collate_fn = (
-        get_or_load_class(data_loader_kwargs["collate_fn"]) if data_loader_kwargs["collate_fn"] else None
-    )
-    return collate_fn
-
-
 def dist_data_loader(
     dataset: Dataset,
     config: dict,
@@ -256,13 +235,7 @@ def dist_data_loader(
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
     data_loader_kwargs = dict(config["data_loader"])
 
-    # If the dataset is a DataProvider instance, use its collate function.
-    # Else use the collate function defined in the config, or None (Torch's default)
-    if isinstance(dataset, DataProvider):
-        collation_func = dataset.collate
-    else:
-        collation_func = load_collate_function(data_loader_kwargs)
-    data_loader_kwargs["collate_fn"] = collation_func
+    data_loader_kwargs["collate_fn"] = dataset.collate
 
     # Handle case where no split is needed.
     if isinstance(split, bool):
