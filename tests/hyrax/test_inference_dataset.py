@@ -43,7 +43,9 @@ def inference_dataset(tmp_path_factory, request):
         indexes = np.array(range(20))
         np.random.shuffle(indexes)
 
-        data_set_ids = np.array(list(current_data_set.ids()))
+        # On the first iteration, we get a DataProvider, but on subsequent iterations we have
+        # an ResultDataset; this method of enumeration always works.
+        data_set_ids = np.array(current_data_set.ids())
 
         data_writer.write_batch(
             np.array(data_set_ids[indexes[0:10]]),  # ids
@@ -90,8 +92,8 @@ def test_order(inference_dataset):
     """
     orig, result = inference_dataset
 
-    orig_ids = list(orig.ids())
-    result_ids = list(result.ids())
+    orig_ids = orig.ids()
+    result_ids = result.ids()
 
     all_idx = list(range(20))
     orig_meta_ids = list(orig.metadata(all_idx, ["object_id_data"])["object_id_data"])
@@ -137,7 +139,7 @@ def test_order(inference_dataset):
         metadata_result = result.metadata(idx_pattern, ["object_id_data"])
 
         # Get expected IDs in the exact order requested
-        expected_ids = [list(result.ids())[i] for i in idx_pattern]
+        expected_ids = [result.get_object_id(i) for i in idx_pattern]
         actual_ids = [str(id) for id in metadata_result["object_id_data"]]
 
         assert actual_ids == expected_ids, (

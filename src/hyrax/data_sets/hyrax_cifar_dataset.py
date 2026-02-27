@@ -3,7 +3,7 @@ import logging
 from pathlib import Path
 
 import numpy as np
-from torch.utils.data import Dataset, IterableDataset
+from torch.utils.data import Dataset
 
 from .data_set_registry import HyraxDataset
 
@@ -56,18 +56,6 @@ class HyraxCifarBase:
         """Get the object ID for the item."""
         return f"{idx:0{self.id_width}d}"
 
-    def ids(self):
-        """This is the default IDs function you get when you derive from hyrax Dataset
-
-        Returns
-        -------
-        Generator[str]
-            A generator yielding all the string IDs of the dataset.
-
-        """
-        for x in range(len(self)):
-            yield f"{x:0{self.id_width}d}"
-
 
 class HyraxCifarDataset(HyraxCifarBase, HyraxDataset, Dataset):
     """Map style CIFAR 10 dataset for Hyrax
@@ -91,25 +79,3 @@ class HyraxCifarDataset(HyraxCifarBase, HyraxDataset, Dataset):
             },
             "object_id": self.get_object_id(idx),
         }
-
-
-class HyraxCifarIterableDataset(HyraxCifarBase, HyraxDataset, IterableDataset):
-    """Iterable style CIFAR 10 dataset for Hyrax
-
-    This is simply a version of CIFAR10 that is initialized using Hyrax config with a transformation
-    that works well for example code. This version only supports iteration, and not map-style access
-
-    We only use the training split in the data, because it is larger (50k images). Hyrax will then divide that
-    into Train/test/Validate according to configuration.
-    """
-
-    def __iter__(self):
-        for idx in range(len(self.cifar)):
-            yield {
-                "data": {
-                    "object_id": self.get_object_id(idx),
-                    "image": self.get_image(idx),
-                    "label": self.get_label(idx),
-                },
-                "object_id": self.get_object_id(idx),
-            }
