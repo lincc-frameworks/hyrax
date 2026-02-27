@@ -113,19 +113,6 @@ class DownloadedLSSTDataset(LSSTDataset):
         """Get object ID for a given index based on naming strategy."""
         return str(self.catalog[idx][self.oid_column_name])
 
-    def ids(self, log_every=None):
-        """Generator yielding object IDs for the entire dataset. Required by TensorCacheMixin"""
-        log = log_every is not None and isinstance(log_every, int)
-
-        for idx in range(len(self.catalog)):
-            if log and idx != 0 and idx % log_every == 0:
-                logger.info(f"Processed {idx} objects")
-            yield self.get_objectId(idx)
-
-        # Final log message after completing iteration
-        if log and len(self.catalog) > 0:
-            logger.info(f"Processed {len(self.catalog)} objects")
-
     def _setup_naming_strategy(self):
         """Setup file naming strategy based on catalog columns."""
         catalog_columns = self.catalog.colnames if hasattr(self.catalog, "colnames") else self.catalog.columns

@@ -7,7 +7,6 @@ inference results in Lance columnar format instead of batched .npy files.
 import json
 import logging
 import os
-from collections.abc import Generator
 from pathlib import Path
 from typing import Union
 
@@ -286,16 +285,14 @@ class ResultDataset(HyraxDataset, Dataset):
         # Extract first row's object_id since we're taking a single index
         return result["object_id"][0].as_py()
 
-    def ids(self) -> Generator[str, None, None]:
+    def ids(self) -> list[str]:
         """Generate all object IDs.
 
-        Yields
-        ------
-        str
+        Returns
+        -------
+        list[str]
             Object IDs in order
         """
         # Use scanner with projection to only read object_id column
         scanner = self.lance_dataset.scanner(columns=["object_id"])
-        for batch in scanner.to_batches():
-            for oid in batch["object_id"]:
-                yield oid.as_py()
+        return [oid.as_py() for batch in scanner.to_batches() for oid in batch["object_id"]]
