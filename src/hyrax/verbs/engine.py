@@ -115,7 +115,7 @@ class Engine(Verb):
 
         # Initialize the ResultDatasetWriter to persist results of inference
         result_dir = create_results_dir(config, "engine")
-        self.results_writer = create_results_writer(infer_dataset, result_dir)
+        self.results_writer = create_results_writer(result_dir)
 
         # Determine which indices to iterate over
         # If split_fraction is configured, setup_dataset will have already

@@ -970,17 +970,15 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     return trainer
 
 
-def create_save_batch_callback(dataset, results_dir):
+def create_save_batch_callback(results_dir):
     """Create a callback function for saving batch results during inference or testing.
 
-    This factory function creates a closure that captures the dataset and output
-    directory, then returns a callback that can be used with create_evaluator to save
+    This factory function creates a closure that captures the output directory,
+    then returns a callback that can be used by pytorch_ignite engines to save
     model outputs batch by batch.
 
     Parameters
     ----------
-    dataset : Dataset
-        The dataset being processed (must be a DataProvider or InferenceDataset that has an ids() method)
     results_dir : Path
         Directory where results should be saved
 
@@ -991,7 +989,7 @@ def create_save_batch_callback(dataset, results_dir):
     """
     from hyrax.data_sets.result_factories import create_results_writer
 
-    data_writer = create_results_writer(dataset, results_dir)
+    data_writer = create_results_writer(results_dir)
 
     def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
         """Receive and write batch results to results_dir immediately."""
