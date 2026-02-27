@@ -261,7 +261,7 @@ class HSCDataSet(FitsImageDataSet):
         with MultiPool(processes=HSCDataSet._determine_numprocs()) as pool:
             args = (
                 (object_id, list(super_obj._object_files(object_id)))
-                for object_id in self.ids(log_every=1_000_000)
+                for object_id in self._all_ids(log_every=1_000_000)
             )
             retval = dict(pool.imap(self._scan_file_dimension, args, chunksize=1000))
         return retval
@@ -565,7 +565,7 @@ class HSCDataSet(FitsImageDataSet):
             - The filename relative to self.path
             - A tuple containing the dimensions of the fits file in pixels.
         """
-        for object_id in self.ids():
+        for object_id in self._all_ids():
             dims = self.dims[object_id]
             for idx, (filter, filename) in enumerate(self._filter_filename(object_id)):
                 yield (object_id, filter, filename, dims[idx])

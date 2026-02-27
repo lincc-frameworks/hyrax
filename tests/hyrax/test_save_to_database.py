@@ -8,8 +8,8 @@ def test_save_to_database(loopback_inferred_hyrax):
     that we can match ids to input vectors for all values."""
 
     h, dataset, inference_results = loopback_inferred_hyrax
-    inference_result_ids = np.array(list(inference_results.ids()))
-    original_dataset_ids = np.array(list(dataset["infer"].ids()))
+    inference_result_ids = np.array(inference_results.ids())
+    original_dataset_ids = np.array(dataset["infer"].ids())
 
     # If the dataset is iterable, convert it to a list for easier indexing
     if dataset["infer"].is_iterable():

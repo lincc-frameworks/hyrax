@@ -111,7 +111,24 @@ class InferenceDataSet(HyraxDataset, Dataset):
         # because that shape uses __getitem__(), so we must define this for ourselves
         return self.shape_element["tensor"].shape
 
-    def ids(self) -> Generator[str]:
+    def get_object_id(self, idx) -> str:
+        """Returns the ID at a particular index.
+
+        IDs are provided by the primary dataset's primary ID column.
+        """
+        return str(self.batch_index["id"][idx])
+
+    def ids(self) -> list[str]:
+        """Returns the IDs of the dataset.
+
+        IDs flow from the primary dataset and the primary ID column.
+
+        For an InferenceDataSet instance, ``self.ids()`` is canonically the same as
+        ``[self.get_object_id(i) for i in range(len(self))]``.
+        """
+        return [self.get_object_id(i) for i in range(len(self))]
+
+    def _ids(self) -> Generator[str]:
         """IDs of this dataset. Will return a string generator with IDs.
 
         These IDs are the IDs of the dataset used originally to generate this dataset.
@@ -241,7 +258,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
         idxs = np.asarray(idxs)
 
         # Get the requested IDs in the order they were requested
-        ids_requested = np.array(list(self.ids()))[idxs]  # type: ignore[index]
+        ids_requested = np.array([self.get_object_id(idx) for idx in idxs])  # type: ignore[index]
 
         # Get all original dataset IDs
         original_ids = np.array(list(self.original_dataset.ids()))  # type: ignore[attr-defined]
@@ -287,7 +304,10 @@ class InferenceDataSetWriter:
         self.batch_index = 0
 
         # Detect the dtype numpy will want to use for ids for the original dataset
-        self.id_dtype = np.array(list(original_dataset.ids())).dtype
+        # We enumerate this way because whether we are passed a DataProvider or a InferenceDataSet
+        # This is guaranteed to work.
+        id_list = original_dataset.ids()
+        self.id_dtype = np.array(id_list).dtype
 
         self.all_ids = np.array([], dtype=self.id_dtype)
         self.all_batch_nums = np.array([], dtype=np.int64)
