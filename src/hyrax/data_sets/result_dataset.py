@@ -17,7 +17,6 @@ if "LANCE_LOG" not in os.environ:
 import lancedb
 import numpy as np
 import pyarrow as pa
-from torch.utils.data import Dataset
 
 from .data_set_registry import HyraxDataset
 
@@ -158,10 +157,10 @@ class ResultDatasetWriter:
         )
 
 
-class ResultDataset(HyraxDataset, Dataset):
+class ResultDataset(HyraxDataset):
     """Reader for Lance-based inference results.
 
-    Provides HyraxQL-compatible getters and PyTorch Dataset interface.
+    Provides HyraxQL-compatible getters to results stored in Lance format.
     """
 
     def __init__(self, config: dict, data_location: Union[Path, str]):
