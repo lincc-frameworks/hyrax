@@ -161,6 +161,7 @@ credentials.ini
 
 # MLFlow data directory
 mlruns/
+mlflow.db
 
 #JSON data files used by the 3d visualizer
 *.json
