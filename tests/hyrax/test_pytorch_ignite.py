@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, call, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -6,13 +6,13 @@ from hyrax.pytorch_ignite import setup_dataset
 
 
 class TestSetupDataset:
-    """Tests for the setup_dataset function, specifically focused on iterable dataset handling."""
+    """Tests for the setup_dataset function."""
 
     def test_setup_dataset_missing_dataset_class_raises_error(self):
         """Test that missing dataset_class raises appropriate RuntimeError."""
         # Create a minimal config that would trigger iterable dataset path
         config = {
-            "model_inputs": {
+            "data_request": {
                 "train": {
                     "test_dataset": {
                         # Intentionally missing "dataset_class"
@@ -28,24 +28,17 @@ class TestSetupDataset:
             }
         }
 
-        # Mock the functions that would be called before our code
-        with patch("hyrax.data_sets.data_provider.generate_data_request_from_config") as mock_generate:
-            with patch("hyrax.pytorch_ignite.is_iterable_dataset_requested") as mock_is_iterable:
-                # Set up mocks to trigger the iterable dataset path
-                mock_generate.return_value = config["model_inputs"]
-                mock_is_iterable.return_value = True
+        # This should raise RuntimeError from DataProvider when dataset_class is missing
+        with pytest.raises(RuntimeError) as exc_info:
+            setup_dataset(config)
 
-                # This should raise RuntimeError with our specific message
-                with pytest.raises(RuntimeError) as exc_info:
-                    setup_dataset(config)
-
-                assert "dataset_class must be specified in 'data_request'." in str(exc_info.value)
+        assert "does not specify a 'dataset_class'" in str(exc_info.value)
 
     def test_setup_dataset_invalid_dataset_class_raises_error(self):
-        """Test that providing an invalid dataset_class raises appropriate RuntimeError."""
+        """Test that providing an invalid dataset_class raises appropriate ValueError."""
         # Create a config with an invalid dataset_class
         config = {
-            "model_inputs": {
+            "data_request": {
                 "train": {
                     "test_dataset": {
                         "dataset_class": "NonExistentDatasetClass",
@@ -61,100 +54,89 @@ class TestSetupDataset:
             }
         }
 
-        # Mock the functions that would be called before our code
-        with patch("hyrax.data_sets.data_provider.generate_data_request_from_config") as mock_generate:
-            with patch("hyrax.pytorch_ignite.is_iterable_dataset_requested") as mock_is_iterable:
-                # Set up mocks to trigger the iterable dataset path
-                mock_generate.return_value = config["model_inputs"]
-                mock_is_iterable.return_value = True
-                # Make the registry lookup fail by simulating the dataset class not being in registry
+        # DataProvider will try to look up the class in the registry and fail
+        with pytest.raises(ValueError) as exc_info:
+            setup_dataset(config)
 
-                # This should raise RuntimeError with our specific message
-                with pytest.raises(ValueError) as exc_info:
-                    setup_dataset(config)
-
-                assert "Class name NonExistentDatasetClass" in str(exc_info.value)
+        assert "Class name NonExistentDatasetClass" in str(exc_info.value)
 
     def test_setup_dataset_missing_data_location_uses_none(self):
-        """Test that missing data_location passes None to dataset constructor."""
+        """Test that setup_dataset creates DataProvider instances even when data_location is absent."""
         # Create a config with dataset_class but no data_location
         config = {
-            "model_inputs": {
+            "data_request": {
                 "train": {
                     "test_dataset": {
-                        "dataset_class": "HyraxRandomIterableDataset"
+                        "dataset_class": "HyraxRandomDataset"
                         # Intentionally missing "data_location"
                     },
                 },
                 "infer": {
                     "test_dataset": {
-                        "dataset_class": "HyraxRandomIterableDataset"
+                        "dataset_class": "HyraxRandomDataset"
                         # Intentionally missing "data_location"
                     },
                 },
             }
         }
 
-        # Mock dataset class and registry
-        mock_dataset_instance = MagicMock()
-        mock_dataset_cls = MagicMock(return_value=mock_dataset_instance)
+        # Use a real class (not MagicMock) so isinstance() in setup_dataset doesn't TypeError.
+        # __new__ intercepts construction and returns our sentinel instance.
+        sentinel = MagicMock()
+        sentinel.split_fraction = None
+        provider_calls = []
 
-        with patch("hyrax.data_sets.data_provider.generate_data_request_from_config") as mock_generate:
-            with patch("hyrax.pytorch_ignite.is_iterable_dataset_requested") as mock_is_iterable:
-                with patch("hyrax.pytorch_ignite.fetch_dataset_class") as mock_fetch_cls:
-                    # Set up mocks
-                    mock_generate.return_value = config["model_inputs"]
-                    mock_is_iterable.return_value = True
-                    mock_fetch_cls.return_value = mock_dataset_cls
+        class MockDataProvider:
+            def __new__(cls, config, request):
+                provider_calls.append((config, request))
+                return sentinel
 
-                    # Call the function
-                    result = setup_dataset(config)
+        with patch("hyrax.pytorch_ignite.DataProvider", MockDataProvider):
+            result = setup_dataset(config)
 
-                    # Verify the dataset constructor was called with data_location=None
-                    expected_call = call(config=config, data_location=None)
-                    assert mock_dataset_cls.call_count == 2
-                    mock_dataset_cls.assert_has_calls([expected_call, expected_call])
-                    assert result["train"] == mock_dataset_instance
-                    assert result["infer"] == mock_dataset_instance
+            # DataProvider should be created for each data group
+            assert len(provider_calls) == 2
+            assert (config, config["data_request"]["train"]) in provider_calls
+            assert (config, config["data_request"]["infer"]) in provider_calls
+            assert result["train"] is sentinel
+            assert result["infer"] is sentinel
 
     def test_setup_dataset_with_both_keys_present(self):
         """Test normal case where both dataset_class and data_location are present."""
         # Create a complete config
         config = {
-            "model_inputs": {
+            "data_request": {
                 "train": {
                     "test_dataset": {
-                        "dataset_class": "HyraxRandomIterableDataset",
+                        "dataset_class": "HyraxRandomDataset",
                         "data_location": "/some/valid/path",
                     },
                 },
                 "infer": {
                     "test_dataset": {
-                        "dataset_class": "HyraxRandomIterableDataset",
+                        "dataset_class": "HyraxRandomDataset",
                         "data_location": "/some/valid/path",
                     },
                 },
             }
         }
 
-        # Mock dataset class and registry
-        mock_dataset_instance = MagicMock()
-        mock_dataset_cls = MagicMock(return_value=mock_dataset_instance)
+        # Use a real class (not MagicMock) so isinstance() in setup_dataset doesn't TypeError.
+        sentinel = MagicMock()
+        sentinel.split_fraction = None
+        provider_calls = []
 
-        with patch("hyrax.data_sets.data_provider.generate_data_request_from_config") as mock_generate:
-            with patch("hyrax.pytorch_ignite.is_iterable_dataset_requested") as mock_is_iterable:
-                with patch("hyrax.pytorch_ignite.fetch_dataset_class") as mock_fetch_cls:
-                    # Set up mocks
-                    mock_generate.return_value = config["model_inputs"]
-                    mock_is_iterable.return_value = True
-                    mock_fetch_cls.return_value = mock_dataset_cls
+        class MockDataProvider:
+            def __new__(cls, config, request):
+                provider_calls.append((config, request))
+                return sentinel
 
-                    # Call the function
-                    result = setup_dataset(config)
+        with patch("hyrax.pytorch_ignite.DataProvider", MockDataProvider):
+            result = setup_dataset(config)
 
-                    # Verify the dataset constructor was called with correct parameters
-                    expected_call = call(config=config, data_location="/some/valid/path")
-                    assert mock_dataset_cls.call_count == 2
-                    mock_dataset_cls.assert_has_calls([expected_call, expected_call])
-                    assert result["train"] == mock_dataset_instance
-                    assert result["infer"] == mock_dataset_instance
+            # DataProvider should be created for each data group with the full request dict
+            assert len(provider_calls) == 2
+            assert (config, config["data_request"]["train"]) in provider_calls
+            assert (config, config["data_request"]["infer"]) in provider_calls
+            assert result["train"] is sentinel
+            assert result["infer"] is sentinel
