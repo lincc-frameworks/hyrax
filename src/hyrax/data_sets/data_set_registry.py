@@ -19,15 +19,10 @@ class HyraxDataset:
     .. code-block:: python
 
         from hyrax.data_sets import HyraxDataset
-        from torch.utils.data import Dataset
 
-        class MyDataset(HyraxDataset, Dataset):
+        class MyDataset(HyraxDataset):
             def __init__(self, config: dict):
                 super().__init__(config)
-
-            def __getitem__():
-                # Your getitem goes here
-                pass
 
             def __len__ ():
                 # Your len function goes here
@@ -48,16 +43,15 @@ class HyraxDataset:
         """
         .. py:method:: __init__
 
-        Overall initialization for all DataSets which saves the config
+        Overall initialization for all Datasets which saves the config
 
-        Subclasses of HyraxDataSet ought call this at the end of their __init__ like:
+        Subclasses of HyraxDataset ought call this at the end of their __init__ like:
 
         .. code-block:: python
 
             from hyrax.data_sets import HyraxDataset
-            from torch.utils.data import Dataset
 
-            class MyDataset(HyraxDataset, Dataset):
+            class MyDataset(HyraxDataset):
                 def __init__(config):
                     <your code>
                     super().__init__(config)
@@ -69,10 +63,9 @@ class HyraxDataset:
         .. code-block:: python
 
             from hyrax.data_sets import HyraxDataset
-            from torch.utils.data import Dataset
             from astropy.table import Table
 
-            class MyDataset(HyraxDataset, Dataset):
+            class MyDataset(HyraxDataset):
                 def __init__(config):
                     <your code>
                     metadata_table = Table(<Your catalog data goes here>)
@@ -150,41 +143,28 @@ class HyraxDataset:
         if ABC in cls.__bases__:
             return
 
-        # Paranoia. Deriving from a torch dataset class should ensure this, but if an external dataset author
-        # Forgets to to do that, we tell them.
-        if (not hasattr(cls, "__iter__")) and not (hasattr(cls, "__getitem__") and hasattr(cls, "__len__")):
-            msg = f"Hyrax data set {cls.__name__} is missing required iteration functions."
-            msg += "__len__ and __getitem__ (or __iter__) must be defined. It is recommended to derive from"
-            msg += " torch.utils.data.Dataset (or torch.utils.data.IterableDataset) which will enforce this."
+        # We only require a user to implement a __len__ method.
+        if not hasattr(cls, "__len__"):
+            msg = f"Hyrax data set {cls.__name__} is missing required length function."
+            msg += "__len__ must be defined."
             raise RuntimeError(msg)
-
-        # TODO?:If the subclass has __iter__ and not __getitem__/__len__ perhaps add an __iter__ with a
-        #       warning Because to the extent the __getitem__/__len__ functions get used they'll exhaust the
-        #       iterator and possibly remove any benefit of having them around.
-
-        # TODO?:If the subclass has __getitem__/__len__ and not __iter__ add an __iter__. This is less
-        #       dangerous, and should probably just be an info log.
-        #
-        #       This might be better as a function on this base class, but doing it here gives us an
-        #       opportunity to do configuration or logging to help people navigate writing a dataset?
 
         # Ensure the class is in the registry so the config system can find it
         update_registry(DATASET_REGISTRY, cls.__name__, cls)
 
-    def sample_data(self) -> dict:
-        """Get a sample from the dataset. This is a convenience function that returns
-        the first sample from the dataset, regardless of whether it is iterable
-        or map-style. Often this will be used to instantiate a model that adjusts
-        its form based on the shape of the data."""
+    # TODO: I believe that this method should simply be deprecated. `DataProvider`
+    # TODO: exposes a `sample_data()` method that should be used instead.
+    # def sample_data(self) -> dict:
+    #     """Get a sample from the dataset. This is a convenience function that returns
+    #     the first sample from the dataset. Often this will be used to instantiate
+    #     a model that adjusts its form based on the shape of the data."""
 
-        if self.is_map():
-            return self[0]
-        elif self.is_iterable():
-            return next(iter(self))
-        else:
-            raise NotImplementedError(
-                "You must define __getitem__ or __iter__ to use the default `get_sample()` method."
-            )
+    #     if self.is_map():
+    #         return self[0]
+    #     else:
+    #         raise NotImplementedError(
+    #             "You must define __getitem__ or __iter__ to use the default `get_sample()` method."
+    #         )
 
     def metadata_fields(self) -> list[str]:
         """Returns a list of metadata fields supported by this object
@@ -347,70 +327,3 @@ class HyraxImageDataset:
             msg = f"{transform_str} is not a valid numpy function.\n"
             msg += "The string passed to the transform variable needs to be a numpy function"
             raise RuntimeError(msg) from err
-
-
-def iterable_dataset_collate(batch: list[dict]) -> dict:
-    """
-    Collate function used for iterable datasets since they do not work with DataProviders default collate
-
-    Enable with h.config["data_loader"]["collate_fn"] = "hyrax.data_sets.iterable_dataset_collate"
-
-    Parameters
-    ----------
-    batch : list[dict]
-        The batch of data dictionaries returned from the iterble dataset
-
-    Returns
-    -------
-    dict
-        Dict where each non-dict value is a np.array of items, ready for further hyrax processing.
-
-    Raises
-    ------
-    RuntimeError
-        If internal dictionary logic fails. This usually means an error in the structure of the input
-        dictionary.
-    """
-    import numpy as np
-
-    # Assume that all lists in the dict have the same key structure
-    retval = batch[0]
-
-    # Use the first dict to lay down some empty lists
-    def dict_to_lists(dict_to_convert):
-        newdict = {}
-        for key, value in dict_to_convert.items():
-            if isinstance(value, dict):
-                newdict[key] = dict_to_lists(value)
-            else:
-                newdict[key] = []
-        return newdict
-
-    retval = dict_to_lists(retval)
-
-    # Go through each item in the batch, append to the lists
-    def append_dict(dict_of_lists, dict_item):
-        for key, value in dict_item.items():
-            if isinstance(value, dict):
-                append_dict(dict_of_lists[key], value)
-            else:
-                dict_of_lists[key].append(value)
-
-        return dict_of_lists
-
-    for item in batch:
-        append_dict(retval, item)
-
-    # Convert all the lists to ndarrays
-    def convert_dict(dict_of_lists):
-        for key, value in dict_of_lists.items():
-            if isinstance(value, dict):
-                dict_of_lists[key] = convert_dict(value)
-            elif isinstance(value, list):
-                dict_of_lists[key] = np.array(value)
-            else:
-                raise RuntimeError("HyraxRandomIterableDataset found non-list value")
-        return dict_of_lists
-
-    retval = convert_dict(retval)
-    return retval
