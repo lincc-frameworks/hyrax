@@ -13,6 +13,8 @@ The ``collate`` Function
 
 The ``collate`` function is responsible for taking in a batch of data from the ``DataProvider`` and transforming it into a format that can be more readily ingested by the model. By default, the ``collate`` function takes in a list of dictionaries (one dictionary per item in the batch) and converts each field into a list, passing along a dictionary of lists to the ``prepare_inputs`` function. The function is customizable and has options to handle ragged data with padding.
 
+Custom collation functions should be associated with datasets. Built-in NaN handling has moved to the ``DataProvider``. Custom NaN handling should be done in either dataset getter methods or the user's ``to_tensor`` (or ``prepare_inputs``) method.
+
 The ``prepare_inputs`` Function
 --------------------------------
 
