@@ -107,7 +107,7 @@ class Infer(Verb):
         model.save(results_dir / "inference_weights.pth")
 
         # Create the save batch callback
-        save_batch_callback = create_save_batch_callback(dataset, results_dir)
+        save_batch_callback = create_save_batch_callback(results_dir)
 
         # Run inference
         evaluator = create_evaluator(model, save_batch_callback, config)
