@@ -75,6 +75,7 @@ class DataCache:
 
         self._preload_thread = None
         if self._preload_cache and self._use_cache:
+            self._preload_threads = config["data_set"]["preload_threads"]
             self._preload_thread = Thread(
                 name="DataCache-preload-tensor-cache",
                 daemon=True,
@@ -213,7 +214,7 @@ class DataCache:
         logger.info("Preloading Data cache...")
         prefix = self.__class__.__name__
 
-        with ThreadPoolExecutor(max_workers=self._determine_numprocs_preload()) as executor:
+        with ThreadPoolExecutor(max_workers=self._preload_threads) as executor:
             fetched_data = self._lazy_map_executor(executor, range(self._max_length))
 
             start_time = time.monotonic_ns()
@@ -224,25 +225,6 @@ class DataCache:
                 if idx % 1_000 == 0 and idx != 0:
                     tensorboardx_logger.log_duration_ts(f"{prefix}/preload_1k_obj_s", start_time)
                     start_time = time.monotonic_ns()
-
-    @staticmethod
-    def _determine_numprocs_preload():
-        """Determine number of processes for preloading. Hardcoded to 50 for now"""
-        ##TO-DO: 50 is the optimized number for Hyak at UW
-        ##This is totally file-system dependant and should
-        ##be changed appropriately for other file-systems
-        ##
-        ## A better implementation would look at how long the main
-        ## thread of the preloader spends waiting for workers
-        ## If we're waiting "long: for workers -> More workers
-        ## If we're waiting only a little for workers -> keep same
-        ## If we aren't waiting ever/workers are waiting -> fewer workers
-        ##
-        ## Sadly the logic for this would be inside ThreadPoolExecutor
-        ## So we would need to reimplement parts of it, not just wrap
-        ## Job submission like _lazy_map_executor does.
-        ##
-        return 50
 
     def _lazy_map_executor(self, executor: Executor, idxs: Iterable[int]):
         """
@@ -265,7 +247,44 @@ class DataCache:
         """
         from concurrent.futures import FIRST_COMPLETED, Future, wait
 
-        max_futures = self._determine_numprocs_preload()
+        ## We use self._preload_threads here as both the number of workers and
+        ## the number of in-flight futures that this lazy map executor keeps running
+        ##
+        ## The goal here is actually maximum filesystem performance on a high-latency filesystem
+        ## Currently the defaults are tuned for UW's HYAK Klone filesystem, where 50 threads is optimal.
+        ##
+        ## A better implementation would look at how long the main
+        ## thread of the preloader spends waiting for workers. For a balanced situation where
+        ## there are the right number of workers to fully exercise the I/O system:
+        ##
+        ##  N = number of workers
+        ##  t_w = Wall clock time a worker/future takes to execute (averaged over some period, because I/O
+        ##        is bursty.)
+        ##  t_p = Wall clock time the preload thread waits between workers completing
+        ##
+        ##  t_p == t_w/N
+        ##
+        ## If the preload thread is waiting too long t_p > t_w/N -> Increase the number of futures in flight,
+        ##   spawn more workers as needed so every in-flight future can have a worker
+        ##
+        ## If we're within some epsilon of t_p == t_w/N then keep workers constant
+        ##
+        ## If t_p < t_w/N then reduce the number of futures in flight
+        ##
+        ## We would need to figure out a reasonable averaging/adjustment time that's long enough to capture
+        ## a stable time-average on most systems while not giving away speed
+        ##
+        ## We also might want to put all of this in a log basis i.e. log(t_p) + epsilon == log(t_w) - log(N)
+        ## This would mean the epsilon thresholding would give the algorithm a larger target at larger
+        ## thread counts, which matches how most I/O systems behave. Linearizing the problem in this way
+        ## would also reduce instances where the algorithm changing the number of threads throws it into
+        ## a feedback loop.
+        ##
+        ## Sadly some of the logic for this would be inside ThreadPoolExecutor, because we need to post-hoc
+        ## alter the number of worker threads after creating the object. The alternative would be
+        ## preallocating worker threads that we don't use.
+        max_futures = self._preload_threads
+
         queue: list[Future[dict]] = []
         in_progress: set[Future[dict]] = set()
         idx_iterator = iter(idxs)

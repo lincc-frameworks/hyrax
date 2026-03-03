@@ -58,6 +58,9 @@ dependencies = [
     "qdrant-client", # Vector database for similarity search
     "colorama", # Used to color terminal output
     "numba==0.63.1",
+    "lancedb", # Used for columnar storage of inference results
+    "pyarrow", # Used by lancedb for data interchange
+    "pylance", # Used by lancedb for Lance dataset access
 ]
 
 [project.scripts]

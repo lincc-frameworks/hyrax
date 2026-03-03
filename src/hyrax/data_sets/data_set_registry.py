@@ -1,6 +1,6 @@
 # ruff: noqa: D102, B027
 import logging
-from collections.abc import Callable, Generator
+from collections.abc import Callable
 from types import MethodType
 from typing import Any
 
@@ -34,9 +34,6 @@ class HyraxDataset:
                 pass
 
     Optional interfaces:
-
-    ``ids()`` -> Subclasses may override this directly with their own ids function
-    returning a generator of strings
 
     ``metadata`` -> Subclasses may pass an astropy table of metadata to ``__init__`` in the
     superclass. This table of metadata will be available through the ``metadata_fields`` and
@@ -93,22 +90,12 @@ class HyraxDataset:
             The name of the column containing object IDs. If None, uses the default
             from config or creates one from the ids() method.
         """
-        import numpy as np
 
         self._config = config
         self._metadata_table = metadata_table
 
-        # If your metadata does not contain an object_id field
-        # we use your required .ids() method to create the column
+        # Pull up all metadata fields as HyraxQL getters.
         if self._metadata_table is not None:
-            colnames = self._metadata_table.colnames
-            if (
-                (object_id_column_name is None)
-                and ("object_id" not in colnames)
-                and (self._config["data_set"]["object_id_column_name"] not in colnames)
-            ):
-                ids = np.array(list(self.ids()))
-                self._metadata_table.add_column(ids, name="object_id")
 
             def _make_getter(column):
                 def getter(self, idx, _col=column):
@@ -183,28 +170,6 @@ class HyraxDataset:
 
         # Ensure the class is in the registry so the config system can find it
         update_registry(DATASET_REGISTRY, cls.__name__, cls)
-
-    def ids(self) -> Generator[str]:
-        """This is the default IDs function you get when you derive from hyrax Dataset
-
-        Returns
-        -------
-        Generator[str]
-            A generator yielding all the string IDs of the dataset.
-
-        """
-        if self.is_map():
-            for x in range(len(self)):
-                yield str(x)
-        elif self.is_iterable():
-            for index, _ in enumerate(iter(self)):
-                yield (str(index))
-        else:
-            raise NotImplementedError(
-                f"Dataset class '{self.__class__.__name__}' must implement either "
-                "__len__ and __getitem__ for map-style datasets, or __iter__ for "
-                "iterable-style datasets to use automatic id() generation."
-            )
 
     def sample_data(self) -> dict:
         """Get a sample from the dataset. This is a convenience function that returns

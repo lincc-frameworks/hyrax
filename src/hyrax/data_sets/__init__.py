@@ -62,13 +62,14 @@ from .fits_image_dataset import FitsImageDataSet
 from .lsst_dataset import LSSTDataset
 from .downloaded_lsst_dataset import DownloadedLSSTDataset
 from .hsc_data_set import HSCDataSet
-from .hyrax_cifar_dataset import HyraxCifarDataset, HyraxCifarIterableDataset
+from .hyrax_cifar_dataset import HyraxCifarDataset
 from .random.hyrax_random_dataset import (
     HyraxRandomDataset,
-    HyraxRandomIterableDataset,
     HyraxRandomDatasetBase,
 )
 from .inference_dataset import InferenceDataSet
+from .result_dataset import ResultDataset, ResultDatasetWriter
+from .result_factories import create_results_writer, load_results_dataset
 from .data_set_registry import HyraxDataset, iterable_dataset_collate
 from .hyrax_cifar_dataset import HyraxCifarBase
 from .hyrax_csv_dataset import HyraxCSVDataset
@@ -77,15 +78,17 @@ from .data_cache import DataCache
 __all__ = [
     "HyraxCifarDataset",
     "FitsImageDataSet",
-    "HyraxCifarIterableDataset",
     "HSCDataSet",
     "InferenceDataSet",
+    "ResultDataset",
+    "ResultDatasetWriter",
+    "create_results_writer",
+    "load_results_dataset",
     "HyraxDataset",
     "LSSTDataset",
     "DownloadedLSSTDataset",
     "HyraxCifarBase",
     "HyraxRandomDataset",
-    "HyraxRandomIterableDataset",
     "HyraxRandomDatasetBase",
     "HyraxCSVDataset",
     "iterable_dataset_collate",

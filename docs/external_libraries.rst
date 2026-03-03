@@ -60,7 +60,7 @@ the first iterable axis of the numpy array.
 
 
 ``infer_batch(self, x)``
-....................
+........................
 Hyrax calls this function, which evaluates your model on a single input ``x``. ``x`` is guaranteed to be a numpy array with
 the shape passed to ``__init__``.
 
@@ -68,7 +68,7 @@ the shape passed to ``__init__``.
 
 
 ``train_batch(self, batch)``
-...........................
+............................
 This is called several times every training epoch with a batch of input numpy arrays for your model, and is the
 inner training loop for your model. This is where you compute loss, perform back propagation, etc depending on
 how your model is trained.
@@ -203,10 +203,8 @@ When creating a dataset it is easiest to test it using the ``prepare`` verb to h
     # Other config your dataset needs goes here
 
     dataset = h.prepare()
-    dataset[0] # will get the first element for a map-style dataset
-    next(iter(dataset)) # will get the first element for an iterable dataset
+    dataset[0] # will get the first element in your dataset
     len(dataset) # will return the length of your dataset
-    list(dataset.ids()) # will list the ids in your dataset.
 
 The dataset returned from ``prepare`` will be an instance of your class if running ``__init__`` did not
 cause an error. You can then do things like index your class or call the methods in your class to ensure
@@ -249,24 +247,4 @@ function must be defined on the model before training or inference can proceed.
 ``__len__(self)``
 .................
 Return the length of your dataset.
-
-Iterable datasets
-.................
-
-``__iter__(self)``
-..................
-Yield a single item in your dataset, or supply a generator function which does the same.
-If your dataset has an end, yield ``StopIteration`` at the end.
-
-Warning: Iterable datasets which never yield ``StopIteration`` are not currently supported in hyrax.
-
-See the documentation on ``__getitem__`` regarding the value the generator ought yield.
-
-Optional Overrides
-..................
-
-``ids(self)``
-.............
-Return a list of IDs for the objects in your dataset. These IDs ought be returned as a string generator that
-yields the ids in the order of your dataset.
 
