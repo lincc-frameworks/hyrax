@@ -1,0 +1,487 @@
+[general]
+# Set to `true` during development to skip checking for default config values
+# in external libraries. Use `false` otherwise.
+dev_mode = false
+
+# Destination of log messages. Options: 'stderr', 'stdout' specify the console,
+# "path/to/hyrax.log" specifies a file.
+log_destination = "stderr"
+
+# Lowest log level to emit. Options: "critical", "error", "warning", "info", "debug".
+log_level = "info"
+
+# Directory where data is stored.
+data_dir = "/Users/drew/code/hyrax/docs/pre_executed/data"
+
+#Top level directory for writing results.
+results_dir = "./results"
+
+
+[download]
+# Cut out width in arcseconds.
+sw = "22asec"
+
+# Cut out height in arcseconds.
+sh = "22asec"
+
+# The filters to download.
+filter = ["HSC-G", "HSC-R", "HSC-I", "HSC-Z", "HSC-Y"]
+
+# The type of data to download.
+type = "coadd"
+
+# The data release to download from.
+rerun = "pdr3_wide"
+
+# Path to credentials.ini file for the downloader. File contents should be:
+# username = "<your username>"
+# password = "<your password>"
+credentials_file = "./credentials.ini"
+
+# Alternate way to pass credentials to the downloader. Users should prefer a
+# credentials.ini file to avoid exposing credentials with source control.
+username = false
+password = false
+
+# The number of sources to download from the catalog. Default is -1, which
+# downloads all sources in the catalog.
+num_sources = -1
+
+# The number of concurrent connections to use when downloading data.
+concurrent_connections = 4
+
+# The number of seconds between printing download statistics.
+stats_print_interval = 60
+
+# The path to the catalog file that defines which cutouts to download.
+fits_file = "./catalog.fits"
+
+# The number of seconds to wait before retrying a failed HTTP request in seconds.
+retry_wait = 30
+
+# How many times to retry a failed HTTP request before moving on to the next one.
+retries = 3
+
+# Number of seconds to wait for a full HTTP response from the server.
+timeout = 3600
+
+# The number of sky location rectangles should we request in a single request.
+chunk_size = 990
+
+# Request the image layer from the cutout service
+image = true
+
+# Request the variance layer from the cutout service
+variance = false
+
+# Request the mask layer from the cutout service
+mask = false
+
+
+[model]
+# NOTE: All parameters are NOT used by all models. Check the model code before training.
+
+# The name of the model to use. Option are a built-in model class name or import path
+# to an external model. e.g. "HyraxAutoencoder", "user_pkg.model.ExternalModel"
+name = "HyraxCNN"
+
+
+[model.HyraxAutoencoder]
+# The number of output channels from the first layer.
+base_channel_size = 32
+
+# The length of the latent space vector. 
+latent_dim = 64
+
+
+[model.HyraxAutoencoderV2]
+# The number of output channels from the first layer.
+base_channel_size = 32
+
+# The length of the latent space vector. 
+latent_dim = 64
+
+# The activation function of the final layer.
+final_layer = "tanh"
+
+[model.ImageDCAE]
+# The number of output channels from the first layer.
+base_channel_size = 32
+
+# The length of the latent space vector.
+latent_dim = 512
+
+# The activation function of the final layer.
+final_layer = "identity"
+
+
+[model.SimCLR]
+# The dimension of the projection head for SimCLR
+projection_dimension = 128
+
+# The scalar temperature parameter for its loss function, NTXentLoss, for SimCLR
+temperature = 0.5
+
+# The probability of applying horizontal flip augmentation for SimCLR
+horizontal_flip_probability = 0.5
+
+# The parameters for color jitter augmentation for SimCLR
+# [brightness, contrast, saturation, hue]
+color_jitter_params = [0.8, 0.8, 0.8, 0.2]
+
+# The probability of applying color jitter augmentation for SimCLR
+color_jitter_probability = 0.8
+
+# The probability of applying grayscale augmentation for SimCLR
+grayscale_probability = 0.2
+
+# The kernel size of Gaussian blur augmentation for SimCLR
+gaussian_blur_kernel_size = 9
+
+# The sigma range used in Gaussian blur augmentation for SimCLR
+gaussian_blur_sigma_range = [0.1, 2.0]
+
+
+[model.HyraxCNN]
+# The number of classes to predict as the output of the model. i.e. 2 would be a
+# binary classifer, 10 would predict the 10 classes in the CiFAR dataset.
+output_classes = 10
+
+
+
+[criterion]
+# The name of the built-in criterion to use or the import path to an external criterion
+name = "torch.nn.CrossEntropyLoss"
+
+# Whether to "sum" or "mean" loss across channels. Only used by HyraxAutoencoderV2
+band_loss_reduction = "mean"
+
+
+[optimizer]
+# The name of the built-in optimizer to use or the import path to an external optimizer
+name = "torch.optim.SGD"
+
+
+["torch.optim.SGD"]
+# learning rate for torch.optim.SGD optimizer.
+lr = 0.01
+
+# momentum for torch.optim.SGD optimizer.
+momentum = 0.9
+
+["torch.optim.Adam"]
+# learning rate for torch.optim.SGD optimizer.
+lr = 0.01
+
+[scheduler]
+# name of the learning rate scheduler
+# With gamma=1, ExponentialLR will keep the learning rate constant
+# https://docs.pytorch.org/docs/stable/generated/torch.optim.lr_scheduler.ExponentialLR.html
+name = "torch.optim.lr_scheduler.ExponentialLR"
+
+["torch.optim.lr_scheduler.ExponentialLR"]
+# the decay multipler on each epoch
+gamma = 1
+
+["torch.optim.lr_scheduler.ConstantLR"]
+
+last_epoch = -1
+
+[train]
+# The name of the file were the model weights will be saved after training.
+weights_filename = "example_model.pth"
+
+#The number of epochs to train for.
+epochs = 10
+
+# If resuming from a check point, set to the path of the checkpoint file.
+# Otherwise set to `false` to start training from the beginning.
+resume = false
+
+# The data_set split to use when training a model.
+split = "train"
+
+# The name of the experiment when logging training results to mlflow
+experiment_name = "notebook"
+
+# The name of the run when logging training results to mlflow.
+# If false, uses result directory string, <timestamp>-train-<uid>, as run name.
+run_name = false
+
+
+[test]
+# The path to the model weights file to use for testing. If `false`, the most recent
+# training results (from [train]) will be used.
+model_weights_file = false
+
+# The name of the experiment when logging test results to mlflow.
+# If not set, uses the experiment name from [train].
+experiment_name = "notebook"
+
+# The name of the run when logging test results to mlflow.
+# If false, uses result directory string, <timestamp>-test-<uid>, as run name.
+run_name = false
+
+
+
+[onnx]
+
+# The operator set version to use when exporting a model. See the following for info:
+# https://onnxruntime.ai/docs/reference/compatibility.html#onnx-opset-support
+opset_version = 20
+
+# The directory to find input model files to convert to ONNX. ONNX-ified models
+# will be written to this directory as well.
+input_model_directory = false
+
+
+# [data_request]
+# Top-level table that defines the dataset(s) used for training, validation, and inference.
+# Configure with [data_request.train], [data_request.validate], or [data_request.infer] sections.
+
+# [model_inputs]
+# DEPRECATED: Use [data_request] instead. This will be removed in the next major release.
+
+
+[data_set]
+# Crop pixel dimensions for images, e.g., [100, 100]. If false, scans for the
+# smallest image size in [general].data_dir and uses it.
+crop_to = false
+
+# Used by HSCDataSet, LSSTDataset, and DownloadedLSSTDataset. 
+# Limit to only particular filters. When `false`, use all filters. 
+# Options: ["HSC-G", "HSC-R", "HSC-I", "HSC-Z", "HSC-Y"] for HSC
+# Options: ["u", "g", "r", "i", "z" , "y"] for LSST
+filters = false
+
+# Path to a fits file that specifies object IDs to use from the data stored in
+# [general].data_dir. Implementation is data_set class dependent. Use `false` for no filtering.
+filter_catalog = false
+
+# The transformation to be applied to images before being passed on to the model
+# This must be a valid Numpy function. Passing false will result in no transformations
+# (other than cropping) be applied to the images.  
+transform = "tanh"
+
+# train_size, validation_size, and test_size use these conventions:
+# * A `float` between `0.0` and `1.0` is the proportion of the dataset to include in the split.
+# * An `int`, represents the absolute number of samples in the particular split.
+# * It is an error for these values to add to more than 1.0 as ratios or the size
+#   of the dataset if expressed as integers.
+
+# Size of the train split. If `false`, the value is automatically set to the
+# complement of test_size plus validate_size (if any).
+train_size = 0.6
+
+# Size of the validation split. If `false`, and both train_size and test_size
+# are defined, the value is set to the complement of the other two sizes summed.
+# If `false`, and only one of the other sizes is defined, no validate split is created.
+validate_size = 0.2
+
+# Size of the test split. If `false`, the value is set to the complement of train_size plus
+# the validate_size (if any). If `false` and `train_size = false`, test_size is set to `0.25`.
+test_size = 0.2
+
+# Number to seed with for generating a random split. Use `false` to seed from a
+# system source at runtime.
+seed = false
+
+# If `true`, cache samples in memory during training to reduce runtime after the
+# first epoch. Set to `false` when running inference or on memory-constrained systems.
+use_cache = true
+
+# If `true`, preload the in memory cache using many worker threads when the dataset is constructed 
+# to reduce the effect of filesystem latency on first epoch runtime. 
+# Warning: Only suitable for situations where the entire dataset fits in system memory
+preload_cache = false
+
+# Number of threads to use for cache preload. cache preload is most effective when your dataset has many small 
+# files. The optimal number for this is experimentally determined, and only affects your first epoch of 
+# training (or only epoch of inference). 
+# If cache preloading is using all of your CPU when enabled, lower this number
+# If cache preloading is not making epoch 1 appreciably faster when enabled, increase this number.
+preload_threads = 50
+
+# Override the name of the object_id column for FitsImageDataset, HSCDataset and DownloadedLSSTDataset
+object_id_column_name = false
+
+# Override the name of the filter column for FitsImageDataset and HSCDataset
+filter_column_name = false
+
+# Override the name of the filename column for FitsImageDataset and HSCDataset
+filename_column_name = false
+
+# Replace NaN in input data with a value, modes are false for no replacement or "quantile" to replace with a 
+# defined quantile of the non-NaN data, see nan_quantile.
+nan_mode = false
+
+# When replacing NaN values with a quantile, which quantile in the non-nan tensor should be used.
+nan_quantile = 0.05
+
+# The astropy table to use as a catalog in LSSTDataSet and friends
+astropy_table = false
+
+# Semi width in degrees of cutouts made from the butler (17 arcsec)
+semi_width_deg = 0.00472
+
+# Semi height in degrees of cutouts made from the butler (17 arcsec)
+semi_height_deg = 0.00472
+
+
+[data_set.HyraxCifarDataset]
+# If `true`, download CIFAR10 training set, otherwise download test set.
+use_training_data = true
+
+
+[data_set.HyraxRandomDataset]
+# Total number of samples produced by the random dataset
+size = 100
+
+# The dimensions of the numpy arrays that will be produced for each sample represented
+# as a list where each element is the size of dimension.
+shape = [2,5,5]
+
+# Seed to use for random number generation
+seed = 42
+
+# If a list is provided, the data will have randomly labeled with values from the list
+# If set to false, no labels will be included with the data.
+provided_labels = [0, 1, 2]
+
+# List of metadata field names. These will be populated with dummy data.
+metadata_fields = ["meta_field_1", "meta_field_2"]
+
+# Set this to a positive integer to randomly replace some values with an "invalid" value.
+number_invalid_values = 0
+
+# The value to use for invalid values in the data. Must be one of the following:
+# "nan", "inf", "-inf", "none" or a float value.
+invalid_value_type = "nan"
+
+
+
+[data_loader]
+# The number of data points to load at once.
+batch_size = 512
+
+# STRONG RECOMMENDATION: Leave this as `false`.
+# Ensure that the data loader does no secondary shuffling of the data.
+shuffle = false
+
+# The collate function to use in the data loader. Using `false` will use PyTorch's default collate function,
+# or specify an import path to a callable function i.e. "package.module.my_collate_fn"
+collate_fn = false
+
+
+[infer]
+# The path to the model weights file to use for inference.
+model_weights_file = "/Users/drew/code/hyrax/docs/pre_executed/results/20260303-122118-train-lTeu/example_model.pth"
+
+# >>> I believe that we can simply remove this entry <<<<<<<<<<<<<<<<<<<<<<<<<<<
+# The data_set split to use for inference. Use `false` for entire dataset.
+split = "infer"
+
+
+[vector_db]
+# The type of vector db to use. Use "false" to disable vector database.
+name = "chromadb"
+
+# The directory where the vector database will be stored. Use "false" to create
+# a new vector database in a timestamped directory. Otherwise set to a path.
+vector_db_dir = false
+
+# The path to inference results. Setting to "false" will use the most recent
+# inference results.
+infer_results_dir = false
+
+
+[vector_db.chromadb]
+# The approximate maximum size of a shard before creating a new one. A smaller
+# value will decrease insert times while increasing search times.
+shard_size_limit = 65536
+
+# Inserting vectors with more than this many elements logs a warning message. ChromaDB
+# performance degrades with vectors of this size. Set to "false" to disable warning.
+vector_size_warning = 10000
+
+
+[vector_db.qdrant]
+# The number of elements in the vectors that will be stored in the vector database.
+# This must be the same as the size of the vectors produced by the model.
+vector_size = 64
+
+
+
+[results]
+# Path to inference results to use for visualization and lookups. Uses latest inference run if none provided.
+inference_dir = false
+
+
+[umap]
+# Number of data points used to fit the umap transform.
+fit_sample_size = 1024
+
+# Save the fitted umap as a pickle file 
+save_fit_umap = true
+
+# Use multiprocessing during transforming to umap space (More memory intensive)
+parallel = false
+
+# Name of the umap implementation to use
+name = "umap.UMAP"
+
+
+[umap.UMAP]
+# Specify any parameter accepted by https://umap-learn.readthedocs.io/en/latest/api.html#umap
+# Dimension of the embedded space
+n_components = 2
+
+# Controls how UMAP balances local versus global structure in the data.
+# See official documentation for details.
+n_neighbors = 15
+
+
+
+[visualize]
+
+# List of metadata field names to use in visualizer. Must be available as metadata in your dataset
+fields = []
+
+# Whether to display a panel of randomly chosen images corresponding to the selected points
+display_images = false
+
+# Name of catalog column to use for coloring points in the scatter plot. Use false for no coloring.
+color_column = false
+
+# Colormap to use for coloring points in the scatter plot when color_column is specified
+cmap = "viridis"
+
+# Only valid for .pt tensor images. Which bands should be loaded for display
+# [0,3,5] would map bands in that order to R,G,B. Single band will be grayscale.
+torch_tensor_bands = [3]
+
+# Whether to rasterize plot. Will break coloring (Haloviews Bug)
+# Helpful to reduce lag in large datasets. 
+rasterize_plot = false
+
+
+[engine]
+
+# The directory containing the ONNX model used for inference in production
+model_directory = false
+
+[data_request.train.data]
+dataset_class = "HyraxCifarDataset"
+data_location = "./data"
+fields = ["image", "label"]
+primary_id_field = "object_id"
+split_fraction = 1.0
+
+[data_request.infer.data]
+dataset_class = "HyraxCifarDataset"
+data_location = "./data"
+fields = ["image", "object_id"]
+primary_id_field = "object_id"
+
+[data_request.infer.data.dataset_config]
+use_training_data = false

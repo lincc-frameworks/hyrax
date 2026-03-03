@@ -6,4 +6,6 @@ Common workflows
 
    Configuration basics <notebooks/config_basics>
    Working with result datasets <pre_executed/working_with_results_data>
+   Look up results by ID <notebooks/lookup_results_by_id>
+   Converting Hyrax results to pandas <notebooks/convert_inference_results_to_pandas>
    Learning rate schedulers <pre_executed/using_lr_schedulers>
