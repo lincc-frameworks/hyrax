@@ -10,7 +10,7 @@ class TestSetupDataset:
 
     def test_setup_dataset_missing_dataset_class_raises_error(self):
         """Test that missing dataset_class raises appropriate RuntimeError."""
-        # Create a minimal config that would trigger iterable dataset path
+        # Create a minimal config that omits dataset_class in data_request
         config = {
             "data_request": {
                 "train": {

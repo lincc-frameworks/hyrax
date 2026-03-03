@@ -145,7 +145,7 @@ class HyraxDataset:
 
         # We only require a user to implement a __len__ method.
         if not hasattr(cls, "__len__"):
-            msg = f"Hyrax data set {cls.__name__} is missing required length function."
+            msg = f"Hyrax data set {cls.__name__} is missing required length function. "
             msg += "__len__ must be defined."
             raise RuntimeError(msg)
 
