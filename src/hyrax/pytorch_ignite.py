@@ -196,9 +196,6 @@ def dist_data_loader(
     For multiple splits, we return a dictionary where the keys are the names of the splits
     and the value is either a Dataloader as described above or the value None if the split
     was not configured.
-
-    If an iterable dataset is passed, we cannot create multiple splits with a pyTorch sampler object
-    so we return the same thing for all splits, which is a dataloader representing the entire iterable
     """
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
