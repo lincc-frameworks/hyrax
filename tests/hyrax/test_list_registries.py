@@ -42,9 +42,8 @@ def test_list_dataset_classes_prints_sorted(capsys):
 
 def test_list_dataset_classes_includes_registered_dataset(capsys):
     """list_dataset_classes() should include a newly registered dataset class."""
-    from torch.utils.data import Dataset
 
-    class ZZZTestListDataset(HyraxDataset, Dataset):
+    class ZZZTestListDataset(HyraxDataset):
         def __init__(self, config):
             super().__init__(config)
 
