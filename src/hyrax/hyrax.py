@@ -203,6 +203,28 @@ class Hyrax:
 
         return run(config=self.config, **kwargs)
 
+    def list_models(self):
+        """Print the alphabetically sorted list of available model names.
+
+        The list reflects all models currently registered in the model registry,
+        including any models registered by external plugins.
+        """
+        from .models.model_registry import MODEL_REGISTRY
+
+        for name in sorted(MODEL_REGISTRY.keys()):
+            print(name)
+
+    def list_dataset_classes(self):
+        """Print the alphabetically sorted list of available dataset class names.
+
+        The list reflects all dataset classes currently registered in the dataset
+        registry, including any dataset classes registered by external plugins.
+        """
+        from .data_sets.data_set_registry import DATASET_REGISTRY
+
+        for name in sorted(DATASET_REGISTRY.keys()):
+            print(name)
+
     # Python notebook interface to class verbs
     # we need both __dir__ and __getattr__ so that the
     # functions from the various verb classes appear to be
