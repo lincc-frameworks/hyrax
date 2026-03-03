@@ -24,7 +24,7 @@ class HyraxDataset:
             def __init__(self, config: dict):
                 super().__init__(config)
 
-            def __len__ ():
+            def __len__(self):
                 # Your len function goes here
                 pass
 

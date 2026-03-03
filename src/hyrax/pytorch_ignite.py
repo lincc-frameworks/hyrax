@@ -8,8 +8,6 @@ from typing import Any, Union
 import ignite.distributed as idist
 import numpy as np
 
-from hyrax.data_sets.data_set_registry import fetch_dataset_class
-
 with warnings.catch_warnings():
     warnings.simplefilter(action="ignore", category=DeprecationWarning)
     import mlflow
@@ -53,26 +51,12 @@ class SubsetSequentialSampler(Sampler[int]):
         return len(self.indices)
 
 
-def is_iterable_dataset_requested(data_request: dict) -> bool:
-    """This function checks each of the datasets included in the data_request.
-    If any of them are iterable-style datasets, we return True.
-    """
-
-    is_iterable = False
-    for _, value in data_request.items():
-        for _, dataset_definition in value.items():
-            if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
-                is_iterable = True
-                break
-    return is_iterable
-
-
 def setup_dataset(
     config: dict,
     *,
     splits: tuple[str, ...] | None = None,
     shuffle: bool = True,
-) -> DataProvider:
+) -> dict[str, DataProvider]:
     """This function creates an instance of the requested dataset(s) specified in the
     runtime configuration for the given splits (data_groups).
 
@@ -95,9 +79,8 @@ def setup_dataset(
 
     Returns
     -------
-    DataProvider
-        An instance of a DataProvider that encapsulates the dataset classes
-        specified in the split (data_group) passed in.
+    dict[str, DataProvider]
+        A dictionary mapping data group names to DataProvider instances.
     """
 
     dataset = {}
@@ -950,7 +933,7 @@ def create_save_batch_callback(dataset, results_dir):
 
     data_writer = create_results_writer(dataset, results_dir)
 
-    def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
+    def _save_batch(batch: dict, batch_results: torch.Tensor):
         """Receive and write batch results to results_dir immediately."""
         nonlocal data_writer
 
