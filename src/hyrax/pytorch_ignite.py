@@ -25,7 +25,6 @@ from torch.utils.data import DataLoader, Dataset, Sampler
 
 from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
-from hyrax.plugin_utils import get_or_load_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
@@ -200,26 +199,6 @@ def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
     return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
 
 
-def load_collate_function(data_loader_kwargs: dict) -> Callable | None:
-    """Load a collate function if one is specified in the config. Otherwise return None.
-    Returning None will cause the DataLoader to use PyTorch's default collate function.
-
-    Parameters
-    ----------
-    data_loader_kwargs : dict
-        The configuration dictionary that will be passed as kwargs to the DataLoader
-
-    Returns
-    -------
-    Optional[Callable]
-        The collate function if specified, else None
-    """
-    collate_fn = (
-        get_or_load_class(data_loader_kwargs["collate_fn"]) if data_loader_kwargs["collate_fn"] else None
-    )
-    return collate_fn
-
-
 def dist_data_loader(
     dataset: Dataset,
     config: dict,
@@ -256,13 +235,7 @@ def dist_data_loader(
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
     data_loader_kwargs = dict(config["data_loader"])
 
-    # If the dataset is a DataProvider instance, use its collate function.
-    # Else use the collate function defined in the config, or None (Torch's default)
-    if isinstance(dataset, DataProvider):
-        collation_func = dataset.collate
-    else:
-        collation_func = load_collate_function(data_loader_kwargs)
-    data_loader_kwargs["collate_fn"] = collation_func
+    data_loader_kwargs["collate_fn"] = dataset.collate
 
     # Handle case where no split is needed.
     if isinstance(split, bool):
@@ -594,8 +567,8 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     # We use torch.from_numpy() over torch.tensor() to avoid the copy of data that occurs in the latter.
 
     if isinstance(batch, tuple):
-        batch = tuple(torch.from_numpy(i).to(device) for i in batch)
-    else:
+        batch = tuple(torch.from_numpy(i).to(device) if i is not None else None for i in batch)
+    elif batch is not None:
         batch = torch.from_numpy(batch).to(device)
 
     return func(batch)
@@ -970,17 +943,15 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     return trainer
 
 
-def create_save_batch_callback(dataset, results_dir):
+def create_save_batch_callback(results_dir):
     """Create a callback function for saving batch results during inference or testing.
 
-    This factory function creates a closure that captures the dataset and output
-    directory, then returns a callback that can be used with create_evaluator to save
+    This factory function creates a closure that captures the output directory,
+    then returns a callback that can be used by pytorch_ignite engines to save
     model outputs batch by batch.
 
     Parameters
     ----------
-    dataset : Dataset
-        The dataset being processed (must be a DataProvider or InferenceDataset that has an ids() method)
     results_dir : Path
         Directory where results should be saved
 
@@ -991,7 +962,7 @@ def create_save_batch_callback(dataset, results_dir):
     """
     from hyrax.data_sets.result_factories import create_results_writer
 
-    data_writer = create_results_writer(dataset, results_dir)
+    data_writer = create_results_writer(results_dir)
 
     def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
         """Receive and write batch results to results_dir immediately."""

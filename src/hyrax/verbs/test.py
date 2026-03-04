@@ -111,7 +111,7 @@ class Test(Verb):
         model.save(results_dir / "test_weights.pth")
 
         # Create the save batch callback
-        save_batch_callback = create_save_batch_callback(dataset["test"], results_dir)
+        save_batch_callback = create_save_batch_callback(results_dir)
 
         results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
         mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
