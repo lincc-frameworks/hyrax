@@ -1,25 +1,11 @@
 import numpy as np
 import pytest
-import torch
-from torch import any, isnan, tensor
 
 import hyrax
 from hyrax.data_sets.data_provider import _handle_nans
-from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
 
 
-class RandomNaNDataset(HyraxRandomDataset):
-    """Dataset yielding pairs of random numbers. Requires a seed to emulate
-    static data on the filesystem between instantiations"""
-
-    def __init__(self, config, data_location):
-        super().__init__(config, data_location)
-
-    def __getitem__(self, idx):
-        return self.data[idx]
-
-
-@pytest.fixture(scope="function", params=["RandomNaNDataset", "HyraxRandomDataset"])
+@pytest.fixture(scope="function", params=["HyraxRandomDataset"])
 def loopback_hyrax_nan(tmp_path_factory, request):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model
@@ -79,10 +65,10 @@ def test_nan_handling(loopback_hyrax_nan):
     inference_results = h.infer()
 
     if isinstance(dataset[0], dict):
-        original_nans = tensor([any(isnan(tensor(item["data"]["image"]))) for item in dataset])
+        original_nans = np.array([np.any(np.isnan(np.array(item["data"]["image"]))) for item in dataset])
     else:
-        original_nans = tensor([any(isnan(item)) for item in dataset])
-    assert any(original_nans)
+        original_nans = np.array([np.any(np.isnan(np.array(item))) for item in dataset])
+    assert np.any(original_nans)
 
     for result in inference_results:
         assert not np.any(np.isnan(result))
@@ -98,10 +84,10 @@ def test_nan_handling_zero_values(loopback_hyrax_nan):
     inference_results = h.infer()
 
     if isinstance(dataset[0], dict):
-        original_nans = tensor([any(isnan(tensor(item["data"]["image"]))) for item in dataset])
+        original_nans = np.array([np.any(np.isnan(np.array(item["data"]["image"]))) for item in dataset])
     else:
-        original_nans = tensor([any(isnan(item)) for item in dataset])
-    assert any(original_nans)
+        original_nans = np.array([np.any(np.isnan(np.array(item))) for item in dataset])
+    assert np.any(original_nans)
 
     for result in inference_results:
         assert not np.any(np.isnan(result))
@@ -117,10 +103,10 @@ def test_nan_handling_off(loopback_hyrax_nan):
     inference_results = h.infer()
 
     if isinstance(dataset[0], dict):
-        original_nans = tensor([any(isnan(tensor(item["data"]["image"]))) for item in dataset])
+        original_nans = np.array([np.any(np.isnan(np.array(item["data"]["image"]))) for item in dataset])
     else:
-        original_nans = tensor([any(isnan(item)) for item in dataset])
-    assert any(original_nans)
+        original_nans = np.array([np.any(np.isnan(np.array(item))) for item in dataset])
+    assert np.any(original_nans)
 
     result_nans = np.array([np.any(np.isnan(item)) for item in inference_results])
     assert np.any(result_nans)
@@ -161,10 +147,10 @@ def test_nan_handling_tuple_with_three_elements(loopback_hyrax_nan):
     This simulates the AppleCider use case where prepare_inputs returns (metadata, image, labels)."""
     h, dataset = loopback_hyrax_nan
 
-    # Create a test tuple with 3 elements: metadata (non-tensor),
-    # image (tensor with NaNs), labels (non-tensor)
+    # Create a test tuple with 3 elements: metadata (non-array),
+    # image (array with NaNs), labels (non-array)
     metadata = {"id": 123, "timestamp": "2024-01-01"}
-    image_with_nans = torch.tensor([[1.0, float("nan"), 3.0], [4.0, 5.0, float("nan")]])
+    image_with_nans = np.array([[1.0, float("nan"), 3.0], [4.0, 5.0, float("nan")]])
     labels = "test_label"
 
     test_tuple = (metadata, image_with_nans, labels)
@@ -181,39 +167,39 @@ def test_nan_handling_tuple_with_three_elements(loopback_hyrax_nan):
     assert output[0] == metadata
 
     # Verify image had NaNs replaced with zeros
-    assert isinstance(output[1], torch.Tensor)
-    assert not torch.any(torch.isnan(output[1]))
-    assert torch.all(output[1] == torch.tensor([[1.0, 0.0, 3.0], [4.0, 5.0, 0.0]]))
+    assert isinstance(output[1], np.ndarray)
+    assert not np.any(np.isnan(output[1]))
+    assert np.all(output[1] == np.array([[1.0, 0.0, 3.0], [4.0, 5.0, 0.0]]))
 
     # Verify labels are unchanged
     assert output[2] == labels
 
 
-def test_nan_handling_tuple_multiple_tensors(loopback_hyrax_nan):
-    """Test that when a tuple contains multiple tensors, NaN handling is applied
+def test_nan_handling_tuple_multiple_arrays(loopback_hyrax_nan):
+    """Test that when a tuple contains multiple arrays, NaN handling is applied
     to all of them."""
     h, dataset = loopback_hyrax_nan
 
-    # Create a test tuple with multiple tensors
-    tensor1 = torch.tensor([1.0, float("nan"), 3.0])
-    tensor2 = torch.tensor([4.0, 5.0, float("nan")])
+    # Create a test tuple with multiple arrays
+    array1 = np.array([1.0, float("nan"), 3.0])
+    array2 = np.array([4.0, 5.0, float("nan")])
     label = "label"
 
-    test_tuple = (tensor1, tensor2, label)
+    test_tuple = (array1, array2, label)
 
     # Test with nan_mode = 'zero'
     h.config["data_set"]["nan_mode"] = "zero"
     output = _handle_nans(test_tuple, h.config)
 
-    # Verify all tensors had NaN handling applied
+    # Verify all arrays had NaN handling applied
     assert len(output) == 3
-    assert not torch.any(torch.isnan(output[0]))
-    assert not torch.any(torch.isnan(output[1]))
+    assert not np.any(np.isnan(output[0]))
+    assert not np.any(np.isnan(output[1]))
     assert output[2] == label
 
     # Verify the values are correct
-    assert torch.all(output[0] == torch.tensor([1.0, 0.0, 3.0]))
-    assert torch.all(output[1] == torch.tensor([4.0, 5.0, 0.0]))
+    assert np.all(output[0] == np.array([1.0, 0.0, 3.0]))
+    assert np.all(output[1] == np.array([4.0, 5.0, 0.0]))
 
 
 def test_nan_handling_tuple_preserves_order(loopback_hyrax_nan):
@@ -222,9 +208,9 @@ def test_nan_handling_tuple_preserves_order(loopback_hyrax_nan):
 
     # Create a test tuple with mixed types in specific order
     elem1 = "first"
-    elem2 = torch.tensor([1.0, float("nan")])
+    elem2 = np.array([1.0, float("nan")])
     elem3 = {"key": "value"}
-    elem4 = torch.tensor([float("nan"), 2.0])
+    elem4 = np.array([float("nan"), 2.0])
     elem5 = 42
 
     test_tuple = (elem1, elem2, elem3, elem4, elem5)
@@ -236,9 +222,9 @@ def test_nan_handling_tuple_preserves_order(loopback_hyrax_nan):
     # Verify length and order
     assert len(output) == 5
     assert output[0] == elem1
-    assert isinstance(output[1], torch.Tensor)
-    assert not torch.any(torch.isnan(output[1]))
+    assert isinstance(output[1], np.ndarray)
+    assert not np.any(np.isnan(output[1]))
     assert output[2] == elem3
-    assert isinstance(output[3], torch.Tensor)
-    assert not torch.any(torch.isnan(output[3]))
+    assert isinstance(output[3], np.ndarray)
+    assert not np.any(np.isnan(output[3]))
     assert output[4] == elem5
