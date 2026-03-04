@@ -152,20 +152,6 @@ class HyraxDataset:
         # Ensure the class is in the registry so the config system can find it
         update_registry(DATASET_REGISTRY, cls.__name__, cls)
 
-    # TODO: I believe that this method should simply be deprecated. `DataProvider`
-    # TODO: exposes a `sample_data()` method that should be used instead.
-    # def sample_data(self) -> dict:
-    #     """Get a sample from the dataset. This is a convenience function that returns
-    #     the first sample from the dataset. Often this will be used to instantiate
-    #     a model that adjusts its form based on the shape of the data."""
-
-    #     if self.is_map():
-    #         return self[0]
-    #     else:
-    #         raise NotImplementedError(
-    #             "You must define __getitem__ or __iter__ to use the default `get_sample()` method."
-    #         )
-
     def metadata_fields(self) -> list[str]:
         """Returns a list of metadata fields supported by this object
 
