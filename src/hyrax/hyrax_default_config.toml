@@ -207,10 +207,8 @@ experiment_name = "notebook"
 # If false, uses result directory string, <timestamp>-train-<uid>, as run name.
 run_name = false
 
-# Path to a pre-trained model weights file for fine-tuning. Training will start
-# from epoch 1 with a fresh optimizer, using these weights as the initial parameters.
-# If `false`, training starts from randomly initialized weights (default behavior).
-# Cannot be used together with `resume` — use `resume` to continue from a full checkpoint.
+# Path to a pre-trained model weights file to use as the starting point for fine-tuning.
+# If `false`, training starts from randomly initialized weights. Cannot be set with `resume`.
 model_weights_file = false
 
 
