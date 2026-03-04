@@ -23,6 +23,13 @@ def test_list_models_includes_registered_model(capsys):
     class ZZZTestListModel(nn.Module):
         def __init__(self, config, data_sample=None):
             super().__init__()
+            self.config = config
+
+        def train_batch(self, batch):
+            pass
+
+        def infer_batch(self, batch):
+            pass
 
     h = Hyrax()
     h.list_models()
