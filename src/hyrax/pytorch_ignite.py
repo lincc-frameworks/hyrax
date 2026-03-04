@@ -8,8 +8,6 @@ from typing import Any, Union
 import ignite.distributed as idist
 import numpy as np
 
-from hyrax.data_sets.data_set_registry import fetch_dataset_class
-
 with warnings.catch_warnings():
     warnings.simplefilter(action="ignore", category=DeprecationWarning)
     import mlflow
@@ -52,33 +50,16 @@ class SubsetSequentialSampler(Sampler[int]):
         return len(self.indices)
 
 
-def is_iterable_dataset_requested(data_request: dict) -> bool:
-    """This function checks each of the datasets included in the data_request.
-    If any of them are iterable-style datasets, we return True.
-    """
-
-    is_iterable = False
-    for _, value in data_request.items():
-        for _, dataset_definition in value.items():
-            if fetch_dataset_class(dataset_definition["dataset_class"]).is_iterable():
-                is_iterable = True
-                break
-    return is_iterable
-
-
 def setup_dataset(
     config: dict,
     *,
     splits: tuple[str, ...] | None = None,
     shuffle: bool = True,
-) -> Dataset:
-    """This function creates an instance of the requested dataset specified in the
-    runtime configuration. There are two modes encapsulated here:
+) -> dict[str, DataProvider]:
+    """This function creates an instance of the requested dataset(s) specified in the
+    runtime configuration for the given splits (data_groups).
 
-    1) If the dataset requested includes an iterable-style dataset, ensure that only
-    one dataset was requested, and then return an instance of that dataset.
-    2) If the dataset(s) requested is for 1 or more map-style dataset, create an
-    instance of a DataProvider, and return that as the dataset.
+    It will create an instance of a DataProvider, and return that as the dataset.
 
     Parameters
     ----------
@@ -97,75 +78,42 @@ def setup_dataset(
 
     Returns
     -------
-    Dataset
-        An instance of the dataset class specified in the configuration
+    dict[str, DataProvider]
+        A dictionary mapping data group names to DataProvider instances.
     """
 
     dataset = {}
     data_request = generate_data_request_from_config(config)
-    if is_iterable_dataset_requested(data_request):
-        # If the data_request is for multiple datasets and at least one of
-        # them is iterable, raise an error, we don't support that style of operation
-        for _, value in data_request.items():
-            if len(value) > 1:
-                logger.error(
-                    "Multiple datasets requested, including at least one iterable-style. "
-                    "Hyrax supports for datasets includes: "
-                    "1) 1-N map-style or 2) at most 1 iterable-style."
-                )
-                raise RuntimeError(
-                    "Multiple datasets requested, including at least one iterable-style. "
-                    "Hyrax supports for datasets includes: "
-                    "1) 1-N map-style or 2) at most 1 iterable-style."
-                )
 
-        # generate instance of the iterable dataset. Again, because the only mode of
-        # operation for iterable-style datasets that Hyrax supports is 1 iterable
-        # dataset at a time, we can just take the first (and only) item in the data_request.
-        set_names = splits if splits is not None else ("train", "infer")
-        for set_name in set_names:
-            if set_name not in data_request:
-                continue
-            data_definition = next(iter(data_request[set_name].values()))
+    # Create DataProvider instances for the requested splits.  When
+    # ``splits`` is None we load every group in the data_request.
+    keys_to_load = splits if splits is not None else tuple(data_request.keys())
+    for key in keys_to_load:
+        if key not in data_request:
+            continue
+        ds = DataProvider(config, data_request[key])
+        dataset[key] = ds
 
-            dataset_class = data_definition.get("dataset_class", None)
-            dataset_cls = fetch_dataset_class(dataset_class)
+    # --- Compute split indices for providers that define split_fraction ---
+    # Group DataProvider instances by their primary_data_location.  Only
+    # providers whose split_fraction is set participate in the partitioning.
+    from collections import defaultdict
 
-            data_location = data_definition.get("data_location", None)
-            ds = dataset_cls(config=config, data_location=data_location)
+    providers_by_location: dict[str, dict[str, DataProvider]] = defaultdict(dict)
+    for group_name, provider in dataset.items():
+        if isinstance(provider, DataProvider) and provider.split_fraction is not None:
+            loc = provider.primary_data_location
+            providers_by_location[loc][group_name] = provider
 
-            dataset[set_name] = ds
-
-    else:
-        # Create DataProvider instances for the requested splits.  When
-        # ``splits`` is None we load every group in the data_request.
-        keys_to_load = splits if splits is not None else tuple(data_request.keys())
-        for key in keys_to_load:
-            if key not in data_request:
-                continue
-            ds = DataProvider(config, data_request[key])
-            dataset[key] = ds
-
-        # --- Compute split indices for providers that define split_fraction ---
-        # Group DataProvider instances by their primary_data_location.  Only
-        # providers whose split_fraction is set participate in the partitioning.
-        from collections import defaultdict
-
-        providers_by_location: dict[str, dict[str, DataProvider]] = defaultdict(dict)
-        for group_name, provider in dataset.items():
-            if isinstance(provider, DataProvider) and provider.split_fraction is not None:
-                loc = provider.primary_data_location
-                providers_by_location[loc][group_name] = provider
-
-        for _loc, providers in providers_by_location.items():
-            split_indices = create_splits_from_fractions(providers, config, shuffle=shuffle)
-            for group_name, indices in split_indices.items():
-                providers[group_name].split_indices = indices
+    for _loc, providers in providers_by_location.items():
+        split_indices = create_splits_from_fractions(providers, config, shuffle=shuffle)
+        for group_name, indices in split_indices.items():
+            providers[group_name].split_indices = indices
 
     return dataset
 
 
-def setup_model(config: dict, dataset: Dataset) -> torch.nn.Module:
+def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     """Create a model object based on the configuration.
 
     Parameters
@@ -227,9 +175,6 @@ def dist_data_loader(
     For multiple splits, we return a dictionary where the keys are the names of the splits
     and the value is either a Dataloader as described above or the value None if the split
     was not configured.
-
-    If an iterable dataset is passed, we cannot create multiple splits with a pyTorch sampler object
-    so we return the same thing for all splits, which is a dataloader representing the entire iterable
     """
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
@@ -277,29 +222,22 @@ def dist_data_loader(
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    if dataset.is_iterable():
-        ids = list(dataset.ids())
-        indexes = list(range(len(ids)))
-        dataloaders = {
-            s: (idist.auto_dataloader(dataset, pin_memory=True, **data_loader_kwargs), indexes) for s in split
-        }
-    else:
-        # Create the indexes for all splits based on config.
-        indexes = create_splits(dataset, config)
+    # Create the indexes for all splits based on config.
+    indexes = create_splits(dataset, config)
 
-        # Create samplers and dataloaders for each split we are interested in
-        samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
+    # Create samplers and dataloaders for each split we are interested in
+    samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
 
-        dataloaders = {
-            split: (idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes[split])
-            if sampler
-            else None
-            for split, sampler in samplers.items()
-        }
+    dataloaders = {
+        split: (idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes[split])
+        if sampler
+        else None
+        for split, sampler in samplers.items()
+    }
 
-        none_keys = [k for k, v in dataloaders.items() if v is None]
-        for key in none_keys:
-            del dataloaders[key]
+    none_keys = [k for k, v in dataloaders.items() if v is None]
+    for key in none_keys:
+        del dataloaders[key]
 
     # Return only one if we were only passed one split in, return the dictionary otherwise.
     return dataloaders[split[0]] if len(split) == 1 else dataloaders
@@ -548,8 +486,7 @@ def create_splits_from_fractions(
     return split_indices
 
 
-# ! Need to go through and clean up the variables here. I think `device` and `engine`
-# ! are not used, but we'll need to double check before pulling out all the wiring.
+# TODO: Clean up the input variables here.
 def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
     # Pass the collated batch through the model's prepare_inputs function
@@ -964,7 +901,7 @@ def create_save_batch_callback(results_dir):
 
     data_writer = create_results_writer(results_dir)
 
-    def _save_batch(batch: Union[torch.Tensor, list, tuple, dict], batch_results: torch.Tensor):
+    def _save_batch(batch: dict, batch_results: torch.Tensor):
         """Receive and write batch results to results_dir immediately."""
         nonlocal data_writer
 
