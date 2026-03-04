@@ -75,9 +75,6 @@ class Train(Verb):
 
         # We know that `dataset` will always be returned as a dictionary with at least
         # a `train` and `infer` key. There may be a `validate` key as well.
-        # The only instance in which a dataset would not be a dictionary is if
-        # the user has requested an iterable dataset. But we don't want to support that
-        # for training right now.
         #
         # There are three ways splits can be defined:
         #
