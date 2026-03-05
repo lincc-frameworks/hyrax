@@ -10,3 +10,4 @@ Common workflows
    Look up results by ID <notebooks/lookup_results_by_id>
    Converting Hyrax results to pandas <notebooks/convert_inference_results_to_pandas>
    Learning rate schedulers <pre_executed/using_lr_schedulers>
+   Checkpointing <pre_executed/hyrax_checkpointing>
