@@ -90,6 +90,7 @@ class Train(Verb):
         if config["train"]["model_weights_file"]:
             from hyrax.models.model_utils import load_model_weights
 
+            load_model_weights(config, model, "train")
             logger.info(
                 f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Loading pre-trained weights:"
                 f"{Style.RESET_ALL} {config['train']['model_weights_file']}"
@@ -98,7 +99,6 @@ class Train(Verb):
                 f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Fine-tuning mode:{Style.RESET_ALL} "
                 "Training will start from epoch 1 with a fresh optimizer."
             )
-            load_model_weights(config, model, "train")
 
         # We know that `dataset` will always be returned as a dictionary with at least
         # a `train` and `infer` key. There may be a `validate` key as well.
