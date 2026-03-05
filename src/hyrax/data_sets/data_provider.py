@@ -29,44 +29,24 @@ def _handle_nans_numpy(batch, config):
     return _handle_nans_logic_numpy(batch, config)
 
 
-# Conditionally register torch.Tensor if torch is available
-try:
-    import torch
-
-    @_handle_nans.register(torch.Tensor)
-    def _handle_nans_tensor(batch, config):
-        """The implementation of _handle_nans when expecting `batch` to be a tensor."""
-        return _handle_nans_logic_torch(batch, config)
-except ImportError:
-    # Torch is an optional dependency; if it is not installed, we simply
-    # skip registering the tensor-specific NaN handler.
-    pass
-
-
 # Register tuples and lists for backward compatibility and edge cases.
 # NaN handling now primarily occurs in DataProvider.collate() on numpy arrays
-# before to_tensor() is called, so tuple/list batches are not expected in
+# before prepare_data() is called, so tuple/list batches are not expected in
 # the main data flow but may still appear from legacy or unusual inputs.
 @_handle_nans.register(tuple)
 @_handle_nans.register(list)
 def _handle_nans_tuple(batch, config):
-    """This is the tuple-specific implementation of _handle_nans. Each tensor element
-    of the tuple will have nan-handling applied. Non-tensor elements are returned unchanged."""
-    # Import torch here to avoid hard dependency
-    try:
-        import torch
-    except ImportError:
-        torch = None
+    """This is the tuple-specific implementation of _handle_nans. Each element
+    of the tuple will have nan-handling applied.
+    Non-numpy elements are returned unchanged."""
 
     # Process each element in the tuple
     handled_elements = []
     for element in batch:
-        if torch is not None and isinstance(element, torch.Tensor):
-            handled_elements.append(_handle_nans_logic_torch(element, config))
-        elif isinstance(element, np.ndarray):
+        if isinstance(element, np.ndarray):
             handled_elements.append(_handle_nans_logic_numpy(element, config))
         else:
-            # Keep non-tensor elements unchanged (e.g., labels, metadata)
+            # Keep non-numpy elements unchanged (e.g., labels, metadata)
             handled_elements.append(element)
 
     return tuple(handled_elements)
@@ -112,58 +92,6 @@ def _handle_nan_quantile_numpy(batch, quantile):
 def _handle_nan_zero_numpy(batch):
     if np.any(np.isnan(batch)):
         batch = np.nan_to_num(batch, nan=0.0)
-
-    return batch
-
-
-def _handle_nans_logic_torch(batch, config):
-    from torch import any, isnan
-
-    # Skip non-floating point tensors (e.g., integer, string tensors)
-    if not batch.is_floating_point():
-        return batch
-
-    if config["data_set"]["nan_mode"] is False:
-        if any(isnan(batch)):
-            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
-            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
-            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
-            msg += "to get started."
-            logger.warning(msg)
-        return batch
-
-    if config["data_set"]["nan_mode"] == "quantile":
-        quantile = config["data_set"]["nan_quantile"]
-        if quantile < 0.0 or quantile > 1.0:
-            raise RuntimeError('set config["data_set"]["nan_quantile"] to a value between 0 and 1')
-        return _handle_nan_quantile_torch(batch, quantile)
-    elif config["data_set"]["nan_mode"] == "zero":
-        return _handle_nan_zero_torch(batch)
-    else:
-        msg = f"nan mode was set to '{config['data_set']['nan_mode']}' which is unsupported."
-        msg += "The supported modes are 'quantile' and 'zero'."
-        raise NotImplementedError(msg)
-
-
-def _handle_nan_quantile_torch(batch, quantile):
-    import torch
-    from torch import any, isnan
-
-    if any(isnan(batch)):
-        flat_batch = torch.reshape(batch, (batch.shape[0], -1))
-        batch_quantile = torch.nanquantile(flat_batch, q=quantile, dim=-1)
-        for i, val in enumerate(batch_quantile):
-            batch[i] = torch.nan_to_num(batch[i], val)
-
-    return batch
-
-
-def _handle_nan_zero_torch(batch):
-    import torch
-    from torch import any, isnan
-
-    if any(isnan(batch)):
-        batch = torch.nan_to_num(batch, nan=0.0)
 
     return batch
 
