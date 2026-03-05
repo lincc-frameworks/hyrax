@@ -5,18 +5,16 @@ from hyrax.data_sets.data_set_registry import HyraxDataset
 from hyrax.models.model_registry import hyrax_model
 
 
-def test_list_models_prints_sorted(capsys):
-    """list_models() should print model names in alphabetical order."""
+def test_list_models_returns_sorted():
+    """list_models() should return model names in alphabetical order."""
     h = Hyrax()
-    h.list_models()
-    captured = capsys.readouterr()
-    names = captured.out.strip().splitlines()
+    names = h.list_models()
     assert names == sorted(names)
     # At least some built-in models should be present
     assert len(names) > 0
 
 
-def test_list_models_includes_registered_model(capsys):
+def test_list_models_includes_registered_model():
     """list_models() should include a newly registered model."""
 
     @hyrax_model
@@ -32,22 +30,18 @@ def test_list_models_includes_registered_model(capsys):
             pass
 
     h = Hyrax()
-    h.list_models()
-    captured = capsys.readouterr()
-    assert "ZZZTestListModel" in captured.out
+    assert "ZZZTestListModel" in h.list_models()
 
 
-def test_list_dataset_classes_prints_sorted(capsys):
-    """list_dataset_classes() should print dataset class names in alphabetical order."""
+def test_list_dataset_classes_returns_sorted():
+    """list_dataset_classes() should return dataset class names in alphabetical order."""
     h = Hyrax()
-    h.list_dataset_classes()
-    captured = capsys.readouterr()
-    names = captured.out.strip().splitlines()
+    names = h.list_dataset_classes()
     assert names == sorted(names)
     assert len(names) > 0
 
 
-def test_list_dataset_classes_includes_registered_dataset(capsys):
+def test_list_dataset_classes_includes_registered_dataset():
     """list_dataset_classes() should include a newly registered dataset class."""
 
     class ZZZTestListDataset(HyraxDataset):
@@ -61,6 +55,4 @@ def test_list_dataset_classes_includes_registered_dataset(capsys):
             return {}
 
     h = Hyrax()
-    h.list_dataset_classes()
-    captured = capsys.readouterr()
-    assert "ZZZTestListDataset" in captured.out
+    assert "ZZZTestListDataset" in h.list_dataset_classes()
