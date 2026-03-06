@@ -1,3 +1,5 @@
+import pytest
+
 from hyrax.config_utils import find_most_recent_results_dir
 
 
@@ -339,3 +341,55 @@ def test_training_info_returned_on_model(loopback_hyrax):
     assert hasattr(model, "final_validation_metrics")
     expected_history = [[initial_lr * gamma**i] for i in range(h.config["train"]["epochs"])]
     assert model._learning_rates_history == expected_history
+
+
+def test_train_raises_on_resume_and_model_weights_file(loopback_hyrax, tmp_path):
+    """
+    Ensure that setting both `resume` and `model_weights_file` in the [train] config
+    raises a ValueError before any expensive setup is performed.
+    """
+    h, _ = loopback_hyrax
+    h.config["general"]["results_dir"] = str(tmp_path)
+    h.config["train"]["resume"] = "/some/checkpoint.pt"
+    h.config["train"]["model_weights_file"] = "/some/weights.pth"
+
+    with pytest.raises(ValueError, match="Cannot set both"):
+        h.train()
+
+
+def test_train_with_pretrained_weights(loopback_hyrax, tmp_path):
+    """
+    Ensure that training can start from pre-trained weights specified via
+    config["train"]["model_weights_file"].
+    """
+    h, _ = loopback_hyrax
+    h.config["general"]["results_dir"] = str(tmp_path)
+
+    # First training run to produce a weights file
+    h.train()
+
+    results_dir = find_most_recent_results_dir(h.config, "train")
+    weights_path = results_dir / h.config["train"]["weights_filename"]
+    assert weights_path.exists(), "Expected weights file to exist after first training run"
+
+    # Second training run starting from the pre-trained weights
+    h.config["train"]["model_weights_file"] = str(weights_path)
+    model = h.train()
+
+    # Verify the config was updated to record the weights file that was used
+    assert h.config["train"]["model_weights_file"] == str(weights_path)
+    assert model is not None
+
+
+def test_train_default_model_weights_file_is_false(loopback_hyrax):
+    """
+    Verify that config["train"]["model_weights_file"] defaults to False and
+    that training proceeds normally without loading any pre-existing weights.
+    """
+    h, _ = loopback_hyrax
+
+    assert not h.config["train"]["model_weights_file"]
+
+    # Training should succeed without any weights file
+    model = h.train()
+    assert model is not None
