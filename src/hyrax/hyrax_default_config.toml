@@ -197,6 +197,10 @@ epochs = 10
 # Otherwise set to `false` to start training from the beginning.
 resume = false
 
+# Path to a pre-trained model weights file to use as the starting point for fine-tuning.
+# If `false`, training starts from randomly initialized weights. Cannot be set with `resume`.
+model_weights_file = false
+
 # The data_set split to use when training a model.
 split = "train"
 
