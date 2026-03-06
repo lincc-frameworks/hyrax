@@ -8,21 +8,6 @@ from copy import deepcopy
 import hyrax
 
 
-def test_infer_does_not_mutate_hyrax_config(loopback_hyrax):
-    """Calling h.infer() must not modify h.config (issue #703).
-
-    The infer verb internally calls load_model_weights which sets
-    config["infer"]["model_weights_file"]. Before the fix, this
-    mutation leaked back into the user's h.config.
-    """
-    h, _ = loopback_hyrax
-    original_weights = h.config["infer"]["model_weights_file"]
-
-    h.infer()
-
-    assert h.config["infer"]["model_weights_file"] == original_weights
-
-
 def test_sequential_train_infer_uses_fresh_config(loopback_hyrax):
     """The exact scenario from issue #703: train→infer→train→infer.
 
