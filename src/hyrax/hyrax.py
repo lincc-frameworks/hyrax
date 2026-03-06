@@ -1,5 +1,6 @@
 import logging
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Union
 
@@ -172,7 +173,8 @@ class Hyrax:
         """
         from .download import Downloader
 
-        downloader = Downloader(config=self.config)
+        _config_copy = deepcopy(self.config)
+        downloader = Downloader(config=_config_copy)
         manifest = downloader.get_manifest()
         widths = [int(dim[0]) for dim in manifest["dim"]]
         heights = [int(dim[1]) for dim in manifest["dim"]]
@@ -184,7 +186,8 @@ class Hyrax:
         """
         from .download import Downloader
 
-        downloader = Downloader(config=self.config)
+        _config_copy = deepcopy(self.config)
+        downloader = Downloader(config=_config_copy)
         return downloader.run(**kwargs)
 
     def prepare(self, **kwargs):
@@ -193,7 +196,8 @@ class Hyrax:
         """
         from .prepare import run
 
-        return run(config=self.config, **kwargs)
+        _config_copy = deepcopy(self.config)
+        return run(config=_config_copy, **kwargs)
 
     def rebuild_manifest(self, **kwargs):
         """
@@ -201,7 +205,8 @@ class Hyrax:
         """
         from .rebuild_manifest import run
 
-        return run(config=self.config, **kwargs)
+        _config_copy = deepcopy(self.config)
+        return run(config=_config_copy, **kwargs)
 
     def list_models(self):
         """Return the alphabetically sorted list of available model names.
@@ -254,5 +259,6 @@ class Hyrax:
         #
         # It may be possible to do this with functools.partial techniques
         # but should be tested.
-        verb_inst = fetch_verb_class(name)(config=self.config)
+        _config_copy = deepcopy(self.config)
+        verb_inst = fetch_verb_class(name)(config=_config_copy)
         return verb_inst.run
