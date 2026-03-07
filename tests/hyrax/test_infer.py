@@ -66,6 +66,39 @@ def test_load_model_weights_updates_config_when_auto_detected(tmp_path):
     mock_model.load.assert_called_once_with(weights_file)
 
 
+def test_load_model_weights_does_not_mutate_original_when_copied(tmp_path):
+    """Verify that passing a deepcopy to load_model_weights protects the original dict.
+
+    This is the core mechanism behind the issue #703 fix: Hyrax passes a deepcopy
+    of its config to verbs, so mutations in load_model_weights stay local.
+    """
+    from copy import deepcopy
+
+    from hyrax.models.model_utils import load_model_weights
+
+    original_config = {
+        "infer": {"model_weights_file": None},
+        "train": {"weights_filename": "model_weights.pth"},
+        "general": {"results_dir": str(tmp_path)},
+    }
+
+    train_dir = tmp_path / "20240101-120000-train-abcd"
+    train_dir.mkdir(parents=True)
+    weights_file = train_dir / "model_weights.pth"
+    weights_file.write_text("fake weights content")
+
+    config_copy = deepcopy(original_config)
+    mock_model = MagicMock()
+
+    with patch("hyrax.config_utils.find_most_recent_results_dir", return_value=train_dir):
+        load_model_weights(config_copy, mock_model, "infer")
+
+    # The copy should be mutated
+    assert config_copy["infer"]["model_weights_file"] == str(weights_file)
+    # The original must remain untouched
+    assert original_config["infer"]["model_weights_file"] is None
+
+
 def test_load_model_weights_preserves_explicit_config():
     """Test that config is still updated when model_weights_file is explicitly provided"""
     from tempfile import NamedTemporaryFile
