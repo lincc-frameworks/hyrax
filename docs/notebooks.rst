@@ -5,6 +5,7 @@ Example notebooks
     :maxdepth: 1
 
     Getting started with Hyrax <pre_executed/train_model>
+    Loading a Pretrained Model <pre_executed/pretrained_model_inference>
     Writing a custom dataset <pre_executed/custom_dataset>
     Providing data 1 <pre_executed/model_input_1>
     Providing data 2 <pre_executed/model_input_2>
