@@ -12,3 +12,4 @@ Common workflows
    Converting Hyrax results to Parquet <notebooks/convert_lance_to_parquet>
    Learning rate schedulers <pre_executed/using_lr_schedulers>
    Creating and querying a vector database <pre_executed/vector_db_demo>
+   Checkpointing <pre_executed/hyrax_checkpointing>
