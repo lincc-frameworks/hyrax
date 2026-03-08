@@ -1,48 +1,53 @@
 # Hyrax
+### A low-code solution for rapid experimentation with machine learning in astronomy
 [![Template](https://img.shields.io/badge/Template-LINCC%20Frameworks%20Python%20Project%20Template-brightgreen)](https://lincc-ppt.readthedocs.io/en/latest/)
 [![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/lincc-frameworks/hyrax/smoke-test.yml)](https://github.com/lincc-frameworks/hyrax/actions/workflows/smoke-test.yml)
 [![codecov](https://codecov.io/gh/lincc-frameworks/hyrax/branch/main/graph/badge.svg)](https://codecov.io/gh/lincc-frameworks/hyrax)
 [![Read the Docs](https://img.shields.io/readthedocs/hyrax)](https://hyrax.readthedocs.io/en/latest)
 [![PyPI](https://img.shields.io/pypi/v/hyrax?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/hyrax/)
-<hr>
 
-## Introduction
-Hyrax is an efficient tool
-to hunt for rare and anomalous sources in large astronomical imaging surveys
-(e.g., Rubin-LSST, HSC, Euclid, NGRST, etc.).
-Hyrax is designed to support four primary steps in the anomaly detection workflow:
+Hyrax is an extensible platform that handles much of the boilerplate code that is often required for a machine learning project in astronomy. Hyrax users are able to focus on the science work of model development and results analysis instead of infrastructrue.
 
-* Downloading large numbers of cutouts from public data repositories
-* Building lower dimensional representations of downloaded images -- the latent space
-* Interactive visualization and algorithmic exploration (e.g., clustering, similarity-search, etc.) of the latent space
-* Identification & rank-ordering of potential anomalous objects
+Hyrax is not tied to a specific model or data modality; but rather intended to encourage an ecosystem of models and data for rapid experimentation.
+If the algorithm you want can be implemented in PyTorch then Hyrax can likely reduce the boilerplate code required for a reproducible project.
 
-Hyrax is not tied to a specific anomaly detection algorithm/model or a specific
-class of rare/anomalous objects; but rather intended to support any algorithm
-that the user may want to apply on imaging data.
-If the algorithm you want to use takes in tensors, outputs tensors, and can be
-implemented in PyTorch; then chances are Hyrax is the right tool for you!
 
 ## Getting Started 
-To get started with Hyrax, clone the repository and create a new virtual environment.
-If you plan to develop code, run the ``.setup_dev.sh`` script.
+Hyrax can be installed via pip:
 
 ```
->> git clone https://github.com/lincc-frameworks/hyrax.git
->> conda create -n hyrax python=3.10
->> bash .setup_dev.sh (Optional, for developers)
+>> pip install hyrax
 ```
 
-## Additional Information
-Hyrax is under active development and has limited documentation at the moment.
-We aim to have v1 stability and more documentation in the first half of 2025.
-If you are an astronomer trying to use Hyrax before then, please get in touch with us!
+Hyrax is officially supported and tested with Python versions 3.11, 3.12, and 3.13.
+Other versions may work but are not guaranteed to be compatible.
 
+Check out [Getting started](https://hyrax.readthedocs.io/en/latest/getting_started.html) and
+[Common workflows](https://hyrax.readthedocs.io/en/latest/common_workflows.html) in the documentation for usage examples.
+
+
+## Existing Hyrax Projects
+Hyrax has been developed to support single and multimodal data for use with both supervised and unsupervised models.
+Some examples include: 
+
+- Image based unsupervised anomaly detection in HSC and LSST data. A. Ghosh
+- Spectra based supervised clustering to study supernova Ia spectral diversity. L. Cunningham, M. Dai
+- Image based supervised small body classification. M. West
+- Multimodal timeseries classification for ZTF alert follow up. A. Sasli, F. Fontinele-Nunes
+
+
+## Collaborations and Contributions
+If you are an astronomer interested in using Hyrax, please get in touch with us!
+We are especially interested to hear about application that Hyrax doesn't currently support.
+
+Hyrax is open source and under active development.
+If you would like to contribute, please contact us, we would be happy to work with you.
+
+
+## Acknowledgements
 This project started as a collaboration between different units within the
 [LSST Discovery Alliance](https://lsstdiscoveryalliance.org/) --
 the [LINCC Frameworks Team](https://lsstdiscoveryalliance.org/programs/lincc-frameworks/)
 and LSST-DA Catalyst Fellow, [Aritra Ghosh](https://ghosharitra.com/).
-
-## Acknowledgements
 
 This project is supported by Schmidt Sciences.
