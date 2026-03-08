@@ -10,7 +10,7 @@ Hyrax can be installed via pip:
 
    pip install hyrax
 
-Hyrax is officially supported and tested with Python versions 3.10, 3.11, 3.12, and 3.13.
+Hyrax is officially supported and tested with Python versions 3.11, 3.12, and 3.13.
 Other versions may work but are not guaranteed to be compatible.
 
 We strongly encourage the use of a virtual environment when working with Hyrax
