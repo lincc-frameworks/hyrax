@@ -30,11 +30,12 @@ Check out [Getting started](https://hyrax.readthedocs.io/en/latest/getting_start
 Hyrax has been developed to support single and multimodal data for use with both supervised and unsupervised models.
 Some examples include: 
 
-- Image-based unsupervised anomaly detection in HSC and LSST data. A. Ghosh
-- Spectra-based supervised clustering to study supernova Ia spectral diversity. L. Cunningham, M. Dai
-- Image-based supervised small body classification. M. West
-- Multimodal time-series classification for ZTF alert follow-up. A. Sasli, F. Fontinele-Nunes
-
+- Image-based unsupervised discovery in Rubin-LSST and HSC. (A. Ghosh, J.  Chatchadanoraset, D. Miura)
+- Spectra-based supervised clustering to study supernova Ia spectral diversity. (L. Cunningham, M. Dai)
+- Image-based supervised small body classification. (M. West++)
+- Multimodal time-series classification for ZTF alert follow-up. (A. Sasli, F. Fontinele-Nunes++)
+- Image-based unsupervised discovery of cluster-scale gravitationally lensed arcs. (G. Khullar++)
+- Searches for semi-resolved galaxies in HSC and LSST (P. Ferguson ++)
 
 ## Collaborations and Contributions
 If you are an astronomer interested in using Hyrax, please get in touch with us!
@@ -50,4 +51,4 @@ This project started as a collaboration between different units within the
 the [LINCC Frameworks Team](https://lsstdiscoveryalliance.org/programs/lincc-frameworks/)
 and LSST-DA Catalyst Fellow, [Aritra Ghosh](https://ghosharitra.com/).
 
-This project is supported by Schmidt Sciences.
+This project is supported by Schmidt Sciences and the John Templeton Foundation
