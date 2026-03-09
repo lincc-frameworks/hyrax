@@ -31,6 +31,7 @@ def test_train_resume(loopback_hyrax, tmp_path):
     checkpoint_path = results_dir / checkpoint_filename
 
     # Now, set the resume config to point to this checkpoint
+    h.config["train"]["epochs"] = 2  # run for one more epoch after resuming
     h.config["train"]["resume"] = str(checkpoint_path)
 
     # Resume training
