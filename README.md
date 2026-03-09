@@ -6,10 +6,10 @@
 [![Read the Docs](https://img.shields.io/readthedocs/hyrax)](https://hyrax.readthedocs.io/en/latest)
 [![PyPI](https://img.shields.io/pypi/v/hyrax?color=blue&logo=pypi&logoColor=white)](https://pypi.org/project/hyrax/)
 
-Hyrax is an extensible platform that handles much of the boilerplate code that is often required for a machine learning project in astronomy. Hyrax users are able to focus on the science work of model development and results analysis instead of infrastructrue.
+Hyrax is an extensible platform that handles much of the boilerplate code that is often required for a machine learning project in astronomy. Hyrax users are able to focus on the science work of model development and results analysis instead of infrastructure.
 
-Hyrax is not tied to a specific model or data modality; but rather intended to encourage an ecosystem of models and data for rapid experimentation.
-If the algorithm you want can be implemented in PyTorch then Hyrax can likely reduce the boilerplate code required for a reproducible project.
+Hyrax is not tied to a specific model or data modality but rather is intended to encourage an ecosystem of models and data for rapid experimentation.
+If the algorithm you want can be implemented in PyTorch, then Hyrax can likely reduce the boilerplate code required for a reproducible project.
 
 
 ## Getting Started 
@@ -30,18 +30,18 @@ Check out [Getting started](https://hyrax.readthedocs.io/en/latest/getting_start
 Hyrax has been developed to support single and multimodal data for use with both supervised and unsupervised models.
 Some examples include: 
 
-- Image based unsupervised anomaly detection in HSC and LSST data. A. Ghosh
-- Spectra based supervised clustering to study supernova Ia spectral diversity. L. Cunningham, M. Dai
-- Image based supervised small body classification. M. West
-- Multimodal timeseries classification for ZTF alert follow up. A. Sasli, F. Fontinele-Nunes
+- Image-based unsupervised anomaly detection in HSC and LSST data. A. Ghosh
+- Spectra-based supervised clustering to study supernova Ia spectral diversity. L. Cunningham, M. Dai
+- Image-based supervised small body classification. M. West
+- Multimodal time-series classification for ZTF alert follow-up. A. Sasli, F. Fontinele-Nunes
 
 
 ## Collaborations and Contributions
 If you are an astronomer interested in using Hyrax, please get in touch with us!
-We are especially interested to hear about application that Hyrax doesn't currently support.
+We are especially interested to hear about applications that Hyrax doesn't currently support.
 
 Hyrax is open source and under active development.
-If you would like to contribute, please contact us, we would be happy to work with you.
+If you would like to contribute, please contact us. We would be happy to work with you.
 
 
 ## Acknowledgements
