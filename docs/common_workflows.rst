@@ -13,3 +13,4 @@ Common workflows
    Learning rate schedulers <pre_executed/using_lr_schedulers>
    Creating and querying a vector database <pre_executed/vector_db_demo>
    Checkpointing <pre_executed/hyrax_checkpointing>
+   Loading pretrained weights <pre_executed/load_pretrained_model>
