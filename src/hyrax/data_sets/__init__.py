@@ -71,7 +71,6 @@ from .inference_dataset import InferenceDataSet
 from .result_dataset import ResultDataset, ResultDatasetWriter
 from .result_factories import create_results_writer, load_results_dataset
 from .data_set_registry import HyraxDataset
-from .hyrax_cifar_dataset import HyraxCifarBase
 from .hyrax_csv_dataset import HyraxCSVDataset
 from .data_cache import DataCache
 
@@ -87,7 +86,6 @@ __all__ = [
     "HyraxDataset",
     "LSSTDataset",
     "DownloadedLSSTDataset",
-    "HyraxCifarBase",
     "HyraxRandomDataset",
     "HyraxRandomDatasetBase",
     "HyraxCSVDataset",
