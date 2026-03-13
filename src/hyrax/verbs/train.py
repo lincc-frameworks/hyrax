@@ -57,6 +57,17 @@ class Train(Verb):
 
         config = self.config
 
+        # Validate that the user hasn't set both `resume` and `model_weights_file`.
+        # These are mutually exclusive: `resume` restores a full training checkpoint
+        # (model weights, optimizer state, epoch counter), while `model_weights_file`
+        # loads only model parameters and starts training fresh.
+        if config["train"]["resume"] and config["train"]["model_weights_file"]:
+            raise ValueError(
+                "Cannot set both `resume` and `model_weights_file` in the [train] config. "
+                "Use `resume` to continue from a full checkpoint (restores optimizer state and epoch), "
+                "or use `model_weights_file` to start fresh training from pre-trained weights."
+            )
+
         # Create a results directory
         results_dir = create_results_dir(config, "train")
         log_runtime_config(config, results_dir)
@@ -75,6 +86,22 @@ class Train(Verb):
             f"{model.__class__.__name__}"
         )
         logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}")
+
+        # If a pre-trained weights file is specified, load it before creating the trainer.
+        # This must happen before create_trainer() wraps the model with idist.auto_model
+        # (the distributed wrapper) to avoid parameter key name mismatches.
+        if config["train"]["model_weights_file"]:
+            from hyrax.models.model_utils import load_model_weights
+
+            load_model_weights(config, model, "train")
+            logger.info(
+                f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Loading pre-trained weights:"
+                f"{Style.RESET_ALL} {config['train']['model_weights_file']}"
+            )
+            logger.info(
+                f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Fine-tuning mode:{Style.RESET_ALL} "
+                "Training will start from epoch 1 with a fresh optimizer."
+            )
 
         # We know that `dataset` will always be returned as a dictionary with at least
         # a `train` and `infer` key. There may be a `validate` key as well.

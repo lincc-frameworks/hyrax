@@ -2,20 +2,19 @@
 import logging
 from pathlib import Path
 
-import numpy as np
-from torch.utils.data import Dataset
-
 from .data_set_registry import HyraxDataset
 
 logger = logging.getLogger(__name__)
 
 
-class HyraxCifarBase:
-    """Base class for Hyrax Cifar datasets"""
+class HyraxCifarDataset(HyraxDataset):
+    """Map style CIFAR 10 dataset for Hyrax
+
+    This utilizes the CIFAR dataset from torchvision for retrieving the dataset.
+    """
 
     def __init__(self, config: dict, data_location: Path = None):
         import torchvision.transforms as transforms
-        from astropy.table import Table
         from torchvision.datasets import CIFAR10
 
         self.data_location = data_location
@@ -33,10 +32,7 @@ class HyraxCifarBase:
         n_id = len(self.cifar)
         self.id_width = len(str(n_id))
 
-        metadata_table = Table(
-            {"label": np.array([self.cifar[index][1] for index in range(len(self.cifar))])}
-        )
-        super().__init__(config, metadata_table)
+        super().__init__(config)
 
     def get_image(self, idx):
         """Get the image at the given index as a NumPy array."""
@@ -48,34 +44,9 @@ class HyraxCifarBase:
         _, label = self.cifar[idx]
         return label
 
-    def get_index(self, idx):
-        """Get the index of the item."""
-        return idx
-
     def get_object_id(self, idx):
-        """Get the object ID for the item."""
+        """Get the object ID for the item as a string."""
         return f"{idx:0{self.id_width}d}"
-
-
-class HyraxCifarDataset(HyraxCifarBase, HyraxDataset, Dataset):
-    """Map style CIFAR 10 dataset for Hyrax
-
-    This is simply a version of CIFAR10 that is initialized using Hyrax config with a transformation
-    that works well for example code.
-
-    We only use the training split in the data, because it is larger (50k images). Hyrax will then divide that
-    into Train/test/Validate according to configuration.
-    """
 
     def __len__(self):
         return len(self.cifar)
-
-    def __getitem__(self, idx):
-        return {
-            "data": {
-                "object_id": self.get_object_id(idx),
-                "image": self.get_image(idx),
-                "label": self.get_label(idx),
-            },
-            "object_id": self.get_object_id(idx),
-        }
