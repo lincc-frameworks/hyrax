@@ -859,7 +859,7 @@ class DataProvider:
         Returns
         -------
         dict[str, np.ndarray]
-            The same batch dict but with nan's altered acccording to the hyrax configuration.
+            The same batch dict but with NaNs altered according to the Hyrax configuration.
         """
         # Apply NaN handling to all numpy array fields in the batch,
         # including data produced by custom collate functions.
