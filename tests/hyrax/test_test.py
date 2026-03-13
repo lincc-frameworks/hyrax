@@ -61,6 +61,41 @@ def loopback_hyrax_map_only(tmp_path_factory):
     return h, dataset
 
 
+def test_test_trace(loopback_hyrax_map_only):
+    """
+    Integration test: test(trace=N) returns a TraceResult that can be
+    printed and inspected stage by stage, modelling how a user would use
+    the trace feature from a notebook.
+    """
+    from hyrax.trace import TraceResult, TraceStage
+
+    h, _ = loopback_hyrax_map_only
+    h.train()  # Need trained weights before running the test verb
+
+    # trace=5: keeps the traced batch small while ensuring the DataProvider is
+    # large enough for the percentage-based split path to produce non-empty
+    # partitions (round(5 × 0.2) = 1 sample per 20% split).
+    trace_result = h.test(trace=5)
+
+    # User would first print the result
+    assert isinstance(trace_result, TraceResult)
+    assert len(str(trace_result)) > 0
+
+    # User accesses stages via attribute notation: trace_result.evaluation
+    assert isinstance(trace_result.evaluation, TraceStage)
+
+    # User accesses stages via dict notation: trace_result["collate"]
+    assert isinstance(trace_result["collate"], TraceStage)
+
+    # Stages should have captured calls from the data pipeline
+    assert len(trace_result["evaluation"]) > 0
+    assert len(trace_result["collate"]) > 0
+
+    # User can dive into individual calls within a stage
+    first_eval_call = trace_result["evaluation"][0]
+    assert str(first_eval_call)
+
+
 def test_test(loopback_hyrax_map_only):
     """
     Simple test that testing succeeds with the loopback

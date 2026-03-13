@@ -3,6 +3,41 @@ import pytest
 from hyrax.config_utils import find_most_recent_results_dir
 
 
+def test_train_trace(loopback_hyrax):
+    """
+    Integration test: train(trace=N) returns a TraceResult that can be
+    printed and inspected stage by stage, modelling how a user would use
+    the trace feature from a notebook.
+    """
+    from hyrax.trace import TraceResult, TraceStage
+
+    h, _ = loopback_hyrax
+    # trace=5: the trace shim shrinks DataProvider length to 5.  At that size
+    # the 20% validation split still yields at least 1 sample
+    # (round(5 × 0.2) = 1), which is the minimum needed by the legacy
+    # percentage-based split path.  Smaller values (e.g. trace=2) produce an
+    # empty validation split and raise a KeyError.
+    trace_result = h.train(trace=5)
+
+    # User would first print the result
+    assert isinstance(trace_result, TraceResult)
+    assert len(str(trace_result)) > 0
+
+    # User accesses stages via attribute notation: trace_result.evaluation
+    assert isinstance(trace_result.evaluation, TraceStage)
+
+    # User accesses stages via dict notation: trace_result["collate"]
+    assert isinstance(trace_result["collate"], TraceStage)
+
+    # Stages should have captured calls from the data pipeline
+    assert len(trace_result["evaluation"]) > 0
+    assert len(trace_result["collate"]) > 0
+
+    # User can dive into individual calls within a stage
+    first_eval_call = trace_result["evaluation"][0]
+    assert str(first_eval_call)
+
+
 def test_train(loopback_hyrax):
     """
     Simple test that training succeeds with the loopback
