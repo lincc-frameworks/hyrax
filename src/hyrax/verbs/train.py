@@ -193,6 +193,7 @@ class Train(Verb):
 
         # Go up to the parent of the results dir so all mlflow results show up in the same directory.
         results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
+        (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
         mlflow.set_tracking_uri("sqlite://" + str(results_root_dir / "mlflow" / "mlflow.db"))
 
         # Get experiment_name and cast to string (it's a tomlkit.string by default)
