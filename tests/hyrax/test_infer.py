@@ -37,6 +37,17 @@ def test_infer_trace(loopback_hyrax):
     first_resolve_call = trace_result["resolve_data"][0]
     assert str(first_resolve_call)
 
+    # Verify access to captured function parameters by name and by number
+    # The resolve_data stage captures {"index": 0} as the first positional parameter
+    index_by_name = first_resolve_call["index"]
+    assert index_by_name is not None
+
+    index_by_number = first_resolve_call[0]
+    assert index_by_number is not None
+
+    # Numeric and named access should return the same captured parameter value
+    assert index_by_name == index_by_number
+
 
 @pytest.mark.parametrize("shuffle", [True, False])
 def test_infer_order(loopback_hyrax, shuffle):
