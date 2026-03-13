@@ -14,4 +14,4 @@ Common workflows
    Creating and querying a vector database <pre_executed/vector_db_demo>
    Checkpointing <pre_executed/hyrax_checkpointing>
    Loading pretrained weights <pre_executed/load_pretrained_model>
-   Hyperparameter tuning <pre_executed/hyperparameter_turning_examples>
+   Hyperparameter tuning <pre_executed/hyperparameter_tuning_examples>
