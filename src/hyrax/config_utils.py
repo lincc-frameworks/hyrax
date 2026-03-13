@@ -20,6 +20,7 @@ DEFAULT_USER_CONFIG_FILEPATH = Path.cwd() / "hyrax_config.toml"
 # There are only a couple of configuration keys where we would expect to find an
 # external library string, so we specify those here.
 KEYS_WITH_EXTERNAL_LIBS = ["name", "dataset_class"]
+KNOWN_LIBS_WITHOUT_DEFAULT_CONFIGS = ["torch", "umap"]
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +354,8 @@ class ConfigManager:
                 # We expect that values we are interested in will be of type string.
                 if key in KEYS_WITH_EXTERNAL_LIBS and isinstance(value, str) and "." in value:
                     external_library = value.split(".")[0]
+                    if external_library in KNOWN_LIBS_WITHOUT_DEFAULT_CONFIGS:
+                        continue
                     if importlib_util.find_spec(external_library) is not None:
                         try:
                             lib = importlib.import_module(external_library)
