@@ -27,13 +27,9 @@ class Prepare(Verb):
         print(retval)
 
     def run(self):
-        """Prepare the dataset for a given model and data loader.
+        """Prepare the dataset for a given model and data loader using the verb's configuration.
 
-        Parameters
-        ----------
-        config : dict
-            The parsed config file as a nested
-            dict
+        Uses ``self.config`` to construct and return the prepared dataset.
         """
         data_set = setup_dataset(self.config)
         logger.info("Finished Prepare")
