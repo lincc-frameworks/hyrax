@@ -538,7 +538,7 @@ class TraceResult(TracePrintable):
             TraceDef(
                 "Engine__create_ort_inputs",
                 "create_ort_inputs",
-                {"prepared_batch"},
+                {"prepared_batch": 0},
                 "ort_inputs",
                 "evaluation",
             ),
@@ -547,7 +547,7 @@ class TraceResult(TracePrintable):
             engine_verb,
             engine_verb.run_onnx_batch,
             TraceDef(
-                "Engine__run_onnx_batch", "run_onnx_batch", {"ort_inputs"}, "onnx_results", "evaluation"
+                "Engine__run_onnx_batch", "run_onnx_batch", {"ort_inputs": 0}, "onnx_results", "evaluation"
             ),
         )
 
