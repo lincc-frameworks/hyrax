@@ -95,6 +95,17 @@ def test_test_trace(loopback_hyrax_map_only):
     first_eval_call = trace_result["evaluation"][0]
     assert str(first_eval_call)
 
+    # Verify access to captured function parameters by name and by number
+    # The evaluation stage captures {"batch": 0} as the first positional parameter
+    batch_by_name = first_eval_call["batch"]
+    assert batch_by_name is not None
+
+    batch_by_number = first_eval_call[0]
+    assert batch_by_number is not None
+
+    # Numeric and named access should return the same captured parameter value
+    assert batch_by_name is batch_by_number
+
 
 def test_test(loopback_hyrax_map_only):
     """
