@@ -576,14 +576,19 @@ class TraceResult(TracePrintable):
         from types import MethodType
 
         logger.debug(f"Shimming {obj.__class__.__name__}.{trace_def.func_name}")
-        original_func = original_member.__func__
 
         if isinstance(original_member, staticmethod):
+            original_func = original_member.__func__
             shim_function = self._make_shim(original_func, trace_def, has_self_arg=False)
             shim = staticmethod(shim_function)
-        else:
+        elif isinstance(original_member, MethodType):
+            original_func = original_member.__func__
             shim_function = self._make_shim(original_func, trace_def, has_self_arg=True)
             shim = MethodType(shim_function, obj)
+        else:
+            msg = "Hyrax Trace logic error: instrument_instance_data_handler was passed either an\n"
+            msg += "unwrapped function, or a wrapped function that we don't know how to trace."
+            raise RuntimeError(msg)
 
         setattr(obj, trace_def.func_name, shim)
         return shim
