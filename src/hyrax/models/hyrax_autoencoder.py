@@ -8,6 +8,7 @@ from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
+from hyrax.trace import trace_model_func
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,7 @@ class HyraxAutoencoder(nn.Module):
             nn.Linear(2 * self.conv_end_h * self.conv_end_w * self.c_hid, self.latent_dim),
         )
 
+    @trace_model_func
     def _eval_encoder(self, x):
         return self.encoder(x)
 
@@ -99,6 +101,7 @@ class HyraxAutoencoder(nn.Module):
             nn.Tanh(),  # The input images is scaled between -1 and 1, so the output has to be bounded as well
         )
 
+    @trace_model_func
     def _eval_decoder(self, x):
         x = self.dec_linear(x)
         x = x.reshape(x.shape[0], -1, self.conv_end_h, self.conv_end_w)

@@ -208,10 +208,10 @@ class DataProvider:
         self.config = config
         self.data_request = request
 
-        self.prepped_datasets = {}
-        self.dataset_getters = {}
+        self.prepped_datasets = {}  # will be frienly name -> dataset instance
+        self.dataset_getters = {}  # will be friendly name -> dict(field_name->getter func) all fields
         self.all_metadata_fields = {}
-        self.requested_fields = {}
+        self.requested_fields = {}  # will be friendly name -> tuple(field_names) but only requested fields
 
         # This dictionary maintains a mapping of friendly name to callable collate
         # functions defined on the requested dataset class.
@@ -228,6 +228,7 @@ class DataProvider:
         self.split_indices = None
 
         self.prepare_datasets()
+        self._setup_trace()
 
         if self.primary_dataset is None or self.primary_dataset_id_field_name is None:
             msg = "No Primary Dataset Defined. Somehow a DataProvider was made without pydantic validation."
@@ -332,6 +333,26 @@ class DataProvider:
     def is_map(self):
         """DataProvider datasets will always be map-style datasets."""
         return True
+
+    def _setup_trace(self):
+        """If we're tracing, set up the relevant hooks"""
+        from hyrax.trace import get_trace
+
+        trace = get_trace()
+        if trace is not None:
+            trace.instrument_dataprovider(self)
+            for friendly_name, dataset in self.prepped_datasets.items():
+                # We instrument all fields (not just requested by config)
+                # This is paranoia in case non-requested fields are being requested we would want those to
+                # show up in a trace.
+                for field_name, getter in self.dataset_getters[friendly_name].items():
+                    new_getter = trace.instrument_dataset_getter(dataset, getter, friendly_name, field_name)
+                    self.dataset_getters[friendly_name][field_name] = new_getter
+
+            for friendly_name, collate_fn in self.custom_collate_functions.items():
+                dataset = self.prepped_datasets[friendly_name]
+                new_collate_fn = trace.instrument_dataset_collate(dataset, collate_fn, friendly_name)
+                self.custom_collate_functions[friendly_name] = new_collate_fn
 
     def prepare_datasets(self):
         """Instantiate each of the requested datasets based on the ``data_request``
@@ -825,6 +846,21 @@ class DataProvider:
                 if isinstance(values, list):
                     batch_dict[friendly_name][field] = np.array(values)
 
+        return self.handle_nans(batch_dict)
+
+    def handle_nans(self, batch_dict):
+        """Apply nan handling to a batch dictionary
+
+        Parameters
+        ----------
+        batch_dict : dict[str, np.ndarray]
+            Dictionary from data column to an entire batch of data in np.ndarray form
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            The same batch dict but with nan's altered acccording to the hyrax configuration.
+        """
         # Apply NaN handling to all numpy array fields in the batch,
         # including data produced by custom collate functions.
         for friendly_name, fields in batch_dict.items():

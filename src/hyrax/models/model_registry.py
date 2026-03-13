@@ -13,6 +13,7 @@ from hyrax.plugin_utils import (
     save_prepare_inputs,
     update_registry,
 )
+from hyrax.trace import get_trace
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +92,10 @@ def _torch_load(self: nn.Module, load_path: Path):
                 f"Could not find prepare_inputs or to_tensor function in {load_path.parent}. "
                 "Using the model's existing methods."
             )
+
+    trace = get_trace()
+    if trace:
+        trace.instrument_prepare_inputs(self)
 
 
 def _torch_criterion(self: nn.Module):

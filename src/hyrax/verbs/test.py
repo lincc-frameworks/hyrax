@@ -3,6 +3,8 @@ from pathlib import Path
 
 from colorama import Back, Fore, Style
 
+from hyrax.trace import trace_verb_data
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -30,6 +32,7 @@ class Test(Verb):
 
         self.run()
 
+    @trace_verb_data
     def run(self):
         """
         Run the test process for the configured model on test data.

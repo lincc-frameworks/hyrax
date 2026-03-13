@@ -187,14 +187,6 @@ class Hyrax:
         downloader = Downloader(config=self.config)
         return downloader.run(**kwargs)
 
-    def prepare(self, **kwargs):
-        """
-        See Hyrax.prepare.run()
-        """
-        from .prepare import run
-
-        return run(config=self.config, **kwargs)
-
     def rebuild_manifest(self, **kwargs):
         """
         See Hyrax.rebuild_manifest.run()
