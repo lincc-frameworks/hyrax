@@ -499,7 +499,7 @@ class TraceResult(TracePrintable):
             result_name="batch_dict",
             stage_name="collate",
         )
-        return self.instrument_class_data_handler(dataset, collate_fn, trace_def)
+        return self.instrument_instance_data_handler(dataset, collate_fn, trace_def)
 
     def instrument_dataprovider(self, dataprovider):
         """
