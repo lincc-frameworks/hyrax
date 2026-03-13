@@ -765,7 +765,7 @@ class TraceCall(TracePrintable):
         try:
             try:
                 idx = int(key)
-                return self.calls[idx]
+                return all_values[idx]
             except ValueError:
                 pass
 
