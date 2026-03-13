@@ -793,7 +793,7 @@ class TraceCall(TracePrintable):
         import numpy as np
         import torch
 
-        atomic_types = set([int, float, bool, np.integer, np.bool, np.floating])
+        atomic_types = set([int, float, bool, np.integer, np.bool_, np.floating])
         tensor_types = set([np.ndarray, torch.Tensor])
 
         repr = ""
