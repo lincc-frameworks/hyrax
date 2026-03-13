@@ -368,7 +368,7 @@ class ConfigManager:
                                 logger.warning(f"Cannot find default_config.toml for {value}.")
                         except ModuleNotFoundError:
                             logger.error(
-                                f"External library {external_library} not found. Please install it before running."
+                                f"External library {external_library} not found. Check installation."
                             )
                             raise
                     else:
