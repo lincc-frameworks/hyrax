@@ -208,7 +208,7 @@ class DataProvider:
         self.config = config
         self.data_request = request
 
-        self.prepped_datasets = {}  # will be frienly name -> dataset instance
+        self.prepped_datasets = {}  # will be friendly name -> dataset instance
         self.dataset_getters = {}  # will be friendly name -> dict(field_name->getter func) all fields
         self.all_metadata_fields = {}
         self.requested_fields = {}  # will be friendly name -> tuple(field_names) but only requested fields
