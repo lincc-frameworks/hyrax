@@ -44,7 +44,7 @@ dependencies = [
     "numpy", # Used in Holoviews visualization prototype
     "scipy", # Used in Holoviews visualization prototype
     "cython", # Used in Holoviews visualization prototype
-    "mlflow", # Used to log training metrics and compare models
+    "mlflow >= 3.7", # Used to log training metrics and compare models
     "umap-learn", # Used to map latent spaces down to 2d
     "pooch", # Used to download data files
     "pydantic>=2.10.0,<3.0", # Used for typed configuration schemas
