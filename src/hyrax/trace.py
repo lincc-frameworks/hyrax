@@ -308,6 +308,8 @@ class TraceResult(TracePrintable):
                         trace_def = TraceDef(
                             disp_name=f"{model_cls.__name__}__{name}",
                             func_name=name,
+                            # _make_shim forwards all args to trace_call, so class-level instance
+                            # methods include `self` at arg 0.
                             params_to_capture={"batch": 1},
                             result_name="batch_results",
                             stage_name="evaluation",
@@ -316,6 +318,8 @@ class TraceResult(TracePrintable):
                         trace_def = TraceDef(
                             disp_name=f"{model_cls.__name__}__{name}",
                             func_name=name,
+                            # _make_shim forwards all args to trace_call, so class-level instance
+                            # methods include `self` at arg 0.
                             params_to_capture={"batch": 1},
                             result_name="loss_dict",
                             stage_name="evaluation",
@@ -599,13 +603,18 @@ class TraceResult(TracePrintable):
         logger.debug(f"Shimming {cls.__name__}.{trace_def.func_name}")
         raw_func = cls.__dict__.get(trace_def.func_name)
         original_func = getattr(cls, trace_def.func_name, None)
+        wrapper = None
 
         if isinstance(raw_func, staticmethod):
-            trace_shim = staticmethod(self._make_shim(original_func, trace_def))
+            wrapper = staticmethod
         elif isinstance(raw_func, classmethod):
-            trace_shim = classmethod(self._make_shim(raw_func.__func__, trace_def))
-        else:
-            trace_shim = self._make_shim(original_func, trace_def)
+            original_func = raw_func.__func__
+            wrapper = classmethod
+
+        trace_shim = self._make_shim(original_func, trace_def)
+        if wrapper is not None:
+            # Re-apply descriptor wrapper type after building the shim.
+            trace_shim = wrapper(trace_shim)
 
         setattr(cls, trace_def.func_name, trace_shim)
 
