@@ -83,17 +83,14 @@ class Infer(Verb):
             logger.warning(msg)
             config["data_loader"]["shuffle"] = False
 
-        # If `dataset` is a dict containing the key "infer", we'll pull that out.
-        # The only time it wouldn't be is if the dataset is an iterable dataset.
-        #
+        # setup_dataset returns a dataset dictionary keyed by split name.
         # When split_fraction is defined on the "infer" group, setup_dataset
         # will have already computed split_indices on the DataProvider.
         # dist_data_loader with split=False will automatically apply a
         # SubsetSequentialSampler to restrict the dataloader to those indices.
         if isinstance(dataset, dict) and "infer" in dataset:
             dataset = dataset["infer"]
-            if dataset.is_map():
-                logger.debug(f"Inference dataset has length: {len(dataset)}")  # type: ignore[arg-type]
+            logger.debug(f"Inference dataset has length: {len(dataset)}")  # type: ignore[arg-type]
 
         data_loader, _ = dist_data_loader(dataset, config, False)
 

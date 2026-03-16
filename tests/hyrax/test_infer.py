@@ -18,10 +18,6 @@ def test_infer_order(loopback_hyrax, shuffle):
     inference_result_ids = inference_results.ids()
     original_dataset_ids = dataset.ids()
 
-    if dataset.is_iterable():
-        dataset = list(dataset)
-        original_dataset_ids = np.array([str(s["object_id"]) for s in dataset])
-
     for idx, result_id in enumerate(inference_result_ids):
         dataset_idx = None
         for i, orig_id in enumerate(original_dataset_ids):
