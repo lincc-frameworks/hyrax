@@ -115,7 +115,7 @@ class Test(Verb):
 
         results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
         (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
-        mlflow.set_tracking_uri("sqlite://" + str(results_root_dir / "mlflow" / "mlflow.db"))
+        mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
 
         # Get experiment_name from train config
         experiment_name = str(config["train"]["experiment_name"])
