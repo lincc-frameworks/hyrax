@@ -561,34 +561,32 @@ class TraceResult(TracePrintable):
         ----------
         obj : class instance
             The instance of the object that has the member function we are shimming
-        original_member : MethodType
-            The method we are shimming. Must be of method type e.g. by doing either obj.method_name or
-            getattr(obj, "method_name")
+        original_member : callable
+            The callable we are shimming. Obtain via ``obj.method_name`` or
+            ``getattr(obj, "method_name")``. Bound methods (MethodType) and plain
+            callables (e.g., static functions accessed via getattr) are both accepted.
         trace_def : TraceDef
             A TraceDef defining what we're tracing from this function.
 
         Returns
         -------
-        MethodType
-            This returns a MethodType that is already to bound to obj and set to obj.method_name
-            The method name is pulled from trace_def.func_name
+        callable
+            The shim callable that has been set on ``obj`` at ``trace_def.func_name``.
         """
         from types import MethodType
 
         logger.debug(f"Shimming {obj.__class__.__name__}.{trace_def.func_name}")
 
-        if isinstance(original_member, staticmethod):
-            original_func = original_member.__func__
-            shim_function = self._make_shim(original_func, trace_def, has_self_arg=False)
-            shim = staticmethod(shim_function)
-        elif isinstance(original_member, MethodType):
-            original_func = original_member.__func__
-            shim_function = self._make_shim(original_func, trace_def, has_self_arg=True)
-            shim = MethodType(shim_function, obj)
+        if isinstance(original_member, MethodType):
+            # Use the unbound __func__ so the shim is a plain function that can be re-bound
+            # via MethodType.  The MethodType wrapper is preserved so that callers which
+            # access .__func__ on the shimmed attribute (e.g., DataCache) continue to work.
+            shim_func = self._make_shim(original_member.__func__, trace_def)
+            shim = MethodType(shim_func, obj)
         else:
-            msg = "Hyrax Trace logic error: instrument_instance_data_handler was passed either an\n"
-            msg += "unwrapped function, or a wrapped function that we don't know how to trace."
-            raise RuntimeError(msg)
+            # Plain callable (e.g., a static function accessed via getattr on an instance).
+            # No self is injected when set as an instance attribute, so has_self_arg=False.
+            shim = self._make_shim(original_member, trace_def, has_self_arg=False)
 
         setattr(obj, trace_def.func_name, shim)
         return shim
@@ -613,13 +611,16 @@ class TraceResult(TracePrintable):
             None
         """
         logger.debug(f"Shimming {cls.__name__}.{trace_def.func_name}")
+        raw_func = cls.__dict__.get(trace_def.func_name)
         original_func = getattr(cls, trace_def.func_name, None)
 
-        raw_func = cls.__dict__.get(trace_def.func_name)
         if isinstance(raw_func, staticmethod):
             trace_shim = staticmethod(self._make_shim(original_func, trace_def, has_self_arg=False))
         elif isinstance(raw_func, classmethod):
-            trace_shim = classmethod(self._make_shim(original_func, trace_def))
+            # Use raw_func.__func__ (the underlying function that takes cls as its first arg) so
+            # that the shim receives cls naturally via the classmethod descriptor, rather than the
+            # already-bound method returned by getattr(cls, name).
+            trace_shim = classmethod(self._make_shim(raw_func.__func__, trace_def))
         else:
             trace_shim = self._make_shim(original_func, trace_def)
 
@@ -630,29 +631,33 @@ class TraceResult(TracePrintable):
         self.shimmed_funcs.append((cls, trace_def.func_name, raw_func))
 
     def _make_shim(self, original_func, trace_def: TraceDef, has_self_arg: bool = True):
-        """Make a shim function for the instrument_* functions to use"""
-        if has_self_arg:
+        """Make a shim function for the instrument_* functions to use.
 
-            def trace(self_or_cls, *args, **kwargs):
-                import time
+        Parameters
+        ----------
+        original_func : callable
+            The function (or bound method) being shimmed.
+        trace_def : TraceDef
+            Describes what data to capture during the call.
+        has_self_arg : bool
+            When True (the default), the first positional argument received by the shim is
+            ``self`` or ``cls`` injected by Python's descriptor protocol (class-level shims).
+            It is forwarded to ``original_func`` but excluded from the arguments captured by
+            ``trace_call``.  Set to False for instance-level shims where ``original_func``
+            is already a bound callable and the first positional argument is a real data arg.
+        """
 
-                update_retval = self.trace_call(trace_def, *args)
-                start_ns = time.monotonic_ns()
-                retval = original_func(self_or_cls, *args, **kwargs)
-                end_ns = time.monotonic_ns()
-                update_retval(retval, end_ns - start_ns)
-                return retval
-        else:
+        @wraps(original_func)
+        def trace(*args, **kwargs):
+            import time
 
-            def trace(*args, **kwargs):
-                import time
-
-                update_retval = self.trace_call(trace_def, *args)
-                start_ns = time.monotonic_ns()
-                retval = original_func(*args, **kwargs)
-                end_ns = time.monotonic_ns()
-                update_retval(retval, end_ns - start_ns)
-                return retval
+            trace_args = args[1:] if has_self_arg else args
+            update_retval = self.trace_call(trace_def, *trace_args)
+            start_ns = time.monotonic_ns()
+            retval = original_func(*args, **kwargs)
+            end_ns = time.monotonic_ns()
+            update_retval(retval, end_ns - start_ns)
+            return retval
 
         return trace
 
