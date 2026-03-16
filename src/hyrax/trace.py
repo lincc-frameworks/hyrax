@@ -308,7 +308,7 @@ class TraceResult(TracePrintable):
                         trace_def = TraceDef(
                             disp_name=f"{model_cls.__name__}__{name}",
                             func_name=name,
-                            params_to_capture={"batch": 0},
+                            params_to_capture={"batch": 1},
                             result_name="batch_results",
                             stage_name="evaluation",
                         )
@@ -316,7 +316,7 @@ class TraceResult(TracePrintable):
                         trace_def = TraceDef(
                             disp_name=f"{model_cls.__name__}__{name}",
                             func_name=name,
-                            params_to_capture={"batch": 0},
+                            params_to_capture={"batch": 1},
                             result_name="loss_dict",
                             stage_name="evaluation",
                         )
@@ -603,7 +603,7 @@ class TraceResult(TracePrintable):
         if isinstance(raw_func, staticmethod):
             trace_shim = staticmethod(self._make_shim(original_func, trace_def))
         elif isinstance(raw_func, classmethod):
-            trace_shim = classmethod(self._make_shim(original_func, trace_def))
+            trace_shim = classmethod(self._make_shim(raw_func.__func__, trace_def))
         else:
             trace_shim = self._make_shim(original_func, trace_def)
 
@@ -623,44 +623,14 @@ class TraceResult(TracePrintable):
         trace_def : TraceDef
             Describes what data to capture during the call.
         """
-        import inspect
-
-        def is_implicit_self_or_cls(callable_obj):
-            try:
-                params = list(inspect.signature(callable_obj).parameters.values())
-            except (ValueError, TypeError):
-                return False
-
-            if len(params) == 0:
-                return False
-
-            first = params[0]
-            if first.kind not in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
-                return False
-            return first.name in {"self", "cls"}
 
         @wraps(original_func)
         def trace(*args, **kwargs):
             import time
 
-            call_args = args
-            trace_args = args
-
-            bound_self = getattr(original_func, "__self__", None)
-
-            # If original_func is already bound and this shim was attached as a descriptor
-            # (e.g. classmethod), Python may have injected the bound object as args[0].
-            # Remove it before both tracing and invocation.
-            if bound_self is not None and len(args) > 0 and args[0] is bound_self:
-                call_args = args[1:]
-                trace_args = args[1:]
-            # For unbound methods attached at class level, strip self/cls from trace output.
-            elif is_implicit_self_or_cls(original_func) and len(args) > 0:
-                trace_args = args[1:]
-
-            update_retval = self.trace_call(trace_def, *trace_args)
+            update_retval = self.trace_call(trace_def, *args)
             start_ns = time.monotonic_ns()
-            retval = original_func(*call_args, **kwargs)
+            retval = original_func(*args, **kwargs)
             end_ns = time.monotonic_ns()
             update_retval(retval, end_ns - start_ns)
             return retval
