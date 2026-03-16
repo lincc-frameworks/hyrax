@@ -577,7 +577,13 @@ class TraceResult(TracePrintable):
             The shim callable that has been set on ``obj`` at ``trace_def.func_name``.
         """
         logger.debug(f"Shimming {obj.__class__.__name__}.{trace_def.func_name}")
-        shim = self._make_shim(original_member, trace_def)
+        is_bound_method = getattr(original_member, "__self__", None) is obj and hasattr(
+            original_member, "__func__"
+        )
+        target_func = original_member.__func__ if is_bound_method else original_member
+        shim = self._make_shim(target_func, trace_def)
+        if is_bound_method:
+            shim = shim.__get__(obj, obj.__class__)
         setattr(obj, trace_def.func_name, shim)
         return shim
 

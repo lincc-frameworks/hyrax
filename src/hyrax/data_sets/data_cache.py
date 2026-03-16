@@ -53,7 +53,7 @@ class DataCache:
 
         # Grab what we need from data_provider, hang on to self so we can call resolve data func
         self._max_length = len(data_provider)
-        self._resolve_data_func = getattr(data_provider.resolve_data, "__func__", data_provider.resolve_data)
+        self._resolve_data_func = data_provider.resolve_data.__func__
         self._data_provider = data_provider
 
         # Save config we need
