@@ -563,8 +563,7 @@ class TraceResult(TracePrintable):
             The instance of the object that has the member function we are shimming
         original_member : callable
             The callable we are shimming. Obtain via ``obj.method_name`` or
-            ``getattr(obj, "method_name")``. Bound methods (MethodType) and plain
-            callables (e.g., static functions accessed via getattr) are both accepted.
+            ``getattr(obj, "method_name")``.
         trace_def : TraceDef
             A TraceDef defining what we're tracing from this function.
 
@@ -573,21 +572,8 @@ class TraceResult(TracePrintable):
         callable
             The shim callable that has been set on ``obj`` at ``trace_def.func_name``.
         """
-        from types import MethodType
-
         logger.debug(f"Shimming {obj.__class__.__name__}.{trace_def.func_name}")
-
-        if isinstance(original_member, MethodType):
-            # Use the unbound __func__ so the shim is a plain function that can be re-bound
-            # via MethodType.  The MethodType wrapper is preserved so that callers which
-            # access .__func__ on the shimmed attribute (e.g., DataCache) continue to work.
-            shim_func = self._make_shim(original_member.__func__, trace_def)
-            shim = MethodType(shim_func, obj)
-        else:
-            # Plain callable (e.g., a static function accessed via getattr on an instance).
-            # No self is injected when set as an instance attribute, so has_self_arg=False.
-            shim = self._make_shim(original_member, trace_def, has_self_arg=False)
-
+        shim = self._make_shim(original_member, trace_def)
         setattr(obj, trace_def.func_name, shim)
         return shim
 
@@ -615,12 +601,9 @@ class TraceResult(TracePrintable):
         original_func = getattr(cls, trace_def.func_name, None)
 
         if isinstance(raw_func, staticmethod):
-            trace_shim = staticmethod(self._make_shim(original_func, trace_def, has_self_arg=False))
+            trace_shim = staticmethod(self._make_shim(original_func, trace_def))
         elif isinstance(raw_func, classmethod):
-            # Use raw_func.__func__ (the underlying function that takes cls as its first arg) so
-            # that the shim receives cls naturally via the classmethod descriptor, rather than the
-            # already-bound method returned by getattr(cls, name).
-            trace_shim = classmethod(self._make_shim(raw_func.__func__, trace_def))
+            trace_shim = classmethod(self._make_shim(original_func, trace_def))
         else:
             trace_shim = self._make_shim(original_func, trace_def)
 
@@ -630,7 +613,7 @@ class TraceResult(TracePrintable):
         # We want the raw_func so we preserve the static/classmethod property of the underlying.
         self.shimmed_funcs.append((cls, trace_def.func_name, raw_func))
 
-    def _make_shim(self, original_func, trace_def: TraceDef, has_self_arg: bool = True):
+    def _make_shim(self, original_func, trace_def: TraceDef):
         """Make a shim function for the instrument_* functions to use.
 
         Parameters
@@ -639,22 +622,45 @@ class TraceResult(TracePrintable):
             The function (or bound method) being shimmed.
         trace_def : TraceDef
             Describes what data to capture during the call.
-        has_self_arg : bool
-            When True (the default), the first positional argument received by the shim is
-            ``self`` or ``cls`` injected by Python's descriptor protocol (class-level shims).
-            It is forwarded to ``original_func`` but excluded from the arguments captured by
-            ``trace_call``.  Set to False for instance-level shims where ``original_func``
-            is already a bound callable and the first positional argument is a real data arg.
         """
+        import inspect
+
+        def is_implicit_self_or_cls(callable_obj):
+            try:
+                params = list(inspect.signature(callable_obj).parameters.values())
+            except (ValueError, TypeError):
+                return False
+
+            if len(params) == 0:
+                return False
+
+            first = params[0]
+            if first.kind not in (inspect.Parameter.POSITIONAL_ONLY, inspect.Parameter.POSITIONAL_OR_KEYWORD):
+                return False
+            return first.name in {"self", "cls"}
 
         @wraps(original_func)
         def trace(*args, **kwargs):
             import time
 
-            trace_args = args[1:] if has_self_arg else args
+            call_args = args
+            trace_args = args
+
+            bound_self = getattr(original_func, "__self__", None)
+
+            # If original_func is already bound and this shim was attached as a descriptor
+            # (e.g. classmethod), Python may have injected the bound object as args[0].
+            # Remove it before both tracing and invocation.
+            if bound_self is not None and len(args) > 0 and args[0] is bound_self:
+                call_args = args[1:]
+                trace_args = args[1:]
+            # For unbound methods attached at class level, strip self/cls from trace output.
+            elif is_implicit_self_or_cls(original_func) and len(args) > 0:
+                trace_args = args[1:]
+
             update_retval = self.trace_call(trace_def, *trace_args)
             start_ns = time.monotonic_ns()
-            retval = original_func(*args, **kwargs)
+            retval = original_func(*call_args, **kwargs)
             end_ns = time.monotonic_ns()
             update_retval(retval, end_ns - start_ns)
             return retval
