@@ -1,3 +1,4 @@
+import inspect
 import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -394,8 +395,8 @@ class TraceResult(TracePrintable):
         even if via exception. See TraceContext for the mechanism by which this is achieved.
         """
         logger.debug("Removing class level shims")
-        for cls, func_name, raw_func in self.shimmed_funcs:
-            setattr(cls, func_name, raw_func)
+        for cls, func_name, original_member in self.shimmed_funcs:
+            setattr(cls, func_name, original_member)
 
     def trace_call(self, trace_def: TraceDef, *args):
         """
@@ -475,7 +476,7 @@ class TraceResult(TracePrintable):
             result_name="batch_tensor",
             stage_name="prepare_inputs",
         )
-        return self._make_shim(prepare_inputs_fn, trace_def, has_self_arg=False)
+        return self._make_shim(prepare_inputs_fn, trace_def)
 
     def instrument_dataset_getter(self, dataset, getter, friendly_name, field_name):
         """
@@ -602,20 +603,14 @@ class TraceResult(TracePrintable):
             None
         """
         logger.debug(f"Shimming {cls.__name__}.{trace_def.func_name}")
-        raw_func = cls.__dict__.get(trace_def.func_name)
-        if raw_func is None:
-            original_func = getattr(cls, trace_def.func_name, None)
-        else:
-            original_func = getattr(raw_func, "__func__", raw_func)
-        trace_shim = self._make_shim(original_func, trace_def)
-        if raw_func is not None and hasattr(raw_func, "__func__"):
-            # Reconstruct descriptor wrappers (e.g., staticmethod/classmethod) generically.
-            trace_shim = type(raw_func)(trace_shim)
+        original_member = getattr(cls, trace_def.func_name, None)
+        class_dict_member = cls.__dict__.get(trace_def.func_name, original_member)
+        trace_shim = self._make_shim(original_member, trace_def)
 
         setattr(cls, trace_def.func_name, trace_shim)
 
         # This is so we can remove the class-level shims out when we're done.
-        self.shimmed_funcs.append((cls, trace_def.func_name, raw_func))
+        self.shimmed_funcs.append((cls, trace_def.func_name, class_dict_member))
 
     def _make_shim(self, original_func, trace_def: TraceDef):
         """Make a shim function for the instrument_* functions to use.
@@ -628,13 +623,28 @@ class TraceResult(TracePrintable):
             Describes what data to capture during the call.
         """
 
+        try:
+            signature = inspect.signature(original_func)
+        except (TypeError, ValueError):
+            signature = None
+
         @wraps(original_func)
         def trace(*args, **kwargs):
             import time
 
-            update_retval = self.trace_call(trace_def, *args)
+            call_args = args
+            if signature is not None:
+                try:
+                    signature.bind(*args, **kwargs)
+                except TypeError:
+                    try:
+                        signature.bind(*args[1:], **kwargs)
+                        call_args = args[1:]
+                    except TypeError:
+                        pass
+            update_retval = self.trace_call(trace_def, *call_args)
             start_ns = time.monotonic_ns()
-            retval = original_func(*args, **kwargs)
+            retval = original_func(*call_args, **kwargs)
             end_ns = time.monotonic_ns()
             update_retval(retval, end_ns - start_ns)
             return retval
