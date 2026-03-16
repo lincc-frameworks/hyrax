@@ -577,13 +577,8 @@ class TraceResult(TracePrintable):
             The shim callable that has been set on ``obj`` at ``trace_def.func_name``.
         """
         logger.debug(f"Shimming {obj.__class__.__name__}.{trace_def.func_name}")
-        is_bound_method = getattr(original_member, "__self__", None) is obj and hasattr(
-            original_member, "__func__"
-        )
-        target_func = original_member.__func__ if is_bound_method else original_member
-        shim = self._make_shim(target_func, trace_def)
-        if is_bound_method:
-            shim = shim.__get__(obj, obj.__class__)
+        target_func = getattr(original_member, "__func__", original_member)
+        shim = self._make_shim(target_func, trace_def).__get__(obj, obj.__class__)
         setattr(obj, trace_def.func_name, shim)
         return shim
 
@@ -608,24 +603,18 @@ class TraceResult(TracePrintable):
         """
         logger.debug(f"Shimming {cls.__name__}.{trace_def.func_name}")
         raw_func = cls.__dict__.get(trace_def.func_name)
-        original_func = getattr(cls, trace_def.func_name, None)
-        wrapper = None
-
-        if isinstance(raw_func, staticmethod):
-            wrapper = staticmethod
-        elif isinstance(raw_func, classmethod):
-            original_func = raw_func.__func__
-            wrapper = classmethod
-
+        if raw_func is None:
+            original_func = getattr(cls, trace_def.func_name, None)
+        else:
+            original_func = getattr(raw_func, "__func__", raw_func)
         trace_shim = self._make_shim(original_func, trace_def)
-        if wrapper is not None:
-            # Re-apply descriptor wrapper type after building the shim.
-            trace_shim = wrapper(trace_shim)
+        if raw_func is not None and hasattr(raw_func, "__func__"):
+            # Reconstruct descriptor wrappers (e.g., staticmethod/classmethod) generically.
+            trace_shim = type(raw_func)(trace_shim)
 
         setattr(cls, trace_def.func_name, trace_shim)
 
         # This is so we can remove the class-level shims out when we're done.
-        # We want the raw_func so we preserve the static/classmethod property of the underlying.
         self.shimmed_funcs.append((cls, trace_def.func_name, raw_func))
 
     def _make_shim(self, original_func, trace_def: TraceDef):
