@@ -117,7 +117,8 @@ class Test(Verb):
         save_batch_callback = create_save_batch_callback(results_dir)
 
         results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-        mlflow.set_tracking_uri("file://" + str(results_root_dir / "mlflow"))
+        (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
+        mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
 
         # Get experiment_name from train config
         experiment_name = str(config["train"]["experiment_name"])
