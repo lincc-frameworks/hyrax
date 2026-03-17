@@ -507,7 +507,6 @@ def create_splits_from_fractions(
 def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
     # Pass the collated batch through the model's prepare_inputs function
-    print(type(prepare_inputs))
     batch = prepare_inputs(batch)
 
     # Convert the data to numpy and place it on the device explicitly.
@@ -582,9 +581,7 @@ def extract_model_method(model, method_name):
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
 
-    retval = getattr(model.module if wrapped else model, method_name)
-    print(f"extract_model_method name={method_name} type={type(retval)} obj={retval}")
-    return retval
+    return getattr(model.module if wrapped else model, method_name)
 
 
 def create_evaluator(
