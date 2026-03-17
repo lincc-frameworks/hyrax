@@ -1,5 +1,5 @@
-from pathlib import Path
 import tomllib
+from pathlib import Path
 
 
 def test_citation_cff_exists_and_has_required_fields():
@@ -19,7 +19,9 @@ def test_citation_cff_exists_and_has_required_fields():
         "license:",
     ]
     for key in required_keys:
-        assert any(line.lstrip().startswith(key) for line in lines), f"Required key '{key}' not found at start of any line in CITATION.cff"
+        assert any(line.lstrip().startswith(key) for line in lines), (
+            f"Required key '{key}' not found at start of any line in CITATION.cff"
+        )
 
 
 def test_citation_compass_config_exists_and_has_curated_dependencies():
