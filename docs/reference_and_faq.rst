@@ -39,7 +39,8 @@ Citation and attribution
 Use ``CITATION.cff`` in the repository root to cite Hyrax itself.
 
 Use Citation Compass with ``citation_compass.toml`` to generate citations for
-methodologically central Hyrax dependencies:
+methodologically central Hyrax dependencies. After installing Citation Compass
+(for example, with ``pip install citation-compass``), you can run:
 
 .. code-block:: bash
 
