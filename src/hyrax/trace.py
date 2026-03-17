@@ -2,6 +2,7 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import wraps
+from types import MethodType
 from typing import Any
 
 trace_result = None
@@ -39,56 +40,18 @@ def trace_func(func=None, *, params_to_capture=None, result_name=None, stage_nam
     params_to_capture = {} if params_to_capture is None else params_to_capture
 
     def decorate(func):
-        return _trace_data_func(func, params_to_capture, result_name, stage_name)
-
-    return decorate if func is None else decorate(func)
-
-
-def _trace_data_func(member_func, params_to_capture, result_name, stage_name):
-    @wraps(member_func)
-    # TODO: All of the decorators that call into here have a fatal performance flaw
-    #       This shim code is run whether tracing is on or not!
-    #       The ideal version of this would wrap with a lazy/exploding shim
-    #       Such a shim would:
-    #          1) Be placed on the class by the decorator stack
-    #          2) On its first call (on a particular instance of the class) determine whether
-    #             tracing is running or not
-    #          3) If no tracing, it would remove itself from the current instance, restoring the original
-    #             function
-    #          4) Otherwise it would collect data and attempt to phone home to the tracing system through
-    #             `trace_call`
-    #
-    #       In this way, repeated calls to a decorated model or dataset function would only incur a
-    #       performance penalty on the first call OR when tracing is running.
-    #
-    #       The good news is that model and dataset authors only take on this performance cost to the
-    #       extent they use the decorators, so the documentation on this should recommend only placing
-    #       the decorators during debugging, and removing them after.
-    def data_func_shim(self, *args, **kwargs):
-        import time
-
-        trace_result = get_trace()
-        if trace_result:
-            trace_def = TraceDef(
-                disp_name=f"{self.__class__.__name__}__{member_func.__name__}",
-                func_name=member_func.__name__,
+        return TraceResult._make_shim(
+            func,
+            TraceDef(
+                disp_name=func.__name__,
+                func_name=func.__name__,
                 params_to_capture=params_to_capture,
                 result_name=result_name,
                 stage_name=stage_name,
-            )
+            ),
+        )
 
-            update_retval = trace_result.trace_call(trace_def, *args)
-            start_ns = time.monotonic_ns()
-
-        retval = member_func(self, *args, **kwargs)
-
-        if trace_result:
-            end_ns = time.monotonic_ns()
-            update_retval(retval, end_ns - start_ns)
-
-        return retval
-
-    return data_func_shim
+    return decorate if func is None else decorate(func)
 
 
 def trace_verb_data(verb_run_func):
@@ -308,7 +271,9 @@ class TraceResult(TracePrintable):
                         trace_def = TraceDef(
                             disp_name=f"{model_cls.__name__}__{name}",
                             func_name=name,
-                            params_to_capture={"batch": 0},
+                            # _make_shim forwards all args to trace_call, so class-level instance
+                            # methods include `self` at arg 0.
+                            params_to_capture={"batch": 1},
                             result_name="batch_results",
                             stage_name="evaluation",
                         )
@@ -316,7 +281,9 @@ class TraceResult(TracePrintable):
                         trace_def = TraceDef(
                             disp_name=f"{model_cls.__name__}__{name}",
                             func_name=name,
-                            params_to_capture={"batch": 0},
+                            # _make_shim forwards all args to trace_call, so class-level instance
+                            # methods include `self` at arg 0.
+                            params_to_capture={"batch": 1},
                             result_name="loss_dict",
                             stage_name="evaluation",
                         )
@@ -390,8 +357,8 @@ class TraceResult(TracePrintable):
         even if via exception. See TraceContext for the mechanism by which this is achieved.
         """
         logger.debug("Removing class level shims")
-        for cls, func_name, raw_func in self.shimmed_funcs:
-            setattr(cls, func_name, raw_func)
+        for cls, func_name, original_member in self.shimmed_funcs:
+            setattr(cls, func_name, original_member)
 
     def trace_call(self, trace_def: TraceDef, *args):
         """
@@ -451,7 +418,7 @@ class TraceResult(TracePrintable):
         """
         prepare_inputs_fn = model.prepare_inputs
         trace_def = TraceDef(
-            disp_name=f"{model.__class__.__name__}__prepare_inputs",
+            disp_name=f"{model.__class__.__name__}_inst_prepare_inputs",
             func_name="prepare_inputs",
             params_to_capture={"batch_dict": 0},
             result_name="batch_tensor",
@@ -471,7 +438,7 @@ class TraceResult(TracePrintable):
             result_name="batch_tensor",
             stage_name="prepare_inputs",
         )
-        return self._make_shim(prepare_inputs_fn, trace_def, has_self_arg=False)
+        return self._make_shim(prepare_inputs_fn, trace_def)
 
     def instrument_dataset_getter(self, dataset, getter, friendly_name, field_name):
         """
@@ -561,35 +528,19 @@ class TraceResult(TracePrintable):
         ----------
         obj : class instance
             The instance of the object that has the member function we are shimming
-        original_member : MethodType
-            The method we are shimming. Must be of method type e.g. by doing either obj.method_name or
-            getattr(obj, "method_name")
+        original_member : callable
+            The callable we are shimming. Obtain via ``obj.method_name`` or
+            ``getattr(obj, "method_name")``.
         trace_def : TraceDef
             A TraceDef defining what we're tracing from this function.
 
         Returns
         -------
-        MethodType
-            This returns a MethodType that is already to bound to obj and set to obj.method_name
-            The method name is pulled from trace_def.func_name
+        callable
+            The shim callable that has been set on ``obj`` at ``trace_def.func_name``.
         """
-        from types import MethodType
-
         logger.debug(f"Shimming {obj.__class__.__name__}.{trace_def.func_name}")
-
-        if isinstance(original_member, staticmethod):
-            original_func = original_member.__func__
-            shim_function = self._make_shim(original_func, trace_def, has_self_arg=False)
-            shim = staticmethod(shim_function)
-        elif isinstance(original_member, MethodType):
-            original_func = original_member.__func__
-            shim_function = self._make_shim(original_func, trace_def, has_self_arg=True)
-            shim = MethodType(shim_function, obj)
-        else:
-            msg = "Hyrax Trace logic error: instrument_instance_data_handler was passed either an\n"
-            msg += "unwrapped function, or a wrapped function that we don't know how to trace."
-            raise RuntimeError(msg)
-
+        shim = self._make_shim(original_member, trace_def)
         setattr(obj, trace_def.func_name, shim)
         return shim
 
@@ -613,46 +564,55 @@ class TraceResult(TracePrintable):
             None
         """
         logger.debug(f"Shimming {cls.__name__}.{trace_def.func_name}")
-        original_func = getattr(cls, trace_def.func_name, None)
-
-        raw_func = cls.__dict__.get(trace_def.func_name)
-        if isinstance(raw_func, staticmethod):
-            trace_shim = staticmethod(self._make_shim(original_func, trace_def, has_self_arg=False))
-        elif isinstance(raw_func, classmethod):
-            trace_shim = classmethod(self._make_shim(original_func, trace_def))
-        else:
-            trace_shim = self._make_shim(original_func, trace_def)
-
+        class_dict_member = cls.__dict__.get(trace_def.func_name, None)
+        trace_shim = self._make_shim(class_dict_member, trace_def)
         setattr(cls, trace_def.func_name, trace_shim)
 
         # This is so we can remove the class-level shims out when we're done.
-        # We want the raw_func so we preserve the static/classmethod property of the underlying.
-        self.shimmed_funcs.append((cls, trace_def.func_name, raw_func))
+        self.shimmed_funcs.append((cls, trace_def.func_name, class_dict_member))
 
-    def _make_shim(self, original_func, trace_def: TraceDef, has_self_arg: bool = True):
-        """Make a shim function for the instrument_* functions to use"""
-        if has_self_arg:
+    @staticmethod
+    def _make_shim(original_func, trace_def: TraceDef):
+        """Make a shim function for the instrument_* functions to use.
 
-            def trace(self_or_cls, *args, **kwargs):
-                import time
+        Parameters
+        ----------
+        original_func : callable
+            The function (or bound method) being shimmed.
+        trace_def : TraceDef
+            Describes what data to capture during the call.
+        """
 
-                update_retval = self.trace_call(trace_def, *args)
+        @wraps(original_func)
+        def trace(*args, **kwargs):
+            import time
+
+            trace_obj = get_trace()
+
+            if trace_obj:
+                update_retval = trace_obj.trace_call(trace_def, *args)
                 start_ns = time.monotonic_ns()
-                retval = original_func(self_or_cls, *args, **kwargs)
+
+            func = (
+                original_func.__func__
+                if isinstance(original_func, (classmethod, MethodType))
+                else original_func
+            )
+
+            retval = func(*args, **kwargs)
+
+            if trace_obj:
                 end_ns = time.monotonic_ns()
                 update_retval(retval, end_ns - start_ns)
-                return retval
-        else:
 
-            def trace(*args, **kwargs):
-                import time
+            return retval
 
-                update_retval = self.trace_call(trace_def, *args)
-                start_ns = time.monotonic_ns()
-                retval = original_func(*args, **kwargs)
-                end_ns = time.monotonic_ns()
-                update_retval(retval, end_ns - start_ns)
-                return retval
+        if isinstance(original_func, staticmethod):
+            return staticmethod(trace)
+        elif isinstance(original_func, classmethod):
+            return classmethod(trace)
+        elif isinstance(original_func, MethodType):
+            return MethodType(trace, original_func.__self__)
 
         return trace
 
