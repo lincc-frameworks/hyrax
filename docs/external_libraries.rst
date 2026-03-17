@@ -184,7 +184,7 @@ customized strategy is desired, the approach above may be preferable.
 Defining a dataset class
 ------------------------
 
-Dataset classes are written as subclasses of ``hyrax.data_sets.HyraxDataset`` and should be map-style
+Dataset classes are written as subclasses of ``hyrax.data_sets.HyraxDataset`` and must be map-style
 datasets with ``__len__`` and ``__getitem__`` implemented.
 
 A fully worked example of creating a custom map-style dataset class is in the example notebook

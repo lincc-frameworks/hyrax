@@ -32,7 +32,7 @@ but it is not an astronomical dataset.
 :doc:`HyraxRandomDataset <random/hyrax_random_dataset/index>` is a utility dataset that
 generates random data with a specific shape.
 This dataset makes it easy to test new models with simple random data.
-They are highly configurable such that it's possible to simulate input data for models that
+It is highly configurable such that it's possible to simulate input data for models that
 are under development.
 
 Each of these datasets can be used a starting point for a Custom Dataset by inheriting your custom dataset
