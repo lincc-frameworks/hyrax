@@ -52,3 +52,16 @@ the [LINCC Frameworks Team](https://lsstdiscoveryalliance.org/programs/lincc-fra
 and LSST-DA Catalyst Fellow, [Aritra Ghosh](https://ghosharitra.com/).
 
 This project is supported by Schmidt Sciences and the John Templeton Foundation
+
+
+## Citation
+If you use Hyrax in research, cite Hyrax using `CITATION.cff` at the repository root.
+
+To generate dependency citations used by Hyrax workflows, use the repository Citation Compass config:
+
+```
+python -m citation_compass --config citation_compass.toml
+```
+
+Maintenance policy: only include methodologically central dependencies in `citation_compass.toml`
+(not every utility/transitive package), and review both citation files during release preparation.

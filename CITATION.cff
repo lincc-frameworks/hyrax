@@ -1,0 +1,23 @@
+cff-version: 1.2.0
+title: Hyrax
+message: >-
+  If you use Hyrax in your research, please cite this software using the
+  metadata in this file. For dependency citations used in Hyrax workflows,
+  also generate citations from citation_compass.toml.
+type: software
+authors:
+  - name: LINCC Frameworks
+    email: mtauraso@uw.edu
+repository-code: https://github.com/lincc-frameworks/hyrax
+url: https://github.com/lincc-frameworks/hyrax
+license: MIT
+abstract: >-
+  Hyrax is a low-code framework for rapid experimentation with machine
+  learning workflows in astronomy.
+version: 0.0.0-dev
+date-released: 2026-01-01
+keywords:
+  - astronomy
+  - machine-learning
+  - pytorch
+  - anomaly-detection
