@@ -70,10 +70,11 @@ def _torch_load(self: nn.Module, load_path: Path):
 
     if prepare_inputs_fn:
         # Successfully loaded prepare_inputs.py
-        if isinstance(prepare_inputs_fn, staticmethod):
-            self.prepare_inputs = prepare_inputs_fn
-        else:
-            self.prepare_inputs = staticmethod(prepare_inputs_fn)
+        self.prepare_inputs = prepare_inputs_fn
+        # if isinstance(prepare_inputs_fn, staticmethod):
+        #     self.prepare_inputs = prepare_inputs_fn
+        # else:
+        #     self.prepare_inputs = staticmethod(prepare_inputs_fn)
     else:
         # Fall back to loading to_tensor for backward compatibility
         to_tensor_fn = load_to_tensor(load_path.parent)
@@ -84,10 +85,11 @@ def _torch_load(self: nn.Module, load_path: Path):
                 "to_tensor is deprecated, please re-save your model with the new version "
                 "to use prepare_inputs."
             )
-            if isinstance(to_tensor_fn, staticmethod):
-                self.prepare_inputs = to_tensor_fn
-            else:
-                self.prepare_inputs = staticmethod(to_tensor_fn)
+            self.prepare_inputs = to_tensor_fn
+            # if isinstance(to_tensor_fn, staticmethod):
+            #    self.prepare_inputs = to_tensor_fn
+            # else:
+            #    self.prepare_inputs = staticmethod(to_tensor_fn)
         else:
             logger.warning(
                 f"Could not find prepare_inputs or to_tensor function in {load_path.parent}. "
