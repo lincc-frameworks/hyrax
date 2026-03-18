@@ -21,7 +21,7 @@ def run(config):
     data_set = setup_dataset(config)
 
     if not isinstance(data_set, HSCDataset):
-        msg = "Invalid to run rebuild manafest except on an HSCDataset."
+        msg = "Invalid to run rebuild manifest except on an HSCDataset."
         raise RuntimeError(msg)
 
     logger.info("Starting rebuild of manifest")
