@@ -121,7 +121,7 @@ nitpick_ignore_regex = [
     (r"^py:.*", r"^ArgumentParser"),
     (r"^py:.*", r"^Namespace"),
     # Types defined by our package that autodoc misidentifies in annotations
-    (r"^py:.*", r"^hyrax.data_sets.fits_image_dataset.files_dict$"),
+    (r"^py:.*", r"^hyrax.datasets.fits_image_dataset.files_dict$"),
     (r"^py:.*", r"^dim_dict$"),
     (r"^py:.*", r"^dC.Rect$"),
     (r"^py:.*", r"^hyrax.downloadCutout.downloadCutout.Rect$"),

@@ -4,7 +4,7 @@ from types import MethodType
 
 import pandas as pd
 
-from hyrax.data_sets.data_set_registry import HyraxDataset
+from hyrax.datasets.dataset_registry import HyraxDataset
 
 
 class HyraxCSVDataset(HyraxDataset):

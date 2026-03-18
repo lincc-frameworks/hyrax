@@ -1,6 +1,6 @@
 # ruff: noqa: D101, D102
 """
-FitsImageDataSet is for if you have image data in a single directory and some sort of tabular catalog file.
+FitsImageDataset is for if you have image data in a single directory and some sort of tabular catalog file.
 
 At minimum, your tabular catalog **must** contain the following:
 
@@ -10,7 +10,7 @@ At minimum, your tabular catalog **must** contain the following:
 
 We recommend all your fits images be roughly the same size.
 
-Setting up hyrax to use FitsImageDataSet works as follows in a notebook. The same configuration options can go
+Setting up hyrax to use FitsImageDataset works as follows in a notebook. The same configuration options can go
 in a configuration file if you are running from the CLI
 
 .. code-block:: python
@@ -22,7 +22,7 @@ in a configuration file if you are running from the CLI
     h.config["data_request"] = {
         "train": {
             "data": {
-                "dataset_class": "FitsImageDataSet",
+                "dataset_class": "FitsImageDataset",
                 "data_location": "/file/path/to/where/your/fits/files/are",
                 "primary_id_field": "object_id",
             }
@@ -52,13 +52,13 @@ If your dataset does not fit in memory on your system, we recommend setting
 ``h.config["data_set"]["use_cache"]`` and ``h.config["data_set"]["preload_cache"]`` to ``False``.
 Both are ``True`` by default. The former caches all tensors read during an epoch into system RAM, with the
 intent of speeding up later epochs of training if your disk has low bandwidth. The latter begins this process
-of caching all tensors into system RAM in a background thread as soon as the ``FitsImageDataSet`` is
+of caching all tensors into system RAM in a background thread as soon as the ``FitsImageDataset`` is
 constructed, front-running the ``train`` or ``infer`` verb requesting tensors. The intent of this optimization
 is to speed up the first epoch of training in the case where your disk has high latency. Both will result in
 crashes if there is not enough room in your system RAM for the entire dataset.
 
 If you need to truncate your dataset to fit in RAM, the easiest way is to select a small number of rows
-from your original catalog file. FitsImageDataSet will only attempt to load images that exist in the catalog.
+from your original catalog file. FitsImageDataset will only attempt to load images that exist in the catalog.
 
 """  # noqa: E501
 
@@ -74,7 +74,7 @@ from torch.utils.data import Dataset
 
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
-from .data_set_registry import HyraxDataset, HyraxImageDataset
+from .dataset_registry import HyraxDataset, HyraxImageDataset
 
 logger = logging.getLogger(__name__)
 tensorboardx_logger = get_tensorboard_logger()
@@ -82,7 +82,7 @@ tensorboardx_logger = get_tensorboard_logger()
 files_dict = dict[str, dict[str, str]]
 
 
-class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
+class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
     """
     Dataset for Fits Images, typically cutouts.
     """
@@ -93,7 +93,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
         """
         .. py:method:: __init__
 
-        Initialize a FitsImageDataSet
+        Initialize a FitsImageDataset
 
         Most work is done in ``_init_from_path`` and functions it calls in order to allow
         subclasses to override behavior.
@@ -167,7 +167,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
         self._set_crop_transform()
 
-        logger.info(f"FitsImageDataSet has {len(self)} objects")
+        logger.info(f"FitsImageDataset has {len(self)} objects")
 
     def _set_crop_transform(self):
         """
@@ -266,7 +266,7 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
 
     def _prepare_metadata(self):
         # This happens when filter_catalog_table is injected in unit tests
-        if FitsImageDataSet._called_from_test:
+        if FitsImageDataset._called_from_test:
             return None
 
         if self.filter_catalog_table is None:

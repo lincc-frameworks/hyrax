@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 
-from hyrax.data_sets.data_set_registry import DATASET_REGISTRY, fetch_dataset_class
+from hyrax.datasets.dataset_registry import DATASET_REGISTRY, fetch_dataset_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
@@ -236,7 +236,7 @@ class DataProvider:
         self.pull_up_primary_dataset_methods()
 
         # Required because of circular import.
-        from hyrax.data_sets.data_cache import DataCache
+        from hyrax.datasets.data_cache import DataCache
 
         self.data_cache = DataCache(config, self)
         self.data_cache.start_preload_thread()

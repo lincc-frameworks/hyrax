@@ -2,7 +2,7 @@ import numpy as np
 from astropy.table import Table
 from torch.utils.data import Dataset
 
-from hyrax.data_sets.data_set_registry import HyraxDataset
+from hyrax.datasets.dataset_registry import HyraxDataset
 
 INVALID_VALUES = {
     "nan": np.nan,

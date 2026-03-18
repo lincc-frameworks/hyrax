@@ -131,7 +131,7 @@ sphinx-build -M html ./docs ./_readthedocs
 ```
 src/hyrax/              Main package
 src/hyrax/models/       Model definitions and MODEL_REGISTRY
-src/hyrax/data_sets/    Dataset implementations and DATASET_REGISTRY
+src/hyrax/datasets/    Dataset implementations and DATASET_REGISTRY
 src/hyrax/verbs/        CLI verb implementations and VERB_REGISTRY
 src/hyrax/config_schemas/ Pydantic schemas (experimental, data_request only)
 src/hyrax/vector_dbs/   ChromaDB / Qdrant integrations
@@ -167,9 +167,9 @@ Hyrax discovers components through three registries:
 - **External plugins supported** — use a fully qualified import path in the config
   (e.g. `model.name = "my_pkg.my_module.MyModel"`).
 
-### DATASET_REGISTRY (`src/hyrax/data_sets/data_set_registry.py`)
+### DATASET_REGISTRY (`src/hyrax/datasets/dataset_registry.py`)
 - Registration: automatic via `HyraxDataset.__init_subclass__`
-- Built-in: `HyraxCifarDataset`, `HSCDataSet`, `LSSTDataset`, `FitsImageDataSet`
+- Built-in: `HyraxCifarDataset`, `HSCDataset`, `LSSTDataset`, `FitsImageDataset`
 - **External plugins supported** — same import-path mechanism as models.
 
 ### VERB_REGISTRY (`src/hyrax/verbs/verb_registry.py`)
@@ -234,8 +234,8 @@ Each verb that produces output creates its own timestamped results directory.
 
 ## Key Conventions
 
-- **Spelling:** `Dataset` (lowercase 's') is preferred for new code. Legacy classes like
-  `HSCDataSet` use `DataSet` — leave existing code alone, but use `Dataset` for new classes.
+- **Spelling:** Use `Dataset` (single word, lowercase 's') for class names and identifiers.
+  In snake_case contexts, use `data_set`.
 - **Timestamped results dirs** — `YYYYMMDD-HHMMSS-<verb>-<uid>` under `results/`.
   Each run snapshots its config as `runtime_config.toml` inside the directory.
 - **Batch indexing** — data loaders use PyTorch's standard batch dimension (dim 0).
@@ -265,8 +265,8 @@ Each verb that produces output creates its own timestamped results directory.
 - Export to ONNX format supported
 
 ### Working with Data
-- Data loaders in `src/hyrax/data_sets/`
-- Built-in datasets: `HSCDataSet`, `HyraxCifarDataset`, `LSSTDataset`, `FitsImageDataSet`
+- Data loaders in `src/hyrax/datasets/`
+- Built-in datasets: `HSCDataset`, `HyraxCifarDataset`, `LSSTDataset`, `FitsImageDataset`
 - Dataset splits: train/validation/test controlled by config
 - Configuration in `[data_set]` section
 - Default data directory: `./data/`
