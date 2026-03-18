@@ -56,7 +56,10 @@ dependencies = [
     "tqdm", # Used to show progress bars
     "qdrant-client", # Vector database for similarity search
     "colorama", # Used to color terminal output
-    "lancedb", # Used for columnar storage of inference results
+    # Pin to before 0.30.0 because version 0.30.0 does not support NaN values anymore
+    # This issue is NOT noted in release notes (https://github.com/lancedb/lancedb/releases/tag/python-v0.30.0)
+    # We may need to file a bug
+    "lancedb < 0.30.0", # Used for columnar storage of inference results
     "pyarrow", # Used by lancedb for data interchange
     "pylance", # Used by lancedb for Lance dataset access
 ]
