@@ -626,6 +626,33 @@ def test_split_fraction_sum_with_none_fractions_different_locations():
     assert definition["validate"].split_fraction is None
 
 
+def test_split_fraction_cross_group_ignores_excluded_groups():
+    """Groups not passed to validate_cross_group are excluded from the sum check."""
+    definition = DataRequestDefinition(
+        {
+            "train": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.6,
+            ),
+            "validate": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.4,
+            ),
+            "infer": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.5,
+            ),
+        }
+    )
+    # train + validate = 1.0 (valid); infer is excluded so it does not cause a failure
+    definition.validate_cross_group({"train", "validate"})
+
 
 def test_split_fraction_sum_dict_configs_same_location():
     """Split fractions across groups sharing the same location are summed."""
