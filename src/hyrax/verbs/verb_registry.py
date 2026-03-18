@@ -1,5 +1,6 @@
 import logging
 from abc import ABC
+from collections.abc import Mapping
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +57,12 @@ class Verb(ABC):  # noqa: B024
         if not data_request:
             return
 
+        if not isinstance(data_request, Mapping):
+            raise RuntimeError(
+                f"{type(self).__name__} received a non-mapping data_request configuration "
+                f"of type {type(data_request)!r}; expected a mapping from group name to config."
+            )
+
         # Verify that every required group is present in the config.
         missing = [g for g in self.REQUIRED_DATA_GROUPS if g not in data_request]
         if missing:
@@ -66,16 +73,18 @@ class Verb(ABC):  # noqa: B024
             )
 
         # Build a DataRequestDefinition so we can call validate_cross_group.
-        # If the stored config is structurally invalid (it was already warned about
-        # at set_config time), skip cross-group validation gracefully.
+        # If the stored config is structurally invalid, surface the problem as a
+        # runtime error so that verb-time validation does not get silently skipped.
         from pydantic import ValidationError
 
         from hyrax.config_schemas.data_request import DataRequestDefinition
 
         try:
             definition = DataRequestDefinition.model_validate(data_request)
-        except ValidationError:
-            return
+        except ValidationError as exc:
+            raise RuntimeError(
+                f"Invalid data_request configuration for {type(self).__name__}: {exc}"
+            ) from exc
 
         # Restrict cross-group validation to the groups this verb actually uses.
         # Groups outside REQUIRED + OPTIONAL (e.g. 'infer' for a Train verb) are
