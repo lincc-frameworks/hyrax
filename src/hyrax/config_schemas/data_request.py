@@ -180,17 +180,33 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
 
         return self
 
-    @model_validator(mode="after")
-    def validate_split_fraction_sums(self) -> DataRequestDefinition:
-        """Validate that the sum of split_fraction values for configs sharing
-        the same data_location does not exceed 1.0.
+    def validate_cross_group(self, groups: set[str]) -> None:
+        """Run cross-group split_fraction checks restricted to the specified groups.
 
-        This check spans across all dataset groups to ensure that the total
-        fraction requested from a single data source is not more than 100%.
+        This method is intended to be called by verb classes at instantiation time,
+        scoped to only the dataset groups the verb actually uses (via
+        ``REQUIRED_DATA_GROUPS`` and ``OPTIONAL_DATA_GROUPS``).  By restricting
+        validation to active groups, configs that contain groups irrelevant to the
+        current verb do not cause false validation failures.
+
+        Parameters
+        ----------
+        groups : set[str]
+            Set of active group names to validate.  Only configs belonging to
+            these groups are considered.
+
+        Raises
+        ------
+        ValueError
+            If split_fraction values for a given ``data_location`` sum to more
+            than 1.0, or if split_fraction consistency is violated (some configs
+            for a location set it while others do not).
         """
-        fractions_by_location: dict[str, list[float]] = defaultdict(list)
+        filtered = {k: v for k, v in self.root.items() if k in groups}
 
-        for _group_name, config in _iter_all_configs(self.root):
+        # Check that split_fraction values for the same data_location do not exceed 1.0.
+        fractions_by_location: dict[str, list[float]] = defaultdict(list)
+        for _group_name, config in _iter_all_configs(filtered):
             if config.split_fraction is not None:
                 fractions_by_location[config.data_location].append(config.split_fraction)
 
@@ -202,21 +218,9 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
                     f"is {total}, which exceeds 1.0."
                 )
 
-        return self
-
-    @model_validator(mode="after")
-    def validate_split_fraction_consistency(self) -> DataRequestDefinition:
-        """Validate that if any config specifies a split_fraction for a given
-        data_location, then all other configs sharing that data_location must
-        also specify a split_fraction.
-
-        This prevents ambiguous situations where some configs claim a fraction
-        of a dataset while others implicitly claim the remainder or the whole.
-        """
-        # Group all configs by data_location
+        # Check that all configs sharing a data_location either all set split_fraction or none do.
         configs_by_location: dict[str, list[tuple[str, DataRequestConfig]]] = defaultdict(list)
-
-        for group_name, config in _iter_all_configs(self.root):
+        for group_name, config in _iter_all_configs(filtered):
             configs_by_location[config.data_location].append((group_name, config))
 
         for location, group_configs in configs_by_location.items():
@@ -234,8 +238,6 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
                     f"'split_fraction' when any of them does. Missing in: "
                     f"{', '.join(missing_groups)}."
                 )
-
-        return self
 
     def __contains__(self, key: str) -> bool:
         return key in self.root
