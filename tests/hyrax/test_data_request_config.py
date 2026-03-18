@@ -582,24 +582,25 @@ def test_split_fraction_sum_valid_different_locations():
 
 
 def test_split_fraction_sum_exceeds_one_same_location():
-    """Split fractions for the same data_location summing to > 1.0 fail validation."""
-    with pytest.raises(ValidationError) as exc_info:
-        DataRequestDefinition(
-            {
-                "train": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    split_fraction=0.7,
-                ),
-                "validate": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    split_fraction=0.5,
-                ),
-            }
-        )
+    """Split fractions for the same data_location summing to > 1.0 fail cross-group validation."""
+    definition = DataRequestDefinition(
+        {
+            "train": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.7,
+            ),
+            "validate": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.5,
+            ),
+        }
+    )
+    with pytest.raises(ValueError) as exc_info:
+        definition.validate_cross_group({"train", "validate"})
     assert "exceeds 1.0" in str(exc_info.value)
 
 
@@ -625,54 +626,32 @@ def test_split_fraction_sum_with_none_fractions_different_locations():
     assert definition["validate"].split_fraction is None
 
 
-def test_split_fraction_sum_across_three_groups():
-    """Split fractions across train, validate, and infer for the same location are summed."""
-    with pytest.raises(ValidationError) as exc_info:
-        DataRequestDefinition(
-            {
-                "train": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    split_fraction=0.4,
-                ),
-                "validate": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    split_fraction=0.4,
-                ),
-                "infer": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    split_fraction=0.3,
-                ),
-            }
-        )
-    assert "exceeds 1.0" in str(exc_info.value)
-
-
-def test_split_fraction_sum_dict_configs_same_location():
-    """Split fractions across groups sharing the same location are summed."""
-    with pytest.raises(ValidationError) as exc_info:
-        DataRequestDefinition(
-            {
-                "train": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    split_fraction=0.6,
-                ),
-                "infer": DataRequestConfig(
-                    dataset_class="HyraxCifarDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    split_fraction=0.5,
-                ),
-            }
-        )
-    assert "exceeds 1.0" in str(exc_info.value)
+def test_split_fraction_cross_group_ignores_excluded_groups():
+    """Groups not passed to validate_cross_group are excluded from the sum check."""
+    definition = DataRequestDefinition(
+        {
+            "train": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.6,
+            ),
+            "validate": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.4,
+            ),
+            "infer": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.5,
+            ),
+        }
+    )
+    # train + validate = 1.0 (valid); infer is excluded so it does not cause a failure
+    definition.validate_cross_group({"train", "validate"})
 
 
 def test_split_fraction_requires_primary_id_field():
@@ -787,23 +766,24 @@ def test_none_groups_are_skipped():
 
 def test_split_fraction_consistency_mixed_raises():
     """If one config has split_fraction for a location, all must."""
-    with pytest.raises(ValidationError) as exc_info:
-        DataRequestDefinition(
-            {
-                "train": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    split_fraction=0.5,
-                ),
-                "infer": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="/tmp/data",
-                    primary_id_field="id",
-                    # Missing split_fraction
-                ),
-            }
-        )
+    definition = DataRequestDefinition(
+        {
+            "train": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                split_fraction=0.5,
+            ),
+            "infer": DataRequestConfig(
+                dataset_class="HyraxRandomDataset",
+                data_location="/tmp/data",
+                primary_id_field="id",
+                # Missing split_fraction
+            ),
+        }
+    )
+    with pytest.raises(ValueError) as exc_info:
+        definition.validate_cross_group({"train", "infer"})
     assert "split_fraction" in str(exc_info.value)
     assert "infer" in str(exc_info.value)
 
