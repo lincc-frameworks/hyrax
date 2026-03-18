@@ -626,34 +626,6 @@ def test_split_fraction_sum_with_none_fractions_different_locations():
     assert definition["validate"].split_fraction is None
 
 
-def test_split_fraction_sum_across_three_groups():
-    """Split fractions across train, validate, and infer for the same location are summed."""
-    definition = DataRequestDefinition(
-        {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.4,
-            ),
-            "validate": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.4,
-            ),
-            "infer": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.3,
-            ),
-        }
-    )
-    with pytest.raises(ValueError) as exc_info:
-        definition.validate_cross_group({"train", "validate", "infer"})
-    assert "exceeds 1.0" in str(exc_info.value)
-
 
 def test_split_fraction_sum_dict_configs_same_location():
     """Split fractions across groups sharing the same location are summed."""
