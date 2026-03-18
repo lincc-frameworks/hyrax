@@ -654,7 +654,6 @@ def test_split_fraction_cross_group_ignores_excluded_groups():
     definition.validate_cross_group({"train", "validate"})
 
 
-
 def test_split_fraction_requires_primary_id_field():
     """split_fraction cannot be set without primary_id_field."""
     with pytest.raises(ValidationError) as exc_info:
