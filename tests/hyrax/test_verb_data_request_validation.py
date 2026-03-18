@@ -181,6 +181,46 @@ def test_inactive_groups_do_not_affect_validation():
 
 
 # ---------------------------------------------------------------------------
+# Robustness: non-mapping and structurally invalid data_request configs
+# ---------------------------------------------------------------------------
+
+
+def test_non_mapping_data_request_raises():
+    """A non-mapping data_request config raises RuntimeError with a clear message.
+
+    ConfigManager.set_config() stores invalid values as-is after a ValidationError.
+    When a verb is later instantiated it must surface the problem clearly.
+    """
+    cm = ConfigManager()
+    # Bypass set_config to inject a non-mapping value directly.
+    cm.config["data_request"] = "this_is_not_a_dict"
+    with pytest.raises(RuntimeError, match="non-mapping"):
+        Train(cm.config)
+
+
+def test_structurally_invalid_data_request_raises():
+    """A mapping data_request that fails pydantic validation raises RuntimeError.
+
+    ConfigManager.set_config() may store a structurally invalid config as-is
+    (logging a warning).  Verb instantiation must surface the pydantic error
+    as a clear RuntimeError instead of silently skipping cross-group validation.
+    """
+    cm = ConfigManager()
+    # split_fraction > 1.0 is invalid; inject directly to simulate set_config
+    # storing a bad config after its own ValidationError catch.
+    cm.config["data_request"] = {
+        "train": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": "/tmp/data",
+            "primary_id_field": "id",
+            "split_fraction": 1.5,  # out of range (le=1.0)
+        }
+    }
+    with pytest.raises(RuntimeError, match="Invalid data_request"):
+        Train(cm.config)
+
+
+# ---------------------------------------------------------------------------
 # model_inputs backward compat
 # ---------------------------------------------------------------------------
 
