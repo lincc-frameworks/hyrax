@@ -20,7 +20,7 @@ class HyraxRandomDatasetBase:
     .. warning::
 
         Direct use of ``HyraxRandomDatasetBase`` is not advised. When working
-        with Hyrax, prefer to use ``HyraxRandomDataset`` or ``HyraxRandomIterableDataset``.
+        with Hyrax, prefer to use ``HyraxRandomDataset``.
     """
 
     data: np.ndarray
