@@ -326,14 +326,6 @@ class DataProvider:
             fields_dict[friendly_name] = list(fields.keys())
         return fields_dict
 
-    def is_iterable(self):
-        """DataProvider datasets will always be map-style datasets."""
-        return False
-
-    def is_map(self):
-        """DataProvider datasets will always be map-style datasets."""
-        return True
-
     def _setup_trace(self):
         """If we're tracing, set up the relevant hooks"""
         from hyrax.trace import get_trace

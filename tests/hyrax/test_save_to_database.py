@@ -11,12 +11,7 @@ def test_save_to_database(loopback_inferred_hyrax):
     inference_result_ids = np.array(inference_results.ids())
     original_dataset_ids = np.array(dataset["infer"].ids())
 
-    # If the dataset is iterable, convert it to a list for easier indexing
-    if dataset["infer"].is_iterable():
-        dataset = list(dataset["infer"])
-        original_dataset_ids = np.array([str(s["object_id"]) for s in dataset])
-    else:
-        dataset = dataset["infer"]
+    dataset = dataset["infer"]
 
     h.config["vector_db"]["name"] = "chromadb"
     original_shape = h.config["data_set"]["HyraxRandomDataset"]["shape"]

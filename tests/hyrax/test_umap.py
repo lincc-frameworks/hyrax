@@ -46,10 +46,6 @@ def test_umap_order(loopback_inferred_hyrax):
     umap_result_ids = umap_results.ids()
     original_dataset_ids = dataset.ids()
 
-    if dataset.is_iterable():
-        dataset = list(dataset)
-        original_dataset_ids = np.array([str(s["object_id"]) for s in dataset])
-
     data_shape = h.config["data_set"]["HyraxRandomDataset"]["shape"]
 
     for idx, result_id in enumerate(umap_result_ids):
