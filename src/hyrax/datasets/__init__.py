@@ -24,17 +24,15 @@ with the hyrax ``download`` verb. It contains additional integrity checks and is
 the ``download`` and ``rebuild_manifest`` verbs. In future this class and the downloader may become a
 separate package.
 
-:doc:`HyraxCifarDataset <hyrax_cifar_dataset/index>` and
-:doc:`HyraxCifarIterableDataset <hyrax_cifar_dataset/index>` give access to the standard
+:doc:`HyraxCifarDataset <hyrax_cifar_dataset/index>` gives access to the standard
 `CIFAR10 <https://www.cs.toronto.edu/~kriz/cifar.html>`_ labeled image dataset, automatically downloading the
-dataset if it is not present. These datasets are useful for testing hyrax and occasionally individual models,
-but they are not astronomical datasets.
+dataset if it is not present. This dataset is useful for testing hyrax and occasionally individual models,
+but it is not an astronomical dataset.
 
-:doc:`HyraxRandomDataset <random/hyrax_random_dataset/index>` and
-:doc:`HyraxRandomIterableDataset <random/hyrax_random_dataset/index>` are utility datasets that
-generate random data with a specific shape.
-These datasets make it easy to test new models with simple random data.
-They are highly configurable such that it's possible to simulate input data for models that
+:doc:`HyraxRandomDataset <random/hyrax_random_dataset/index>` is a utility dataset that
+generates random data with a specific shape.
+This dataset makes it easy to test new models with simple random data.
+It is highly configurable such that it's possible to simulate input data for models that
 are under development.
 
 Each of these datasets can be used a starting point for a Custom Dataset by inheriting your custom dataset

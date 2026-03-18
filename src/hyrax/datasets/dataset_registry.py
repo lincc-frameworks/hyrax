@@ -101,38 +101,6 @@ class HyraxDataset:
                 if not hasattr(self, method_name):
                     setattr(self, method_name, MethodType(_make_getter(col), self))
 
-    @classmethod
-    def is_iterable(cls):
-        """
-        Returns true if underlying dataset is iterable style, supporting __iter__ vs map style
-        where  __getitem__/__len__ are the preferred access methods.
-
-        Returns
-        -------
-        bool
-            True if underlying dataset is iterable
-        """
-        return hasattr(cls, "__iter__")
-
-    @classmethod
-    def is_map(cls):
-        """
-        Returns true if underlying dataset is map style, supporting __getitem__/__len__ vs iterable
-        where __iter__ is the preferred access method.
-
-        Returns
-        -------
-        bool
-            True if underlying dataset is map-style
-        """
-        from torch.utils.data import Dataset, IterableDataset
-
-        if issubclass(cls, (Dataset, IterableDataset)):
-            # All torch IterableDatasets are also Datasets
-            return not issubclass(cls, IterableDataset)
-        else:
-            return hasattr(cls, "__getitem__")
-
     @property
     def config(self):
         return self._config

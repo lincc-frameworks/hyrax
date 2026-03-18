@@ -80,8 +80,3 @@ class HyraxCSVDataset(HyraxDataset):
             sample["data"][col] = self.mem_mapped_csv.iloc[0][col]
 
         return sample
-
-    @classmethod
-    def is_map(cls) -> bool:
-        """Boilerplate method to indicate this is a map-style dataset."""
-        return True
