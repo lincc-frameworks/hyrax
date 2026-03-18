@@ -11,13 +11,13 @@ from pathlib import Path
 import numpy as np
 from schwimmbad import MultiPool
 
-from .fits_image_dataset import FitsImageDataSet, files_dict
+from .fits_image_dataset import FitsImageDataset, files_dict
 
 logger = logging.getLogger(__name__)
 dim_dict = dict[str, list[tuple[int, int]]]
 
 
-class HSCDataSet(FitsImageDataSet):
+class HSCDataset(FitsImageDataset):
     """Dataset for sets of HSC cutouts created by the ``fibad download`` command."""
 
     _called_from_test = False
@@ -216,15 +216,15 @@ class HSCDataSet(FitsImageDataSet):
 
         # Ideally we would use ~75 processes per CPU to attempt to saturate
         # I/O bandwidth using a small number of CPUs.
-        numproc = 1 if HSCDataSet._called_from_test else 75 * cpu_count
-        numproc = HSCDataSet._fixup_limit(
+        numproc = 1 if HSCDataset._called_from_test else 75 * cpu_count
+        numproc = HSCDataset._fixup_limit(
             numproc,
             resource.RLIMIT_NOFILE,
             lambda proc: int(4 * proc + 10),
             lambda nofile: int((nofile - 10) / 4),
         )
 
-        numproc = HSCDataSet._fixup_limit(
+        numproc = HSCDataset._fixup_limit(
             numproc, resource.RLIMIT_NPROC, lambda proc: proc, lambda proc: proc
         )
         return numproc
@@ -258,7 +258,7 @@ class HSCDataSet(FitsImageDataSet):
         # So we can use super() with no args inside the generator expression below
         super_obj = super()
         retval = {}
-        with MultiPool(processes=HSCDataSet._determine_numprocs()) as pool:
+        with MultiPool(processes=HSCDataset._determine_numprocs()) as pool:
             args = (
                 (object_id, list(super_obj._object_files(object_id)))
                 for object_id in self._all_ids(log_every=1_000_000)
@@ -269,7 +269,7 @@ class HSCDataSet(FitsImageDataSet):
     @staticmethod
     def _scan_file_dimension(processing_unit: tuple[str, list[str]]) -> tuple[str, list[tuple[int, int]]]:
         object_id, filenames = processing_unit
-        return (object_id, [HSCDataSet._fits_file_dims(filepath) for filepath in filenames])
+        return (object_id, [HSCDataset._fits_file_dims(filepath) for filepath in filenames])
 
     @staticmethod
     def _fits_file_dims(filepath) -> tuple[int, int]:
@@ -308,7 +308,7 @@ class HSCDataSet(FitsImageDataSet):
             # Drop objects with missing filters
             filter_intersect = sorted([filter for filter in filters_unsorted if filter in filters_ref])
             if filter_intersect != filters_ref:
-                msg = f"HSCDataSet in {self.path} has the wrong group of filters for object {object_id}."
+                msg = f"HSCDataset in {self.path} has the wrong group of filters for object {object_id}."
                 self._mark_for_prune(object_id, msg)
                 logger.info(f"Filters for object {object_id} were {filters_unsorted}")
                 logger.debug(f"Reference filters were {filters_ref}")

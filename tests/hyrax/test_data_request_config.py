@@ -13,7 +13,7 @@ from hyrax.config_utils import ConfigManager
 def test_data_request_config_basic_fields():
     """Basic field round trip."""
     cfg = DataRequestConfig(
-        dataset_class="hyrax.data_sets.hyrax_csv_dataset.HyraxCSVDataset",
+        dataset_class="hyrax.datasets.hyrax_csv_dataset.HyraxCSVDataset",
         data_location="/tmp/data",
         fields=["image", "label"],
         primary_id_field="object_id",

@@ -14,14 +14,14 @@ def run(config):
         The parsed config file as a nested
         dict
     """
-    from .data_sets.hsc_data_set import HSCDataSet
+    from .datasets.hsc_dataset import HSCDataset
 
     config["rebuild_manifest"] = True
 
     data_set = setup_dataset(config)
 
-    if not isinstance(data_set, HSCDataSet):
-        msg = "Invalid to run rebuild manafest except on an HSCDataSet."
+    if not isinstance(data_set, HSCDataset):
+        msg = "Invalid to run rebuild manifest except on an HSCDataset."
         raise RuntimeError(msg)
 
     logger.info("Starting rebuild of manifest")

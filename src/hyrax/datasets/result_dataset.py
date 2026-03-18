@@ -18,7 +18,7 @@ import lancedb
 import numpy as np
 import pyarrow as pa
 
-from .data_set_registry import HyraxDataset
+from .dataset_registry import HyraxDataset
 
 logger = logging.getLogger(__name__)
 
