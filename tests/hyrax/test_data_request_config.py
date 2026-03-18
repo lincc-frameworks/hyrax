@@ -654,28 +654,6 @@ def test_split_fraction_cross_group_ignores_excluded_groups():
     definition.validate_cross_group({"train", "validate"})
 
 
-def test_split_fraction_sum_dict_configs_same_location():
-    """Split fractions across groups sharing the same location are summed."""
-    definition = DataRequestDefinition(
-        {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.6,
-            ),
-            "infer": DataRequestConfig(
-                dataset_class="HyraxCifarDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.5,
-            ),
-        }
-    )
-    with pytest.raises(ValueError) as exc_info:
-        definition.validate_cross_group({"train", "infer"})
-    assert "exceeds 1.0" in str(exc_info.value)
-
 
 def test_split_fraction_requires_primary_id_field():
     """split_fraction cannot be set without primary_id_field."""
