@@ -235,7 +235,7 @@ Each verb that produces output creates its own timestamped results directory.
 ## Key Conventions
 
 - **Spelling:** Use `Dataset` (single word, lowercase 's') for class names and identifiers.
-  In snake_case contexts, use `data_set`.
+  In snake_case contexts, use `dataset`.
 - **Timestamped results dirs** — `YYYYMMDD-HHMMSS-<verb>-<uid>` under `results/`.
   Each run snapshots its config as `runtime_config.toml` inside the directory.
 - **Batch indexing** — data loaders use PyTorch's standard batch dimension (dim 0).
