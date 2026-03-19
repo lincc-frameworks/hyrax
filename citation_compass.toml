@@ -1,0 +1,42 @@
+# Citation Compass source configuration for Hyrax.
+# v1 policy: include only methodologically central runtime dependencies.
+
+[project]
+name = "hyrax"
+repository = "https://github.com/lincc-frameworks/hyrax"
+primary_citation = "CITATION.cff"
+
+# Canonical command path for maintainers/users:
+# python -m citation_compass --config citation_compass.toml
+
+[[dependencies]]
+package = "torch"
+reason = "Core ML framework used by Hyrax models and training/inference execution."
+
+[[dependencies]]
+package = "pytorch-ignite"
+reason = "Distributed training and orchestration infrastructure in Hyrax verbs."
+
+[[dependencies]]
+package = "astropy"
+reason = "FITS and astronomy data interfaces used in data workflows."
+
+[[dependencies]]
+package = "mlflow"
+reason = "Experiment tracking and model comparison support."
+
+[[dependencies]]
+package = "umap-learn"
+reason = "Latent space dimensionality reduction used in analysis workflows."
+
+[[dependencies]]
+package = "lancedb"
+reason = "Columnar vector/result storage for Hyrax output workflows."
+
+[[dependencies]]
+package = "pyarrow"
+reason = "Data interchange layer used by LanceDB integrations."
+
+[[dependencies]]
+package = "chromadb"
+reason = "Vector database backend available in similarity search workflows."
