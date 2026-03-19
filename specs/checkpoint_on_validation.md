@@ -61,8 +61,8 @@ The existing code already has a comment anticipating this refactor:
 
 ### Phase 4: Tests in `tests/hyrax/test_train.py`
 
-7. **New test: `test_best_checkpoint_uses_validation_loss`** — Train with a validation split for 2+ epochs. Inspect results directory for a `*val_loss=*.pt` best-checkpoint file. Assert exactly one such file exists, confirming the validator engine drove checkpoint scoring.
-8. **New test: `test_best_checkpoint_without_validation`** — Train without validation split. Inspect results directory for a `*trn_loss=*.pt` best-checkpoint file. Assert exactly one such file exists, confirming the trainer engine drove checkpoint scoring.
+7. **New test: `test_best_checkpoint_uses_validation_loss`** — Train with a validation split for 2+ epochs. Inspect results directory for a `*validator_loss=*.pt` best-checkpoint file. Assert exactly one such file exists, confirming the validator engine drove checkpoint scoring.
+8. **New test: `test_best_checkpoint_without_validation`** — Train without validation split. Inspect results directory for a `*trainer_loss=*.pt` best-checkpoint file. Assert exactly one such file exists, confirming the trainer engine drove checkpoint scoring.
 9. **Existing tests** should pass unchanged — checkpoint file format and resume mechanism are identical.
 
 ## Relevant Files

@@ -769,7 +769,7 @@ def attach_best_checkpoint(
     engine : pytorch-ignite.Engine
         The engine whose ``output["loss"]`` is used as the checkpoint score.  Pass the
         validator when one exists; otherwise pass the trainer. If the engine has a
-        ``hyrax_label`` attribute, it will be used included in the checkpoint filename.
+        ``hyrax_label`` attribute, it will be included in the checkpoint filename.
     model : torch.nn.Module
         The model being trained.  Must expose ``model.optimizer`` and optionally
         ``model.scheduler``.
