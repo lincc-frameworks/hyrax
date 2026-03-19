@@ -184,10 +184,8 @@ customized strategy is desired, the approach above may be preferable.
 Defining a dataset class
 ------------------------
 
-Dataset classes are written as subclasses of ``hyrax.data_sets.HyraxDataset``. Datasets must choose to be
-either "map style", and also inherit from ``torch.utils.data.Dataset`` or "iterable" and inherit from
-``torch.utils.data.IterableDataset``. `Look here <https://pytorch.org/docs/stable/data.html#dataset-types>`_
-for an overview of the difference between map style and iterable datasets.
+Dataset classes are written as subclasses of ``hyrax.data_sets.HyraxDataset`` and must be map-style
+datasets with ``__len__`` and ``__getitem__`` implemented.
 
 A fully worked example of creating a custom map-style dataset class is in the example notebook
 :doc:`/pre_executed/custom_dataset` If you are writing a dataset for the first time, this is the best place

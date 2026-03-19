@@ -325,14 +325,6 @@ class DataProvider:
             fields_dict[friendly_name] = list(fields.keys())
         return fields_dict
 
-    def is_iterable(self):
-        """DataProvider datasets will always be map-style datasets."""
-        return False
-
-    def is_map(self):
-        """DataProvider datasets will always be map-style datasets."""
-        return True
-
     def prepare_datasets(self):
         """Instantiate each of the requested datasets based on the ``data_request``
         configuration dictionary. Store the prepared instances in the

@@ -165,9 +165,6 @@ def test_data_provider(data_provider):
     assert dp.primary_dataset == "random_0"
     assert dp.primary_dataset_id_field_name == "object_id"
 
-    assert dp.is_iterable() is False
-    assert dp.is_map() is True
-
     # There should be 2 prepared datasets
     assert len(dp.prepped_datasets) == 2
     assert "random_0" in dp.prepped_datasets
