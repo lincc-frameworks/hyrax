@@ -611,6 +611,7 @@ def create_evaluator(
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(evaluator)
 
+    evaluator.hyrax_label = "evaluator"
     return evaluator
 
 
@@ -678,6 +679,7 @@ def create_validator(
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
+    validator.hyrax_label = "validator"
     return validator
 
 
@@ -741,11 +743,15 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
         # Log to tensorboard
         tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
 
+    tester.hyrax_label = "tester"
     return tester
 
 
 def attach_best_checkpoint(
-    engine: Engine, model: torch.nn.Module, trainer: Engine, results_directory: Path
+    engine: Engine,
+    model: torch.nn.Module,
+    trainer: Engine,
+    results_directory: Path,
 ) -> None:
     """Attach a best-checkpoint handler to ``engine``, scored on ``engine.state.output["loss"]``.
 
@@ -762,7 +768,8 @@ def attach_best_checkpoint(
     ----------
     engine : pytorch-ignite.Engine
         The engine whose ``output["loss"]`` is used as the checkpoint score.  Pass the
-        validator when one exists; otherwise pass the trainer.
+        validator when one exists; otherwise pass the trainer. If the engine has a
+        ``hyrax_label`` attribute, it will be used included in the checkpoint filename.
     model : torch.nn.Module
         The model being trained.  Must expose ``model.optimizer`` and optionally
         ``model.scheduler``.
@@ -786,12 +793,14 @@ def attach_best_checkpoint(
     def neg_loss_score(eng):
         return -eng.state.output["loss"]
 
+    score_name = f"{engine.hyrax_label}_loss" if hasattr(engine, "hyrax_label") else "loss"
+
     best_checkpoint = Checkpoint(
         to_save,
         DiskSaver(results_directory, require_empty=False),
         n_saved=1,
         global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
-        score_name="loss",
+        score_name=score_name,
         score_function=neg_loss_score,
         greater_or_equal=True,
     )
@@ -916,6 +925,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(trainer)
 
+    trainer.hyrax_label = "trainer"
     return trainer
 
 

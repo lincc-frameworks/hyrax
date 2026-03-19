@@ -3,7 +3,7 @@
 ## TL;DR
 Issue #762: `best_checkpoint` currently scores on **training batch loss** (`trainer.state.output["loss"]`). When a validator is present, it should score on **validation loss** instead. When no validator exists, behavior is unchanged.
 
-**Approach:** Extract best-checkpoint logic into a new standalone function `attach_best_checkpoint()` in `pytorch_ignite.py`. Call it from `train.py`, passing either the validator or trainer as the scoring engine. No changes to `create_trainer` or `create_validator` return types or signatures.
+**Approach:** Extract best-checkpoint logic into a new standalone function `attach_best_checkpoint()` in `pytorch_ignite.py`. Call it from `train.py`, passing either the validator or trainer as the scoring engine. No changes to `create_trainer` or `create_validator` return types or signatures. Each engine factory sets a `hyrax_label` attribute on the returned `Engine` so callers do not need to pass a separate type string.
 
 ## Critical Discovery
 
@@ -17,7 +17,8 @@ The existing code already has a comment anticipating this refactor:
 ## Decisions
 - **No return type changes:** `create_trainer` returns `Engine`, `create_validator` returns `Engine`.
 - **No new parameters** on `create_trainer` or `create_validator`.
-- **Filename pattern:** Same naming regardless of what drives the checkpoint.
+- **`hyrax_label` attribute:** Each engine factory (`create_trainer`, `create_validator`, `create_evaluator`, `create_tester`) sets `engine.hyrax_label` on the returned `Engine` (e.g. `"trainer"`, `"validator"`, `"evaluator"`, `"tester"`). This is a Hyrax-specific attribute; `ignite.Engine` does not define a `label` attribute of its own.
+- **Filename pattern:** The best-checkpoint filename embeds `engine.hyrax_label` as the score name prefix (e.g. `validator_loss=…` or `trainer_loss=…`). `attach_best_checkpoint` reads `engine.hyrax_label` via `hasattr` and falls back to a plain `"loss"` score name if the attribute is absent.
 - **`latest_checkpoint`:** Stays on the trainer always. Only `best_checkpoint` moves.
 - **Checkpoint file format:** Unchanged `to_save` dict — resume is fully backward-compatible.
 - **`auto_model` double-call:** The new function calls `idist.auto_model(model)` to build `to_save`. This is safe: in non-distributed mode it returns the same reference; in distributed mode, multiple DDP wrappers share the underlying module so state_dict serialization is equivalent. (The codebase already calls `auto_model` separately in both `create_trainer` and `create_validator`.)
@@ -29,7 +30,8 @@ The existing code already has a comment anticipating this refactor:
 1. **Create `attach_best_checkpoint(engine, model, trainer, results_directory)`** — a new public function that:
    - Builds `to_save` dict: `{"model": idist.auto_model(model), "optimizer": model.optimizer, "trainer": trainer}` + scheduler if present.
    - Creates `neg_loss_score` (reads `engine.state.output["loss"]`).
-   - Creates `Checkpoint` with `DiskSaver(results_directory)`, `n_saved=1`, `global_step_transform=global_step_from_engine(trainer)`, `score_name="loss"`, `score_function=neg_loss_score`, `greater_or_equal=True`.
+   - Reads `engine.hyrax_label` (via `hasattr`) to build the `score_name` (e.g. `"validator_loss"` or `"trainer_loss"`); falls back to `"loss"` if absent.
+   - Creates `Checkpoint` with `DiskSaver(results_directory)`, `n_saved=1`, `global_step_transform=global_step_from_engine(trainer)`, `score_name=<label>_loss`, `score_function=neg_loss_score`, `greater_or_equal=True`.
    - Registers checkpoint on `engine`'s `HyraxEvents.HYRAX_EPOCH_COMPLETED`.
    - Registers `log_best_checkpoint_location` on `trainer`'s `Events.COMPLETED`.
    - `engine` is the engine whose output loss drives the score — the validator when it exists, the trainer otherwise.
@@ -47,6 +49,7 @@ The existing code already has a comment anticipating this refactor:
    - `log_last_checkpoint_location` and its registration on `Events.COMPLETED`.
    - All other handlers, resume logic, progress bar.
    - Return type remains `Engine`.
+   - **Set `trainer.hyrax_label = "trainer"`** before returning.
 
 ### Phase 3: Update `Train.run()` in `verbs/train.py`
 
@@ -58,8 +61,8 @@ The existing code already has a comment anticipating this refactor:
 
 ### Phase 4: Tests in `tests/hyrax/test_train.py`
 
-7. **New test: `test_best_checkpoint_uses_validation_loss`** — Train with a validation split for 2+ epochs. Inspect results directory for `best_checkpoint` file. Verify it exists and the training completed successfully. (The loopback model's `validate_batch` returns `{"loss": 0.0}`, which is a valid score for checkpoint selection.)
-8. **New test: `test_best_checkpoint_without_validation`** — Train without validation split. Verify `best_checkpoint` file still appears in results directory (existing behavior preserved).
+7. **New test: `test_best_checkpoint_uses_validation_loss`** — Train with a validation split for 2+ epochs. Inspect results directory for a `*val_loss=*.pt` best-checkpoint file. Assert exactly one such file exists, confirming the validator engine drove checkpoint scoring.
+8. **New test: `test_best_checkpoint_without_validation`** — Train without validation split. Inspect results directory for a `*trn_loss=*.pt` best-checkpoint file. Assert exactly one such file exists, confirming the trainer engine drove checkpoint scoring.
 9. **Existing tests** should pass unchanged — checkpoint file format and resume mechanism are identical.
 
 ## Relevant Files
