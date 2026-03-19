@@ -33,7 +33,7 @@ def test_generate_data_request_passes_model_inputs():
                 "data_location": "./data",
                 "primary_id_field": "object_id",
                 "fields": ["image"],
-                "dataset_config": {"shape": [1, 2, 3], "seed": 1},
+                "dataset_config": {"HyraxRandomDataset": {"shape": [1, 2, 3], "seed": 1}},
             }
         }
     }
@@ -280,6 +280,142 @@ def test_apply_configurations(multimodal_config):
     assert merged_config["general"] == base_config["general"]
 
 
+def test_apply_configurations_external_dataset():
+    """Test that _apply_configurations places external (non-registry)
+    dataset_config keys at the top level of the merged config, not
+    under 'data_set'."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "SomeExternalDataset",
+        "data_location": "/path/to/data",
+        "dataset_config": {
+            "external_example": {
+                "ExternalDataset": {
+                    "param1": "value1",
+                    "param2": 42,
+                },
+            },
+        },
+    }
+
+    merged = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    assert "external_example" in merged
+    assert merged["external_example"]["ExternalDataset"]["param1"] == "value1"
+    assert merged["external_example"]["ExternalDataset"]["param2"] == 42
+    # External keys should NOT appear under data_set
+    assert "external_example" not in merged["data_set"]
+    # Unrelated sections should be unchanged
+    assert merged["general"] == base_config["general"]
+
+
+def test_apply_configurations_mixed_builtin_and_external():
+    """Test that _apply_configurations correctly routes built-in keys
+    under 'data_set' and external keys at the top level when both
+    are present in the same dataset_config."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "SomeDataset",
+        "dataset_config": {
+            "HyraxRandomDataset": {
+                "shape": [3, 3, 3],
+            },
+            "ext_lib": {
+                "ExtDS": {
+                    "foo": "bar",
+                },
+            },
+        },
+    }
+
+    merged = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    # Built-in key should be merged under data_set
+    assert merged["data_set"]["HyraxRandomDataset"]["shape"] == [3, 3, 3]
+    # External key should be at top level
+    assert merged["ext_lib"]["ExtDS"]["foo"] == "bar"
+    assert "ext_lib" not in merged["data_set"]
+    assert merged["general"] == base_config["general"]
+
+
+def test_apply_configurations_no_dataset_config():
+    """Test that _apply_configurations returns the base_config unmodified
+    when dataset_definition has no 'dataset_config' key."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "HyraxRandomDataset",
+        "data_location": "/path/to/data",
+    }
+
+    result = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    # The else branch returns base_config directly (identity)
+    assert result is base_config
+
+
+def test_apply_configurations_empty_dataset_config():
+    """Test that _apply_configurations with an empty dataset_config
+    returns a config equivalent to the base."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "HyraxRandomDataset",
+        "dataset_config": {},
+    }
+
+    merged = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    assert merged["data_set"] == base_config["data_set"]
+    assert merged["general"] == base_config["general"]
+
+
+def test_apply_configurations_multiple_builtin_keys():
+    """Test that _apply_configurations preserves all built-in keys
+    when multiple are present in a single dataset_config."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "SomeDataset",
+        "dataset_config": {
+            "HyraxRandomDataset": {
+                "shape": [7, 7, 7],
+            },
+            "HyraxCSVDataset": {
+                "some_param": "some_value",
+            },
+        },
+    }
+
+    merged = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    # Both built-in keys should survive under data_set
+    assert merged["data_set"]["HyraxRandomDataset"]["shape"] == [7, 7, 7]
+    assert merged["data_set"]["HyraxCSVDataset"]["some_param"] == "some_value"
+
+
 def test_primary_dataset(multimodal_config):
     """Test primary dataset selection behavior:
     - uses the dataset with a defined ``primary_id_field`` as primary,
@@ -399,7 +535,9 @@ def test_sample_data():
             "data_directory": "./in_memory_0",
             "fields": ["object_id", "image", "label"],
             "dataset_config": {
-                "shape": [2, 16, 16],
+                "HyraxRandomDataset": {
+                    "shape": [2, 16, 16],
+                },
             },
             "primary_id_field": "object_id",
         },
@@ -408,8 +546,10 @@ def test_sample_data():
             "data_directory": "./in_memory_1",
             "fields": ["image"],
             "dataset_config": {
-                "shape": [5, 16, 16],
-                "seed": 4200,
+                "HyraxRandomDataset": {
+                    "shape": [5, 16, 16],
+                    "seed": 4200,
+                },
             },
         },
     }
@@ -437,6 +577,11 @@ def test_sample_data():
         if friendly_name == "random_0":
             assert "object_id" in dataset_sample
             assert "label" in dataset_sample
+
+    # Verify the dataset_config overrides actually took effect
+    # (default shape is [2, 5, 5] — these should differ)
+    assert sample["random_0"]["image"].shape == (2, 16, 16)
+    assert sample["random_1"]["image"].shape == (5, 16, 16)
 
 
 def test_data_provider_get_item(data_provider):
@@ -576,12 +721,14 @@ def test_primary_id_field_fetched_when_not_in_fields():
             "fields": ["image", "label"],  # Note: "object_id" is NOT included
             "primary_id_field": "object_id",  # But this field is set as primary
             "dataset_config": {
-                "shape": [2, 3, 3],
-                "size": 5,
-                "seed": 42,
-                "provided_labels": ["cat", "dog"],
-                "number_invalid_values": 0,
-                "invalid_value_type": "nan",
+                "HyraxRandomDataset": {
+                    "shape": [2, 3, 3],
+                    "size": 5,
+                    "seed": 42,
+                    "provided_labels": ["cat", "dog"],
+                    "number_invalid_values": 0,
+                    "invalid_value_type": "nan",
+                },
             },
         }
     }
@@ -609,6 +756,9 @@ def test_primary_id_field_fetched_when_not_in_fields():
     # object_id should NOT be in dataset data since it wasn't requested in fields
     assert "object_id" not in data["test_dataset"]
 
+    # Verify the dataset_config overrides took effect (default shape is [2, 5, 5])
+    assert data["test_dataset"]["image"].shape == (2, 3, 3)
+
 
 def test_primary_id_field_reused_when_already_in_fields():
     """Test that primary_id_field is reused when already in fields list.
@@ -631,12 +781,14 @@ def test_primary_id_field_reused_when_already_in_fields():
             "fields": ["object_id", "image", "label"],  # object_id already included
             "primary_id_field": "object_id",
             "dataset_config": {
-                "shape": [2, 3, 3],
-                "size": 5,
-                "seed": 42,
-                "provided_labels": ["cat", "dog"],
-                "number_invalid_values": 0,
-                "invalid_value_type": "nan",
+                "HyraxRandomDataset": {
+                    "shape": [2, 3, 3],
+                    "size": 5,
+                    "seed": 42,
+                    "provided_labels": ["cat", "dog"],
+                    "number_invalid_values": 0,
+                    "invalid_value_type": "nan",
+                },
             },
         }
     }
@@ -674,6 +826,9 @@ def test_primary_id_field_reused_when_already_in_fields():
 
     # The top-level object_id should match the dataset's object_id (reused value)
     assert data["object_id"] == data["test_dataset"]["object_id"]
+
+    # Verify the dataset_config overrides took effect (default shape is [2, 5, 5])
+    assert data["test_dataset"]["image"].shape == (2, 3, 3)
 
 
 def test_collate_function(data_provider):

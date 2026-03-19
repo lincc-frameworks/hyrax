@@ -533,7 +533,7 @@ class DataProvider:
             tmp_config = {}
             for k, v in dataset_definition["dataset_config"].items():
                 if k in DATASET_REGISTRY:
-                    tmp_config["data_set"] = {k: v}
+                    tmp_config.setdefault("data_set", {})[k] = v
                 else:
                     tmp_config[k] = v
 
