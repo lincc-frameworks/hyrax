@@ -611,6 +611,7 @@ def create_evaluator(
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(evaluator)
 
+    evaluator.hyrax_label = "evaluator"
     return evaluator
 
 
@@ -678,6 +679,7 @@ def create_validator(
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
+    validator.hyrax_label = "validator"
     return validator
 
 
@@ -741,7 +743,74 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
         # Log to tensorboard
         tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
 
+    tester.hyrax_label = "tester"
     return tester
+
+
+def attach_best_checkpoint(
+    engine: Engine,
+    model: torch.nn.Module,
+    trainer: Engine,
+    results_directory: Path,
+) -> None:
+    """Attach a best-checkpoint handler to ``engine``, scored on ``engine.state.output["loss"]``.
+
+    Call this function *after* both ``create_trainer`` and (optionally) ``create_validator``
+    have been called so that handler registration order is correct.  When a validator is
+    available, pass it as ``engine`` so that checkpointing is driven by validation loss.
+    When no validator is available, pass the trainer as ``engine`` so that checkpointing
+    falls back to training loss — preserving the previous behaviour.
+
+    The saved checkpoint format is identical to the one produced by ``create_trainer``, so
+    existing resume logic is fully backward-compatible.
+
+    Parameters
+    ----------
+    engine : pytorch-ignite.Engine
+        The engine whose ``output["loss"]`` is used as the checkpoint score.  Pass the
+        validator when one exists; otherwise pass the trainer. If the engine has a
+        ``hyrax_label`` attribute, it will be included in the checkpoint filename.
+    model : torch.nn.Module
+        The model being trained.  Must expose ``model.optimizer`` and optionally
+        ``model.scheduler``.
+    trainer : pytorch-ignite.Engine
+        The training engine.  Used to derive the global step counter and to attach the
+        end-of-training log handler.
+    results_directory : Path
+        Directory where checkpoint files are written.
+    """
+    wrapped_model = idist.auto_model(model)
+
+    to_save = {
+        "model": wrapped_model,
+        "optimizer": model.optimizer,
+        "trainer": trainer,
+    }
+
+    if model.scheduler:
+        to_save["scheduler"] = model.scheduler
+
+    def neg_loss_score(eng):
+        return -eng.state.output["loss"]
+
+    score_name = f"{engine.hyrax_label}_loss" if hasattr(engine, "hyrax_label") else "loss"
+
+    best_checkpoint = Checkpoint(
+        to_save,
+        DiskSaver(results_directory, require_empty=False),
+        n_saved=1,
+        global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
+        score_name=score_name,
+        score_function=neg_loss_score,
+        greater_or_equal=True,
+    )
+
+    engine.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
+
+    def log_best_checkpoint_location(_, chkpt):
+        logger.debug(f"Best metric checkpoint saved as: {chkpt.last_checkpoint}")
+
+    trainer.add_event_handler(Events.COMPLETED, log_best_checkpoint_location, best_checkpoint)
 
 
 def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path) -> Engine:
@@ -780,28 +849,12 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     if model.scheduler:
         to_save["scheduler"] = model.scheduler
 
-    #! We may want to move the checkpointing logic over to the `validator`.
-    #! It was created here initially because this was the only place where the
-    #! model training was happening.
     latest_checkpoint = Checkpoint(
         to_save,
         DiskSaver(results_directory, require_empty=False),
         n_saved=1,
         global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
         filename_pattern="{name}_epoch_{global_step}.{ext}",
-    )
-
-    def neg_loss_score(engine):
-        return -engine.state.output["loss"]
-
-    best_checkpoint = Checkpoint(
-        to_save,
-        DiskSaver(results_directory, require_empty=False),
-        n_saved=1,
-        global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
-        score_name="loss",
-        score_function=neg_loss_score,
-        greater_or_equal=True,
     )
 
     if config["train"]["resume"]:
@@ -854,7 +907,6 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
             model.scheduler.step()
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
-    trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
 
     @trainer.on(Events.COMPLETED)
     def log_total_time(trainer):
@@ -863,11 +915,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     def log_last_checkpoint_location(_, latest_checkpoint):
         logger.debug(f"Latest checkpoint saved as: {latest_checkpoint.last_checkpoint}")
 
-    def log_best_checkpoint_location(_, best_checkpoint):
-        logger.debug(f"Best metric checkpoint saved as: {best_checkpoint.last_checkpoint}")
-
     trainer.add_event_handler(Events.COMPLETED, log_last_checkpoint_location, latest_checkpoint)
-    trainer.add_event_handler(Events.COMPLETED, log_best_checkpoint_location, best_checkpoint)
 
     @trainer.on(Events.COMPLETED)
     def attach_final_metrics_to_model(trainer):
@@ -877,6 +925,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(trainer)
 
+    trainer.hyrax_label = "trainer"
     return trainer
 
 
