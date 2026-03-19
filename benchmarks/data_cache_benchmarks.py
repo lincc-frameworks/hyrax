@@ -38,6 +38,7 @@ class DataCacheBenchmarks:
                     "dataset_class": "HSCDataSet",
                     "data_location": str(hsc_data_dir),
                     "fields": ["image"],
+                    "primary_id_field": "object_id",
                 }
             },
         }

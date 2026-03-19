@@ -22,6 +22,7 @@ class DatasetRequestBenchmarks:
                     "dataset_class": "HyraxRandomDataset",
                     "data_location": str(self.input_dir),
                     "fields": ["image", "label", "object_id"],
+                    "primary_id_field": "object_id",
                 }
             },
             "infer": {
@@ -29,6 +30,7 @@ class DatasetRequestBenchmarks:
                     "dataset_class": "HyraxRandomDataset",
                     "data_location": str(self.input_dir),
                     "fields": ["image", "label", "object_id"],
+                    "primary_id_field": "object_id",
                 }
             },
         }
