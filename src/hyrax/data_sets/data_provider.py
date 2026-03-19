@@ -426,7 +426,9 @@ class DataProvider:
         If no ``dataset_config`` is provided in the ``dataset_definition`` dict,
         the original base config will be returned unmodified.
 
-        Example of a dataset definition dictionary:
+        Data request dictionary examples:
+
+        1) Requesting a built-in Hyrax dataset, "MyDataset"
 
         .. code-block:: python
 
@@ -434,8 +436,10 @@ class DataProvider:
                 "dataset_class": "MyDataset",
                 "data_location": "/path/to/data",
                 "dataset_config": {
-                    "param1": "value1",
-                    "param2": "value2"
+                    "MyDataset": {
+                        "param1": "value1",
+                        "param2": "value2"
+                    }
                 },
                 "fields": ["field1", "field2"]
             }
@@ -449,13 +453,50 @@ class DataProvider:
             dataset_class = "MyDataset"
             data_location = "/path/to/data"
             fields = ["field1", "field2"]
-            [data_request.my_dataset.dataset_config]
+            [data_request.my_dataset.dataset_config.MyDataset]
             param1 = "value1"
             param2 = "value2"
 
-        In this example, the ``dataset_config`` dictionary will be merged into
+        Here the ``dataset_config`` dictionary will be merged into
         the original base config, overriding the values of param1 and param2
         when creating an instance of ``MyDataset``.
+
+        2) Requesting an external dataset (not built-in), "ExternalDataset"
+        Note that the dictionary nesting under "dataset_config" will match the
+        dictionary structure in the external dataset's default_config file.
+
+        .. code-block:: python
+
+            "my_dataset": {
+                "dataset_class": "ExternalDataset",
+                "data_location": "/path/to/data",
+                "dataset_config": {
+                    "external_example": {
+                        "ExternalDataset": {
+                            "param1": "value1",
+                            "param2": "value2"
+                        },
+                    },
+                },
+                "fields": ["field1", "field2"]
+            }
+
+        or equivalently in a .toml file:
+
+        .. code-block:: toml
+
+            [data_request]
+            [data_request.my_dataset]
+            dataset_class = "ExternalDataset"
+            data_location = "/path/to/data"
+            fields = ["field1", "field2"]
+            [data_request.my_dataset.dataset_config.external_example.MyDataset]
+            param1 = "value1"
+            param2 = "value2"
+
+        Here the ``dataset_config`` dictionary will be merged into
+        the original base config, overriding the values of param1 and param2
+        when creating an instance of ``ExternalDataset``.
 
         Parameters
         ----------
@@ -478,17 +519,17 @@ class DataProvider:
 
         cm = ConfigManager()
 
-        # NOTE: This assumes that the dataset-specific configuration options
-        # are nested under a top-level key that matches the dataset class name.
-        # i.e. "data_set": {"MyDataset": {<dataset-specific-options>}}. Or in toml
-        # [data_set.MyDataset]
-        # <dataset-specific-options>
-        # See: https://github.com/lincc-frameworks/hyrax/issues/417
-
+        # NOTE: This assumes that the dictionary nesting under dataset_config will
+        # either 1) match the built-in dataset class name (e.g. "MyDataset") or
+        # 2) match the dictionary structure in the external dataset's default_config
+        # file (e.g. "external_example.ExternalDataset").
         if "dataset_config" in dataset_definition:
-            tmp_config = {
-                "data_set": {dataset_definition["dataset_class"]: dataset_definition["dataset_config"]}
-            }
+            tmp_config = {}
+            for k, v in dataset_definition["dataset_config"].items():
+                if k in DATASET_REGISTRY:
+                    tmp_config.setdefault("data_set", {})[k] = v
+                else:
+                    tmp_config[k] = v
 
             # Note that `merge_configs` makes a copy of self.config, so the original
             # config will not be modified.

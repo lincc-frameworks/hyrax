@@ -28,6 +28,7 @@ class VectorDBInsertBenchmarks:
             "train": {
                 "data": {
                     "dataset_class": "HyraxRandomDataset",
+                    "data_location": "./data",
                     "fields": ["image", "label", "object_id"],
                     "primary_id_field": "object_id",
                 },
@@ -35,6 +36,7 @@ class VectorDBInsertBenchmarks:
             "infer": {
                 "data": {
                     "dataset_class": "HyraxRandomDataset",
+                    "data_location": "./data",
                     "fields": ["image", "label", "object_id"],
                     "primary_id_field": "object_id",
                 },
@@ -102,6 +104,7 @@ class VectorDBSearchBenchmarks:
             "train": {
                 "data": {
                     "dataset_class": "HyraxRandomDataset",
+                    "data_location": "./data",
                     "fields": ["image", "label", "object_id"],
                     "primary_id_field": "object_id",
                 },
@@ -109,6 +112,7 @@ class VectorDBSearchBenchmarks:
             "infer": {
                 "data": {
                     "dataset_class": "HyraxRandomDataset",
+                    "data_location": "./data",
                     "fields": ["image", "label", "object_id"],
                     "primary_id_field": "object_id",
                 },
