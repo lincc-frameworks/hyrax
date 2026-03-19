@@ -246,11 +246,11 @@ class TraceResult(TracePrintable):
     The ML Model's prepare_inputs function is called in this stage and converts the data dictionary
     containing each column of batched tensor data into a single batch tensor that will form the input to
     the model's evaluation functions. If the model is doing supervized learning, the output will be
-    a tuple of two tensors (inputs, labels)
+    a tuple of numpy arrays (inputs_0, [inputs_1, ..., inputs_n], labels)
 
     5. "evaluation" stage
     The ML model is evaluated or the training loop is run. Functions will be functions run on the model
-    during this process, including `train_step` , `forward` and similar. If you implemented a custom model
+    during this process, including `train_batch` , `forward` and similar. If you implemented a custom model
     you wrote these functions. Any model functions decorated with @trace_model_func will also show up here.
 
     """
