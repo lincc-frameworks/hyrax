@@ -130,6 +130,7 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     torch.nn.Module
         An instance of the model class specified in the configuration
     """
+    from hyrax.trace import reset_trace
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
@@ -139,12 +140,27 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     if isinstance(dataset, dict):
         # If we have multiple datasets, just take the first one
         first_dataset = next(iter(dataset.values()))
+
+        # TODO: This call creates an inconsistency in the interface to prepare_inputs
+        # prepare_inputs must simultaneously deal with two cases:
+        # 1. A single Datum (e.g. tensor of dim (3,200,200) for a 200x200 3-band image)
+        # 2. A batch of data (e.g. tensor of dim (8,3,200,200) for the same with a batch size of 8)
+        #
+        # Ideally we should make a single one-element batch here, so model writers only have to program
+        # against the #2 interface, but we don't right now.
+        # xcxc file as issue.
         data_sample = model_cls.prepare_inputs(first_dataset.sample_data())
     else:
         data_sample = model_cls.prepare_inputs(dataset.sample_data())
 
     # Provide the data sample for runtime modifications to the model architecture
-    return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
+    retval = model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
+
+    # After model pre-flighting succeeds (presumably) reset the trace so it represents
+    # just what the verb does afterward.
+    reset_trace()
+
+    return retval
 
 
 def dist_data_loader(
@@ -180,6 +196,7 @@ def dist_data_loader(
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
     data_loader_kwargs = dict(config["data_loader"])
 
+    # TODO: Actually DataProvider.collate. Callsites and parameter signature above have not been updated.
     data_loader_kwargs["collate_fn"] = dataset.collate
 
     # Handle case where no split is needed.
