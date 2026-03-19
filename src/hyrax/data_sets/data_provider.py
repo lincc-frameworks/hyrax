@@ -429,6 +429,7 @@ class DataProvider:
         Data request dictionary examples:
 
         1) Requesting a built-in Hyrax dataset, "MyDataset"
+
         .. code-block:: python
 
             "my_dataset": {
@@ -463,6 +464,7 @@ class DataProvider:
         2) Requesting an external dataset (not built-in), "ExternalDataset"
         Note that the dictionary nesting under "dataset_config" will match the
         dictionary structure in the external dataset's default_config file.
+
         .. code-block:: python
 
             "my_dataset": {
@@ -470,7 +472,7 @@ class DataProvider:
                 "data_location": "/path/to/data",
                 "dataset_config": {
                     "external_example": {
-                        "MyDataset": {
+                        "ExternalDataset": {
                             "param1": "value1",
                             "param2": "value2"
                         },
@@ -517,7 +519,7 @@ class DataProvider:
 
         cm = ConfigManager()
 
-        # NOTE: This assume that the dittionary nesting under dataset_config will
+        # NOTE: This assumes that the dictionary nesting under dataset_config will
         # either 1) match the built-in dataset class name (e.g. "MyDataset") or
         # 2) match the dictionary structure in the external dataset's default_config
         # file (e.g. "external_example.ExternalDataset").
