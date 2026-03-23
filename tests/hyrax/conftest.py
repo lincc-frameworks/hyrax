@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import hyrax
-from hyrax.data_sets.data_provider import DataProvider
+from hyrax.datasets.data_provider import DataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -176,7 +176,7 @@ def custom_collate_data_provider(multimodal_config):
     """Use the multimodal_config fixture to create a DataProvider instance
     with custom collate functions for each dataset."""
 
-    from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
+    from hyrax.datasets.random.hyrax_random_dataset import HyraxRandomDataset
 
     @staticmethod
     def collate(batch):

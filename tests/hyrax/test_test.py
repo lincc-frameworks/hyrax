@@ -77,7 +77,7 @@ def test_test(loopback_hyrax_map_only):
     result = h.test()
 
     # Verify we got a ResultDataset back
-    from hyrax.data_sets.result_dataset import ResultDataset
+    from hyrax.datasets.result_dataset import ResultDataset
 
     assert result is not None
     assert isinstance(result, ResultDataset)
@@ -110,7 +110,7 @@ def test_test_with_explicit_weights(loopback_hyrax_map_only, tmp_path):
     result = h.test()
 
     # Verify we got a ResultDataset back
-    from hyrax.data_sets.result_dataset import ResultDataset
+    from hyrax.datasets.result_dataset import ResultDataset
 
     assert result is not None
     assert isinstance(result, ResultDataset)
@@ -135,7 +135,7 @@ def test_test_auto_detects_weights(loopback_hyrax_map_only, tmp_path):
     result = h.test()
 
     # Verify we got a ResultDataset back
-    from hyrax.data_sets.result_dataset import ResultDataset
+    from hyrax.datasets.result_dataset import ResultDataset
 
     assert result is not None
     assert isinstance(result, ResultDataset)

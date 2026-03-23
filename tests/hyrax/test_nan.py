@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 import hyrax
-from hyrax.data_sets.data_provider import _handle_nans
+from hyrax.datasets.data_provider import _handle_nans
 
 
 @pytest.fixture(scope="function", params=["HyraxRandomDataset"])

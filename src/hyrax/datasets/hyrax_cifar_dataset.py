@@ -2,7 +2,7 @@
 import logging
 from pathlib import Path
 
-from .data_set_registry import HyraxDataset
+from .dataset_registry import HyraxDataset
 
 logger = logging.getLogger(__name__)
 

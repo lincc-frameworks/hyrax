@@ -5,7 +5,7 @@ from pathlib import Path
 
 from torch.utils.data import Dataset
 
-from .data_set_registry import HyraxDataset, HyraxImageDataset
+from .dataset_registry import HyraxDataset, HyraxImageDataset
 
 logger = logging.getLogger(__name__)
 

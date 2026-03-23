@@ -8,14 +8,14 @@ import numpy as np
 import numpy.typing as npt
 from torch.utils.data import Dataset
 
-from .data_set_registry import HyraxDataset
+from .dataset_registry import HyraxDataset
 
 logger = logging.getLogger(__name__)
 
 ORIGINAL_DATASET_CONFIG_FILENAME = "original_dataset_config.toml"
 
 
-class InferenceDataSet(HyraxDataset, Dataset):
+class InferenceDataset(HyraxDataset, Dataset):
     """This is a dataset class to represent the situations where we wish to treat the output of inference
     as a dataset. e.g. when performing umap/visualization operations"""
 
@@ -25,7 +25,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
         results_dir: Union[Path, str] | None = None,
         verb: str | None = None,
     ):
-        """Initialize an InferenceDataSet object.
+        """Initialize an InferenceDataset object.
 
         As a user of this code, you should almost never create this class, Instances of this class are
         returned by the umap and infer verbs. Prefer those over creating your own.
@@ -123,7 +123,7 @@ class InferenceDataSet(HyraxDataset, Dataset):
 
         IDs flow from the primary dataset and the primary ID column.
 
-        For an InferenceDataSet instance, ``self.ids()`` is canonically the same as
+        For an InferenceDataset instance, ``self.ids()`` is canonically the same as
         ``[self.get_object_id(i) for i in range(len(self))]``.
         """
         return [self.get_object_id(i) for i in range(len(self))]
@@ -238,13 +238,13 @@ class InferenceDataSet(HyraxDataset, Dataset):
         return self.original_dataset.metadata_fields()  # type: ignore[no-any-return,attr-defined]
 
     def metadata(self, idxs: npt.ArrayLike, fields: list[str]) -> npt.ArrayLike:
-        """Get metadata associated with the data in the InferenceDataSet. This metadata comes from
-        the original dataset, but is indexed according to the InferenceDataSet.
+        """Get metadata associated with the data in the InferenceDataset. This metadata comes from
+        the original dataset, but is indexed according to the InferenceDataset.
 
         Parameters
         ----------
         idxs : npt.ArrayLike
-            Indexes in the InferenceDataSet for which metadata is desired
+            Indexes in the InferenceDataset for which metadata is desired
         fields : list[str]
             Metadata fields requested
 
@@ -287,9 +287,9 @@ class InferenceDataSet(HyraxDataset, Dataset):
         return self.cached_batch[np.isin(self.cached_batch["id"], ids)]
 
 
-class InferenceDataSetWriter:
+class InferenceDatasetWriter:
     """Class to write out inference datasets. Used by infer, umap to consistently write out numpy
-    files in batches which can be read by InferenceDataSet.
+    files in batches which can be read by InferenceDataset.
 
     With the exception of building ID->Batch indexing info, this is implemented as a bag-o-functions that
     manipulate the filesystem directly as their primary effect.
@@ -304,7 +304,7 @@ class InferenceDataSetWriter:
         self.batch_index = 0
 
         # Detect the dtype numpy will want to use for ids for the original dataset
-        # We enumerate this way because whether we are passed a DataProvider or a InferenceDataSet
+        # We enumerate this way because whether we are passed a DataProvider or a InferenceDataset
         # This is guaranteed to work.
         id_list = original_dataset.ids()
         self.id_dtype = np.array(id_list).dtype
@@ -335,7 +335,7 @@ class InferenceDataSetWriter:
         ----------
         ids : np.ndarray
             Array of IDs, dtype of the elements must match the dtype type of the ids of the original dataset
-            used to construct this InferenceDataSetWriter.
+            used to construct this InferenceDatasetWriter.
         tensors : list[np.ndarray]
             List of consistently dimensioned numpy arrays to save.
         """

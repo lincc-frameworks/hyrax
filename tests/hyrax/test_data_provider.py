@@ -4,7 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from hyrax import Hyrax
-from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
+from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 
 
 def test_generate_data_request_from_config():
