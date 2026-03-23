@@ -1,5 +1,6 @@
 import logging
 import warnings
+from pathlib import Path
 
 from colorama import Back, Fore, Style
 
@@ -44,6 +45,7 @@ class Train(Verb):
         from hyrax.config_utils import create_results_dir, log_runtime_config
         from hyrax.gpu_monitor import GpuMonitor
         from hyrax.pytorch_ignite import (
+            attach_best_checkpoint,
             create_trainer,
             create_validator,
             dist_data_loader,
@@ -186,13 +188,17 @@ class Train(Verb):
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:
-            create_validator(model, config, validation_data_loader, trainer)
+            validator = create_validator(model, config, validation_data_loader, trainer)
+            attach_best_checkpoint(validator, model, trainer, results_dir)
+        else:
+            attach_best_checkpoint(trainer, model, trainer, results_dir)
 
         monitor = GpuMonitor()
 
         # Go up to the parent of the results dir so all mlflow results show up in the same directory.
-        mlflow_dir = (results_dir.parent / "mlflow").resolve()
-        mlflow.set_tracking_uri("file://" + str(mlflow_dir))
+        results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
+        (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
+        mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
 
         # Get experiment_name and cast to string (it's a tomlkit.string by default)
         experiment_name = str(config["train"]["experiment_name"])
