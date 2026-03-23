@@ -85,7 +85,7 @@ class Visualize(Verb):
         from holoviews.streams import Lasso, Params, RangeXY, SelectionXY, Tap
         from scipy.spatial import KDTree
 
-        from hyrax.data_sets.result_factories import load_results_dataset
+        from hyrax.datasets.result_factories import load_results_dataset
         from hyrax.pytorch_ignite import setup_dataset
 
         if self.config["data_set"]["object_id_column_name"]:

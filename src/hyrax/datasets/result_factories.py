@@ -28,7 +28,7 @@ def create_results_writer(result_dir: Union[str, Path]):
     ResultDatasetWriter
         Writer instance for Lance storage
     """
-    from hyrax.data_sets.result_dataset import ResultDatasetWriter
+    from hyrax.datasets.result_dataset import ResultDatasetWriter
 
     return ResultDatasetWriter(result_dir)
 
@@ -52,12 +52,12 @@ def load_results_dataset(
 
     Returns
     -------
-    Union[ResultDataset, InferenceDataSet]
+    Union[ResultDataset, InferenceDataset]
         The appropriate dataset instance based on detected format
     """
     from hyrax.config_utils import resolve_results_dir
-    from hyrax.data_sets.inference_dataset import InferenceDataSet
-    from hyrax.data_sets.result_dataset import ResultDataset
+    from hyrax.datasets.inference_dataset import InferenceDataset
+    from hyrax.datasets.result_dataset import ResultDataset
 
     # Resolve results directory
     resolved_dir = resolve_results_dir(config, results_dir, verb)
@@ -69,4 +69,4 @@ def load_results_dataset(
         return ResultDataset(config, resolved_dir)
     else:
         logger.debug(f"Detected .npy format in {results_dir}")
-        return InferenceDataSet(config, resolved_dir, verb)
+        return InferenceDataset(config, resolved_dir, verb)

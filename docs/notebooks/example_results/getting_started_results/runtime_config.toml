@@ -248,7 +248,7 @@ input_model_directory = false
 # smallest image size in [general].data_dir and uses it.
 crop_to = false
 
-# Used by HSCDataSet, LSSTDataset, and DownloadedLSSTDataset. 
+# Used by HSCDataset, LSSTDataset, and DownloadedLSSTDataset. 
 # Limit to only particular filters. When `false`, use all filters. 
 # Options: ["HSC-G", "HSC-R", "HSC-I", "HSC-Z", "HSC-Y"] for HSC
 # Options: ["u", "g", "r", "i", "z" , "y"] for LSST
@@ -318,7 +318,7 @@ nan_mode = false
 # When replacing NaN values with a quantile, which quantile in the non-nan tensor should be used.
 nan_quantile = 0.05
 
-# The astropy table to use as a catalog in LSSTDataSet and friends
+# The astropy table to use as a catalog in LSSTDataset and friends
 astropy_table = false
 
 # Semi width in degrees of cutouts made from the butler (17 arcsec)

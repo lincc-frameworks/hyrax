@@ -18,7 +18,7 @@ class HyraxDataset:
 
     .. code-block:: python
 
-        from hyrax.data_sets import HyraxDataset
+        from hyrax.datasets import HyraxDataset
 
         class MyDataset(HyraxDataset):
             def __init__(self, config: dict):
@@ -49,7 +49,7 @@ class HyraxDataset:
 
         .. code-block:: python
 
-            from hyrax.data_sets import HyraxDataset
+            from hyrax.datasets import HyraxDataset
 
             class MyDataset(HyraxDataset):
                 def __init__(config):
@@ -62,7 +62,7 @@ class HyraxDataset:
 
         .. code-block:: python
 
-            from hyrax.data_sets import HyraxDataset
+            from hyrax.datasets import HyraxDataset
             from astropy.table import Table
 
             class MyDataset(HyraxDataset):
