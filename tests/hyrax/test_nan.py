@@ -26,6 +26,7 @@ def loopback_hyrax_nan(tmp_path_factory, request):
                 "dataset_class": request.param,
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             },
         },
         "infer": {
@@ -41,10 +42,6 @@ def loopback_hyrax_nan(tmp_path_factory, request):
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
     h.config["data_set"]["HyraxRandomDataset"]["number_invalid_values"] = 40
     h.config["data_set"]["HyraxRandomDataset"]["invalid_value_type"] = "nan"
-
-    h.config["data_set"]["validate_size"] = 0.2
-    h.config["data_set"]["test_size"] = 0.2
-    h.config["data_set"]["train_size"] = 0.6
 
     weights_file = results_dir / "fakeweights"
     with open(weights_file, "a"):

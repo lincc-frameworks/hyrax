@@ -22,6 +22,7 @@ def test_hyrax_small_dataset_hscstars(request):
                 "dataset_class": "FitsImageDataSet",
                 "data_location": str(catalog_file.parent),
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             },
         },
         "infer": {

@@ -33,6 +33,7 @@ def test_generate_data_request_passes_model_inputs():
                 "data_location": "./data",
                 "primary_id_field": "object_id",
                 "fields": ["image"],
+                "split_fraction": 1.0,
                 "dataset_config": {"HyraxRandomDataset": {"shape": [1, 2, 3], "seed": 1}},
             }
         }

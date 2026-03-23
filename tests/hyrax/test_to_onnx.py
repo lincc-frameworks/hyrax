@@ -28,6 +28,7 @@ def trained_hyrax(tmp_path):
                 "data_location": str(tmp_path / "data_train"),
                 "fields": ["image", "label"],
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             }
         },
         "infer": {

@@ -48,6 +48,7 @@ def test_prepare_does_not_mutate_hyrax_config(tmp_path):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path / "data"),
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             },
         },
         "infer": {

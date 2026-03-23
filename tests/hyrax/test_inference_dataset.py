@@ -18,6 +18,7 @@ def inference_dataset(tmp_path_factory, request):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             },
         },
         "infer": {

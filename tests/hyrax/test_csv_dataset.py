@@ -18,6 +18,7 @@ def test_hyrax_csv_dataset():
                 "dataset_class": "HyraxCSVDataset",
                 "data_location": str(csv_file),
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             },
         },
     }
