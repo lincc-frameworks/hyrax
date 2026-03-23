@@ -118,7 +118,9 @@ def multimodal_config():
                 "data_location": "./in_memory_0",
                 "fields": ["object_id", "image", "label"],
                 "dataset_config": {
-                    "shape": [2, 16, 16],
+                    "HyraxRandomDataset": {
+                        "shape": [2, 16, 16],
+                    },
                 },
                 "primary_id_field": "object_id",
             },
@@ -127,8 +129,10 @@ def multimodal_config():
                 "data_location": "./in_memory_1",
                 "fields": ["image"],
                 "dataset_config": {
-                    "shape": [5, 16, 16],
-                    "seed": 4200,
+                    "HyraxRandomDataset": {
+                        "shape": [5, 16, 16],
+                        "seed": 4200,
+                    },
                 },
             },
         },
@@ -138,7 +142,9 @@ def multimodal_config():
                 "data_location": "./in_memory_0",
                 "fields": ["object_id", "image", "label"],
                 "dataset_config": {
-                    "shape": [2, 16, 16],
+                    "HyraxRandomDataset": {
+                        "shape": [2, 16, 16],
+                    },
                 },
                 "primary_id_field": "object_id",
             },
@@ -147,8 +153,10 @@ def multimodal_config():
                 "data_location": "./in_memory_1",
                 "fields": ["image"],
                 "dataset_config": {
-                    "shape": [5, 16, 16],
-                    "seed": 4200,
+                    "HyraxRandomDataset": {
+                        "shape": [5, 16, 16],
+                        "seed": 4200,
+                    },
                 },
             },
         },
