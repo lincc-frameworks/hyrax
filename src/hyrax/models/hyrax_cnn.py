@@ -27,7 +27,9 @@ class HyraxCNN(nn.Module):
             raise ValueError("A `data_sample` must be provided to HyraxCNN for dynamic sizing.")
 
         image_sample = data_sample[0]
-        self.num_input_channels, self.image_width, self.image_height = image_sample.shape
+
+        # Unpack the shape of the image (batch_size, num_channels, width, height)
+        _, self.num_input_channels, self.image_width, self.image_height = image_sample.shape
         hidden_channels_1 = 6
         hidden_channels_2 = 16
 
