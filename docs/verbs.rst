@@ -64,7 +64,7 @@ The data used for inference is also specified in the configuration file.
            >> hyrax infer
 
 When running infer in a notebook context, the infer verb returns an
-:doc:`InferenceDataSet </autoapi/hyrax/data_sets/inference_dataset/index>` object which can be accessed using
+:doc:`InferenceDataset </autoapi/hyrax/datasets/inference_dataset/index>` object which can be accessed using
 the ``[]`` operators in python.
 
 ``umap``

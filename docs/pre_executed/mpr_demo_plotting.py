@@ -86,7 +86,7 @@ def sort_objects_by_median_distance(object_ids, median_dist_all_nn, data_directo
 
 def plot_umap(results_dir):
     """Reads in the UMAP results and plots them as a scatter plot"""
-    from hyrax.data_sets.result_factories import load_results_dataset
+    from hyrax.datasets.result_factories import load_results_dataset
 
     # Load UMAP results from Lance (or .npy fallback)
     result_ds = load_results_dataset({}, results_dir)

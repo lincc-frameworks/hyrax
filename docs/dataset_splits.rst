@@ -1,4 +1,4 @@
-.. _data_set_splits:
+.. _dataset_splits:
 
 Data set splits (subsets)
 =============================

@@ -2,13 +2,13 @@ import numpy as np
 import pytest
 
 import hyrax
-from hyrax.data_sets.data_provider import DataProvider
-from hyrax.data_sets.inference_dataset import InferenceDataSet, InferenceDataSetWriter
+from hyrax.datasets.data_provider import DataProvider
+from hyrax.datasets.inference_dataset import InferenceDataset, InferenceDatasetWriter
 
 
 @pytest.fixture(scope="session", params=[1, 2, 3, 4, 5])
 def inference_dataset(tmp_path_factory, request):
-    """Fixture where I write test data in an InferenceDataSetWriter
+    """Fixture where I write test data in an InferenceDatasetWriter
     It returns the data written"""
     h = hyrax.Hyrax()
     h.config["general"]["dev_mode"] = True
@@ -38,7 +38,7 @@ def inference_dataset(tmp_path_factory, request):
     for round_number in range(request.param):
         tmp_path = tmp_path_factory.mktemp(f"order_test_{request.param}_{round_number}")
 
-        data_writer = InferenceDataSetWriter(current_data_set, tmp_path)
+        data_writer = InferenceDatasetWriter(current_data_set, tmp_path)
 
         indexes = np.array(range(20))
         np.random.shuffle(indexes)
@@ -57,7 +57,7 @@ def inference_dataset(tmp_path_factory, request):
             get_data_by_dataset_type(current_data_set, indexes[10:20]),  # Results
         )
         data_writer.write_index()
-        current_data_set = InferenceDataSet(h.config, tmp_path)
+        current_data_set = InferenceDataset(h.config, tmp_path)
 
     return original_data_set["train"], current_data_set
 

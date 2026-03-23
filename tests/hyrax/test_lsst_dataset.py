@@ -22,7 +22,7 @@ def test_lsst_dataset_init(mock_lsst_environment, lsst_config, tmp_path):  # noq
     """
     with mock_lsst_environment():
         # Import after patching
-        from hyrax.data_sets.lsst_dataset import LSSTDataset
+        from hyrax.datasets.lsst_dataset import LSSTDataset
 
         # Create LSSTDataset instance
         dataset = LSSTDataset(lsst_config, data_location=str(tmp_path))

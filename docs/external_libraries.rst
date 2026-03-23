@@ -13,7 +13,7 @@ Configuring an external class
 -----------------------------
 
 The ``name`` configuration under either the ``[model]`` or ``[data_set]`` config sections is the dot-delimited python
-name used to locate the class starting at the top package level. e.g. if your dataset class is called ``MyDataSet`` and
+name used to locate the class starting at the top package level. e.g. if your dataset class is called ``MyDataset`` and
 is in a package called ``mydataset``, then you would configure as follows:
 
 .. tab-set::
@@ -24,7 +24,7 @@ is in a package called ``mydataset``, then you would configure as follows:
 
             from hyrax import Hyrax
             h = Hyrax()
-            h.config["data_set"]["name"] = "mydataset.MyDataSet"
+            h.config["data_set"]["name"] = "mydataset.MyDataset"
 
     .. tab-item:: CLI
 
@@ -32,7 +32,7 @@ is in a package called ``mydataset``, then you would configure as follows:
 
             $ cat hyrax_config.toml
             [data_set]
-            name = "mydataset.MyDataSet"
+            name = "mydataset.MyDataset"
 
 Datasets in the current notebook, or within your own package can simply be referred to by their class names without any dots.
 
@@ -184,7 +184,7 @@ customized strategy is desired, the approach above may be preferable.
 Defining a dataset class
 ------------------------
 
-Dataset classes are written as subclasses of ``hyrax.data_sets.HyraxDataset`` and must be map-style
+Dataset classes are written as subclasses of ``hyrax.datasets.HyraxDataset`` and must be map-style
 datasets with ``__len__`` and ``__getitem__`` implemented.
 
 A fully worked example of creating a custom map-style dataset class is in the example notebook
@@ -218,7 +218,7 @@ All datasets
 On creation of your dataset Hyrax passes the entire Hyrax config as a nested dictionry in the ``config``
 argument. It is assumed that your dataset will handle the whole of your dataset, and any splitting of the
 dataset will be done by Hyrax, when running the relevant verb. Further detail on splitting can be found in
-:doc:`/data_set_splits`
+:doc:`/dataset_splits`
 
 You must call ``super().__init__(config)`` or ``super().__init__(config, metadata_table)`` in your
 ``__init__`` function

@@ -70,7 +70,7 @@ class Lookup(Verb):
         Optional[np.ndarray]
             The output tensor of the model for the given input.
         """
-        from hyrax.data_sets.result_factories import load_results_dataset
+        from hyrax.datasets.result_factories import load_results_dataset
 
         inference_dataset = load_results_dataset(self.config, results_dir=results_dir, verb="infer")
 
