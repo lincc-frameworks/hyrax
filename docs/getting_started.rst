@@ -138,9 +138,10 @@ inference.
            "fields": ["image"],
            "primary_id_field": "object_id",
            "dataset_config": {
-               "use_training_data": False,
+               "HyraxCifarDataset": {
+                  "use_training_data": False,
+               },
            },
-           "split_fraction": 1.0,
        },
    }
 
