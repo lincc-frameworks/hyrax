@@ -81,10 +81,9 @@ This matters because the integration should fit existing Hyrax patterns (Jupyter
 
 Pick exactly one user-facing interface for v1:
 
-- **Preferred (lowest code risk):** document a command based on Citation Compass CLI/module invocation.
-- **Optional follow-up:** add a dedicated `hyrax cite` command only if maintainers want tighter UX parity with existing verbs.
+- **Preferred (lowest code risk):** provide a small repository wrapper script that uses the Citation Compass Python API directly.
 
-**Initial recommendation:** start documented-only (no new Hyrax verb yet), then reassess after real user feedback.
+**Initial recommendation:** keep this as a documented script-based workflow (not a Hyrax verb).
 
 **Why:** consistent with “make easy things easy, hard things possible” while avoiding premature CLI surface expansion.
 
@@ -137,7 +136,7 @@ No `hyrax cite` PR is planned for this phase.
 
 - `CITATION.cff` exists and is valid enough for GitHub citation UI.
 - `citation_compass.toml` exists and includes a curated dependency list.
-- One canonical documented command/path exists for generating citations.
+- One canonical documented command/path exists for generating the dependency citation report.
 - Docs clearly explain when to update citation metadata and dependency entries.
 - Automated checks fail if key citation artifacts are removed or malformed.
 

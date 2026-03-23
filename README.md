@@ -57,11 +57,11 @@ This project is supported by Schmidt Sciences and the John Templeton Foundation
 ## Citation
 If you use Hyrax in research, cite Hyrax using `CITATION.cff` at the repository root.
 
-To generate dependency citations used by Hyrax workflows, use the repository Citation Compass config.
-First install Citation Compass (for example, with `pip install citation-compass`), then run:
+To generate the dependency citation report used by Hyrax workflows, first install Citation Compass and then run the verified repository wrapper script:
 
 ```
-python -m citation_compass --config citation_compass.toml
+pip install citation-compass
+python scripts/print_citation_compass_report.py --config citation_compass.toml
 ```
 
 Maintenance policy: only include methodologically central dependencies in `citation_compass.toml`

@@ -3,7 +3,7 @@ title: Hyrax
 message: >-
   If you use Hyrax in your research, please cite this software using the
   metadata in this file. For dependency citations used in Hyrax workflows,
-  also generate citations from citation_compass.toml.
+  also generate the dependency citation report with scripts/print_citation_compass_report.py.
 type: software
 authors:
   - name: LINCC Frameworks
