@@ -57,7 +57,7 @@ class DataCacheBenchmarks:
     def time_preload_cache_hsc1k(self):
         """Benchmark the amount of time needed to preload the cache of all data"""
         try:
-            from hyrax.data_sets.data_cache import DataCache
+            from hyrax.datasets.data_cache import DataCache
         except ImportError as e:
             raise NotImplementedError("No DataCache in this version") from e
         self.data_cache = DataCache(self.h.config, self.data_provider)

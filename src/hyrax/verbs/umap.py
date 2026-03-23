@@ -76,7 +76,7 @@ class Umap(Verb):
         from tqdm.auto import tqdm
 
         from hyrax.config_utils import create_results_dir
-        from hyrax.data_sets.result_factories import create_results_writer, load_results_dataset
+        from hyrax.datasets.result_factories import create_results_writer, load_results_dataset
 
         self.reducer = umap.UMAP(**self.config["umap"]["UMAP"])
 

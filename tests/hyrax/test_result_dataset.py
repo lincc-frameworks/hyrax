@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 import hyrax
-from hyrax.data_sets.result_dataset import ResultDataset, ResultDatasetWriter
+from hyrax.datasets.result_dataset import ResultDataset, ResultDatasetWriter
 
 
 @pytest.fixture

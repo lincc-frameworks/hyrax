@@ -8,7 +8,7 @@ import pytest
 from astropy.table import Table
 from torchvision.transforms.v2 import CenterCrop, Lambda
 
-from hyrax.data_sets.hsc_data_set import FitsImageDataSet, HSCDataSet
+from hyrax.datasets.hsc_dataset import FitsImageDataset, HSCDataset
 
 test_dir = Path(__file__).parent / "test_data" / "dataloader"
 
@@ -16,8 +16,8 @@ test_dir = Path(__file__).parent / "test_data" / "dataloader"
 @pytest.fixture(scope="module")
 def hsc_test_mode():
     """Turn on unit test mode for HSC and FitsImage datasets. This allows them to run without metadata"""
-    HSCDataSet._called_from_test = True
-    FitsImageDataSet._called_from_test = True
+    HSCDataset._called_from_test = True
+    FitsImageDataset._called_from_test = True
 
 
 class FakeFitsFS:
@@ -41,7 +41,7 @@ class FakeFitsFS:
         self.test_files = test_files
 
         mock_paths = [Path(x) for x in list(test_files.keys())]
-        target = "hyrax.data_sets.hsc_data_set.Path.iterdir"
+        target = "hyrax.datasets.hsc_dataset.Path.iterdir"
         self.patchers.append(mock.patch(target, return_value=mock_paths))
 
         mock_fits_open = mock.Mock(side_effect=self._open_file)
@@ -49,14 +49,14 @@ class FakeFitsFS:
 
         if filter_catalog is not None:
             mock_read_filter_catalog = mock.patch(
-                "hyrax.data_sets.hsc_data_set.HSCDataSet._read_filter_catalog",
+                "hyrax.datasets.hsc_dataset.HSCDataset._read_filter_catalog",
                 lambda x, y: Table(
                     {"object_id": ["notreal"], "filter": ["notreal"], "filename": ["notreal"]}
                 ),
             )
             self.patchers.append(mock_read_filter_catalog)
             mock_parse_filter_catalog = mock.patch(
-                "hyrax.data_sets.hsc_data_set.FitsImageDataSet._parse_filter_catalog",
+                "hyrax.datasets.hsc_dataset.FitsImageDataset._parse_filter_catalog",
                 lambda x, y: filter_catalog,
             )
             self.patchers.append(mock_parse_filter_catalog)
@@ -84,7 +84,7 @@ def mkconfig(
     use_cache=False,
     transform="tanh",
 ):
-    """Makes a configuration that points at nonexistent path so HSCDataSet.__init__ will create an object,
+    """Makes a configuration that points at nonexistent path so HSCDataset.__init__ will create an object,
     and our FakeFitsFS shim can be called.
     """
     return {
@@ -146,14 +146,14 @@ def generate_filter_catalog(test_files: dict, config: dict, tmp_path: str) -> di
     """Generates a filter catalog dict for use with FakeFitsFS from a filesystem dictionary
     created by generate_files.
 
-    This allows tests to alter the parsed filter_catalog, and interrogate what decisions HSCDataSet makes
+    This allows tests to alter the parsed filter_catalog, and interrogate what decisions HSCDataset makes
     when a manifest or filter_catalog file contains corrupt information.
 
     Caveats:
     Always Run this prior to creating any mocks, or using a FakeFitsFS
 
-    This function calls the HSCDataSet parsing code to actually assemble the files array, which means:
-    1) This test setup is fairly tightly coupled to the internals of HSCDataSet
+    This function calls the HSCDataset parsing code to actually assemble the files array, which means:
+    1) This test setup is fairly tightly coupled to the internals of HSCDataset
     2) When writing tests using this, ensure any functionality you depend on from the slow file-scan
        initialization codepath is tested indepently.
 
@@ -162,10 +162,10 @@ def generate_filter_catalog(test_files: dict, config: dict, tmp_path: str) -> di
     test_files : dict
         Test files dictionary created with generate_files.
     config : dict
-        The config you will use to initialize the test HSCDataSet object in your test.
+        The config you will use to initialize the test HSCDataset object in your test.
         Create this with mkconfig()
     tmp_path : str
-        A temporary path to pass to HSCDataSet as the data_directory.
+        A temporary path to pass to HSCDataset as the data_directory.
 
     Returns
     -------
@@ -177,7 +177,7 @@ def generate_filter_catalog(test_files: dict, config: dict, tmp_path: str) -> di
 
     # Use our initialization code to create a parsed files object
     with FakeFitsFS(test_files):
-        return HSCDataSet(config, data_location=tmp_path).files
+        return HSCDataset(config, data_location=tmp_path).files
 
 
 def test_load(caplog, hsc_test_mode, tmp_path):
@@ -185,7 +185,7 @@ def test_load(caplog, hsc_test_mode, tmp_path):
     caplog.set_level(logging.WARNING)
     test_files = generate_files(num_objects=10, num_filters=5, shape=(262, 263))
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(), data_location=tmp_path)
+        a = HSCDataset(mkconfig(), data_location=tmp_path)
 
         # 10 objects should load
         assert len(a) == 10
@@ -206,7 +206,7 @@ def test_load_duplicate(caplog, hsc_test_mode, tmp_path):
     duplicate_files = generate_files(num_objects=10, num_filters=5, shape=(262, 263), infill_str="duplicate")
     test_files.update(duplicate_files)
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(), data_location=tmp_path)
+        a = HSCDataset(mkconfig(), data_location=tmp_path)
 
         # Only 10 objects should load
         assert len(a) == 10
@@ -237,7 +237,7 @@ def test_prune_warn_1_percent(caplog, hsc_test_mode, tmp_path):
     test_files["00000000000000101_missing_g_HSC-R.fits"] = (100, 100)
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(), data_location=tmp_path)
+        a = HSCDataset(mkconfig(), data_location=tmp_path)
 
         # We should have the correct number of objects
         assert len(a) == 98
@@ -264,7 +264,7 @@ def test_prune_error_5_percent(caplog, hsc_test_mode, tmp_path):
     test_files["00000000000000020_missing_g_HSC-R.fits"] = (100, 100)
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(), data_location=tmp_path)
+        a = HSCDataset(mkconfig(), data_location=tmp_path)
 
         # We should have two objects, having dropped one.
         assert len(a) == 18
@@ -293,7 +293,7 @@ def test_crop(caplog, hsc_test_mode, tmp_path):
     test_files.update(generate_files(num_objects=10, num_filters=5, shape=(99, 99), offset=60))
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(), data_location=tmp_path)
+        a = HSCDataset(mkconfig(), data_location=tmp_path)
 
         assert len(a) == 70
         assert a.shape() == (5, 99, 99)
@@ -319,7 +319,7 @@ def test_crop_warn_2px_larger(caplog, hsc_test_mode, tmp_path):
     test_files.update(generate_files(num_objects=10, num_filters=5, shape=(99, 99), offset=60))
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(), tmp_path)
+        a = HSCDataset(mkconfig(), tmp_path)
 
         assert len(a) == 70
         assert a.shape() == (5, 99, 99)
@@ -345,7 +345,7 @@ def test_crop_warn_2px_smaller(caplog, hsc_test_mode, tmp_path):
     test_files.update(generate_files(num_objects=10, num_filters=5, shape=(98, 98), offset=60))
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(), data_location=tmp_path)
+        a = HSCDataset(mkconfig(), data_location=tmp_path)
 
         assert len(a) == 70
         assert a.shape() == (5, 98, 98)
@@ -366,7 +366,7 @@ def test_prune_size(caplog, hsc_test_mode, tmp_path):
     test_files.update(generate_files(num_objects=10, num_filters=5, shape=(98, 98), offset=30))
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(crop_to=(99, 99)), data_location=tmp_path)
+        a = HSCDataset(mkconfig(crop_to=(99, 99)), data_location=tmp_path)
 
         assert len(a) == 20
         assert a.shape() == (5, 99, 99)
@@ -384,7 +384,7 @@ def test_prune_filter_size_mismatch(caplog, hsc_test_mode, tmp_path):
     test_files["00000000000000000_all_filters_HSC-R.fits"] = (99, 99)
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(crop_to=(99, 99)), data_location=tmp_path)
+        a = HSCDataset(mkconfig(crop_to=(99, 99)), data_location=tmp_path)
 
         assert len(a) == 9
         assert a.shape() == (5, 99, 99)
@@ -409,7 +409,7 @@ def test_prune_bad_filename(caplog, hsc_test_mode, tmp_path):
 
     with FakeFitsFS(test_files, filter_catalog):
         # Initialize HSCDataset exercising the filter_catalog provided initialization pathway
-        a = HSCDataSet(config, data_location=tmp_path)
+        a = HSCDataset(config, data_location=tmp_path)
 
         # Verify that the broken object has been dropped
         assert len(a) == 9
@@ -427,7 +427,7 @@ def test_partial_filter(caplog, hsc_test_mode, tmp_path):
     caplog.set_level(logging.WARNING)
     test_files = generate_files(num_objects=10, num_filters=5, shape=(262, 263))
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(filters=["HSC-G", "HSC-R"]), data_location=tmp_path)
+        a = HSCDataset(mkconfig(filters=["HSC-G", "HSC-R"]), data_location=tmp_path)
 
         # 10 objects should load
         assert len(a) == 10
@@ -452,7 +452,7 @@ def test_partial_filter_prune_warn_1_percent(caplog, hsc_test_mode, tmp_path):
     test_files["00000000000000101_missing_g_HSC-R.fits"] = (100, 100)
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(filters=["HSC-R", "HSC-I"]), data_location=tmp_path)
+        a = HSCDataset(mkconfig(filters=["HSC-R", "HSC-I"]), data_location=tmp_path)
 
         # We should have the correct number of objects
         assert len(a) == 98
@@ -475,7 +475,7 @@ def test_valid_transform_string(caplog, hsc_test_mode, tmp_path):
     test_files = generate_files(num_objects=10, num_filters=5, shape=(262, 263))
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(transform="arcsinh"), data_location=tmp_path)
+        a = HSCDataset(mkconfig(transform="arcsinh"), data_location=tmp_path)
 
         # transform always has CenterCrop in the beginning followed by the user
         # defined transform
@@ -483,7 +483,7 @@ def test_valid_transform_string(caplog, hsc_test_mode, tmp_path):
         assert lambda_transform.lambd == np.arcsinh
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(transform="tanh"), data_location=tmp_path)
+        a = HSCDataset(mkconfig(transform="tanh"), data_location=tmp_path)
 
         # transform always has CenterCrop in the beginning followed by the user
         # defined transform
@@ -499,7 +499,7 @@ def test_invalid_transform_string(caplog, hsc_test_mode, tmp_path):
 
     with FakeFitsFS(test_files):
         with pytest.raises(RuntimeError):
-            HSCDataSet(mkconfig(transform="invalid_function"), data_location=tmp_path)
+            HSCDataset(mkconfig(transform="invalid_function"), data_location=tmp_path)
 
 
 def test_false_transform(caplog, hsc_test_mode, tmp_path):
@@ -509,7 +509,7 @@ def test_false_transform(caplog, hsc_test_mode, tmp_path):
     test_files = generate_files(num_objects=10, num_filters=5, shape=(262, 263))
 
     with FakeFitsFS(test_files):
-        a = HSCDataSet(mkconfig(transform=False), data_location=tmp_path)
+        a = HSCDataset(mkconfig(transform=False), data_location=tmp_path)
 
         # When transform is False; only a CenterCrop should be applied
         # automatically with a size conforming to test_files above
