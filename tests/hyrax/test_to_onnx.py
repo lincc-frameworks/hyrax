@@ -21,13 +21,14 @@ def trained_hyrax(tmp_path):
     h.config["general"]["dev_mode"] = True
 
     # Configure dataset
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path / "data_train"),
                 "fields": ["image", "label"],
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             }
         },
         "infer": {

@@ -35,7 +35,7 @@ class DataCacheBenchmarks:
         self.h.config["data_request"] = {
             "train": {
                 "data": {
-                    "dataset_class": "HSCDataSet",
+                    "dataset_class": "HSCDataset",
                     "data_location": str(hsc_data_dir),
                     "fields": ["image"],
                     "primary_id_field": "object_id",

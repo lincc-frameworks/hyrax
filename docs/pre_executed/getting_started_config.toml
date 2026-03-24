@@ -6,6 +6,7 @@ dataset_class = "HyraxCifarDataset"
 data_location = "./data"
 fields = ["image", "label"]
 primary_id_field = "object_id"
+split_fraction = 1.0
 
 [data_request.infer.data]
 dataset_class = "HyraxCifarDataset"
@@ -13,5 +14,5 @@ data_location = "./data"
 fields = ["image", "object_id"]
 primary_id_field = "object_id"
 
-[data_request.infer.data.dataset_config]
+[data_request.infer.data.dataset_config.HyraxCifarDataset]
 use_training_data = false

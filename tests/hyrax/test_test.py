@@ -18,12 +18,13 @@ def loopback_hyrax_map_only(tmp_path_factory):
     h.config["general"]["results_dir"] = str(results_dir)
     h.config["general"]["dev_mode"] = True
 
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.6,
             },
         },
         "validate": {
@@ -31,6 +32,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.2,
             },
         },
         "test": {
@@ -38,6 +40,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.2,
             },
         },
         "infer": {

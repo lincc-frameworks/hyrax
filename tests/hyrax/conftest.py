@@ -47,12 +47,13 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.6,
             },
         },
         "validate": {
@@ -60,6 +61,7 @@ def loopback_hyrax(tmp_path_factory, request):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.2,
             },
         },
         "test": {
@@ -67,6 +69,7 @@ def loopback_hyrax(tmp_path_factory, request):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.2,
             },
         },
         "infer": {
@@ -80,10 +83,6 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
-
-    h.config["data_set"]["validate_size"] = 0.2
-    h.config["data_set"]["test_size"] = 0.2
-    h.config["data_set"]["train_size"] = 0.6
 
     weights_file = results_dir / "fakeweights"
     with open(weights_file, "a"):
@@ -167,7 +166,7 @@ def multimodal_config():
 def data_provider(multimodal_config):
     """Use the multimodal_config fixture to create a DataProvider instance."""
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = multimodal_config
+    h.config["data_request"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config["train"])
     return dp
 
@@ -204,7 +203,7 @@ def custom_collate_data_provider(multimodal_config):
     HyraxRandomDataset.collate = collate
 
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = multimodal_config
+    h.config["data_request"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config["train"])
 
     yield dp

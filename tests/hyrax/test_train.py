@@ -106,7 +106,7 @@ def test_train_resume(loopback_hyrax, tmp_path):
 def test_train_percent_split(tmp_path):
     """
     Ensure backward compatibility with percent-based splits when the
-    configuration provides only a `train` and `infer` model_inputs section
+    configuration provides only a `train` and `infer` data_request section
     (no explicit `validate` table). This should exercise the code path
     that creates train/validate splits from a single dataset location.
     """
@@ -119,8 +119,8 @@ def test_train_percent_split(tmp_path):
     h.config["general"]["results_dir"] = str(tmp_path)
     h.config["general"]["dev_mode"] = True
 
-    # Only provide `train` and `infer` model_inputs (no `validate` key).
-    h.config["model_inputs"] = {
+    # Only provide `train` and `infer` data_request (no `validate` key).
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
