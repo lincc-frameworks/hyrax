@@ -36,31 +36,6 @@ def test_set_config_warns_on_invalid_data_request(caplog):
     assert rendered == invalid_dict
 
 
-def test_set_config_warns_on_invalid_model_inputs(caplog):
-    """ConfigManager.set_config logs warning when model_inputs validation fails."""
-
-    cm = ConfigManager()
-    # Invalid structure that can't be validated
-    invalid_dict = {
-        "train": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "/dev/null",
-            # Missing primary_id_field
-        }
-    }
-
-    with caplog.at_level(logging.WARNING):
-        cm.set_config("model_inputs", invalid_dict)
-
-    # Should log a warning
-    assert "Configuration for 'model_inputs' failed Pydantic validation" in caplog.text
-    assert "will be used as-is" in caplog.text
-
-    # Invalid data is still stored as-is
-    rendered = cm.config["model_inputs"]
-    assert rendered == invalid_dict
-
-
 def test_set_config_no_warning_on_valid_data_request(caplog):
     """ConfigManager.set_config does not warn when validation succeeds."""
 

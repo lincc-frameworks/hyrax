@@ -16,7 +16,7 @@ def test_hyrax_small_dataset_hscstars(request):
     catalog_file = this_file_dir / "test_data" / "small_dataset_hscstars" / f"star_cat_correct{request.param}"
 
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "FitsImageDataset",

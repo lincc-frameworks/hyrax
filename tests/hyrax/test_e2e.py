@@ -81,7 +81,7 @@ def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 128
 
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": dataset_class_name,

@@ -194,7 +194,7 @@ def test_validate_request_no_dataset_class(multimodal_config, caplog):
     h = Hyrax()
     c = multimodal_config
     c["train"]["random_0"].pop("dataset_class", None)
-    h.config["model_inputs"] = c
+    h.config["data_request"] = c
     with caplog.at_level("ERROR"):
         with pytest.raises(RuntimeError) as execinfo:
             DataProvider(h.config, c["train"])
@@ -209,7 +209,7 @@ def test_validate_request_unknown_dataset(multimodal_config, caplog):
     h = Hyrax()
     c = multimodal_config
     c["train"]["random_0"]["dataset_class"] = "NoSuchDataset"
-    h.config["model_inputs"] = c
+    h.config["data_request"] = c
     with pytest.raises(ValueError) as execinfo:
         DataProvider(h.config, c["train"])
 
@@ -222,7 +222,7 @@ def test_validate_request_bad_field(multimodal_config, caplog):
     h = Hyrax()
     c = multimodal_config
     c["train"]["random_0"]["fields"] = ["image", "no_such_field"]
-    h.config["model_inputs"] = c
+    h.config["data_request"] = c
     h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
     with caplog.at_level("ERROR"):
         DataProvider(h.config, c["train"])
@@ -237,7 +237,7 @@ def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
     h = Hyrax()
     c = multimodal_config
     c["train"]["random_0"].pop("fields", None)
-    h.config["model_inputs"] = c
+    h.config["data_request"] = c
     h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
 
     # Fake methods to return from `dir`, none of which start with `get_*`.
@@ -258,9 +258,9 @@ def test_apply_configurations(multimodal_config):
 
     h = Hyrax()
     base_config = h.config
-    model_inputs = multimodal_config
+    data_request = multimodal_config
 
-    merged_config = DataProvider._apply_configurations(base_config, model_inputs["train"]["random_0"])
+    merged_config = DataProvider._apply_configurations(base_config, data_request["train"]["random_0"])
 
     assert merged_config["data_set"]["HyraxRandomDataset"]["shape"] == [2, 16, 16]
     assert (
@@ -269,7 +269,7 @@ def test_apply_configurations(multimodal_config):
     )
     assert merged_config["general"] == base_config["general"]
 
-    merged_config = DataProvider._apply_configurations(base_config, model_inputs["train"]["random_1"])
+    merged_config = DataProvider._apply_configurations(base_config, data_request["train"]["random_1"])
 
     assert base_config["data_set"]["HyraxRandomDataset"]["shape"] != [5, 16, 16]
     assert base_config["data_set"]["HyraxRandomDataset"]["seed"] != 4200
@@ -425,10 +425,10 @@ def test_primary_dataset(multimodal_config):
     h = Hyrax()
 
     # Base case with `primary_id_field` defined on `random_0`
-    model_inputs = multimodal_config
-    h.config["model_inputs"] = model_inputs
+    data_request = multimodal_config
+    h.config["data_request"] = data_request
 
-    dp = DataProvider(h.config, model_inputs["train"])
+    dp = DataProvider(h.config, data_request["train"])
     dp.prepare_datasets()
 
     assert dp.primary_dataset == "random_0"
@@ -438,18 +438,18 @@ def test_primary_dataset(multimodal_config):
     assert primary_dataset.data_location == "./in_memory_0"
 
     # Secondary case with no `primary_id_field` defined
-    model_inputs["train"]["random_0"].pop("primary_id_field", None)
-    h.config["model_inputs"] = model_inputs
+    data_request["train"]["random_0"].pop("primary_id_field", None)
+    h.config["data_request"] = data_request
 
     with pytest.raises(RuntimeError) as execinfo:
-        dp = DataProvider(h.config, model_inputs["train"])
+        dp = DataProvider(h.config, data_request["train"])
 
     assert "No Primary Dataset Defined" in str(execinfo.value)
     # Tertiary case with `primary_id_field` defined on `random_1`
-    model_inputs["train"]["random_1"]["primary_id_field"] = "object_id"
-    h.config["model_inputs"] = model_inputs
+    data_request["train"]["random_1"]["primary_id_field"] = "object_id"
+    h.config["data_request"] = data_request
 
-    dp = DataProvider(h.config, model_inputs["train"])
+    dp = DataProvider(h.config, data_request["train"])
     dp.prepare_datasets()
 
     assert dp.primary_dataset == "random_1"
@@ -552,7 +552,7 @@ def test_sample_data():
         },
     }
 
-    h.config["model_inputs"] = multimodal_config
+    h.config["data_request"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config)
     dp.prepare_datasets()
 
@@ -712,7 +712,7 @@ def test_primary_id_field_fetched_when_not_in_fields():
 
     # Configure a dataset where primary_id_field is NOT in the fields list
     # This would previously cause a KeyError in resolve_data
-    model_inputs = {
+    data_request = {
         "test_dataset": {
             "dataset_class": "HyraxRandomDataset",
             "data_location": "./test_data",
@@ -731,10 +731,10 @@ def test_primary_id_field_fetched_when_not_in_fields():
         }
     }
 
-    h.config["model_inputs"] = model_inputs
+    h.config["data_request"] = data_request
 
     # Create DataProvider
-    dp = DataProvider(h.config, model_inputs)
+    dp = DataProvider(h.config, data_request)
 
     # Verify the primary_id_field was NOT added to the fields list
     test_dataset_def = dp.data_request["test_dataset"]
@@ -772,7 +772,7 @@ def test_primary_id_field_reused_when_already_in_fields():
     h = Hyrax()
 
     # Configure a dataset where primary_id_field IS already in the fields list
-    model_inputs = {
+    data_request = {
         "test_dataset": {
             "dataset_class": "HyraxRandomDataset",
             "data_location": "./test_data",
@@ -791,10 +791,10 @@ def test_primary_id_field_reused_when_already_in_fields():
         }
     }
 
-    h.config["model_inputs"] = model_inputs
+    h.config["data_request"] = data_request
 
     # Create DataProvider - should not duplicate object_id in fields
-    dp = DataProvider(h.config, model_inputs)
+    dp = DataProvider(h.config, data_request)
 
     # Verify the fields list is unchanged
     test_dataset_def = dp.data_request["test_dataset"]

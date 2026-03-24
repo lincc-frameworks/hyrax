@@ -18,7 +18,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
     h.config["general"]["results_dir"] = str(results_dir)
     h.config["general"]["dev_mode"] = True
 
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",

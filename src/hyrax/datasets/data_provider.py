@@ -169,6 +169,7 @@ Example configuration:
         if available_datasets:
             error_msg += "Available built-in dataset classes:\n  - " + "\n  - ".join(available_datasets)
             error_msg += "\n\n"
+        # TODO: Update the link when the documentation on data_request is available
         error_msg += """For more information and examples, see the documentation at:
   https://hyrax.readthedocs.io/en/latest/notebooks/model_input_1.html"""
         logger.error(error_msg)

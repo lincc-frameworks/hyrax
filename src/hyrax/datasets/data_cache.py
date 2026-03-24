@@ -33,7 +33,7 @@ class DataCache:
     as well.
 
     In this class we cache the output of DataProvider, before being batched. Users can control the size of
-    data cached by only selecting particular fields in their model_inputs specification.
+    data cached by only selecting particular fields in their data_request specification.
 
     The class logs to the tensorboard logger in the DataProvider (when configured).
     """
@@ -99,7 +99,7 @@ class DataCache:
             raise RuntimeError(msg)
         if idx >= self._max_length:
             msg = f"Requested index {idx}, but DataCache cache has max length of {self._max_length} "
-            msg += "given by the length of the primary dataset in model_inputs."
+            msg += "given by the length of the primary dataset in data_request."
             raise IndexError(msg)
 
     def try_fetch(self, idx: int) -> dict | None:

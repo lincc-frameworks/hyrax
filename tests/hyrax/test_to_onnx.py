@@ -21,7 +21,7 @@ def trained_hyrax(tmp_path):
     h.config["general"]["dev_mode"] = True
 
     # Configure dataset
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",

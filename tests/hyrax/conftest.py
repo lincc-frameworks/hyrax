@@ -47,7 +47,7 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
@@ -166,7 +166,7 @@ def multimodal_config():
 def data_provider(multimodal_config):
     """Use the multimodal_config fixture to create a DataProvider instance."""
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = multimodal_config
+    h.config["data_request"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config["train"])
     return dp
 
@@ -203,7 +203,7 @@ def custom_collate_data_provider(multimodal_config):
     HyraxRandomDataset.collate = collate
 
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = multimodal_config
+    h.config["data_request"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config["train"])
 
     yield dp

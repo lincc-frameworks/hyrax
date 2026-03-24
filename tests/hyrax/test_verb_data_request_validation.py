@@ -242,12 +242,12 @@ def test_model_inputs_fallback_validated():
     Train(cm.config)  # should not raise — 'train' group is present
 
 
-def test_model_inputs_missing_required_group_raises():
-    """Missing required group in model_inputs also raises RuntimeError."""
+def test_data_request_missing_required_group_raises():
+    """Missing required group in data_request also raises RuntimeError."""
     cm = ConfigManager()
     cm.config.pop("data_request", None)
     cm.set_config(
-        "model_inputs",
+        "data_request",
         {
             "infer": {
                 "dataset_class": "HyraxRandomDataset",

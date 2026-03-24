@@ -12,7 +12,7 @@ def inference_dataset(tmp_path_factory, request):
     It returns the data written"""
     h = hyrax.Hyrax()
     h.config["general"]["dev_mode"] = True
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",

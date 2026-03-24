@@ -12,7 +12,7 @@ def test_hyrax_csv_dataset():
     csv_file = this_file_dir / "test_data" / "csv_test" / "sample_data.csv"
 
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxCSVDataset",
