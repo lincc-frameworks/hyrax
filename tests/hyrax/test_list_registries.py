@@ -1,7 +1,7 @@
 from torch import nn
 
 from hyrax import Hyrax
-from hyrax.data_sets.data_set_registry import HyraxDataset
+from hyrax.datasets.dataset_registry import HyraxDataset
 from hyrax.models.model_registry import hyrax_model
 
 

@@ -21,7 +21,7 @@ from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, Sampler
 
-from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
+from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
@@ -158,7 +158,7 @@ def dist_data_loader(
 
     Parameters
     ----------
-    dataset : hyrax.data_sets.data_set_registry.HyraxDataset
+    dataset : hyrax.datasets.dataset_registry.HyraxDataset
         A Hyrax dataset instance
     config : dict
         Hyrax runtime configuration
@@ -946,7 +946,7 @@ def create_save_batch_callback(results_dir):
     callable
         A callback function with signature (batch, batch_results) that saves results
     """
-    from hyrax.data_sets.result_factories import create_results_writer
+    from hyrax.datasets.result_factories import create_results_writer
 
     data_writer = create_results_writer(results_dir)
 

@@ -16,9 +16,9 @@ def model_class_name(request):
 @pytest.fixture(
     scope="module",
     params=[
-        ("HSCDataSet", "hsc1k"),
+        ("HSCDataset", "hsc1k"),
         ("HyraxCifarDataset", None),
-        ("FitsImageDataSet", "hsc1k"),
+        ("FitsImageDataset", "hsc1k"),
     ],
 )
 def dataset_spec(request):
@@ -73,7 +73,7 @@ def hyrax_instance(tmp_dataset_path, dataset_spec, model_class_name, tmp_path):
     h.config["general"]["results_dir"] = str(tmp_path)
 
     # Configure dataset-specific settings
-    if dataset_class_name == "FitsImageDataSet" and sample_data == "hsc1k":
+    if dataset_class_name == "FitsImageDataset" and sample_data == "hsc1k":
         h.config["data_set"]["filter_catalog"] = str(tmp_dataset_path / "manifest.fits")
         h.config["data_set"]["crop_to"] = [100, 100]
 

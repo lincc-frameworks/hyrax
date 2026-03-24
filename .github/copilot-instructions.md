@@ -66,7 +66,7 @@ See `HYRAX_GUIDE.md` for the full list. Key points:
 ## Repository Layout
 
 ```
-src/hyrax/              Main package (models, data_sets, verbs, config_schemas, vector_dbs)
+src/hyrax/              Main package (models, datasets, verbs, config_schemas, vector_dbs)
 src/hyrax_cli/          CLI entry point
 tests/hyrax/            Test suite
 docs/                   Sphinx documentation

@@ -11,10 +11,10 @@ import numpy as np
 import pytest
 from mocks import lsst_config, mock_lsst_environment, sample_catalog, sample_catalog_saved  # noqa: F401
 
-from hyrax.data_sets.downloaded_lsst_dataset import DownloadedLSSTDataset
+from hyrax.datasets.downloaded_lsst_dataset import DownloadedLSSTDataset
 
 
-class DownloadedLSSTDataSetInterruption(BaseException):
+class DownloadedLSSTDatasetInterruption(BaseException):
     """A class that will act like KeyboardInterrupt in a testing scenario,
     but isn't KeyboardInterrupt so it is distinguishable from a Ctrl-c during a test"""
 
@@ -47,7 +47,7 @@ class DownloadedLSSTDatasetMocked(DownloadedLSSTDataset):
     def _download_single_cutout(self, *args):
         # print(f"Starting DL thread, {args}, {threading.current_thread().ident}")
         if self.interrupt_after != 0 and self.num_downloads >= self.interrupt_after:
-            raise DownloadedLSSTDataSetInterruption("Download Interrupted")
+            raise DownloadedLSSTDatasetInterruption("Download Interrupted")
 
         with self.patcher(**self.patcher_kwargs):
             self.num_downloads += 1
@@ -174,7 +174,7 @@ def test_interrupted_download(mock_lsst_environment, lsst_config, tmp_path):  # 
             patcher=mock_lsst_environment,
             interrupt_after=3,
         )
-        with pytest.raises(DownloadedLSSTDataSetInterruption):
+        with pytest.raises(DownloadedLSSTDatasetInterruption):
             _manifest = dataset.download_cutouts()
 
     assert dataset.cache_info().misses == 3
@@ -224,7 +224,7 @@ def test_interrupted_download_completes(mock_lsst_environment, lsst_config, tmp_
             patcher=mock_lsst_environment,
             interrupt_after=3,
         )
-        with pytest.raises(DownloadedLSSTDataSetInterruption):
+        with pytest.raises(DownloadedLSSTDatasetInterruption):
             _manifest = dataset.download_cutouts()
 
         dataset = DownloadedLSSTDatasetMocked(

@@ -69,7 +69,7 @@ class SaveToDatabase(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
-        from hyrax.data_sets.result_factories import load_results_dataset
+        from hyrax.datasets.result_factories import load_results_dataset
         from hyrax.tensorboardx_logger import (
             close_tensorboard_logger,
             get_tensorboard_logger,
