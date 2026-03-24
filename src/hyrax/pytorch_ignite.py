@@ -134,11 +134,17 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
 
-    # Prepare a data sample with a batch size of 1 to provide to the model for dynamic sizing.
-    data_sample = model_cls.prepare_inputs(dataset.collate([dataset.sample_data()]))
+    # Grab a single data sample
+    data_sample = dataset.sample_data()
 
-    # Provide the data sample for runtime modifications to the model architecture
-    return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
+    # Collate the data sample
+    collated_sample = dataset.collate([data_sample])
+
+    # Prepare the data sample with the model's prepare_inputs function
+    prepared_sample = model_cls.prepare_inputs(collated_sample)
+
+    # Provide the sample for runtime modifications to the model architecture
+    return model_cls(config=config, data_sample=prepared_sample)  # type: ignore[attr-defined]
 
 
 def dist_data_loader(

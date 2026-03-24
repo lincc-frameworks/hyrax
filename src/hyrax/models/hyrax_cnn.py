@@ -29,6 +29,7 @@ class HyraxCNN(nn.Module):
         image_sample = data_sample[0]
 
         # Unpack the shape of the image (batch_size, num_channels, width, height)
+        # we'll ignore the batch_size during initialization.
         _, self.num_input_channels, self.image_width, self.image_height = image_sample.shape
         hidden_channels_1 = 6
         hidden_channels_2 = 16
