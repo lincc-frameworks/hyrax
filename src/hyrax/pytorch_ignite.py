@@ -120,7 +120,7 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     ----------
     config : dict
         The runtime configuration
-    dataset : Dataset
+    dataset : DataProvider
         The dataset object that will provide data to the model for training or
         inference. Here it is only used to provide a data sample to the model so
         that it can resize itself at runtime if necessary.
@@ -134,17 +134,17 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
 
-    # Pass a single sample of data through the model's prepare_inputs function
-    # ? I don't think that the `if` portion of this logic is used, should double check
-    if isinstance(dataset, dict):
-        # If we have multiple datasets, just take the first one
-        first_dataset = next(iter(dataset.values()))
-        data_sample = model_cls.prepare_inputs(first_dataset.sample_data())
-    else:
-        data_sample = model_cls.prepare_inputs(dataset.sample_data())
+    # Grab a single data sample
+    data_sample = dataset.sample_data()
 
-    # Provide the data sample for runtime modifications to the model architecture
-    return model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
+    # Collate the data sample
+    collated_sample = dataset.collate([data_sample])
+
+    # Prepare the data sample with the model's prepare_inputs function
+    prepared_sample = model_cls.prepare_inputs(collated_sample)
+
+    # Provide the sample for runtime modifications to the model architecture
+    return model_cls(config=config, data_sample=prepared_sample)  # type: ignore[attr-defined]
 
 
 def dist_data_loader(
