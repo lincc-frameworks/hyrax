@@ -446,9 +446,10 @@ def test_as_dict_with_dict_configs():
     assert "train" in as_dict
     assert "data_0" in as_dict["train"]
     assert "data_1" in as_dict["train"]
-    assert as_dict["train"]["data_0"]["data"]["dataset_class"] == "HyraxRandomDataset"
-    assert as_dict["train"]["data_0"]["data"]["primary_id_field"] == "id"
-    assert as_dict["train"]["data_1"]["data"]["dataset_class"] == "HyraxCifarDataset"
+    # Named configs are serialised without an extra "data" wrapper (see #817).
+    assert as_dict["train"]["data_0"]["dataset_class"] == "HyraxRandomDataset"
+    assert as_dict["train"]["data_0"]["primary_id_field"] == "id"
+    assert as_dict["train"]["data_1"]["dataset_class"] == "HyraxCifarDataset"
 
 
 def test_split_fraction_not_present():
@@ -843,3 +844,45 @@ def test_split_fraction_consistency_single_config_no_issue():
         }
     )
     assert definition["train"].split_fraction == 0.7
+
+
+def test_issue_817_single_named_source_no_extra_data_nesting():
+    """Regression test for issue #817.
+
+    A single data source under a non-"data" friendly name must not gain an
+    extra ``{"data": ...}`` wrapper when the config is round-tripped through
+    ``set_config``.  Before the fix, ``config["data_request"]["train"]``
+    produced::
+
+        {"friendly_name": {"data": {"dataset_class": ...}}}
+
+    After the fix it correctly returns::
+
+        {"friendly_name": {"dataset_class": ...}}
+    """
+    cm = ConfigManager()
+    data_request = {
+        "train": {
+            "friendly_name": {
+                "dataset_class": "HyraxCifarDataset",
+                "data_location": "./data",
+                "split_fraction": 1.0,
+                "primary_id_field": "object_id",
+            }
+        }
+    }
+    cm.set_config("data_request", data_request)
+
+    train_cfg = cm.config["data_request"]["train"]
+
+    # The friendly name must be present at the top level of the group.
+    assert "friendly_name" in train_cfg
+
+    # There must be no spurious "data" wrapper inside the friendly-name entry.
+    assert "data" not in train_cfg["friendly_name"], (
+        "Extra 'data' nesting was inserted for a single named source (issue #817)."
+    )
+
+    # The dataset fields must be directly accessible under the friendly name.
+    assert train_cfg["friendly_name"]["dataset_class"] == "HyraxCifarDataset"
+    assert train_cfg["friendly_name"]["primary_id_field"] == "object_id"

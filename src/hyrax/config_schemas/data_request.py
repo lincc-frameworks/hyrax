@@ -246,15 +246,32 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
         return self.root[key]
 
     def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
-        """Export as a nested dictionary compatible with existing configs."""
+        """Export as a nested dictionary compatible with existing configs.
+
+        When the group value is a single ``DataRequestConfig`` (i.e. the user
+        provided the config without a friendly name, or via the TOML
+        ``[data_request.<group>.data]`` syntax), it is serialised under the
+        conventional ``"data"`` key so that the stored format round-trips
+        correctly through :class:`DataRequestConfig`\'s ``unwrap_data_key``
+        validator.
+
+        When the group value is a dict of named configs (friendly-name style),
+        each config is serialised directly under its friendly name with **no**
+        extra ``"data"`` wrapper.  Adding that wrapper was the root cause of the
+        bug reported in `#817 <https://github.com/lincc-frameworks/hyrax/issues/817>`_,
+        where ``DataProvider.prepare_datasets`` received
+        ``{friendly_name: {"data": {...}}}`` instead of
+        ``{friendly_name: {"dataset_class": ..., ...}}``.
+        """
         output: dict[str, Any] = {}
 
         for name, value in self.root.items():
             if isinstance(value, dict):
-                output[name] = {
-                    key: {"data": cfg.as_dict(exclude_unset=exclude_unset)} for key, cfg in value.items()
-                }
+                # Named configs — no "data" wrapper; friendly names are preserved as-is.
+                output[name] = {key: cfg.as_dict(exclude_unset=exclude_unset) for key, cfg in value.items()}
             else:
+                # Single config (TOML-style or inline) — wrap under "data" for
+                # backward-compatibility with [data_request.<group>.data] configs.
                 output[name] = {"data": value.as_dict(exclude_unset=exclude_unset)}
 
         return output
