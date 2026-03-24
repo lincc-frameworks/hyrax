@@ -4,6 +4,7 @@ from unittest.mock import patch
 import pytest
 
 from hyrax import Hyrax
+from hyrax.datasets import HyraxDataset
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 
 
@@ -913,3 +914,44 @@ def test_custom_collate_function_applied(custom_collate_data_provider):
 
     # assert that the object_id key is a numpy array
     assert isinstance(collated_batch["object_id"], np.ndarray)
+
+
+def test_object_id_is_string():
+    """Ensure that the object_id field is returned as a string at the top level of
+    the sample, even if the dataset's get_object_id method returns an int. And
+    also ensure that the original integer ID is preserved within the dataset-specific
+    entry."""
+
+    class IntIDDataset(HyraxDataset):
+        """Toy dataset class that returns object_id as an integer."""
+
+        def __init__(self, config, data_location):
+            super().__init__(config)
+
+        def __len__(self):
+            return 1
+
+        def get_object_id(self, idx):
+            return idx
+
+    h = Hyrax()
+    data_request = {
+        "train": {
+            "int_id_dataset": {
+                "dataset_class": "IntIDDataset",
+                "data_location": "./test_data",
+                "fields": ["object_id"],
+                "primary_id_field": "object_id",
+            }
+        }
+    }
+    h.config["data_request"] = data_request
+
+    dp = DataProvider(h.config, data_request["train"])
+    dp.prepare_datasets()
+
+    sample = dp[0]
+    assert "object_id" in sample
+    assert isinstance(sample["object_id"], str)
+    assert sample["object_id"] == "0"
+    assert sample["int_id_dataset"]["object_id"] == 0
