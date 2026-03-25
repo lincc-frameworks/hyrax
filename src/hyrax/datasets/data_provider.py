@@ -568,7 +568,7 @@ class DataProvider:
         """
         return [self.get_object_id(idx) for idx in range(len(self))]
 
-    def resolve_data(self, idx: int) -> dict:
+    def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str]:
         """This method requests the field data from the prepared datasets by index.
 
         Parameters
@@ -578,8 +578,11 @@ class DataProvider:
 
         Returns
         -------
-        dict
+        dict[str, dict[str, Any] | str]
             A dictionary containing the requested data from the prepared datasets.
+            Each key is a dataset friendly name mapped to a dict of field values.
+            If a primary dataset is configured, the top-level ``"object_id"`` key
+            holds a string representation of the primary ID.
         """
         start_time = time.monotonic_ns()
         prefix = self.__class__.__name__
