@@ -773,9 +773,7 @@ class DataProvider:
                 # we accumulate the samples from that dataset and hand off to
                 # the appropriate custom collate function after the for loop.
                 if friendly_name in self.custom_collate_functions:
-                    # ! By convention, the dataset's custom collate function will
-                    # ! expect the friendly name to be "data".
-                    custom_collate.setdefault(friendly_name, []).append({"data": fields})
+                    custom_collate.setdefault(friendly_name, []).append(fields)
                     continue
 
                 if friendly_name not in batch_dict:
@@ -806,21 +804,8 @@ class DataProvider:
                     "using its custom collate function."
                 ) from err
 
-            # ! By convention, the returned dictionary from a custom collate function
-            # ! should contain a "data" key (the default friendly name). Only "data"
-            # ! is used here; any other keys in the returned dictionary are ignored.
-            if "data" not in custom_collated_data:
-                logger.error(
-                    f"Custom collate function for dataset '{friendly_name}' did not return "
-                    "a 'data' key in the result."
-                )
-                raise RuntimeError(
-                    f"Custom collate function for dataset '{friendly_name}' did not return "
-                    "a 'data' key in the result."
-                )
-
             # Add the collated data to the batch dictionary
-            batch_dict[friendly_name] = custom_collated_data["data"]
+            batch_dict[friendly_name] = custom_collated_data
 
         # Try to convert lists of values into numpy arrays. We skip the "object_id"
         # key since it's already been handled, as well as any keys that are in the
