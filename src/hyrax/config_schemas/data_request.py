@@ -55,57 +55,64 @@ class DataRequestConfig(BaseConfigModel):
             raise ValueError("'split_fraction' can only be specified when 'primary_id_field' is also set.")
         return self
 
-    @model_validator(mode="before")
-    @classmethod
-    def unwrap_data_key(cls, value: Any) -> Any:
-        """Allow configurations specified under a ``data`` wrapper."""
-
-        if (
-            isinstance(value, dict)
-            and "data" in value
-            and len(value) == 1
-            and isinstance(value["data"], dict)
-        ):
-            return value["data"]
-        return value
-
     def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
         """Return the configuration as a plain dictionary."""
         return self.model_dump(exclude_unset=exclude_unset)
 
 
-# Type alias for a dataset group value: either a single config or a dict of named configs.
-DatasetGroupValue = DataRequestConfig | dict[str, DataRequestConfig]
+# Type alias for a dataset group value: a dict mapping friendly names to configs.
+DatasetGroupValue = dict[str, DataRequestConfig]
 
 
 def _normalize_dataset_group(value: Any) -> DatasetGroupValue:
-    """Normalize a single dataset group value into a ``DataRequestConfig``
-    or a ``dict[str, DataRequestConfig]``.
+    """Normalize a single dataset group value into a ``dict[str, DataRequestConfig]``.
 
-    Handles:
-    - A ``DataRequestConfig`` instance (returned as-is)
-    - A dict that looks like a single config (has ``dataset_class`` or ``data`` key)
-    - A dict of multiple configs (values are dicts with ``dataset_class``)
+    Every dataset source within a group must be identified by a user-supplied
+    *friendly name*.  The friendly name is the key in the returned dict and is
+    used by ``DataProvider`` to reference the dataset at runtime.
+
+    Accepted inputs
+    ---------------
+    - A ``dict`` whose values are ``DataRequestConfig`` instances or plain dicts
+      that can be validated as one.  The keys become the friendly names.
+
+    Rejected inputs (raise ``ValueError``)
+    ----------------------------------------
+    - A flat dict that contains ``dataset_class`` at the top level (no friendly
+      name wrapper).
+    - A bare ``DataRequestConfig`` instance (no friendly name wrapper).
     """
 
     if isinstance(value, DataRequestConfig):
-        return value
+        raise ValueError(
+            "A friendly name is required for each dataset source. "
+            "Wrap the config in a dict with a friendly name, e.g. "
+            '{"<friendly_name>": <DataRequestConfig>}.'
+        )
 
     if isinstance(value, dict):
-        # Check if this looks like a single config (has dataset_class)
-        # or a dict of configs (values are dicts with dataset_class)
-        if "dataset_class" in value or "data" in value:
-            # Single config
-            return DataRequestConfig.model_validate(value)
-        else:
-            # Dict of configs - parse each value
-            parsed_dict = {}
-            for key, val in value.items():
-                if isinstance(val, DataRequestConfig):
-                    parsed_dict[key] = val
-                else:
-                    parsed_dict[key] = DataRequestConfig.model_validate(val)
-            return parsed_dict
+        # Detect a flat config: dataset_class at the top level means no friendly
+        # name was provided.
+        if "dataset_class" in value:
+            raise ValueError(
+                "A friendly name is required for each dataset source. "
+                'Instead of {"dataset_class": ..., ...}, use '
+                '{"<friendly_name>": {"dataset_class": ..., ...}}.'
+            )
+
+        # Dict of named configs — parse each value.
+        parsed_dict: DatasetGroupValue = {}
+        for key, val in value.items():
+            if isinstance(val, DataRequestConfig):
+                parsed_dict[key] = val
+            elif isinstance(val, dict):
+                parsed_dict[key] = DataRequestConfig.model_validate(val)
+            else:
+                raise ValueError(
+                    f"Value for friendly name '{key}' must be a dict or DataRequestConfig instance, "
+                    f"got {type(val).__name__}."
+                )
+        return parsed_dict
 
     raise ValueError(f"Cannot parse dataset group value of type {type(value).__name__}")
 
@@ -116,8 +123,7 @@ def _iter_all_configs(
     """Yield ``(group_name, config)`` pairs across all groups."""
     result = []
     for group_name, group_value in groups.items():
-        configs_dict = group_value if isinstance(group_value, dict) else {"_default": group_value}
-        for config in configs_dict.values():
+        for config in group_value.values():
             result.append((group_name, config))
     return result
 
@@ -127,8 +133,28 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
 
     Accepts any number of arbitrarily-named dataset groups (e.g. ``train``,
     ``validate``, ``infer``, ``test``, ``finetune``, …).  Each group value is
-    either a single ``DataRequestConfig`` or a ``dict`` of named
-    ``DataRequestConfig`` instances.
+    a ``dict`` of *friendly-named* ``DataRequestConfig`` instances.  A friendly
+    name must always be provided explicitly — the schema will raise a validation
+    error if a dataset source is specified without one.
+
+    Example (Python)::
+
+        {
+            "train": {
+                "my_dataset": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "data_location": "/path/to/data",
+                    "primary_id_field": "object_id",
+                }
+            }
+        }
+
+    Example (TOML)::
+
+        [data_request.train.my_dataset]
+        dataset_class = "HyraxRandomDataset"
+        data_location = "/path/to/data"
+        primary_id_field = "object_id"
     """
 
     @model_validator(mode="before")
@@ -163,9 +189,7 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
         one of them specifies which field to use as the primary identifier.
         """
         for group_name, group_value in self.root.items():
-            configs_dict = group_value if isinstance(group_value, dict) else {"_default": group_value}
-
-            primary_count = sum(1 for config in configs_dict.values() if config.primary_id_field is not None)
+            primary_count = sum(1 for config in group_value.values() if config.primary_id_field is not None)
 
             if primary_count == 0:
                 raise ValueError(
@@ -240,38 +264,21 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
                 )
 
     def __contains__(self, key: str) -> bool:
+        """Return True if the group name is present in the definition."""
         return key in self.root
 
     def __getitem__(self, key: str) -> DatasetGroupValue:
+        """Return the dataset group value for the given group name."""
         return self.root[key]
 
     def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
         """Export as a nested dictionary compatible with existing configs.
 
-        When the group value is a single ``DataRequestConfig`` (i.e. the user
-        provided the config without a friendly name, or via the TOML
-        ``[data_request.<group>.data]`` syntax), it is serialised under the
-        conventional ``"data"`` key so that the stored format round-trips
-        correctly through :class:`DataRequestConfig`\'s ``unwrap_data_key``
-        validator.
-
-        When the group value is a dict of named configs (friendly-name style),
-        each config is serialised directly under its friendly name with **no**
-        extra ``"data"`` wrapper.  Adding that wrapper was the root cause of the
-        bug reported in `#817 <https://github.com/lincc-frameworks/hyrax/issues/817>`_,
-        where ``DataProvider.prepare_datasets`` received
-        ``{friendly_name: {"data": {...}}}`` instead of
-        ``{friendly_name: {"dataset_class": ..., ...}}``.
+        Each group value is a dict of ``{friendly_name: flat_config_dict}``.
+        No implicit ``"data"`` wrapper is added — the friendly names supplied
+        by the user are preserved verbatim.
         """
-        output: dict[str, Any] = {}
-
-        for name, value in self.root.items():
-            if isinstance(value, dict):
-                # Named configs — no "data" wrapper; friendly names are preserved as-is.
-                output[name] = {key: cfg.as_dict(exclude_unset=exclude_unset) for key, cfg in value.items()}
-            else:
-                # Single config (TOML-style or inline) — wrap under "data" for
-                # backward-compatibility with [data_request.<group>.data] configs.
-                output[name] = {"data": value.as_dict(exclude_unset=exclude_unset)}
-
-        return output
+        return {
+            name: {key: cfg.as_dict(exclude_unset=exclude_unset) for key, cfg in value.items()}
+            for name, value in self.root.items()
+        }

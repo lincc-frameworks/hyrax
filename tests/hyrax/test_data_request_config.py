@@ -28,48 +28,80 @@ def test_data_request_config_basic_fields():
     assert dumped["dataset_config"] == {"shuffle": True}
 
 
-def test_data_request_config_unwraps_data_key():
-    """Support legacy wrapped 'data' key."""
-    cfg = DataRequestConfig(
-        data={"dataset_class": "HyraxCifarDataset", "primary_id_field": "oid", "data_location": "nowhere"}
-    )
-    assert cfg.dataset_class == "HyraxCifarDataset"
-    assert cfg.primary_id_field == "oid"
+def test_data_request_definition_flat_dict_without_friendly_name_raises():
+    """Flat dict with dataset_class at top level (no friendly name) raises ValidationError."""
+    with pytest.raises(ValidationError, match="friendly name"):
+        DataRequestDefinition(
+            {
+                "train": {
+                    "dataset_class": "HyraxCifarDataset",
+                    "primary_id_field": "oid",
+                    "data_location": "nowhere",
+                }
+            }
+        )
+
+
+def test_data_request_definition_bare_instance_without_friendly_name_raises():
+    """Bare DataRequestConfig as group value (no friendly name) raises ValidationError."""
+    with pytest.raises(ValidationError, match="friendly name"):
+        DataRequestDefinition(
+            {
+                "train": DataRequestConfig(
+                    dataset_class="HyraxCifarDataset",
+                    primary_id_field="oid",
+                    data_location="nowhere",
+                )
+            }
+        )
 
 
 def test_data_request_definition_collects_known_fields():
-    """Collect train/validate/infer fields."""
-    definition = DataRequestDefinition(
-        {
-            "train": {"dataset_class": "TrainDS", "primary_id_field": "id1", "data_location": "nowhere"},
-            "validate": {
-                "dataset_class": "ValidateDS",
-                "primary_id_field": "id2",
-                "data_location": "nowhere",
-            },
-            "infer": {"dataset_class": "InferDS", "primary_id_field": "id3", "data_location": "nowhere"},
-        }
-    )
-
-    assert isinstance(definition["train"], DataRequestConfig)
-    assert isinstance(definition["validate"], DataRequestConfig)
-    assert isinstance(definition["infer"], DataRequestConfig)
-
-
-def test_data_request_definition_as_dict_shape():
-    """as_dict returns nested data blocks."""
+    """Collect train/validate/infer fields using required friendly names."""
     definition = DataRequestDefinition(
         {
             "train": {
-                "dataset_class": "TrainDS",
-                "fields": ["a"],
-                "primary_id_field": "id1",
-                "data_location": "nowhere",
+                "data": {"dataset_class": "TrainDS", "primary_id_field": "id1", "data_location": "nowhere"}
             },
             "validate": {
-                "dataset_class": "ExtraDS",
-                "primary_id_field": "id2",
-                "data_location": "nowhere",
+                "data": {
+                    "dataset_class": "ValidateDS",
+                    "primary_id_field": "id2",
+                    "data_location": "nowhere",
+                }
+            },
+            "infer": {
+                "data": {"dataset_class": "InferDS", "primary_id_field": "id3", "data_location": "nowhere"}
+            },
+        }
+    )
+
+    assert isinstance(definition["train"], dict)
+    assert isinstance(definition["validate"], dict)
+    assert isinstance(definition["infer"], dict)
+    assert isinstance(definition["train"]["data"], DataRequestConfig)
+    assert isinstance(definition["validate"]["data"], DataRequestConfig)
+    assert isinstance(definition["infer"]["data"], DataRequestConfig)
+
+
+def test_data_request_definition_as_dict_shape():
+    """as_dict returns friendly-name keyed dicts without any implicit 'data' wrapper."""
+    definition = DataRequestDefinition(
+        {
+            "train": {
+                "data": {
+                    "dataset_class": "TrainDS",
+                    "fields": ["a"],
+                    "primary_id_field": "id1",
+                    "data_location": "nowhere",
+                }
+            },
+            "validate": {
+                "data": {
+                    "dataset_class": "ExtraDS",
+                    "primary_id_field": "id2",
+                    "data_location": "nowhere",
+                }
             },
         }
     )
@@ -88,17 +120,21 @@ def test_config_manager_set_config_accepts_data_request_definition():
     definition = DataRequestDefinition(
         {
             "train": {
-                "dataset_class": "HyraxRandomDataset",
-                "fields": ["image"],
-                "primary_id_field": "object_id",
-                "data_location": "nowhere",
-                "dataset_config": {"size": 10, "shape": [1, 2, 3], "seed": 123},
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "fields": ["image"],
+                    "primary_id_field": "object_id",
+                    "data_location": "nowhere",
+                    "dataset_config": {"size": 10, "shape": [1, 2, 3], "seed": 123},
+                }
             },
             "infer": {
-                "dataset_class": "HyraxRandomDataset",
-                "fields": ["image"],
-                "primary_id_field": "id",
-                "data_location": "somewhere",
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "fields": ["image"],
+                    "primary_id_field": "id",
+                    "data_location": "somewhere",
+                }
             },
         }
     )
@@ -118,10 +154,12 @@ def test_config_manager_set_config_with_valid_dict():
     cm = ConfigManager()
     valid_dict = {
         "train": {
-            "dataset_class": "HyraxRandomDataset",
-            "fields": ["image"],
-            "primary_id_field": "object_id",
-            "data_location": "nowhere",
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "fields": ["image"],
+                "primary_id_field": "object_id",
+                "data_location": "nowhere",
+            }
         }
     }
 
@@ -137,13 +175,13 @@ def test_config_manager_set_config_with_invalid_data_accepts_as_is():
     """ConfigManager.set_config accepts invalid data as-is when validation fails."""
 
     cm = ConfigManager()
-    # Invalid: missing primary_id_field required by DataRequestDefinition validation
+    # Invalid: flat dict with dataset_class at top level — no friendly name provided.
+    # This fails DataRequestDefinition validation with a "friendly name" error.
     invalid_dict = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
             "fields": ["image"],
             "data_location": "nowhere",
-            # Missing primary_id_field - fails DataRequestDefinition validation
         }
     }
 
@@ -163,10 +201,12 @@ def test_config_manager_set_config_coerces_typed_dataset_config():
     cm = ConfigManager()
     valid_dict = {
         "train": {
-            "dataset_class": "HyraxCifarDataset",
-            "data_location": "nowhere",
-            "primary_id_field": "id",
-            "dataset_config": {"use_training_data": True},
+            "data": {
+                "dataset_class": "HyraxCifarDataset",
+                "data_location": "nowhere",
+                "primary_id_field": "id",
+                "dataset_config": {"use_training_data": True},
+            }
         }
     }
 
@@ -181,7 +221,7 @@ def test_config_manager_set_config_with_partial_validity():
     """ConfigManager.set_config handles edge case with partially valid data."""
 
     cm = ConfigManager()
-    # Has some valid structure but missing primary_id_field in one split
+    # Flat dicts (no friendly name) fail DataRequestDefinition validation.
     partially_valid = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
@@ -191,7 +231,6 @@ def test_config_manager_set_config_with_partial_validity():
         "validate": {
             "dataset_class": "HyraxCifarDataset",
             "data_location": "nowhere",
-            # Missing primary_id_field - fails DataRequestDefinition validation requirement
         },
     }
 
@@ -218,18 +257,20 @@ def test_dataset_config_unknown_dataset_allows_dict():
     assert cfg.dataset_config == {"foo": "bar"}
 
 
-def test_single_config_with_primary_id_valid():
-    """Single config with primary_id_field passes validation."""
+def test_single_config_with_friendly_name_valid():
+    """Single config wrapped in a friendly name passes validation."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/dev/null",
-                primary_id_field="object_id",
-            )
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/dev/null",
+                    primary_id_field="object_id",
+                )
+            }
         }
     )
-    assert definition["train"].primary_id_field == "object_id"
+    assert definition["train"]["data"].primary_id_field == "object_id"
 
 
 def test_single_config_without_primary_id_fails():
@@ -237,10 +278,12 @@ def test_single_config_without_primary_id_fails():
     with pytest.raises(ValidationError) as exc_info:
         DataRequestDefinition(
             {
-                "train": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="somewhere",
-                )
+                "train": {
+                    "data": DataRequestConfig(
+                        dataset_class="HyraxRandomDataset",
+                        data_location="somewhere",
+                    )
+                }
             }
         )
     assert (
@@ -323,40 +366,50 @@ def test_multiple_dataset_groups_each_validated():
     # Valid: each group has exactly one primary_id_field
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="somewhere",
-                primary_id_field="train_id",
-            ),
-            "validate": DataRequestConfig(
-                dataset_class="HyraxCifarDataset",
-                data_location="somewhere",
-                primary_id_field="validate_id",
-            ),
-            "infer": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="somewhere",
-                primary_id_field="infer_id",
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="somewhere",
+                    primary_id_field="train_id",
+                )
+            },
+            "validate": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxCifarDataset",
+                    data_location="somewhere",
+                    primary_id_field="validate_id",
+                )
+            },
+            "infer": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="somewhere",
+                    primary_id_field="infer_id",
+                )
+            },
         }
     )
-    assert definition["train"].primary_id_field == "train_id"
-    assert definition["validate"].primary_id_field == "validate_id"
-    assert definition["infer"].primary_id_field == "infer_id"
+    assert definition["train"]["data"].primary_id_field == "train_id"
+    assert definition["validate"]["data"].primary_id_field == "validate_id"
+    assert definition["infer"]["data"].primary_id_field == "infer_id"
 
     # Invalid: train missing primary_id_field
     with pytest.raises(ValidationError) as exc_info:
         DataRequestDefinition(
             {
-                "train": DataRequestConfig(
-                    dataset_class="HyraxRandomDataset",
-                    data_location="somewhere",
-                ),
-                "validate": DataRequestConfig(
-                    dataset_class="HyraxCifarDataset",
-                    data_location="somewhere",
-                    primary_id_field="validate_id",
-                ),
+                "train": {
+                    "data": DataRequestConfig(
+                        dataset_class="HyraxRandomDataset",
+                        data_location="somewhere",
+                    )
+                },
+                "validate": {
+                    "data": DataRequestConfig(
+                        dataset_class="HyraxCifarDataset",
+                        data_location="somewhere",
+                        primary_id_field="validate_id",
+                    )
+                },
             }
         )
     assert (
@@ -407,15 +460,17 @@ def test_from_dict_format():
     assert definition["train"]["dataset_1"].primary_id_field is None
 
 
-def test_as_dict_with_single_config():
-    """as_dict handles single config correctly."""
+def test_as_dict_with_single_named_config():
+    """as_dict serialises a single named (friendly-name) config correctly."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="somewhere",
-                primary_id_field="id",
-            )
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="somewhere",
+                    primary_id_field="id",
+                )
+            }
         }
     )
     as_dict = definition.as_dict()
@@ -513,91 +568,109 @@ def test_split_fraction_sum_valid_same_location():
     """Split fractions for the same data_location summing to <= 1.0 pass validation."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.6,
-            ),
-            "validate": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.4,
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.6,
+                )
+            },
+            "validate": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.4,
+                )
+            },
         }
     )
-    assert definition["train"].split_fraction == 0.6
-    assert definition["validate"].split_fraction == 0.4
+    assert definition["train"]["data"].split_fraction == 0.6
+    assert definition["validate"]["data"].split_fraction == 0.4
 
 
 def test_split_fraction_sum_fp_rounding_at_one_passes():
     """Floating-point rounding at 1.0 does not trigger a false validation error."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.1,
-            ),
-            "validate": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.2,
-            ),
-            "infer": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.7,
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.1,
+                )
+            },
+            "validate": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.2,
+                )
+            },
+            "infer": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.7,
+                )
+            },
         }
     )
-    assert definition["train"].split_fraction == 0.1
-    assert definition["validate"].split_fraction == 0.2
-    assert definition["infer"].split_fraction == 0.7
+    assert definition["train"]["data"].split_fraction == 0.1
+    assert definition["validate"]["data"].split_fraction == 0.2
+    assert definition["infer"]["data"].split_fraction == 0.7
 
 
 def test_split_fraction_sum_valid_different_locations():
     """Split fractions for different data_locations are validated independently."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data_a",
-                primary_id_field="id",
-                split_fraction=0.8,
-            ),
-            "validate": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data_b",
-                primary_id_field="id",
-                split_fraction=0.9,
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data_a",
+                    primary_id_field="id",
+                    split_fraction=0.8,
+                )
+            },
+            "validate": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data_b",
+                    primary_id_field="id",
+                    split_fraction=0.9,
+                )
+            },
         }
     )
-    assert definition["train"].split_fraction == 0.8
-    assert definition["validate"].split_fraction == 0.9
+    assert definition["train"]["data"].split_fraction == 0.8
+    assert definition["validate"]["data"].split_fraction == 0.9
 
 
 def test_split_fraction_sum_exceeds_one_same_location():
     """Split fractions for the same data_location summing to > 1.0 fail cross-group validation."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.7,
-            ),
-            "validate": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.5,
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.7,
+                )
+            },
+            "validate": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.5,
+                )
+            },
         }
     )
     with pytest.raises(ValueError) as exc_info:
@@ -609,46 +682,56 @@ def test_split_fraction_sum_with_none_fractions_different_locations():
     """Configs without split_fraction at a different location don't affect the sum."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data_a",
-                primary_id_field="id",
-                split_fraction=0.8,
-            ),
-            "validate": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data_b",
-                primary_id_field="id",
-                # No split_fraction — different location, so no conflict
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data_a",
+                    primary_id_field="id",
+                    split_fraction=0.8,
+                )
+            },
+            "validate": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data_b",
+                    primary_id_field="id",
+                    # No split_fraction — different location, so no conflict
+                )
+            },
         }
     )
-    assert definition["train"].split_fraction == 0.8
-    assert definition["validate"].split_fraction is None
+    assert definition["train"]["data"].split_fraction == 0.8
+    assert definition["validate"]["data"].split_fraction is None
 
 
 def test_split_fraction_cross_group_ignores_excluded_groups():
     """Groups not passed to validate_cross_group are excluded from the sum check."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.6,
-            ),
-            "validate": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.4,
-            ),
-            "infer": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.5,
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.6,
+                )
+            },
+            "validate": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.4,
+                )
+            },
+            "infer": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.5,
+                )
+            },
         }
     )
     # train + validate = 1.0 (valid); infer is excluded so it does not cause a failure
@@ -693,20 +776,24 @@ def test_arbitrary_group_names_accepted():
     """DataRequestDefinition accepts arbitrary group names like 'test' or 'finetune'."""
     definition = DataRequestDefinition(
         {
-            "test": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/dev/null",
-                primary_id_field="id",
-            ),
-            "finetune": DataRequestConfig(
-                dataset_class="HyraxCifarDataset",
-                data_location="/dev/null",
-                primary_id_field="id",
-            ),
+            "test": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/dev/null",
+                    primary_id_field="id",
+                )
+            },
+            "finetune": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxCifarDataset",
+                    data_location="/dev/null",
+                    primary_id_field="id",
+                )
+            },
         }
     )
-    assert definition["test"].dataset_class == "HyraxRandomDataset"
-    assert definition["finetune"].dataset_class == "HyraxCifarDataset"
+    assert definition["test"]["data"].dataset_class == "HyraxRandomDataset"
+    assert definition["finetune"]["data"].dataset_class == "HyraxCifarDataset"
     assert "test" in definition
     assert "finetune" in definition
 
@@ -715,11 +802,13 @@ def test_arbitrary_group_name_in_as_dict():
     """as_dict includes arbitrary group names in the output."""
     definition = DataRequestDefinition(
         {
-            "test": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/dev/null",
-                primary_id_field="id",
-            ),
+            "test": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/dev/null",
+                    primary_id_field="id",
+                )
+            },
         }
     )
     as_dict = definition.as_dict()
@@ -731,11 +820,13 @@ def test_missing_group_returns_none():
     """Accessing a non-existent group name returns None."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/dev/null",
-                primary_id_field="id",
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/dev/null",
+                    primary_id_field="id",
+                )
+            },
         }
     )
     assert definition.root.get("nonexistent") is None
@@ -752,11 +843,13 @@ def test_none_groups_are_skipped():
     """Groups set to None are excluded from the definition."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/dev/null",
-                primary_id_field="id",
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/dev/null",
+                    primary_id_field="id",
+                )
+            },
             "validate": None,
         }
     )
@@ -769,18 +862,22 @@ def test_split_fraction_consistency_mixed_raises():
     """If one config has split_fraction for a location, all must."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.5,
-            ),
-            "infer": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                # Missing split_fraction
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.5,
+                )
+            },
+            "infer": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    # Missing split_fraction
+                )
+            },
         }
     )
     with pytest.raises(ValueError) as exc_info:
@@ -793,57 +890,67 @@ def test_split_fraction_consistency_all_set_passes():
     """All configs sharing a location with split_fraction set passes."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.6,
-            ),
-            "infer": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.4,
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.6,
+                )
+            },
+            "infer": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.4,
+                )
+            },
         }
     )
-    assert definition["train"].split_fraction == 0.6
-    assert definition["infer"].split_fraction == 0.4
+    assert definition["train"]["data"].split_fraction == 0.6
+    assert definition["infer"]["data"].split_fraction == 0.4
 
 
 def test_split_fraction_consistency_none_set_passes():
     """No configs having split_fraction for a shared location passes."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-            ),
-            "infer": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                )
+            },
+            "infer": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                )
+            },
         }
     )
-    assert definition["train"].split_fraction is None
-    assert definition["infer"].split_fraction is None
+    assert definition["train"]["data"].split_fraction is None
+    assert definition["infer"]["data"].split_fraction is None
 
 
 def test_split_fraction_consistency_single_config_no_issue():
-    """A single config with split_fraction doesn't trigger the consistency check."""
+    """A single named config with split_fraction doesn't trigger the consistency check."""
     definition = DataRequestDefinition(
         {
-            "train": DataRequestConfig(
-                dataset_class="HyraxRandomDataset",
-                data_location="/tmp/data",
-                primary_id_field="id",
-                split_fraction=0.7,
-            ),
+            "train": {
+                "data": DataRequestConfig(
+                    dataset_class="HyraxRandomDataset",
+                    data_location="/tmp/data",
+                    primary_id_field="id",
+                    split_fraction=0.7,
+                )
+            },
         }
     )
-    assert definition["train"].split_fraction == 0.7
+    assert definition["train"]["data"].split_fraction == 0.7
 
 
 def test_issue_817_single_named_source_no_extra_data_nesting():
