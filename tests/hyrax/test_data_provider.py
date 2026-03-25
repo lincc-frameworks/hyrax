@@ -932,6 +932,7 @@ def test_object_id_is_string():
             return 1
 
         def get_object_id(self, idx):
+            """Return the integer object_id for the given index."""
             return idx
 
     h = Hyrax()
