@@ -588,7 +588,7 @@ class DataProvider:
             tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
             return cached_data
 
-        returned_data: dict[str, dict[str, Any]] = {}
+        returned_data: dict[str, dict[str, Any] | str] = {}
 
         for friendly_name, fields in self.requested_fields.items():
             getters = self.dataset_getters[friendly_name]
