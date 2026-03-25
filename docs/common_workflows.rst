@@ -5,6 +5,7 @@ Common workflows
    :maxdepth: 1
 
    Configuration basics <notebooks/config_basics>
+   Data requests <notebooks/data_requests>
    List available models and dataset classes <notebooks/list_available_models_and_datasets>
    Working with result datasets <pre_executed/working_with_results_data>
    Look up results by ID <notebooks/lookup_results_by_id>
