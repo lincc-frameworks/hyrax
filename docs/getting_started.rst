@@ -68,7 +68,7 @@ from the PyTorch CIFAR10 tutorial.
 
 .. code-block:: python
 
-   h.set_config('model_name', 'HyraxCNN')
+   h.set_config('model.name', 'HyraxCNN')
 
 
 .. _getting_started_specify_data:
