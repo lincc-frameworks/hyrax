@@ -30,6 +30,9 @@ often not reusable by other research groups/teams resulting in duplicated effort
    et al.
 
 
+-------
+
+
 The Hyrax Workflow
 --------------------
 
@@ -40,7 +43,7 @@ search, and interactive exploration.
 .. figure:: _static/diagrams/hyrax_schematic_excalidraw.excalidraw.png
    :align: center
    :alt: Hyrax ML Workflow
-   :width: 95%
+   :width: 100%
 
    A typical Hyrax workflow. Retrieved or user-provided data are organized into
    astronomy-aware datasets, then passed through training and inference.
@@ -61,6 +64,9 @@ search, and interactive exploration.
    h.visualize()         # Interactively explore latent spaces in 2D or 3D
 
 Each step can be used on its own, or combined into an end-to-end workflow.
+
+
+-------
 
 
 Science with Hyrax
@@ -110,6 +116,7 @@ Below is an *incomplete* list of Hyrax science efforts being led by different PI
 
 Detailed writeups for each of these applications are in preparation; and will be out soon. 
 
+-------
 
 First Steps
 -----------
@@ -120,14 +127,13 @@ First Steps
        :link: getting_started
        :link-type: doc
 
-       Install Hyrax, train your first model, and run inference in minutes
+       Install Hyrax and train your first model
 
    .. grid-item-card:: Science Examples
        :link: science_examples
        :link-type: doc
 
-       End-to-end workflows on real survey data: galaxy morphology,
-       transient classification, and more
+       End-to-end workflows on real data
 
 .. grid:: 1 1 2 2
 
@@ -135,14 +141,13 @@ First Steps
        :link: core_concepts
        :link-type: doc
 
-       Configuration system, data flow, and how to bring your own models
-       and datasets
+       Deep dives to get the most our of Hyrax
 
-   .. grid-item-card:: API Reference
-       :link: reference_and_faq
+   .. grid-item-card:: Common Workflows
+       :link: common_workflows
        :link-type: doc
 
-       Full API documentation and frequently asked questions
+       Reusable recipes for common Hyrax tasks
 
 
 .. toctree::
