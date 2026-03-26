@@ -1,14 +1,15 @@
-=====
-Hyrax
-=====
+.. title:: Hyrax
 
-.. rubric:: A Low-Code Framework for Rapid Experimentation with ML & Unsupervised Discovery in Astronomy
+.. figure:: _static/diagrams/hyrax_header.png
+   :alt: Hyrax
+   :align: center
+   :width: 85%
 
-With current and upcoming large astronomical surveys (e.g., Rubin, Roman, Euclid, DESI) producing data at 
-unprecedented scale, the limiting factor for ML-driven discovery is increasingly not the data itself, but the 
-infrastructure required to work with it. Astronomers routinely spend a significant amount of their time on data 
-wrangling, configuration management, and bespoke pipeline engineering — effort that comes directly at the 
-expense of science; and is often not reusable by other research groups/teams resulting in duplicated effort.
+With current and upcoming large astronomical surveys producing data at  unprecedented scale, the limiting  
+factor for ML-driven discovery is increasingly not the data itself, but the  infrastructure required to work 
+with it. Astronomers routinely spend a significant amount of their time on data wrangling, configuration 
+management, and bespoke pipeline engineering — effort that comes directly at the expense of science; and is 
+often not reusable by other research groups/teams resulting in duplicated effort.
 
 .. admonition:: What is Hyrax?
 
@@ -24,82 +25,93 @@ expense of science; and is often not reusable by other research groups/teams res
    :alt: Hyrax Design Philosophy
    :width: 90%
 
-   Hyrax let's users focus on writing their ML model code (center); while it provides astronomy-aware 
-   infrastructure to handle everything else shown on this diagram.
+   Hyrax lets users focus on writing their ML model code (center); while it provides astronomy-aware 
+   infrastructure to handle everything else shown on this diagram. Figure from Ghosh, Oldag & Tauraso 
+   et al.
 
 
 The Hyrax Workflow
 --------------------
 
-Hyrax organizes common ML tasks into a small set of high-level actions that
-correspond to the major stages of an astronomy ML project:
+Hyrax is built around a small set of verbs that cover the main stages of an
+astronomy ML workflow, from data access and training to inference, similarity
+search, and interactive exploration.
 
-.. figure:: _static/diagrams/generic_ml_workflow.excalidraw.png
+.. figure:: _static/diagrams/hyrax_schematic_excalidraw.excalidraw.png
    :align: center
    :alt: Hyrax ML Workflow
-   :width: 90%
+   :width: 95%
 
-   A typical Hyrax workflow. Data and a model flow through training, evaluation,
-   and inference. Results can be explored interactively with Hyrax’s built-in
-   visualization and similarity-search tools.
+   A typical Hyrax workflow. Retrieved or user-provided data are organized into
+   astronomy-aware datasets, then passed through training and inference.
+   For unsupervised workflows, Hyrax also supports vector-database search and
+   interactive latent-space visualization.
 
 .. code-block:: python
 
    from hyrax import Hyrax
-   h = Hyrax()
 
-   h.download()    # Retrieve cutouts from LSST, HSC, or other surveys
-   h.train()       # Train any PyTorch model with automatic logging & multi-GPU support
-   h.infer()       # Run inference and store results
-   h.search()      # Find similar objects via integrated vector databases
-   h.visualize()   # Interactively explore latent spaces in 2D or 3D
+   # Load a runtime configuration that defines the dataset, model, outputs, etc.
+   h = Hyrax("path/to/runtime_config.toml")
 
-These actions can be used independently or combined into end-to-end pipelines.
-Hyrax is intentionally application-agnostic: it supports supervised and
-unsupervised learning across a wide range of astronomical domains.
+   h.download()          # Retrieve cutouts from LSST, HSC, or other surveys
+   h.train()             # Train any PyTorch model with automatic logging & multi-GPU support
+   h.infer()             # Run inference and store results
+   h.search_by_vector()  # Find similar objects via integrated vector databases
+   h.visualize()         # Interactively explore latent spaces in 2D or 3D
+
+Each step can be used on its own, or combined into an end-to-end workflow.
 
 
-Real science, real data
------------------------
+Science with Hyrax
+------------------
 
-Hyrax has been used for scientific discovery on data from major astronomical
-surveys. Here are some representative applications:
+*Hyrax is science-agnostic* and is designed to support a wide range of astronomy workflows, from
+ML-based classification/regression problems to discovery-oriented latent-space exploration. It can 
+work on images, light curves, spectra, and combinations thereof. 
 
-.. grid:: 1 1 2 2
-
-   .. grid-item-card:: Unsupervised discovery in Rubin DP1
-      :link: pre_executed/unsupervised_image_extragalactic
-      :link-type: doc
-
-      Representation learning on 400,000 galaxies from Rubin Data Preview 1,
-      surfacing new merger and low-surface-brightness candidates without any
-      labeled training data.
-
-   .. grid-item-card:: Gravitational lens finding
-      :link: science_examples
-      :link-type: doc
-
-      Hybrid UMAP + density-based clustering to identify cluster-scale
-      gravitationally lensed arc candidates in Rubin DP1 data.
+Below is an *incomplete* list of Hyrax science efforts being led by different PIs:
 
 .. grid:: 1 1 2 2
 
-   .. grid-item-card:: Multimodal transient classification
-      :link: science_examples
-      :link-type: doc
+   .. grid-item-card:: Extragalactic Unsupervised Discovery
 
-      Early-time classification of ZTF transients by jointly leveraging
-      light curves, spectra, image cutouts, and metadata.
+      :bdg-primary:`Rubin DP1 | HSC` :bdg-secondary:`Unsupervised` :bdg-success:`Galaxies`
 
-   .. grid-item-card:: Distant asteroid searches
-      :link: science_examples
-      :link-type: doc
+      Multi-model representation learning project to surface mergers, 
+      low-surface-brightness galaxies, and scientifically interesting outliers 
+      without any labeled training data.
 
-      Supervised false-positive filtering in shift-and-stack searches for
-      distant solar system objects in the DEEP survey.
+   .. grid-item-card:: Cluster-Scale Lens Searches
+
+      :bdg-primary:`Rubin DP1 | Euclid` :bdg-secondary:`Human in the Loop` :bdg-success:`Galaxies`
+
+      A hybrid workflow combining latent-space clustering and visual inspection to identify lensed arcs in 
+      cluster environments. 
+      
+
+.. grid:: 1 1 2 2
+
+   .. grid-item-card:: Multimodal Transient Classification
+
+      :bdg-primary:`ZTF + Spectra` :bdg-secondary:`Supervised` :bdg-success:`Time Domain`
+
+      An AppleCiDEr-based workflow to classify transients using a 
+      combination of light curves, spectra, cutout images, and metadata.
+
+   .. grid-item-card:: Asteroid Search Filtering
+
+      :bdg-primary:`DECam` :bdg-secondary:`Supervised` :bdg-success:`Solar System`
+
+      A deep-learning based algorithm to filter out false-positives in moving-object searches performed by 
+      KBMOD.
+      
 
 
-Get started
+Detailed writeups for each of these applications are in preparation; and will be out soon. 
+
+
+First Steps
 -----------
 
 .. grid:: 1 1 2 2
