@@ -31,3 +31,21 @@ prior to the doc sprint.
 * :doc:`Model Comparison <model_comparison>` - Tools available in Hyrax for model tracking and comparison.
 * :doc:`Data Set Splits <dataset_splits>` - Deep dive into how Hyrax handles data set splits.
 
+
+
+Citation and attribution
+------------------------
+
+Use ``CITATION.cff`` in the repository root to cite Hyrax itself.
+
+Use Citation Compass with the repository wrapper script and ``citation_compass.toml``
+to generate the dependency citation report for methodologically central Hyrax
+dependencies:
+
+.. code-block:: bash
+
+    pip install citation-compass
+    python scripts/print_citation_compass_report.py --config citation_compass.toml
+
+Hyrax intentionally keeps dependency citations curated to key methodological
+libraries rather than every utility dependency.
