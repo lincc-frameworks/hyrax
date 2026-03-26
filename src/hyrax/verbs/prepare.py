@@ -9,31 +9,28 @@ logger = logging.getLogger(__name__)
 
 @hyrax_verb
 class Prepare(Verb):
-    """Prepare verb"""
+    """Prepare Verb, Prepares a dataset and returns it"""
 
     cli_name = "prepare"
     add_parser_kwargs = {}
 
     @staticmethod
     def setup_parser(parser):
-        """We don't need any parser setup for CLI opts"""
+        """No complex arg parsing for prepare"""
         pass
 
     def run_cli(self, args=None):
         """CLI stub for Prepare verb"""
-        logger.error("Prepare is not supported from the command line.")
+        logger.info("Prepare run from CLI")
 
-    def run(self, config):
-        """Prepare the dataset for a given model and data loader.
+        retval = self.run()
+        print(retval)
 
-        Parameters
-        ----------
-        config : dict
-            The parsed config file as a nested
-            dict
+    def run(self):
+        """Prepare the dataset for a given model and data loader using the verb's configuration.
+
+        Uses ``self.config`` to construct and return the prepared dataset.
         """
-
-        data_set = setup_dataset(config)
-
+        data_set = setup_dataset(self.config)
         logger.info("Finished Prepare")
         return data_set
