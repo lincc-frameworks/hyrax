@@ -549,24 +549,26 @@ class DataProvider:
         """
         return self[0]
 
-    def get_object_id(self, idx) -> Any:
+    def get_object_id(self, idx: int) -> str:
         """Returns the ID at a particular index.
 
         IDs are provided by the primary dataset's primary ID column.
         """
-        return self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name](idx)
+        primary_dataset = self.dataset_getters[self.primary_dataset]
+        primary_dataset_object_id = primary_dataset[self.primary_dataset_id_field_name](idx)
+        return str(primary_dataset_object_id)
 
-    def ids(self) -> list[Any]:
-        """Returns the IDs of the dataset.
+    def ids(self) -> list[str]:
+        """Returns the IDs of the primary dataset.
 
-        IDs flow from the primary dataset and the primary ID column.
-
-        data_provider.ids() is canonically the same as
-        [data_provider.get_object_id(i) for i in range(len(data_provider))]
+        Returns
+        -------
+        list of str
+            A list of string IDs corresponding to the primary dataset, ordered by index.
         """
         return [self.get_object_id(idx) for idx in range(len(self))]
 
-    def resolve_data(self, idx: int) -> dict:
+    def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str]:
         """This method requests the field data from the prepared datasets by index.
 
         Parameters
@@ -576,8 +578,11 @@ class DataProvider:
 
         Returns
         -------
-        dict
+        dict[str, dict[str, Any] | str]
             A dictionary containing the requested data from the prepared datasets.
+            Each key is a dataset friendly name mapped to a dict of field values.
+            If a primary dataset is configured, the top-level ``"object_id"`` key
+            holds a string representation of the primary ID.
         """
         start_time = time.monotonic_ns()
         prefix = self.__class__.__name__
@@ -586,7 +591,7 @@ class DataProvider:
             tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
             return cached_data
 
-        returned_data: dict[str, dict[str, Any]] = {}
+        returned_data: dict[str, dict[str, Any] | str] = {}
 
         for friendly_name, fields in self.requested_fields.items():
             getters = self.dataset_getters[friendly_name]
@@ -602,7 +607,7 @@ class DataProvider:
             else:
                 object_id = returned_data[self.primary_dataset][self.primary_dataset_id_field_name]
 
-            returned_data["object_id"] = object_id
+            returned_data["object_id"] = str(object_id)
 
         self.data_cache.insert_into_cache(idx, returned_data)
         tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
