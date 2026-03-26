@@ -17,3 +17,4 @@ Common workflows
    Loading pretrained weights <pre_executed/load_pretrained_model>
    Hyperparameter tuning <pre_executed/hyperparameter_tuning_examples>
    Dataset custom collation <notebooks/custom_dataset_collation>
+   Customizing prepare_inputs <notebooks/custom_prepare_inputs>
