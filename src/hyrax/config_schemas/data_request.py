@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 import numpy as np
 from pydantic import Field, RootModel, field_validator, model_validator
@@ -46,6 +47,9 @@ class DataRequestConfig(BaseConfigModel):
     def resolve_data_location(cls, v: str) -> str:
         """Fully resolve the data_location path, expanding user home directories
         and converting relative paths to absolute paths."""
+        parsed = urlparse(v)
+        if parsed.scheme and v.startswith(f"{parsed.scheme}://"):
+            return v
         return str(Path(v).expanduser().resolve())
 
     @model_validator(mode="after")
