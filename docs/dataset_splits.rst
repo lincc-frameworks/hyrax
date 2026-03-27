@@ -14,9 +14,10 @@ By default input datasets are split into train (60%), test (20%), and validate (
 :doc:`verb </verbs>` uses the train split to train and validate splits to create a validation loss
 statistic every training epoch. The test split is explicitly left out of training.
 
-The size of these splits can be configured in the ``[data_set]`` section of the configuration using the 
+The size of these splits can be configured in the ``[data_set]`` section of the configuration using the
 ``train_size``, ``validate_size``, and ``test_size`` configuration keys. The value is either a number of data points
-or a ratio of the dataset, where 1.0 represents the entire dataset. For example:
+or a ratio of the dataset, where 1.0 represents the entire dataset. If you are new to editing runtime config
+values, the primer in :doc:`configuration` is a useful companion. For example:
 
 .. tab-set::
 

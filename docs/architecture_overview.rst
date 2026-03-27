@@ -13,6 +13,8 @@ Notebook, CLI, or Both
 Hyrax is designed to be used in a Jupyter notebook or from the command line without
 modification. This supports exploration and development in a familiar notebook environment
 and deployment to an HPC or Slurm system for large scale training.
+For end-to-end examples that show this in practice, see :doc:`getting_started`
+and :doc:`science_examples`.
 
 .. tab-set::
 

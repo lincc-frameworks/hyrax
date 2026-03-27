@@ -104,7 +104,8 @@ https://www.cs.toronto.edu/~kriz/cifar.html
 
 This may appear overwhelming, especially for a simple case, but being explicit
 about the dataset configuration will allow for great flexibility down the line
-when working with more complex data.
+when working with more complex data. For the full contract of dataset classes and
+required ``get_*`` methods, see :doc:`dataset_class_reference`.
 
 Training the model
 ~~~~~~~~~~~~~~~~~~

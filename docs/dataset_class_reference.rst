@@ -41,6 +41,9 @@ If ``fields`` is ``["flux", "label", "object_id"]``, Hyrax will call:
 * ``get_label(idx)``
 * ``get_object_id(idx)``
 
+For a broader discussion of how dataset outputs move through ``collate`` and
+``prepare_inputs`` before reaching the model, see :doc:`data_flow`.
+
 
 Required methods (checklist)
 ----------------------------

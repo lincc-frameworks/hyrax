@@ -106,6 +106,8 @@ and attempting to do so in code will raise an exception.
 
 By making the configuration immutable during execution, we ensure that the state
 of all parameters can be accurately saved with the results of the action.
+This runtime snapshot is especially helpful when comparing runs in
+:doc:`model_comparison`.
 
 
 About the default configuration
