@@ -10,9 +10,9 @@ investigator.
 
 Splits in training
 ------------------
-By default input datasets are split into train (60%), test (20%), and validate (20%). The ``train`` verb uses 
-the train split to train and validate splits to create a validation loss statistic every training epoch. The 
-test split is explicitly left out of training.
+By default input datasets are split into train (60%), test (20%), and validate (20%). The ``train``
+:doc:`verb </verbs>` uses the train split to train and validate splits to create a validation loss
+statistic every training epoch. The test split is explicitly left out of training.
 
 The size of these splits can be configured in the ``[data_set]`` section of the configuration using the 
 ``train_size``, ``validate_size``, and ``test_size`` configuration keys. The value is either a number of data points
@@ -54,7 +54,7 @@ It is recommended that all three are provided; however, zeroing some out can cre
 Splits in inference
 -------------------
 
-By default the ``infer`` verb uses the entire dataset for inference; however any of the splits can be used by 
+By default the ``infer`` :doc:`verb </verbs>` uses the entire dataset for inference; however any of the splits can be used by
 specifying the ``[infer]`` ``split`` config value. Valid values are any of the three splits. For example, to 
 infer on only the test split:
 

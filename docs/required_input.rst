@@ -19,6 +19,8 @@ Define the model
 At its core, Hyrax is a framework for training and running machine learning models.
 To do this, a user must provide the model that Hyrax will use for training or inference.
 There is no reasonable default, so the user must provide Hyrax with a model.
+The :doc:`model class reference </model_class_reference>` details the full interface
+your model must implement.
 
 Check out the :ref:`Getting Started tutorial <getting_started_specify_model>` for
 an example of specifying a built-in model for training.
@@ -28,7 +30,8 @@ Define the data
 -----------------
 Hyrax needs to know what data to provide to the model during training or inference.
 To do this, a user must specify a dataset class that Hyrax can use to load data
-samples.
+samples. The :doc:`dataset class reference </dataset_class_reference>` describes the
+methods your dataset must provide.
 
 Check out the :ref:`Getting Started tutorial <getting_started_specify_data>` for
 an example of specifying a built-in dataset for training.
@@ -54,9 +57,11 @@ returning it.
 
 The user may then want to quickly experiment with the model by first providing
 only the "science" array as input, and later adding in the "variance" array as well.
-By defining a custom `prepare_inputs` function, the user can easily modify how the
+By defining a custom ``prepare_inputs`` function, the user can easily modify how the
 data is prepared for the model without needing to modify either the dataset or
-the model code.
+the model code. See :doc:`/data_flow` for the complete pipeline and the
+:doc:`custom prepare_inputs notebook </notebooks/custom_prepare_inputs>` for runnable
+examples.
 
 .. note::
    The older function name ``to_tensor`` is deprecated but still supported for backward compatibility. Please use ``prepare_inputs`` in new code.

@@ -3,7 +3,8 @@ Configuration
 
 Hyrax ships with a complete default configuration file that can be used immediately
 to run the software, however, to make the most of Hyrax you'll need to modify
-the configuration to suit your specific needs.
+the configuration to suit your specific needs. For a deeper look at how configuration
+files are layered and resolved, see :doc:`/configuration_system`.
 
 
 Using the configuration system
@@ -142,6 +143,7 @@ to the different actions that Hyrax can take.
 For instance, the ``[train]`` table contains parameters needed when training a
 model such as ``epochs`` and ``weights_filename``.
 While the ``[infer]`` table contains keys such as ``model_weights_file``.
+See :doc:`/verbs` for the full list of actions these tables correspond to.
 
 
 .. _complete_default_config:
