@@ -5,10 +5,6 @@ Example notebooks
     :maxdepth: 1
 
     Getting started with Hyrax <pre_executed/train_model>
-    Writing a custom dataset <pre_executed/custom_dataset>
-    Providing data 1 <pre_executed/model_input_1>
-    Providing data 2 <pre_executed/model_input_2>
-    Providing data 3 <pre_executed/model_input_3>
     Build a dataset class in a notebook <pre_executed/external_dataset_class>
     Build a model class in a notebook <pre_executed/external_model_class>
     Training to Similarity Search <pre_executed/hsc_train_to_similarity_search>
