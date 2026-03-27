@@ -9,7 +9,7 @@ SPHINXBUILD   ?= sphinx-build
 SOURCEDIR     = .
 BUILDDIR      = ../_readthedocs/
 
-.PHONY: help clean Makefile no-nb no-notebooks
+.PHONY: help clean Makefile no-nb no-notebooks preview
 
 # Put it first so that "make" without argument is like "make help".
 help:
@@ -29,4 +29,7 @@ clean:
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+preview:
+	open $(BUILDDIR)/html/index.html
 
