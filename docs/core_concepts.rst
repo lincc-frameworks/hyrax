@@ -12,4 +12,5 @@ to apply these concepts in tutorial notebooks in the Common workflows section.
 
    Required inputs <required_input>
    Configuration system <configuration_system>
+   Hyrax verbs <verbs>
    Data flow in Hyrax <data_flow>
