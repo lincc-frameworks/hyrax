@@ -53,10 +53,10 @@ instance of this class.
 
    h = Hyrax()
 
-When we create the Hyrax instance, it will automatically load a default configuration
-file. This file contains default settings for all of the components that Hyrax uses.
-For a deeper explanation of how defaults and overrides are merged, see
-:doc:`configuration_system`.
+When we create the Hyrax instance, it will automatically load a
+:ref:`default configuration file <complete_default_config>`. This file contains
+default settings for all of the components that Hyrax uses.
+See :doc:`/configuration_system` for details on how configuration is resolved.
 
 .. _getting_started_specify_model:
 
@@ -112,7 +112,7 @@ Training the model
 ~~~~~~~~~~~~~~~~~~
 
 Now that we have the model and data specified, we're ready for training.
-We'll use the ``train`` verb to kick off the training process.
+We'll use the ``train`` :doc:`verb </verbs>` to kick off the training process.
 
 .. code-block:: python
 
@@ -151,9 +151,8 @@ inference.
 
    h.set_config("data_request", data_request_definition)
 
-Then we'll use Hyrax's ``infer`` verb to load the trained model weights and process
-the data defined above.
-For additional details on ``infer`` behavior, see :doc:`verbs`.
+Then we'll use Hyrax's ``infer`` :doc:`verb </verbs>` to load the trained model weights
+and process the data defined above.
 
 .. code-block:: python
 

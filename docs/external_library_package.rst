@@ -13,7 +13,7 @@ If you want a working example package, see
 Goal
 ----
 
-Start from classes that already work in a notebook, then:
+Start from classes that already work in a notebook (the :doc:`dataset class reference </dataset_class_reference>` and :doc:`model class reference </model_class_reference>` cover the required interfaces), then:
 
 1. put them into a package directory,
 2. install that package locally,
@@ -136,7 +136,8 @@ Step 6: keep package-specific config values in ``default_config.toml``
 -------------------------------------------------------------------------
 
 A beginner-friendly pattern is to ship defaults in your package and let users
-change only what they need.
+change only what they need. Hyrax merges these with its own defaults using the
+layered :doc:`configuration system </configuration_system>`.
 
 Create ``src/my_hyrax_library/default_config.toml``:
 
