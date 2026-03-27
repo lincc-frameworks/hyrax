@@ -35,7 +35,7 @@ The MLFlow server can be run from within a notebook or from the command line.
         .. code-block:: python
 
            # Start the MLFlow UI server
-           backend_store_uri = f"file://{Path(f.config['general']['results_dir']).resolve() / 'mlflow'}"
+           backend_store_uri = f"file://{Path(h.config['general']['results_dir']).resolve() / 'mlflow'}"
            mlflow_ui_process = subprocess.Popen(
                ["mlflow", "ui", "--backend-store-uri", backend_store_uri, "--port", "8080"],
                stdout=subprocess.PIPE,

@@ -11,7 +11,6 @@ Reference
     Dataset splits <dataset_splits>
 
 
-Frequently Asked Questions
---------------------------
-
-TBD
+.. Frequently Asked Questions
+   --------------------------
+   (Planned — contributions welcome.)
