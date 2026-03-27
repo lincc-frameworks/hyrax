@@ -70,6 +70,7 @@ from .result_dataset import ResultDataset, ResultDatasetWriter
 from .result_factories import create_results_writer, load_results_dataset
 from .dataset_registry import HyraxDataset
 from .hyrax_csv_dataset import HyraxCSVDataset
+from .mmu_dataset import MultimodalUniverseDataset
 from .data_cache import DataCache
 
 __all__ = [
@@ -87,5 +88,6 @@ __all__ = [
     "HyraxRandomDataset",
     "HyraxRandomDatasetBase",
     "HyraxCSVDataset",
+    "MultimodalUniverseDataset",
     "DataCache",
 ]

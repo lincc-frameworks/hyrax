@@ -361,6 +361,17 @@ number_invalid_values = 0
 # "nan", "inf", "-inf", "none" or a float value.
 invalid_value_type = "nan"
 
+[data_set.MultimodalUniverseDataset]
+# Hugging Face split name to load (for example: "train", "validation", or "test").
+split = "train"
+
+# Maximum number of rows to load from the split. Set to false for no explicit limit.
+max_samples = false
+
+# Stream rows from Hugging Face instead of downloading full files.
+# If true, `max_samples` must be set.
+streaming = false
+
 
 [data_loader]
 # The number of data points to load at once.
