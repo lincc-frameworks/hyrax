@@ -161,7 +161,7 @@ Hyrax discovers components through three registries:
 ### MODEL_REGISTRY (`src/hyrax/models/model_registry.py`)
 - Decorator: `@hyrax_model`
 - Models must inherit from `torch.nn.Module` and implement `__init__`, `forward`,
-  `train_step`, and `prepare_inputs`.
+  `train_batch`, and `prepare_inputs`.
 - The decorator wires up save/load, optimizer, and criterion handling.
 - Built-in: `HyraxAutoencoder`, `HyraxAutoencoderV2`, `HyraxCNN`, `SimCLR`, `ImageDCAE`, `HSCAutoencoder`, `HSCDCAE`, `HyraxLoopback`
 - **External plugins supported** — use a fully qualified import path in the config
@@ -169,7 +169,8 @@ Hyrax discovers components through three registries:
 
 ### DATASET_REGISTRY (`src/hyrax/datasets/dataset_registry.py`)
 - Registration: automatic via `HyraxDataset.__init_subclass__`
-- Built-in: `HyraxCifarDataset`, `HSCDataset`, `LSSTDataset`, `FitsImageDataset`
+- Built-in: `HyraxCifarDataset`, `HSCDataset`, `LSSTDataset`, `DownloadedLSSTDataset`, `FitsImageDataset`, `HyraxRandomDataset`, `HyraxCSVDataset`
+- Utility/result classes: `ResultDataset`, `InferenceDataset`
 - **External plugins supported** — same import-path mechanism as models.
 
 ### VERB_REGISTRY (`src/hyrax/verbs/verb_registry.py`)

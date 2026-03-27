@@ -32,7 +32,7 @@ Primary interface is Jupyter notebooks; the `hyrax` CLI is secondary (HPC/Slurm)
 ### New Model
 1. Create a file in `src/hyrax/models/`.
 2. Inherit from `torch.nn.Module`, decorate the class with `@hyrax_model`.
-3. Implement `__init__`, `forward`, `train_step`, and `prepare_inputs`.
+3. Implement `__init__`, `forward`, `train_batch`, and `prepare_inputs`.
 4. Add default config under `[model.YourModelName]` in `hyrax_default_config.toml`.
 5. Add tests in `tests/hyrax/test_<name>.py`.
 
