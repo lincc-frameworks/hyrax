@@ -12,7 +12,7 @@ pages in order:
 
 .. tip::
 
-     Start with ``Installation`` and ``Hyrax Hello World`` for the core onboarding path.
+     Start with ``Installation`` and ``Hyrax Hello World`` are the core onboarding path.
      The astronomy pages are follow-on examples that apply the same workflow in
      domain-specific settings.
 
