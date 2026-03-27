@@ -7,12 +7,15 @@ Hyrax defines a set of commands, called verbs, that are the primary mode of inte
 Verbs are meant to be intuitive and easy to remember. For instance, to train a model,
 you would use the ``train`` verb.
 To use a trained model for inference, you would use the ``infer`` verb.
+If you want the full verb-by-verb behavior, see :doc:`verbs`.
 
 Notebook, CLI, or Both
 --------------------------------
 Hyrax is designed to be used in a Jupyter notebook or from the command line without
 modification. This supports exploration and development in a familiar notebook environment
 and deployment to an HPC or Slurm system for large scale training.
+For end-to-end examples that show this workflow in practice, see :doc:`getting_started`
+and :doc:`science_examples`.
 
 .. tab-set::
 

@@ -55,6 +55,8 @@ instance of this class.
 
 When we create the Hyrax instance, it will automatically load a default configuration
 file. This file contains default settings for all of the components that Hyrax uses.
+For a deeper explanation of how defaults and overrides are merged, see
+:doc:`configuration_system`.
 
 .. _getting_started_specify_model:
 
@@ -103,6 +105,8 @@ https://www.cs.toronto.edu/~kriz/cifar.html
 This may appear overwhelming, especially for a simple case, but being explicit
 about the dataset configuration will allow for great flexibility down the line
 when working with more complex data.
+For the full contract of dataset classes and required ``get_*`` methods, see
+:doc:`dataset_class_reference`.
 
 Training the model
 ~~~~~~~~~~~~~~~~~~
@@ -149,6 +153,7 @@ inference.
 
 Then we'll use Hyrax's ``infer`` verb to load the trained model weights and process
 the data defined above.
+For additional details on ``infer`` behavior, see :doc:`verbs`.
 
 .. code-block:: python
 

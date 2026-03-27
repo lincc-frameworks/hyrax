@@ -10,6 +10,8 @@ The basic flow for using Hyrax in your machine learning project is to:
 The pages below walk you through making custom dataset and model classes for your data in your project
 as well as how to distribute working datasets and models via a python package which can be used by 
 your collaborators.
+If you are deciding what to implement first, see :doc:`required_input` for the
+minimum pieces Hyrax needs from users.
 
 .. toctree::
    :maxdepth: 1

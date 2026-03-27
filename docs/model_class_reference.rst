@@ -39,6 +39,9 @@ Your class must have these:
 
 4. Set ``model.name`` to full class path in config.
 
+If you are packaging your model outside the core repository, see
+:doc:`external_library_package` for import-path and packaging patterns.
+
 
 Method-by-method guide
 ----------------------
@@ -130,6 +133,8 @@ Example:
 
 If you do not define this method, Hyrax uses a default expecting
 ``data_dict["data"]["image"]`` and optional ``data_dict["data"]["label"]``.
+For a conceptual description of where this step lives in the runtime pipeline, see
+:doc:`data_flow`.
 
 
 ``infer_batch(self, batch)``
@@ -180,6 +185,7 @@ Important details:
 * Hyrax treats **lower ``loss`` as better** for best-checkpoint selection.
 * Any extra metrics you return (like ``acc``) are logged to TensorBoard and MLflow.
   See :doc:`/notebooks/using_tensorboard_and_mlflow`.
+  For documentation on comparing runs across experiments, see :doc:`model_comparison`.
 
 
 Optional methods

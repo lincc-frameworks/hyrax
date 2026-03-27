@@ -15,6 +15,8 @@ If no configuration file is specified, :ref:`the default<complete_default_config
 will be used. To specify a different configuration file, use the
 ``-c | --runtime-config`` flag from the CLI
 or pass the path to the configuration file when creating a ``Hyrax`` object.
+For a deeper explanation of how config values are inherited across base, package,
+and user-defined TOML files, see :doc:`configuration_system`.
 
 .. tab-set::
 
@@ -105,6 +107,8 @@ and attempting to do so in code will raise an exception.
 
 By making the configuration immutable during execution, we ensure that the state
 of all parameters can be accurately saved with the results of the action.
+This runtime snapshot is especially helpful when comparing runs in
+:doc:`model_comparison`.
 
 
 About the default configuration
@@ -142,6 +146,7 @@ to the different actions that Hyrax can take.
 For instance, the ``[train]`` table contains parameters needed when training a
 model such as ``epochs`` and ``weights_filename``.
 While the ``[infer]`` table contains keys such as ``model_weights_file``.
+For details on how these actions are invoked, see :doc:`verbs`.
 
 
 .. _complete_default_config:

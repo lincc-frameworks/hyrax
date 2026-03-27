@@ -3,6 +3,8 @@ External package setup
 
 This page shows the minimum steps to turn notebook classes into a local Python
 package that Hyrax can import.
+For the class-level requirements before packaging, see
+:doc:`dataset_class_reference` and :doc:`model_class_reference`.
 
 If you want a working example package, see
 `external_hyrax_example <https://github.com/lincc-frameworks/external_hyrax_example>`_.
@@ -99,6 +101,9 @@ Required config keys:
 * ``model.name``
 * ``data_request.<group>.<friendly_name>.dataset_class``
 * ``primary_id_field`` for each dataset definition
+
+These keys participate in the broader config merge process described in
+:doc:`configuration_system`.
 
 Copy-paste example:
 

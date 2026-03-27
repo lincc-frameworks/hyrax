@@ -10,6 +10,7 @@ Each of the builtin verbs are detailed here.
 Train a model. The specific model to train and the data used for training is
 specified in the configuration file or by updating the default configurations
 after creating an instance of the Hyrax object.
+For details on configuration inheritance and overrides, see :doc:`configuration_system`.
 
 When called from a notebook or python, ``train()`` returns a trained pytorch
 model which you can :doc:`immediately evaluate, inspect, or export </pre_executed/export_model>`. Batch evaluations of datasets
@@ -42,6 +43,8 @@ Run inference using a trained model. The specific model to use for inference can
 be specified in the configuration file. If no model is specified, Hyrax will find
 the most recently trained model in the results directory and use that for inference.
 The data used for inference is also specified in the configuration file.
+If you need to run inference on a specific train/validate/test subset, see
+:doc:`dataset_splits`.
 
 .. tab-set::
 
@@ -72,6 +75,7 @@ the ``[]`` operators in python.
 Run UMAP (`Uniform Manifold Approximation and Projection`_) on the
 output of inference or a dataset. By default, Hyrax will use the most
 recently generated output from the ``infer`` verb.
+For a full notebook walkthrough of this flow, see :doc:`pre_executed/using_umap`.
 
 .. _`Uniform Manifold Approximation and Projection`: https://umap-learn.readthedocs.io
 
@@ -135,6 +139,8 @@ Builds a vector database index from the output of inference. By default, Hyrax
 will use the most recently generated output from the ``infer`` verb, and will
 write the resulting database to a new timestamped directory under the default
 ``./results/`` directory with the form <timestamp>-index-<uid>.
+See :doc:`pre_executed/vector_db_demo` for an end-to-end example that continues
+from inference into similarity search.
 
 An existing database directory can be specified in order to add more vectors to
 an existing index.
