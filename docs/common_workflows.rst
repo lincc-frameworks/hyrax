@@ -16,4 +16,5 @@ Common workflows
    Checkpointing <pre_executed/hyrax_checkpointing>
    Loading pretrained weights <pre_executed/load_pretrained_model>
    Hyperparameter tuning <pre_executed/hyperparameter_tuning_examples>
+   Custom training metrics <notebooks/custom_training_metrics>
    Dataset custom collation <notebooks/custom_dataset_collation>
