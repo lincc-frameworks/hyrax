@@ -16,5 +16,5 @@ Common workflows
    Checkpointing <pre_executed/hyrax_checkpointing>
    Loading pretrained weights <pre_executed/load_pretrained_model>
    Hyperparameter tuning <pre_executed/hyperparameter_tuning_examples>
-   Using UMAP <notebooks/using_umap>
+   Using UMAP <pre_executed/using_umap>
    Dataset custom collation <notebooks/custom_dataset_collation>
