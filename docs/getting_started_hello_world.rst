@@ -51,8 +51,7 @@ configuration file containing baseline settings for the components Hyrax uses.
 In this example, we will update configuration values directly in Python with
 ``h.set_config(...)``, but configuration can also be supplied in an external
 TOML file with entries such as ``model.name = "HyraxCNN"``. You can read more
-about this in the :doc:`configuration system <configuration_system>`
-documentation.
+about this in the :doc:`configuration system <configuration_system>`.
 
 .. _getting_started_specify_model:
 
