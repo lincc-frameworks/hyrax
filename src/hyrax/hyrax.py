@@ -190,15 +190,6 @@ class Hyrax:
         downloader = Downloader(config=_config_copy)
         return downloader.run(**kwargs)
 
-    def prepare(self, **kwargs):
-        """
-        See Hyrax.prepare.run()
-        """
-        from .prepare import run
-
-        _config_copy = deepcopy(self.config)
-        return run(config=_config_copy, **kwargs)
-
     def rebuild_manifest(self, **kwargs):
         """
         See Hyrax.rebuild_manifest.run()
