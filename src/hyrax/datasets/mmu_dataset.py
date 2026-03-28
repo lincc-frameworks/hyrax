@@ -58,18 +58,13 @@ class MultimodalUniverseDataset(HyraxDataset):
             )
 
         self.data_location = str(data_location)
-        self.dataset_settings = (
+        dataset_settings = (
             config.get("data_set", {}).get("MultimodalUniverseDataset", {}) if config is not None else {}
         )
 
-        self.split = self.dataset_settings.get("split", "train")
-        max_samples_raw = self.dataset_settings.get("max_samples", None)
-        # TOML uses `false` as a sentinel for "not set"; treat it as None.
-        if max_samples_raw is False or max_samples_raw is None:
-            self.max_samples = None
-        else:
-            self.max_samples = int(max_samples_raw)
-        self.streaming = self.dataset_settings.get("streaming", False)
+        self.split = dataset_settings["split"]
+        self.max_samples = int(dataset_settings["max_samples"]) if dataset_settings["max_samples"] else None
+        self.streaming = dataset_settings["streaming"]
 
         dataset_source = self._normalize_data_location(self.data_location)
         self.dataset = self._load_dataset(dataset_source)
