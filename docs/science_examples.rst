@@ -30,7 +30,7 @@ scientific interpretation.
        :link: pre_executed/supervised_lightcurve_transients
        :link-type: doc
 
-       :bdg-primary:`PLAsTiCC` :bdg-secondary:`Supervised` :bdg-info:`Transients`
+       :bdg-primary:`PLAsTiCC` :bdg-secondary:`Supervised` :bdg-success:`Transients`
 
        A supervised classification workflow on multi-band light curves from the
        PLAsTiCC dataset. This notebook defines a custom dataset and a custom 1-D
