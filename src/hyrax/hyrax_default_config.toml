@@ -366,7 +366,7 @@ invalid_value_type = "nan"
 split = "train"
 
 # Maximum number of rows to load from the split. Set to false for no explicit limit.
-max_samples = 1000
+max_samples = 100
 
 # Stream rows from Hugging Face instead of downloading full files.
 # If true, `max_samples` must be set.

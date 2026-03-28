@@ -87,6 +87,7 @@ class MultimodalUniverseDataset(HyraxDataset):
             ) from err
 
         dataset = load_dataset(dataset_source, split=self.split, streaming=self.streaming)
+        dataset = dataset.with_format("numpy")
 
         if self.streaming:
             if self.max_samples is None:
@@ -133,7 +134,17 @@ class MultimodalUniverseDataset(HyraxDataset):
     def _register_getters(self) -> None:
         def _make_getter(source_name):
             def getter(self, idx, _source_name=source_name):
-                return self.dataset[idx][_source_name]
+                from PIL.Image import Image
+                import numpy as np
+
+                retval = self.dataset[idx][_source_name]
+                
+                # Some fields in MMU are PIL images. 
+                # Hyrax only acepts numpy arrays
+                if isinstance(retval, Image):
+                    retval = np.asarray(retval)
+                
+                return retval
 
             return getter
 
@@ -145,8 +156,8 @@ class MultimodalUniverseDataset(HyraxDataset):
     def __len__(self) -> int:
         return len(self.dataset)
 
-    def __getitem__(self, idx: int) -> dict[str, Any]:
-        return self.dataset[idx]
+    # def __getitem__(self, idx: int) -> dict[str, Any]:
+    #     return self.dataset[idx]
 
-    def sample_data(self) -> dict[str, dict[str, Any]]:
-        return {"data": self.dataset[0]}
+    # def sample_data(self) -> dict[str, dict[str, Any]]:
+    #     return {"data": self.dataset[0]}

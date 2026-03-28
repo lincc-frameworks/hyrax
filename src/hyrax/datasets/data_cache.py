@@ -183,11 +183,25 @@ class DataCache:
                 # We haven't seen the base object. Add it to seen, and assume for the view we're
                 # examining now that the whole base object is necessary
                 #
-                # We don't recurse here because .nbytes and getsizeof() work across numpy and torch
-                # and we want to keep torch objects *out* of the cache, but we don't mind numpy objects
-                # who's memory is actually owned by torch.
+                # We don't recurse here because .nbytes and getsizeof() work the same way 
+                # across numpy and torch. While we want to keep torch objects *out* of the cache, 
+                # we don't mind numpy objects who's memory is actually owned by torch due to how they
+                # were constructed.
                 seen.add(id(data.base))
-                total_data_size += data.base.nbytes + getsizeof(data.base)
+                
+                # Sometimes a numpy object is created from a not numpy/torch shaped thing so data.base
+                # doesn't follow the numpy/torch convention of getsizeof(obj) = bookeeping overhead
+                # real memory size elsewhere. 
+                # 
+                # Fall back to assuming to only getsize(obj) is the whole picture of the base object when 
+                # this happens.
+                #
+                # For example: a numpy object created from a PIL Image has a bytestring as data.base which
+                # comes from the PIL Image's .tobytes() method. In this case getsizeof(data.base) works fine 
+                # on its own to get the size contribution of the base object.
+                base_nbytes = data.base.nbytes if hasattr(data.base, 'nbytes') else 0
+
+                total_data_size += base_nbytes + getsizeof(data.base)
             else:
                 # Is a view - with a base we've seen before, just add overhead
                 total_data_size += getsizeof(data)
