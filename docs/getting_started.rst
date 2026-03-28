@@ -8,7 +8,7 @@ pages in order:
 #. :doc:`Installation <getting_started_installation>`
 #. :doc:`Hyrax Hello World <getting_started_hello_world>`
 #. :doc:`Astronomy Unsupervised <pre_executed/unsupervised_image_extragalactic>`
-#. :doc:`Astronomy Supervised <pre_executed/supervised_lightcurve_transients>`
+#. :doc:`Astronomy Supervised <pre_executed/supervised_lightcurve_transients_gs>`
 
 .. tip::
 
@@ -22,4 +22,4 @@ pages in order:
    Installation <getting_started_installation>
    Hyrax Hello World <getting_started_hello_world>
    Astronomy Unsupervised <pre_executed/unsupervised_image_extragalactic>
-   Astronomy Supervised <pre_executed/supervised_lightcurve_transients>
+   Astronomy Supervised <pre_executed/supervised_lightcurve_transients_gs>
