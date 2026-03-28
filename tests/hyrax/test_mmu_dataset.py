@@ -55,7 +55,11 @@ def test_mmu_dataset_uses_hf_uri_and_max_samples(monkeypatch):
     _install_fake_datasets_module(monkeypatch, fake_load_dataset)
 
     dataset = MultimodalUniverseDataset(
-        config={"data_set": {"MultimodalUniverseDataset": {"split": "train", "max_samples": 2}}},
+        config={
+            "data_set": {
+                "MultimodalUniverseDataset": {"split": "train", "max_samples": 2, "streaming": False}
+            }
+        },
         data_location="hf://MultimodalUniverse/galaxy10_decals",
     )
 
@@ -82,7 +86,11 @@ def test_mmu_dataset_enforces_hard_limit_when_split_is_pre_sliced(monkeypatch):
     _install_fake_datasets_module(monkeypatch, fake_load_dataset)
 
     dataset = MultimodalUniverseDataset(
-        config={"data_set": {"MultimodalUniverseDataset": {"split": "train[:100]", "max_samples": 1}}},
+        config={
+            "data_set": {
+                "MultimodalUniverseDataset": {"split": "train[:100]", "max_samples": 1, "streaming": False}
+            }
+        },
         data_location="hf://MultimodalUniverse/plasticc",
     )
 
@@ -101,6 +109,15 @@ def test_mmu_dataset_streaming_requires_max_samples(monkeypatch):
 
     with pytest.raises(ValueError):
         MultimodalUniverseDataset(
-            config={"data_set": {"MultimodalUniverseDataset": {"split": "train", "streaming": True}}},
+            config={
+                "data_set": {
+                    "MultimodalUniverseDataset": {
+                        "split": "train",
+                        # Note that this is the default in the hyrax config for max_samples
+                        "max_samples": False,
+                        "streaming": True,
+                    }
+                }
+            },
             data_location="hf://MultimodalUniverse/plasticc",
         )
