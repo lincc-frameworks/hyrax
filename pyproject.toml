@@ -54,6 +54,7 @@ dependencies = [
     "plotly", # Used in 3d visualization
     "psutil", # Used for memory monitoring
     "tqdm", # Used to show progress bars
+    "datasets", # Used by MultimodalUniverseDataset
     "qdrant-client", # Vector database for similarity search
     "colorama", # Used to color terminal output
     # Pin to before 0.30.0 because version 0.30.0 does not support NaN values anymore
