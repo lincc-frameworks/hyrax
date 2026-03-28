@@ -1,6 +1,8 @@
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from hyrax.datasets.mmu_dataset import MultimodalUniverseDataset
 
 
@@ -14,6 +16,24 @@ class _FakeMapDataset:
     def __len__(self):
         return len(self._rows)
 
+    def with_format(self, fmt):
+        """Mimic HuggingFace Dataset.with_format; just return self for tests."""
+        return self
+
+
+class _FakeIterableDataset:
+    """Fake streaming (iterable) dataset that supports with_format."""
+
+    def __init__(self, rows):
+        self._rows = rows
+
+    def __iter__(self):
+        return iter(self._rows)
+
+    def with_format(self, fmt):
+        """Mimic HuggingFace IterableDataset.with_format; just return self for tests."""
+        return self
+
 
 def _install_fake_datasets_module(monkeypatch, fake_load_dataset):
     fake_module = SimpleNamespace(load_dataset=fake_load_dataset)
@@ -21,6 +41,7 @@ def _install_fake_datasets_module(monkeypatch, fake_load_dataset):
 
 
 def test_mmu_dataset_uses_hf_uri_and_max_samples(monkeypatch):
+    """Test that hf:// URIs are stripped and max_samples limits the dataset size."""
     calls = []
     rows = [
         {"object_id": "a1", "image": [1, 2], "label-name": "galaxy"},
@@ -47,6 +68,7 @@ def test_mmu_dataset_uses_hf_uri_and_max_samples(monkeypatch):
 
 
 def test_mmu_dataset_enforces_hard_limit_when_split_is_pre_sliced(monkeypatch):
+    """Test that max_samples enforces an additional hard limit even when split is pre-sliced."""
     calls = []
     rows = [
         {"object_id": "a1", "value": 1},
@@ -70,18 +92,15 @@ def test_mmu_dataset_enforces_hard_limit_when_split_is_pre_sliced(monkeypatch):
 
 
 def test_mmu_dataset_streaming_requires_max_samples(monkeypatch):
+    """Test that streaming=True without max_samples raises a ValueError."""
+
     def fake_load_dataset(path, split, streaming):
-        return iter([{"object_id": "1", "flux": [0.1, 0.2]}])
+        return _FakeIterableDataset([{"object_id": "1", "flux": [0.1, 0.2]}])
 
     _install_fake_datasets_module(monkeypatch, fake_load_dataset)
 
-    try:
+    with pytest.raises(ValueError):
         MultimodalUniverseDataset(
             config={"data_set": {"MultimodalUniverseDataset": {"split": "train", "streaming": True}}},
             data_location="hf://MultimodalUniverse/plasticc",
         )
-        raised = False
-    except ValueError:
-        raised = True
-
-    assert raised

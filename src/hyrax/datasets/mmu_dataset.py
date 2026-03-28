@@ -63,7 +63,12 @@ class MultimodalUniverseDataset(HyraxDataset):
         )
 
         self.split = self.dataset_settings.get("split", "train")
-        self.max_samples = self.dataset_settings.get("max_samples", None)
+        max_samples_raw = self.dataset_settings.get("max_samples", None)
+        # TOML uses `false` as a sentinel for "not set"; treat it as None.
+        if max_samples_raw is False or max_samples_raw is None:
+            self.max_samples = None
+        else:
+            self.max_samples = int(max_samples_raw)
         self.streaming = self.dataset_settings.get("streaming", False)
 
         dataset_source = self._normalize_data_location(self.data_location)
@@ -95,9 +100,9 @@ class MultimodalUniverseDataset(HyraxDataset):
                     "When streaming=True, set data_set.MultimodalUniverseDataset.max_samples "
                     "to avoid iterating through the full dataset."
                 )
-            dataset = list(itertools.islice(dataset, int(self.max_samples)))
+            dataset = list(itertools.islice(dataset, self.max_samples))
         elif self.max_samples is not None:
-            dataset = self._limit_non_streaming_dataset(dataset, int(self.max_samples))
+            dataset = self._limit_non_streaming_dataset(dataset, self.max_samples)
 
         return dataset
 
@@ -134,16 +139,16 @@ class MultimodalUniverseDataset(HyraxDataset):
     def _register_getters(self) -> None:
         def _make_getter(source_name):
             def getter(self, idx, _source_name=source_name):
-                from PIL.Image import Image
                 import numpy as np
+                from PIL.Image import Image
 
                 retval = self.dataset[idx][_source_name]
-                
-                # Some fields in MMU are PIL images. 
+
+                # Some fields in MMU are PIL images.
                 # Hyrax only acepts numpy arrays
                 if isinstance(retval, Image):
                     retval = np.asarray(retval)
-                
+
                 return retval
 
             return getter
