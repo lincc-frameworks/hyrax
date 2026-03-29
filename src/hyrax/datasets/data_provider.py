@@ -228,11 +228,23 @@ class DataProvider:
         # contains the list of indices that this provider should serve.
         self.split_indices = None
 
+        # Join support: populated by _build_join_indices after prepare_datasets.
+        # Maps friendly_name → join_field name for datasets that use joining.
+        self._join_fields: dict[str, str] = {}
+        # Maps friendly_name → {str(join_key): secondary_index}.
+        self._join_maps: dict[str, dict[str, int]] = {}
+        # Ordered list of primary indices that have matches in ALL joined
+        # secondaries (inner join).  None when no joins are configured.
+        self._joined_primary_indices: list[int] | None = None
+
         self.prepare_datasets()
 
         if self.primary_dataset is None or self.primary_dataset_id_field_name is None:
             msg = "No Primary Dataset Defined. Somehow a DataProvider was made without pydantic validation."
             raise RuntimeError(msg)
+
+        if self._join_fields:
+            self._build_join_indices()
 
         self.pull_up_primary_dataset_methods()
 
@@ -283,9 +295,13 @@ class DataProvider:
 
     def __len__(self) -> int:
         """Returns the length of the dataset.
-        If the primary dataset is defined, it will return that length, otherwise
-        it will use the length of the first dataset in ``self.prepped_datasets``.
+
+        When join_field-based joining is active, returns the number of items
+        that matched across all joined datasets (inner join count).
+        Otherwise, returns the length of the primary (or first) dataset.
         """
+        if self._joined_primary_indices is not None:
+            return len(self._joined_primary_indices)
         return len(self._primary_or_first_dataset())
 
     def __repr__(self) -> str:
@@ -303,6 +319,8 @@ class DataProvider:
                     repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
                 if self.primary_dataset_id_field_name:
                     repr_str += f"  Primary ID field: {self.primary_dataset_id_field_name}\n"
+                if friendly_name in self._join_fields:
+                    repr_str += f"  Join field: {self._join_fields[friendly_name]}\n"
                 if "fields" in data:
                     repr_str += f"  Requested fields: {', '.join(data.get('fields', []))}\n"
                 else:
@@ -411,11 +429,83 @@ class DataProvider:
                 self.split_fraction = dataset_definition.get("split_fraction", None)
                 self.primary_data_location = dataset_definition.get("data_location", None)
 
+            # Record join_field for secondary datasets that join by key.
+            if dataset_definition.get("join_field"):
+                self._join_fields[friendly_name] = dataset_definition["join_field"]
+
             # Cache the requested fields for each dataset as a tuple.
             # Tuples are immutable (preventing accidental modification) and can
             # provide slightly faster iteration than lists, which is beneficial
             # for repeated access in `resolve_data`.
             self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
+    def _build_join_indices(self):
+        """Build index mappings for datasets that declare a ``join_field``.
+
+        For each joined secondary dataset, a dict ``{str(key): int(index)}``
+        is built by iterating over all items in that dataset.  Then the set
+        of primary indices whose IDs appear in **every** joined secondary is
+        computed (inner join) and stored in ``_joined_primary_indices``.
+
+        This method is called once during ``__init__`` and is O(N) per
+        dataset.  Runtime lookups in ``resolve_data`` are O(1) dict access.
+        """
+        primary_dataset = self.prepped_datasets[self.primary_dataset]
+        primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
+
+        # Build reverse-index for each joined secondary: key_value → idx
+        for friendly_name, join_field in self._join_fields.items():
+            secondary = self.prepped_datasets[friendly_name]
+            getter = self.dataset_getters[friendly_name].get(join_field)
+            if getter is None:
+                raise RuntimeError(
+                    f"Dataset '{friendly_name}' declares join_field='{join_field}' "
+                    f"but has no 'get_{join_field}' method."
+                )
+
+            reverse_map: dict[str, int] = {}
+            n = len(secondary)
+            for idx in range(n):
+                key = str(getter(idx))
+                if key in reverse_map:
+                    logger.warning(
+                        "Duplicate join key '%s' in dataset '%s' at index %d; "
+                        "earlier occurrence at index %d will be shadowed.",
+                        key,
+                        friendly_name,
+                        idx,
+                        reverse_map[key],
+                    )
+                reverse_map[key] = idx
+            self._join_maps[friendly_name] = reverse_map
+
+        # Compute inner-join: keep only primary indices present in ALL secondaries.
+        valid_primary_indices: list[int] = []
+        n_primary = len(primary_dataset)
+        for idx in range(n_primary):
+            key = str(primary_id_getter(idx))
+            if all(key in jm for jm in self._join_maps.values()):
+                valid_primary_indices.append(idx)
+
+        if not valid_primary_indices:
+            joined_names = ", ".join(self._join_fields.keys())
+            raise RuntimeError(
+                f"Inner join produced zero matching items between the primary "
+                f"dataset '{self.primary_dataset}' and joined datasets "
+                f"[{joined_names}]. Verify that the primary_id_field and "
+                f"join_field values share common keys."
+            )
+
+        n_dropped = n_primary - len(valid_primary_indices)
+        if n_dropped > 0:
+            logger.info(
+                "Dataset join: %d of %d primary items matched across all joined datasets (%d items dropped).",
+                len(valid_primary_indices),
+                n_primary,
+                n_dropped,
+            )
+
+        self._joined_primary_indices = valid_primary_indices
 
     @staticmethod
     def _apply_configurations(base_config: dict, dataset_definition: dict) -> dict:
@@ -552,10 +642,14 @@ class DataProvider:
     def get_object_id(self, idx: int) -> str:
         """Returns the ID at a particular index.
 
+        When joining is active, ``idx`` is a virtual index into the
+        joined subset; it is translated to the real primary index first.
+
         IDs are provided by the primary dataset's primary ID column.
         """
+        real_idx = self._joined_primary_indices[idx] if self._joined_primary_indices is not None else idx
         primary_dataset = self.dataset_getters[self.primary_dataset]
-        primary_dataset_object_id = primary_dataset[self.primary_dataset_id_field_name](idx)
+        primary_dataset_object_id = primary_dataset[self.primary_dataset_id_field_name](real_idx)
         return str(primary_dataset_object_id)
 
     def ids(self) -> list[str]:
@@ -570,6 +664,15 @@ class DataProvider:
 
     def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str]:
         """This method requests the field data from the prepared datasets by index.
+
+        When join_field-based joining is active, ``idx`` is a *virtual* index
+        into the inner-joined subset.  It is translated to each dataset's
+        real index transparently:
+
+        * **Primary dataset** and **non-joined secondaries** receive the real
+          primary index (``_joined_primary_indices[idx]``).
+        * **Joined secondaries** receive the index looked up from their join
+          map using the primary's object ID.
 
         Parameters
         ----------
@@ -591,11 +694,28 @@ class DataProvider:
             tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
             return cached_data
 
+        # Translate virtual index when joining is active.
+        if self._joined_primary_indices is not None:
+            primary_idx = self._joined_primary_indices[idx]
+            # Pre-fetch the primary object ID for join map lookups.
+            primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
+            object_id_str = str(primary_id_getter(primary_idx))
+        else:
+            primary_idx = idx
+            object_id_str = None  # computed lazily below if needed
+
         returned_data: dict[str, dict[str, Any] | str] = {}
 
         for friendly_name, fields in self.requested_fields.items():
             getters = self.dataset_getters[friendly_name]
-            data_dict = {field: getters[field](idx) for field in fields}
+
+            # Determine the real index for this dataset.
+            if friendly_name in self._join_maps:
+                real_idx = self._join_maps[friendly_name][object_id_str]
+            else:
+                real_idx = primary_idx
+
+            data_dict = {field: getters[field](real_idx) for field in fields}
             returned_data[friendly_name] = data_dict
 
         # Because there is machinery in the consuming code that expects an "object_id"
@@ -603,7 +723,11 @@ class DataProvider:
         if self.primary_dataset:
             # If the primary id field wasn't already requested, we fetch it now.
             if self.primary_dataset_id_field_name not in returned_data[self.primary_dataset]:
-                object_id = self.get_object_id(idx)
+                if object_id_str is not None:
+                    object_id = object_id_str
+                else:
+                    primary_getter = self.dataset_getters[self.primary_dataset]
+                    object_id = str(primary_getter[self.primary_dataset_id_field_name](primary_idx))
             else:
                 object_id = returned_data[self.primary_dataset][self.primary_dataset_id_field_name]
 
@@ -672,7 +796,9 @@ class DataProvider:
             ]
 
             if metadata_fields_to_fetch:
-                this_metadata = dataset.metadata(idxs, metadata_fields_to_fetch)
+                # Translate indices for joined or join-filtered datasets.
+                effective_idxs = self._translate_metadata_indices(idxs, friendly_name)
+                this_metadata = dataset.metadata(effective_idxs, metadata_fields_to_fetch)
                 # Append the friendly name to the columns
                 this_metadata.dtype.names = [f"{name}_{friendly_name}" for name in this_metadata.dtype.names]
 
@@ -725,6 +851,27 @@ class DataProvider:
         all_fields.append("object_id")
 
         return all_fields
+
+    def _translate_metadata_indices(self, idxs, friendly_name):
+        """Translate virtual metadata indices to real dataset indices.
+
+        When joining is active, the caller passes *virtual* indices (0-based
+        into the joined subset).  This helper converts them to real indices
+        for the given dataset, respecting join maps.
+        """
+        if self._joined_primary_indices is None:
+            return idxs
+
+        translated = []
+        primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
+        for vi in idxs:
+            primary_idx = self._joined_primary_indices[vi]
+            if friendly_name in self._join_maps:
+                key = str(primary_id_getter(primary_idx))
+                translated.append(self._join_maps[friendly_name][key])
+            else:
+                translated.append(primary_idx)
+        return translated
 
     def _primary_or_first_dataset(self):
         """Returns the primary dataset instance if it exists, otherwise returns
