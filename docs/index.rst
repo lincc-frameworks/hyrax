@@ -158,6 +158,4 @@ First Steps
    Converting to Hyrax <external_libraries>
    Common workflows <common_workflows>
    Science examples <science_examples>
-   Scaling and Deployment <scaling_and_deployment>
-   Sample Jupyter notebooks <notebooks>
    Reference and FAQ <reference_and_faq>

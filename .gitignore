@@ -153,6 +153,7 @@ _html/
 # Default save locations for hyrax
 data/
 results/
+example_results/
 example_model.pth
 
 # Common location to stash personal or notebook example config
