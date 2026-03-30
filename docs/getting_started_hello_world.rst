@@ -70,7 +70,7 @@ from the PyTorch CIFAR10 tutorial.
 In Hyrax terms, specifying the model is one of the :doc:`required inputs <required_input>` for a run.
 
 You do not need to use a built-in model. Hyrax also supports
-:doc:`defining custom models <external_libraries>`.
+:doc:`defining custom models <model_class_reference>`.
 
 
 .. _getting_started_specify_data:
@@ -108,7 +108,7 @@ with more complex data. In Hyrax, the ``data_request`` defines what data each
 stage of the workflow should use.
 
 Hyrax also includes built-in datasets for several astronomy workflows, and
-users can :doc:`define custom dataset classes <external_libraries>` when needed.
+users can :doc:`define custom dataset classes <dataset_class_reference>` when needed.
 
 
 Train the model

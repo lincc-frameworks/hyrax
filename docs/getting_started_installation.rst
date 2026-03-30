@@ -1,45 +1,24 @@
 Installation
 ============
 
-Hyrax can be installed directly from PyPI with ``pip`` or you can install the bleeding edge from GitHub.
+Hyrax can be installed directly from PyPI with ``pip`` or you can install the
+pre-release version from GitHub.
+
+
+.. _install-in-a-virtual-environment:
+
+Install in a virtual environment
+---------------------------------
 
 .. tip::
 
-     For most astronomers, we recommend :ref:`installing in a conda
-     environment <install-in-a-conda-environment>`.
+     Most astronomers use conda to manage environments. If you do not already
+     have conda installed, see the Anaconda documentation for installing
+     `Anaconda <https://www.anaconda.com/docs/getting-started/anaconda/install>`_
+     or `Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/install>`_.
+     Miniconda is the smaller install.
 
-.. warning::
-      If you install the bleeding edge of Hyrax from GitHub, be prepared for
-      sudden breaking changes. Hyrax is still at a pre-1.0 release, so the
-      development version may change quickly. For best results, stay in touch
-      with the Hyrax developers.
-
-
-Install with pip
-----------------
-
-The simplest installation is:
-
-.. code-block:: console
-
-   >> pip install hyrax
-
-Hyrax is officially supported and tested with Python 3.11, 3.12, and 3.13.
-Other versions may work, but are not guaranteed to be compatible.
-
-
-.. _install-in-a-conda-environment:
-
-Install in a conda environment
-------------------------------
-
-If you use conda to manage environments, create and activate a fresh
-environment first, then install Hyrax with ``pip``.
-
-If you do not already have conda installed, see the Anaconda documentation for
-installing `Anaconda <https://www.anaconda.com/docs/getting-started/anaconda/install>`_
-or `Miniconda <https://www.anaconda.com/docs/getting-started/miniconda/install>`_.
-Miniconda is the smaller install. After installing either of these, do:
+Create and activate a fresh environment, then install Hyrax with ``pip``:
 
 .. code-block:: console
 
@@ -50,9 +29,20 @@ Miniconda is the smaller install. After installing either of these, do:
 Using a dedicated environment helps avoid dependency conflicts with other
 Python packages you may already have installed.
 
+.. note::
+
+   Hyrax is officially supported and tested with Python 3.11, 3.12, and 3.13.
+   Other versions may work, but are not guaranteed to be compatible.
+
 
 Install from source
 -------------------
+
+.. warning::
+      If you install the pre-release version of Hyrax from GitHub, be prepared
+      for sudden breaking changes. Hyrax is still at a pre-1.0 release, so the
+      development version may change quickly. For best results, stay in touch
+      with the Hyrax developers.
 
 If you want the latest development version of Hyrax, or if you plan to edit the
 code locally, install from source:
