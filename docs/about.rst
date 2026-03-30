@@ -39,7 +39,7 @@ Guiding principles
   We work closely with scientists to build Hyrax to support their use cases, but
   we learned early on that we can't anticipate all the ways that Hyrax will be used.
   Hyrax is designed to be easily extended to support new models, data sources,
-  and functionality.
+  and functionality (see :doc:`/external_libraries`).
 
 
 Commitment to open science

@@ -2,8 +2,9 @@ The ``Hyrax`` Configuration System
 ==================================
 
 ``hyrax`` makes extensive use of the config variables to manage the runtime environment of training and inference runs. There is a ``hyrax_default_config.toml``  file (full contents listed :ref:`here<complete_default_config>`), included with ``hyrax``, that contains every variable that ``hyrax`` could need to operate. To create a custom configuration file, simply create a ``.toml`` file and change variables as you see fit, or if you’re running with a custom dataset or model, add your own variables.
+For a practical walkthrough that starts from a minimal override file, see :doc:`configuration`.
 
-Config variables are inherited from a hierarchy of sources, similar to ``python`` classes. First, ``hyrax`` will read the variables set in the default configuration. Next, it will load the relevant default config of any custom ``hyrax`` packages that the user is utilizing. It determines what packages to include by checking what custom classes are loaded in initially and looking for the relevant default configs. If a package doesn’t have a default, ``hyrax`` will throw a warning. Finally, it will use whatever variables have been declared in the user defined config toml (see `here <https://hyrax.readthedocs.io/en/latest/notebooks/config_basics.html>`_ for how to load those through a notebook or script). Config variables at each step can overwrite config variables from previous steps which leads to the following priority:
+Config variables are inherited from a hierarchy of sources, similar to ``python`` classes. First, ``hyrax`` will read the variables set in the default configuration. Next, it will load the relevant default config of any custom ``hyrax`` packages that the user is utilizing (see :doc:`/external_library_package` for how to set up package-level defaults). It determines what packages to include by checking what custom classes are loaded in initially and looking for the relevant default configs. If a package doesn’t have a default, ``hyrax`` will throw a warning. Finally, it will use whatever variables have been declared in the user defined config toml (see the :doc:`config basics notebook </notebooks/config_basics>` for how to load those through a notebook or script). Config variables at each step can overwrite config variables from previous steps which leads to the following priority:
 - Variables from a user defined config toml are used
 - Default configs from custom ``hyrax`` packages are used for those variables which the user has not defined
 - The base default config is used for those variables which the user has not defined and don't exist in any packages
@@ -20,9 +21,11 @@ Typed configuration schemas
 ---------------------------
 
 Hyrax uses Pydantic internally to validate the ``[data_request]`` configuration table,
-which describes datasets for training, validation, and inference. This validation helps
-catch configuration errors early by ensuring required fields like ``primary_id_field``
-are present and properly structured.
+which describes datasets for training, validation, and inference (see the
+:doc:`data requests notebook </notebooks/data_requests>` for a hands-on walkthrough).
+This validation helps catch configuration errors early by ensuring required fields
+like ``primary_id_field`` are present and properly structured. The exact field-level
+expectations for datasets are documented in :doc:`dataset_class_reference`.
 
 The validation happens automatically when you load a TOML configuration or use
 ``set_config()``. If there are validation errors, Hyrax will log a warning but continue
