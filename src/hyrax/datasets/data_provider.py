@@ -1,8 +1,12 @@
 import copy
 import functools
+import hashlib
 import logging
+import pickle
 import time
 import warnings
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -94,6 +98,107 @@ def _handle_nan_zero_numpy(batch):
         batch = np.nan_to_num(batch, nan=0.0)
 
     return batch
+
+
+# ---------------------------------------------------------------------------
+# Join-map disk cache helpers
+# ---------------------------------------------------------------------------
+
+_JOIN_CACHE_VERSION = 1
+"""Bump when the cache format changes to invalidate all existing caches."""
+
+
+def _join_cache_fingerprint(dataset_len: int, getter, *, n_probes: int = 8) -> str:
+    """Compute a lightweight fingerprint for a dataset's join-key column.
+
+    The fingerprint incorporates the dataset length and a small number of
+    deterministically sampled key values.  If any of these change, the
+    fingerprint changes and the cache is considered stale.
+
+    Parameters
+    ----------
+    dataset_len : int
+        Number of items in the dataset.
+    getter : callable
+        The ``get_<join_field>`` method; called with integer indices.
+    n_probes : int
+        How many key values to sample.  Kept small so the cost is negligible.
+    """
+    h = hashlib.sha256()
+    h.update(str(dataset_len).encode())
+    h.update(str(_JOIN_CACHE_VERSION).encode())
+
+    if dataset_len == 0:
+        return h.hexdigest()
+
+    # Deterministic, spread-out probe indices.
+    step = max(1, dataset_len // n_probes)
+    for i in range(0, dataset_len, step):
+        h.update(str(getter(i)).encode())
+    # Always include the last element.
+    h.update(str(getter(dataset_len - 1)).encode())
+
+    return h.hexdigest()
+
+
+def _join_cache_path(data_location: str | None, fingerprint: str) -> Path | None:
+    """Return the path where a join cache file would live, or ``None`` if
+    caching is not possible (e.g. no ``data_location``)."""
+    if not data_location:
+        return None
+    parent = Path(data_location).resolve().parent
+    if not parent.is_dir():
+        return None
+    return parent / f".hyrax_join_cache_{fingerprint}.pkl"
+
+
+def _load_join_cache(
+    data_location: str | None,
+    dataset_len: int,
+    getter,
+) -> dict[str, int] | None:
+    """Attempt to load a cached reverse-index map from disk.
+
+    Returns ``None`` on any cache miss (file absent, fingerprint mismatch,
+    corrupt data, permission error, etc.).
+    """
+    try:
+        fp = _join_cache_fingerprint(dataset_len, getter)
+        path = _join_cache_path(data_location, fp)
+        if path is None or not path.exists():
+            return None
+        with path.open("rb") as fh:
+            data = pickle.load(fh)  # noqa: S301
+        if not isinstance(data, dict):
+            return None
+        # Sanity check: the number of keys should match dataset_len at most.
+        if len(data) > dataset_len:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _save_join_cache(
+    data_location: str | None,
+    dataset_len: int,
+    getter,
+    reverse_map: dict[str, int],
+) -> None:
+    """Persist a reverse-index map to disk.  Failures are silently ignored
+    (caching is best-effort)."""
+    try:
+        fp = _join_cache_fingerprint(dataset_len, getter)
+        path = _join_cache_path(data_location, fp)
+        if path is None:
+            return
+        tmp_path = path.with_suffix(".tmp")
+        with tmp_path.open("wb") as fh:
+            pickle.dump(reverse_map, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp_path.rename(path)
+        logger.debug("Join cache written to %s", path)
+    except Exception:
+        logger.debug("Failed to write join cache for %s", data_location, exc_info=True)
 
 
 def generate_data_request_from_config(config):
@@ -447,21 +552,43 @@ class DataProvider:
         of primary indices whose IDs appear in **every** joined secondary is
         computed (inner join) and stored in ``_joined_primary_indices``.
 
-        This method is called once during ``__init__`` and is O(N) per
-        dataset.  Runtime lookups in ``resolve_data`` are O(1) dict access.
+        **Optimizations:**
+
+        * Reverse maps for independent secondaries are built in parallel
+          using threads (I/O-bound getter calls release the GIL in many
+          cases, e.g. memory-mapped reads).
+        * Built maps are persisted to a cache file next to the dataset's
+          ``data_location``.  On subsequent runs a fingerprint check
+          determines whether the cache is still valid, avoiding the O(N)
+          rebuild.
+
+        This method is called once during ``__init__``.  Runtime lookups in
+        ``resolve_data`` remain O(1) dict access.
         """
         primary_dataset = self.prepped_datasets[self.primary_dataset]
         primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
 
-        # Build reverse-index for each joined secondary: key_value → idx
+        # Validate that all join_field getters exist before launching threads.
         for friendly_name, join_field in self._join_fields.items():
-            secondary = self.prepped_datasets[friendly_name]
             getter = self.dataset_getters[friendly_name].get(join_field)
             if getter is None:
                 raise RuntimeError(
                     f"Dataset '{friendly_name}' declares join_field='{join_field}' "
                     f"but has no 'get_{join_field}' method."
                 )
+
+        # Build reverse maps — one per joined secondary, in parallel.
+        def _build_one_map(friendly_name: str) -> tuple[str, dict[str, int]]:
+            join_field = self._join_fields[friendly_name]
+            secondary = self.prepped_datasets[friendly_name]
+            getter = self.dataset_getters[friendly_name][join_field]
+            data_location = self.data_request[friendly_name].get("data_location")
+
+            # Try loading from persistent cache first.
+            cached = _load_join_cache(data_location, len(secondary), getter)
+            if cached is not None:
+                logger.info("Join map for '%s' loaded from cache.", friendly_name)
+                return friendly_name, cached
 
             reverse_map: dict[str, int] = {}
             n = len(secondary)
@@ -477,7 +604,21 @@ class DataProvider:
                         reverse_map[key],
                     )
                 reverse_map[key] = idx
-            self._join_maps[friendly_name] = reverse_map
+
+            # Persist for future runs.
+            _save_join_cache(data_location, len(secondary), getter, reverse_map)
+
+            return friendly_name, reverse_map
+
+        names = list(self._join_fields.keys())
+        if len(names) == 1:
+            # Skip thread overhead for the single-secondary case.
+            fname, rmap = _build_one_map(names[0])
+            self._join_maps[fname] = rmap
+        else:
+            with ThreadPoolExecutor(max_workers=len(names)) as pool:
+                for fname, rmap in pool.map(_build_one_map, names):
+                    self._join_maps[fname] = rmap
 
         # Compute inner-join: keep only primary indices present in ALL secondaries.
         valid_primary_indices: list[int] = []

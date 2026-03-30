@@ -1143,3 +1143,128 @@ def test_no_join_field_preserves_existing_behavior(data_provider):
     assert "random_0" in sample
     assert "random_1" in sample
     assert "object_id" in sample
+
+
+def test_join_cache_roundtrip(tmp_path):
+    """Verify that join maps are persisted and reloaded from disk."""
+    from hyrax.datasets.data_provider import _load_join_cache, _save_join_cache
+
+    ids = ["X", "Y", "Z"]
+
+    def getter(idx):
+        return ids[idx]
+
+    reverse_map = {str(k): i for i, k in enumerate(ids)}
+
+    # Save to tmp_path (which exists as a directory).
+    data_location = str(tmp_path / "fake_data.csv")
+
+    _save_join_cache(data_location, len(ids), getter, reverse_map)
+
+    # Reload should succeed and return the same map.
+    loaded = _load_join_cache(data_location, len(ids), getter)
+    assert loaded is not None
+    assert loaded == reverse_map
+
+
+def test_join_cache_invalidated_on_length_change(tmp_path):
+    """Cache is invalidated when the dataset length changes."""
+    from hyrax.datasets.data_provider import _load_join_cache, _save_join_cache
+
+    ids = ["A", "B", "C"]
+
+    def getter(idx):
+        return ids[idx]
+
+    reverse_map = {"A": 0, "B": 1, "C": 2}
+    data_location = str(tmp_path / "data.csv")
+
+    _save_join_cache(data_location, 3, getter, reverse_map)
+
+    # Attempting to load with a different length should miss.
+    loaded = _load_join_cache(data_location, 4, getter)
+    assert loaded is None
+
+
+def test_join_cache_invalidated_on_key_change(tmp_path):
+    """Cache is invalidated when sampled key values change."""
+    from hyrax.datasets.data_provider import _load_join_cache, _save_join_cache
+
+    ids_v1 = ["A", "B", "C"]
+    ids_v2 = ["A", "B", "D"]  # last key changed
+
+    def getter_v1(idx):
+        return ids_v1[idx]
+
+    def getter_v2(idx):
+        return ids_v2[idx]
+
+    reverse_map = {"A": 0, "B": 1, "C": 2}
+    data_location = str(tmp_path / "data.csv")
+
+    _save_join_cache(data_location, 3, getter_v1, reverse_map)
+
+    # Load with changed keys should miss.
+    loaded = _load_join_cache(data_location, 3, getter_v2)
+    assert loaded is None
+
+
+def test_join_parallel_build():
+    """Join maps for multiple secondaries are built (potentially in parallel)."""
+    from hyrax import Hyrax
+
+    class PrimaryMulti(_JoinableDataset):
+        def __init__(self, config, data_location):
+            super().__init__(config, data_location, ids=["A", "B", "C"], values=[1, 2, 3])
+
+    class SecondaryMultiA(_JoinableDataset):
+        def __init__(self, config, data_location):
+            super().__init__(config, data_location, ids=["C", "B", "A"], values=[30, 20, 10])
+
+    class SecondaryMultiB(_JoinableDataset):
+        def __init__(self, config, data_location):
+            super().__init__(config, data_location, ids=["A", "C"], values=[100, 300])
+
+    h = Hyrax()
+    request = {
+        "primary": {
+            "dataset_class": "PrimaryMulti",
+            "data_location": "./mem",
+            "fields": ["object_id", "value"],
+            "primary_id_field": "object_id",
+        },
+        "sec_a": {
+            "dataset_class": "SecondaryMultiA",
+            "data_location": "./mem_a",
+            "fields": ["value"],
+            "join_field": "object_id",
+        },
+        "sec_b": {
+            "dataset_class": "SecondaryMultiB",
+            "data_location": "./mem_b",
+            "fields": ["value"],
+            "join_field": "object_id",
+        },
+    }
+
+    h.config["data_request"] = {"train": request}
+    dp = DataProvider(h.config, request)
+
+    # Inner join: only A and C are in all three
+    assert len(dp) == 2
+    ids_seen = {dp.get_object_id(i) for i in range(len(dp))}
+    assert ids_seen == {"A", "C"}
+
+    # Verify correct pairing
+    for i in range(len(dp)):
+        sample = dp[i]
+        oid = sample["object_id"]
+        if oid == "A":
+            assert sample["primary"]["value"] == 1
+            assert sample["sec_a"]["value"] == 10
+            assert sample["sec_b"]["value"] == 100
+        else:
+            assert oid == "C"
+            assert sample["primary"]["value"] == 3
+            assert sample["sec_a"]["value"] == 30
+            assert sample["sec_b"]["value"] == 300
