@@ -5,13 +5,14 @@ Model comparison
 
 One goal of Hyrax is to make model evaluation easier. Many tools exist for visualization
 and evaluation of models. Hyrax integrates with TensorBoard and MLFlow to provide
-easy access to these tools.
+easy access to these tools. For a hands-on walkthrough, see the
+:doc:`TensorBoard and MLflow notebook </notebooks/using_tensorboard_and_mlflow>`.
 
 TensorBoard
 -----------
 
 Hyrax automatically logs training, validation and gpu metrics (when available) to
-TensorBoard while training a model.
+TensorBoard while training a model (see also :doc:`custom training metrics </notebooks/custom_training_metrics>`).
 This allows for easy visualization of the training process.
 
 For more information about TensorBoard see the

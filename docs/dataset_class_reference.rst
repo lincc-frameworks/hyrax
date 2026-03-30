@@ -18,8 +18,9 @@ Hyrax creates your class like this:
 
 Then, for each object index, Hyrax calls methods named ``get_*``.
 
-The fields Hyrax asks for come from ``data_request``. Here is a full minimal
-example for training:
+The fields Hyrax asks for come from ``data_request`` (see the
+:doc:`data requests notebook </notebooks/data_requests>` for how to define one).
+Here is a full minimal example for training:
 
 .. code-block:: python
 
@@ -39,6 +40,9 @@ If ``fields`` is ``["flux", "label", "object_id"]``, Hyrax will call:
 * ``get_flux(idx)``
 * ``get_label(idx)``
 * ``get_object_id(idx)``
+
+For a broader discussion of how dataset outputs move through ``collate`` and
+``prepare_inputs`` before reaching the model, see :doc:`data_flow`.
 
 
 Required methods (checklist)
@@ -176,7 +180,9 @@ Optional methods
 ``collate(self, samples)``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Write this only when default batching is not enough.
+Write this only when default batching is not enough. See the
+:doc:`custom collation notebook </notebooks/custom_dataset_collation>` for a runnable
+walkthrough.
 
 A common astronomy case is variable-length light curves. The example below pads
 all light curves to the longest one in the batch and returns a mask where:
