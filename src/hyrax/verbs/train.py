@@ -15,6 +15,7 @@ class Train(Verb):
 
     cli_name = "train"
     add_parser_kwargs = {}
+    description = "Train a model using provided data. Full help: hyrax train --help."
 
     # Dataset groups that the Train verb knows about.
     # REQUIRED_DATA_GROUPS must be present in the dataset dict returned by setup_dataset.

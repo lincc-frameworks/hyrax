@@ -12,6 +12,7 @@ class Model(Verb):
 
     cli_name = "model"
     add_parser_kwargs = {}
+    description = "Return a refernece to the model class (not a new instance)."
 
     @staticmethod
     def setup_parser(parser):

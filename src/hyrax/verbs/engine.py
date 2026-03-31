@@ -11,6 +11,7 @@ class Engine(Verb):
 
     cli_name = "engine"
     add_parser_kwargs = {}
+    description = "Run inference with an ONNX model."
 
     @staticmethod
     def setup_parser(parser):

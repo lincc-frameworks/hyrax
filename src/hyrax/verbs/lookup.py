@@ -16,6 +16,7 @@ class Lookup(Verb):
 
     cli_name = "lookup"
     add_parser_kwargs = {}
+    description = "Look up an inference result using the ID of a data member."
 
     @staticmethod
     def setup_parser(parser: ArgumentParser):

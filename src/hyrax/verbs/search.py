@@ -12,6 +12,7 @@ class Search(Verb):
 
     cli_name = "search"
     add_parser_kwargs = {}
+    description = "Search for... todo"
 
     @staticmethod
     def setup_parser(parser: ArgumentParser):

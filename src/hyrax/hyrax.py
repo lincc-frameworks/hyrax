@@ -1,8 +1,14 @@
+import importlib
+import inspect
 import logging
+import os
 import sys
 from copy import deepcopy
+from glob import glob
 from pathlib import Path
 from typing import Union
+
+from hyrax.verbs.verb_registry import Verb
 
 
 class Hyrax:
@@ -237,6 +243,22 @@ class Hyrax:
         from .datasets.dataset_registry import DATASET_REGISTRY
 
         return sorted(DATASET_REGISTRY.keys())
+
+    def list_verbs(self):
+        """Return a list of available verbs."""
+        verbs = []
+        verb_paths = os.path.join(os.path.dirname(__file__), "verbs/*.py")
+        for file in glob(verb_paths):
+            class_name = os.path.splitext(os.path.basename(file))[0]
+            if class_name == "__init__":
+                continue
+
+            class_name = "hyrax.verbs." + class_name
+            mod = importlib.import_module(class_name)
+            for _, obj in inspect.getmembers(mod, inspect.isclass):
+                if issubclass(obj, Verb) and obj is not Verb:
+                    verbs.append(obj.information())
+        return verbs
 
     # Python notebook interface to class verbs
     # we need both __dir__ and __getattr__ so that the

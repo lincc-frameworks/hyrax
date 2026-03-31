@@ -15,6 +15,7 @@ class DatabaseConnection(Verb):
 
     cli_name = "database_connection"
     add_parser_kwargs = {}
+    description = "Create a connection to the vector database for interactive queries."
 
     @staticmethod
     def setup_parser(parser: ArgumentParser):

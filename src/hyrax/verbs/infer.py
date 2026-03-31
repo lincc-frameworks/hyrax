@@ -13,6 +13,7 @@ class Infer(Verb):
 
     cli_name = "infer"
     add_parser_kwargs = {}
+    description = "Run inference on a model using a dataset."
 
     # Dataset groups that the Infer verb knows about.
     REQUIRED_DATA_GROUPS = ("infer",)
