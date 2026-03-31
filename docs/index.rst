@@ -5,18 +5,24 @@
    :align: center
    :width: 85%
 
-With current and upcoming large astronomical surveys producing data at  unprecedented scale, the limiting  
-factor for ML-driven discovery is increasingly not the data itself, but the  infrastructure required to work 
-with it. Astronomers routinely spend a significant amount of their time on data wrangling, configuration 
-management, and bespoke pipeline engineering — effort that comes directly at the expense of science; and is 
-often not reusable by other research groups/teams resulting in duplicated effort.
-
 .. admonition:: What is Hyrax?
 
    Hyrax is an extensible GPU-enabled framework that provides infrastructure for the full ML lifecycle in
    astronomy: from data acquisition and training to inference and experiment comparison, with capabilities
    including multimodal dataset support, integrated vector databases for similarity search,
    and interactive 2D/3D latent-space exploration for unsupervised discovery.
+
+-------
+
+
+Why Hyrax?
+----------
+
+With current and upcoming large astronomical surveys producing data at  unprecedented scale, the limiting  
+factor for ML-driven discovery is increasingly not the data itself, but the  infrastructure required to work 
+with it. Astronomers routinely spend a significant amount of their time on data wrangling, configuration 
+management, and bespoke pipeline engineering — effort that comes directly at the expense of science; and is 
+often not reusable by other research groups/teams resulting in duplicated effort.
 
 
 .. figure:: _static/design_proposition.png
@@ -155,9 +161,7 @@ First Steps
 
    Getting started <getting_started>
    Core concepts <core_concepts>
-   Hyrax verbs <verbs>
+   Converting to Hyrax <external_libraries>
    Common workflows <common_workflows>
    Science examples <science_examples>
-   Scaling and Deployment <scaling_and_deployment>
-   Sample Jupyter notebooks <notebooks>
    Reference and FAQ <reference_and_faq>
