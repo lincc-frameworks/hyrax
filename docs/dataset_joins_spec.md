@@ -13,7 +13,7 @@ or pipelines.
 ## Goal
 
 Allow datasets within a `DataProvider` group to be joined by a shared key
-(analogous to a SQL inner join) instead of requiring positional alignment.
+(analogous to a SQL left outer join) instead of requiring positional alignment.
 The implementation must:
 
 1. **Not introduce substantial runtime overhead** — per-item access must stay
@@ -55,11 +55,27 @@ fields = ["redshift", "magnitude"]
 
 ### Join semantics
 
-- **Inner join**: only primary items whose key exists in **every** joined
-  secondary dataset are included. Items missing from any secondary are
-  dropped.
-- The effective dataset length becomes the size of this intersection.
-- Joined items appear in the **same relative order as the primary dataset**.
+- **Left outer join**: all primary items are preserved regardless of whether
+  they have a match in joined secondary datasets.
+- When a primary item has no match in a joined secondary, `resolve_data`
+  returns `None` for that secondary's friendly name.
+- The effective dataset length is always the primary dataset length.
+- Joined items appear in the **same order as the primary dataset**.
+
+### Collation with missing data
+
+During `collate`, `None` entries from unmatched secondaries are handled as
+follows:
+
+- Matched items are aggregated normally into per-field lists.
+- Unmatched items (`None`) are skipped during aggregation (not appended to
+  field lists).
+- A boolean mask `<friendly_name>__matched` is added to the collated batch
+  dict for any secondary that has at least one unmatched item. The mask has
+  length equal to the batch size, with `True` for matched items and `False`
+  for unmatched ones.
+- Downstream consumers use the `__matched` mask to distinguish real data
+  (including real NaN values) from join misses.
 
 ### Index structures
 
@@ -69,42 +85,55 @@ At `DataProvider.__init__` time, after all datasets are instantiated:
    `{str(key_value): int(secondary_index)}`. This is a single pass over the
    secondary dataset — O(N) time and O(N) memory.
 
-2. **Joined primary indices** are computed: the ordered list of primary
-   indices whose keys appear in all secondary reverse maps. This is O(M)
-   where M is the primary dataset length.
-
-3. At runtime, `resolve_data(virtual_idx)` translates:
-   - `virtual_idx` → `primary_idx` via `_joined_primary_indices[virtual_idx]`
-   - `primary_idx` → `object_id` via the primary dataset's ID getter
+2. At runtime, `resolve_data(idx)` translates:
+   - `idx` → `object_id` via the primary dataset's ID getter
    - `object_id` → `secondary_idx` via the reverse-index map (O(1) dict
      lookup)
+   - If the lookup returns `None`, the secondary has no match for this item.
+
+### Multithreaded index building
+
+Reverse maps for independent secondaries are built in parallel using
+`concurrent.futures.ThreadPoolExecutor`. Each secondary's map is independent,
+so there are no synchronization concerns. This reduces init time when
+multiple large secondary datasets are joined.
+
+### Persistent index cache
+
+Reverse maps are serialized to disk as pickle files alongside the dataset's
+`data_location`. A content-based fingerprint (SHA-256 of dataset length +
+sampled keys) detects staleness and triggers a rebuild. This avoids the O(N)
+init cost on repeated runs with the same data.
+
+Cache files follow the naming pattern `.hyrax_join_cache_<friendly_name>.pkl`
+and are excluded from version control via `.gitignore`.
 
 ### Affected methods
 
-| Method           | Without joins (unchanged) | With joins                                   |
-|------------------|---------------------------|----------------------------------------------|
-| `__len__`        | `len(primary_dataset)`    | `len(_joined_primary_indices)`               |
-| `__getitem__`    | passes `idx` to all       | translates per-dataset via join maps          |
-| `resolve_data`   | same `idx` everywhere     | virtual → primary → per-secondary translation |
-| `get_object_id`  | direct primary lookup     | translates virtual → primary first            |
-| `ids`            | iterates `range(len)`     | works via `get_object_id` (transparent)       |
-| `metadata`       | passes `idxs` directly    | translates per-dataset                        |
-| `collate`        | unchanged                 | unchanged (operates on resolved dicts)        |
+| Method           | Without joins (unchanged) | With joins                                     |
+|------------------|---------------------------|------------------------------------------------|
+| `__len__`        | `len(primary_dataset)`    | `len(primary_dataset)` (unchanged)             |
+| `__getitem__`    | passes `idx` to all       | translates per-dataset via join maps            |
+| `resolve_data`   | same `idx` everywhere     | primary idx → object_id → per-secondary lookup |
+| `get_object_id`  | direct primary lookup     | direct primary lookup (unchanged)              |
+| `ids`            | iterates `range(len)`     | works via `get_object_id` (transparent)         |
+| `metadata`       | passes `idxs` directly    | translates per-dataset; unmatched items omitted |
+| `collate`        | unchanged                 | skips None entries, adds `__matched` mask       |
 
 ### Error handling
 
-- **Empty intersection**: raises `RuntimeError` at init with a message
-  identifying the primary and secondary datasets involved.
 - **Duplicate keys in secondary**: the last occurrence wins; a warning is
   logged identifying both indices.
 - **Missing `get_<join_field>` method**: raises `RuntimeError` at init.
+- **Zero overlap**: allowed without error or warning. All primary items are
+  preserved; every secondary entry will be `None`.
 
 ### Integration with split_fraction
 
-When joins are active, `__len__` returns the joined count. The existing
-`split_fraction` machinery in `setup_dataset` / `create_splits_from_fractions`
-operates on `range(len(provider))` — these are virtual indices that get
-translated inside `resolve_data`. No changes to the split logic are needed.
+The existing `split_fraction` machinery in `setup_dataset` /
+`create_splits_from_fractions` operates on `range(len(provider))`. Since
+`__len__` always returns the primary dataset length (regardless of joins),
+split behavior is identical to the non-join case.
 
 ## Performance characteristics
 
@@ -116,21 +145,7 @@ translated inside `resolve_data`. No changes to the split logic are needed.
 
 ### Optimization opportunities (not yet implemented)
 
-1. **Multithreaded index building**: For very large datasets (100M+ items),
-   building reverse maps could be parallelized across secondary datasets
-   using `concurrent.futures.ThreadPoolExecutor`. Each secondary's map is
-   independent, so there are no synchronization concerns. The primary-index
-   filtering step is sequential but fast (single pass with dict lookups).
-   This is worth implementing if profiling shows init time is a bottleneck.
-
-2. **Persistent index cache**: Reverse maps could be serialized to disk
-   (e.g., as a pickle or SQLite file alongside the dataset) and reloaded on
-   subsequent runs. A content-based fingerprint (e.g., hash of dataset
-   length + first/last/sampled keys + file modification time) would detect
-   staleness and trigger a rebuild. This avoids the O(N) init cost on
-   repeated runs with the same data.
-
-3. **Bulk ID retrieval**: Datasets could optionally expose a
+1. **Bulk ID retrieval**: Datasets could optionally expose a
    `get_all_<field>()` method that returns all values at once (e.g., from a
    catalog column), avoiding per-item Python call overhead during map
    construction.
@@ -141,6 +156,8 @@ translated inside `resolve_data`. No changes to the split logic are needed.
   `DataRequestConfig`, mutual-exclusivity validator
 - `src/hyrax/datasets/data_provider.py` — `_build_join_indices`,
   updated `resolve_data`, `__len__`, `get_object_id`, `metadata`,
-  `_translate_metadata_indices`
-- `tests/hyrax/test_data_provider.py` — 8 tests covering matching,
-  filtering, ordering, error cases, collation, and backward compatibility
+  `_translate_metadata_indices`, `collate`
+- `tests/hyrax/test_data_provider.py` — tests covering matching,
+  left outer join semantics, collation with `__matched` mask,
+  ordering, error cases, and backward compatibility
+- `.gitignore` — exclude `.hyrax_join_cache_*.pkl` files

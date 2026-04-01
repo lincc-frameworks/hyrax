@@ -1044,8 +1044,8 @@ def test_join_basic_matching():
     assert pairs["C"] == (30, 300)
 
 
-def test_join_inner_join_filters():
-    """Only IDs present in both datasets survive the inner join."""
+def test_join_left_outer_none_for_missing():
+    """Unmatched primary items get None for the joined secondary (left outer join)."""
     dp = _make_join_provider(
         primary_ids=["A", "B", "C", "D"],
         primary_vals=[1, 2, 3, 4],
@@ -1053,15 +1053,24 @@ def test_join_inner_join_filters():
         secondary_vals=[20, 40, 50],
     )
 
-    # Only B and D match
-    assert len(dp) == 2
+    # All primary items are present.
+    assert len(dp) == 4
 
     ids_seen = {dp.get_object_id(i) for i in range(len(dp))}
-    assert ids_seen == {"B", "D"}
+    assert ids_seen == {"A", "B", "C", "D"}
+
+    # B and D have secondary data; A and C are None.
+    sample_a = dp[0]
+    assert sample_a["object_id"] == "A"
+    assert sample_a["secondary"] is None
+
+    sample_b = dp[1]
+    assert sample_b["object_id"] == "B"
+    assert sample_b["secondary"]["value"] == 20
 
 
 def test_join_preserves_primary_order():
-    """Joined items appear in the same relative order as the primary dataset."""
+    """All primary items appear in their original order."""
     dp = _make_join_provider(
         primary_ids=["X", "Y", "Z", "W"],
         primary_vals=[1, 2, 3, 4],
@@ -1069,13 +1078,22 @@ def test_join_preserves_primary_order():
         secondary_vals=[30, 10],
     )
 
-    assert len(dp) == 2
+    assert len(dp) == 4
     assert dp.get_object_id(0) == "X"
-    assert dp.get_object_id(1) == "Z"
+    assert dp.get_object_id(1) == "Y"
+    assert dp.get_object_id(2) == "Z"
+    assert dp.get_object_id(3) == "W"
+
+    # Y and W have no match
+    assert dp[1]["secondary"] is None
+    assert dp[3]["secondary"] is None
+    # X and Z have matches
+    assert dp[0]["secondary"]["value"] == 10
+    assert dp[2]["secondary"]["value"] == 30
 
 
 def test_join_ids_method():
-    """DataProvider.ids() returns only joined IDs."""
+    """DataProvider.ids() returns ALL primary IDs (left outer join)."""
     dp = _make_join_provider(
         primary_ids=["A", "B", "C"],
         primary_vals=[1, 2, 3],
@@ -1083,22 +1101,25 @@ def test_join_ids_method():
         secondary_vals=[20, 30],
     )
 
-    assert dp.ids() == ["B", "C"]
+    assert dp.ids() == ["A", "B", "C"]
 
 
-def test_join_empty_intersection_raises():
-    """An empty inner join should raise a clear error."""
-    with pytest.raises(RuntimeError, match="zero matching items"):
-        _make_join_provider(
-            primary_ids=["A", "B"],
-            primary_vals=[1, 2],
-            secondary_ids=["C", "D"],
-            secondary_vals=[3, 4],
-        )
+def test_join_zero_overlap_allowed():
+    """Zero overlap between primary and secondary is allowed (all None)."""
+    dp = _make_join_provider(
+        primary_ids=["A", "B"],
+        primary_vals=[1, 2],
+        secondary_ids=["C", "D"],
+        secondary_vals=[3, 4],
+    )
+
+    assert len(dp) == 2
+    assert dp[0]["secondary"] is None
+    assert dp[1]["secondary"] is None
 
 
 def test_join_collate():
-    """Collation works correctly with joined datasets."""
+    """Collation works correctly with fully-matched joined datasets."""
     import numpy as np
 
     dp = _make_join_provider(
@@ -1116,6 +1137,40 @@ def test_join_collate():
     assert "object_id" in collated
     assert isinstance(collated["object_id"], np.ndarray)
     assert len(collated["object_id"]) == 2
+    # No __matched mask when all items match
+    assert "secondary__matched" not in collated
+
+
+def test_join_collate_with_missing():
+    """Collation adds __matched mask and passes through None for unmatched items."""
+    import numpy as np
+
+    dp = _make_join_provider(
+        primary_ids=["A", "B", "C"],
+        primary_vals=[1, 2, 3],
+        secondary_ids=["B"],
+        secondary_vals=[20],
+    )
+
+    batch = [dp[i] for i in range(len(dp))]
+    collated = dp.collate(batch)
+
+    # Primary is always fully present
+    assert "primary" in collated
+    assert len(collated["primary"]["value"]) == 3
+
+    # Secondary should NOT have collated data for all 3 — only the 1 match
+    # was aggregated.  The __matched mask tells the consumer which positions
+    # have real data.
+    assert "secondary__matched" in collated
+    mask = collated["secondary__matched"]
+    assert isinstance(mask, np.ndarray)
+    assert mask.dtype == bool
+    assert list(mask) == [False, True, False]
+
+    # The secondary dict should only contain the 1 matched item.
+    assert "secondary" in collated
+    assert len(collated["secondary"]["value"]) == 1
 
 
 def test_join_field_mutually_exclusive_with_primary_id_field():
@@ -1135,7 +1190,6 @@ def test_no_join_field_preserves_existing_behavior(data_provider):
     """When no join_field is set, DataProvider behaves exactly as before."""
     dp = data_provider
 
-    assert dp._joined_primary_indices is None
     assert dp._join_maps == {}
 
     # Verify normal index-aligned access works
@@ -1250,12 +1304,9 @@ def test_join_parallel_build():
     h.config["data_request"] = {"train": request}
     dp = DataProvider(h.config, request)
 
-    # Inner join: only A and C are in all three
-    assert len(dp) == 2
-    ids_seen = {dp.get_object_id(i) for i in range(len(dp))}
-    assert ids_seen == {"A", "C"}
+    # Left outer join: all 3 primary items are present
+    assert len(dp) == 3
 
-    # Verify correct pairing
     for i in range(len(dp)):
         sample = dp[i]
         oid = sample["object_id"]
@@ -1263,6 +1314,10 @@ def test_join_parallel_build():
             assert sample["primary"]["value"] == 1
             assert sample["sec_a"]["value"] == 10
             assert sample["sec_b"]["value"] == 100
+        elif oid == "B":
+            assert sample["primary"]["value"] == 2
+            assert sample["sec_a"]["value"] == 20
+            assert sample["sec_b"] is None  # B not in sec_b
         else:
             assert oid == "C"
             assert sample["primary"]["value"] == 3
