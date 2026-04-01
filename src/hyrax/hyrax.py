@@ -236,19 +236,31 @@ class Hyrax:
         return sorted(DATASET_REGISTRY.keys())
 
     def list_verbs(self):
-        """Return a list of available verbs."""
+        """Return the alphabetically sorted list of available verbs.
+
+        The list shows all classes in the verbs directory which extend the Verb class.
+        Each element is simply the string given by the `information`
+        method for that verb.
+
+        Returns
+        -------
+        list[str]
+            Alphabetically sorted list of each verb along with
+            required arguments, optional arguments, and short description.
+            See `information()` method in verb_registry.py for more details.
+        """
         verbs = []
         verb_paths = os.path.join(os.path.dirname(__file__), "verbs/*.py")
         for file in glob(verb_paths):
             class_name = os.path.splitext(os.path.basename(file))[0]
             if class_name == "__init__":
                 continue
-
             class_name = "hyrax.verbs." + class_name
             mod = importlib.import_module(class_name)
             for _, obj in inspect.getmembers(mod, inspect.isclass):
                 if issubclass(obj, Verb) and obj is not Verb:
                     verbs.append(obj.information())
+        verbs.sort()
         return verbs
 
     # Python notebook interface to class verbs
