@@ -1,10 +1,6 @@
-import importlib
-import inspect
 import logging
-import os
 import sys
 from copy import deepcopy
-from glob import glob
 from pathlib import Path
 from typing import Union
 
@@ -249,17 +245,7 @@ class Hyrax:
             required arguments, optional arguments, and short description.
             See `information()` method in verb_registry.py for more details.
         """
-        verbs = []
-        verb_paths = os.path.join(os.path.dirname(__file__), "verbs/*.py")
-        for file in glob(verb_paths):
-            class_name = os.path.splitext(os.path.basename(file))[0]
-            if class_name == "__init__":
-                continue
-            class_name = "hyrax.verbs." + class_name
-            mod = importlib.import_module(class_name)
-            for _, obj in inspect.getmembers(mod, inspect.isclass):
-                if issubclass(obj, Verb) and obj is not Verb:
-                    verbs.append(obj.information())
+        verbs = [obj.information() for obj in Verb.__subclasses__()]
         verbs.sort()
         return verbs
 

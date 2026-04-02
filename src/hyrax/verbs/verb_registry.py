@@ -39,15 +39,17 @@ class Verb(ABC):  # noqa: B024
         - Optional Data Groups
         - One line description of what this verb does
 
+        If a data group is empty then it will be printed as an empty tuple.
+
         Returns
         -------
         str
-            <name>: Data Groups: <req1>, <req2>, ..., (<opt1>, <opt2>, ...). <Description>
+            <name>: Data Groups: Req. (<req1>, <req2>, ...), Opt. (<opt1>, <opt2>, ...). <Description>
         """
         info = cls.cli_name + ": "
-        required = str(cls.REQUIRED_DATA_GROUPS)[1:-1]
-        optional = str(cls.OPTIONAL_DATA_GROUPS)
-        info = info + "Data groups: " + required + " " + optional + ". " + cls.description
+        required = "Req. " + str(cls.REQUIRED_DATA_GROUPS)
+        optional = "Opt. " + str(cls.OPTIONAL_DATA_GROUPS)
+        info = info + "Data groups: " + required + ", " + optional + ". " + cls.description
         return info
 
     def validate_data_request(self) -> None:
