@@ -28,7 +28,7 @@ Returns the trained ``torch.nn.Module`` in a notebook context.
 
         .. code-block:: bash
 
-           >> hyrax train
+           $ hyrax train
 
 
 ``infer``
@@ -52,7 +52,7 @@ Returns a ``ResultDataset`` in a notebook context.
 
         .. code-block:: bash
 
-           >> hyrax infer
+           $ hyrax infer
 
 
 ``test``
@@ -74,7 +74,7 @@ Returns a ``ResultDataset`` in a notebook context.
 
         .. code-block:: bash
 
-           >> hyrax test
+           $ hyrax test
 
 
 ``umap``
@@ -98,7 +98,7 @@ Returns a ``ResultDataset`` containing the reduced embeddings.
 
         .. code-block:: bash
 
-           >> hyrax umap [-i <path_to_inference_output>]
+           $ hyrax umap [-i <path_to_inference_output>]
 
 
 ``visualize``
@@ -147,31 +147,6 @@ before training.
     ModelClass = h.model()
 
 
-``download``
-------------
-Download survey cutouts (e.g. from HSC) based on a catalog and configuration.
-
-.. note::
-   Notebook-only. Not available from the CLI.
-
-.. code-block:: python
-
-    h.download()
-
-
-``rebuild_manifest``
---------------------
-Rebuild a download manifest file by re-scanning dataset files on disk.
-Currently only applicable to ``HSCDataset``.
-
-.. note::
-   Notebook-only. Not available from the CLI.
-
-.. code-block:: python
-
-    h.rebuild_manifest()
-
-
 ``lookup``
 ----------
 Look up the inference result for a single object by its ID.
@@ -190,7 +165,7 @@ Returns a ``numpy.ndarray`` (the latent vector) or ``None`` if not found.
 
         .. code-block:: bash
 
-           >> hyrax lookup -i <object_id> [-r <results_dir>]
+           $ hyrax lookup -i <object_id> [-r <results_dir>]
 
 
 ``save_to_database``
@@ -213,7 +188,7 @@ end-to-end walkthrough.
 
         .. code-block:: bash
 
-           >> hyrax save_to_database [-i <inference_dir> -o <database_dir>]
+           $ hyrax save_to_database [-i <inference_dir> -o <database_dir>]
 
 
 ``database_connection``
@@ -249,7 +224,7 @@ inference via the ``engine`` verb.
 
         .. code-block:: bash
 
-           >> hyrax to_onnx [--input-model-directory <dir>]
+           $ hyrax to_onnx [--input-model-directory <dir>]
 
 
 ``engine``
@@ -269,4 +244,4 @@ deployments that do not require PyTorch at runtime.
 
         .. code-block:: bash
 
-           >> hyrax engine [--model-directory <dir>]
+           $ hyrax engine [--model-directory <dir>]
