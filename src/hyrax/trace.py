@@ -267,7 +267,7 @@ class TraceResult(TracePrintable):
             for name in dir(model_cls):
                 if callable(getattr(model_cls, name, None)):
                     trace_def = None
-                    if name == "forward":
+                    if name == "forward" or name == "infer_batch":
                         trace_def = TraceDef(
                             disp_name=f"{model_cls.__name__}__{name}",
                             func_name=name,
@@ -372,7 +372,7 @@ class TraceResult(TracePrintable):
         captured_params = {}
         if len(trace_def.params_to_capture) == 0:
             for index, arg in enumerate(args):
-                name = f"arg{index}"
+                name = f"{index:0>3}_call"
                 captured_params[name] = arg
         else:
             for param_name, param_idx in trace_def.params_to_capture.items():
@@ -421,7 +421,7 @@ class TraceResult(TracePrintable):
             disp_name=f"{model.__class__.__name__}_inst_prepare_inputs",
             func_name="prepare_inputs",
             params_to_capture={"batch_dict": 0},
-            result_name="batch_tensor",
+            result_name="batch_ndarray",
             stage_name="prepare_inputs",
         )
         return self.instrument_instance_data_handler(model, prepare_inputs_fn, trace_def)
@@ -435,7 +435,7 @@ class TraceResult(TracePrintable):
             disp_name="saved__prepare_inputs",
             func_name="prepare_inputs",
             params_to_capture={"batch_dict": 0},
-            result_name="batch_tensor",
+            result_name="batch_ndarray",
             stage_name="prepare_inputs",
         )
         return self._make_shim(prepare_inputs_fn, trace_def)
@@ -448,7 +448,7 @@ class TraceResult(TracePrintable):
         trace_def = TraceDef(
             disp_name=f"{friendly_name}__get_{field_name}",
             func_name=f"get_{field_name}",
-            params_to_capture={"index": 0},
+            params_to_capture={"index": 1},
             result_name=field_name,
             stage_name="dataset_getter",
         )
@@ -477,18 +477,18 @@ class TraceResult(TracePrintable):
         self.instrument_instance_data_handler(
             dataprovider,
             dataprovider.resolve_data,
-            TraceDef("DataProvider__resolve_data", "resolve_data", {"index": 0}, "data_dict", "resolve_data"),
+            TraceDef("DataProvider__resolve_data", "resolve_data", {"index": 1}, "data_dict", "resolve_data"),
         )
         self.instrument_instance_data_handler(
             dataprovider,
             dataprovider.collate,
-            TraceDef("DataProvider__collate", "collate", {"batch_dicts": 0}, "batch_dict", "collate"),
+            TraceDef("DataProvider__collate", "collate", {"batch_dicts": 1}, "batch_dict", "collate"),
         )
         self.instrument_instance_data_handler(
             dataprovider,
             dataprovider.handle_nans,
             TraceDef(
-                "DataProvider__handle_nans", "handle_nans", {"batch_dict": 0}, "batch_dict_no_nan", "collate"
+                "DataProvider__handle_nans", "handle_nans", {"batch_dict": 1}, "batch_dict_no_nan", "collate"
             ),
         )
 
@@ -505,7 +505,7 @@ class TraceResult(TracePrintable):
             TraceDef(
                 "Engine__create_ort_inputs",
                 "create_ort_inputs",
-                {"prepared_batch": 0},
+                {"prepared_batch": 1},
                 "ort_inputs",
                 "evaluation",
             ),
@@ -514,7 +514,7 @@ class TraceResult(TracePrintable):
             engine_verb,
             engine_verb.run_onnx_batch,
             TraceDef(
-                "Engine__run_onnx_batch", "run_onnx_batch", {"ort_inputs": 0}, "onnx_results", "evaluation"
+                "Engine__run_onnx_batch", "run_onnx_batch", {"ort_inputs": 1}, "onnx_results", "evaluation"
             ),
         )
 
