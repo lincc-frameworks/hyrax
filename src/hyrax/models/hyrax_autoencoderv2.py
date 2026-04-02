@@ -36,7 +36,9 @@ class HyraxAutoencoderV2(nn.Module):
         shape = data_sample.shape
         logger.debug(f"Found shape: {shape} in data sample, using this to initialize model.")
 
-        self.num_input_channels, self.image_width, self.image_height = shape
+        # Unpack the shape of the image (batch_size, num_channels, width, height)
+        # we'll ignore the batch_size during initialization.
+        _, self.num_input_channels, self.image_width, self.image_height = shape
 
         self.c_hid = self.config["model"]["HyraxAutoencoderV2"]["base_channel_size"]
         self.latent_dim = self.config["model"]["HyraxAutoencoderV2"]["latent_dim"]

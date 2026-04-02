@@ -4,7 +4,8 @@ from unittest.mock import patch
 import pytest
 
 from hyrax import Hyrax
-from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
+from hyrax.datasets import HyraxDataset
+from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 
 
 def test_generate_data_request_from_config():
@@ -33,7 +34,8 @@ def test_generate_data_request_passes_model_inputs():
                 "data_location": "./data",
                 "primary_id_field": "object_id",
                 "fields": ["image"],
-                "dataset_config": {"shape": [1, 2, 3], "seed": 1},
+                "split_fraction": 1.0,
+                "dataset_config": {"HyraxRandomDataset": {"shape": [1, 2, 3], "seed": 1}},
             }
         }
     }
@@ -193,7 +195,7 @@ def test_validate_request_no_dataset_class(multimodal_config, caplog):
     h = Hyrax()
     c = multimodal_config
     c["train"]["random_0"].pop("dataset_class", None)
-    h.config["model_inputs"] = c
+    h.config["data_request"] = c
     with caplog.at_level("ERROR"):
         with pytest.raises(RuntimeError) as execinfo:
             DataProvider(h.config, c["train"])
@@ -208,7 +210,7 @@ def test_validate_request_unknown_dataset(multimodal_config, caplog):
     h = Hyrax()
     c = multimodal_config
     c["train"]["random_0"]["dataset_class"] = "NoSuchDataset"
-    h.config["model_inputs"] = c
+    h.config["data_request"] = c
     with pytest.raises(ValueError) as execinfo:
         DataProvider(h.config, c["train"])
 
@@ -221,7 +223,7 @@ def test_validate_request_bad_field(multimodal_config, caplog):
     h = Hyrax()
     c = multimodal_config
     c["train"]["random_0"]["fields"] = ["image", "no_such_field"]
-    h.config["model_inputs"] = c
+    h.config["data_request"] = c
     h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
     with caplog.at_level("ERROR"):
         DataProvider(h.config, c["train"])
@@ -236,7 +238,7 @@ def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
     h = Hyrax()
     c = multimodal_config
     c["train"]["random_0"].pop("fields", None)
-    h.config["model_inputs"] = c
+    h.config["data_request"] = c
     h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
 
     # Fake methods to return from `dir`, none of which start with `get_*`.
@@ -257,9 +259,9 @@ def test_apply_configurations(multimodal_config):
 
     h = Hyrax()
     base_config = h.config
-    model_inputs = multimodal_config
+    data_request = multimodal_config
 
-    merged_config = DataProvider._apply_configurations(base_config, model_inputs["train"]["random_0"])
+    merged_config = DataProvider._apply_configurations(base_config, data_request["train"]["random_0"])
 
     assert merged_config["data_set"]["HyraxRandomDataset"]["shape"] == [2, 16, 16]
     assert (
@@ -268,13 +270,149 @@ def test_apply_configurations(multimodal_config):
     )
     assert merged_config["general"] == base_config["general"]
 
-    merged_config = DataProvider._apply_configurations(base_config, model_inputs["train"]["random_1"])
+    merged_config = DataProvider._apply_configurations(base_config, data_request["train"]["random_1"])
 
     assert base_config["data_set"]["HyraxRandomDataset"]["shape"] != [5, 16, 16]
     assert base_config["data_set"]["HyraxRandomDataset"]["seed"] != 4200
     assert merged_config["data_set"]["HyraxRandomDataset"]["shape"] == [5, 16, 16]
     assert merged_config["data_set"]["HyraxRandomDataset"]["seed"] == 4200
     assert merged_config["general"] == base_config["general"]
+
+
+def test_apply_configurations_external_dataset():
+    """Test that _apply_configurations places external (non-registry)
+    dataset_config keys at the top level of the merged config, not
+    under 'data_set'."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "SomeExternalDataset",
+        "data_location": "/path/to/data",
+        "dataset_config": {
+            "external_example": {
+                "ExternalDataset": {
+                    "param1": "value1",
+                    "param2": 42,
+                },
+            },
+        },
+    }
+
+    merged = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    assert "external_example" in merged
+    assert merged["external_example"]["ExternalDataset"]["param1"] == "value1"
+    assert merged["external_example"]["ExternalDataset"]["param2"] == 42
+    # External keys should NOT appear under data_set
+    assert "external_example" not in merged["data_set"]
+    # Unrelated sections should be unchanged
+    assert merged["general"] == base_config["general"]
+
+
+def test_apply_configurations_mixed_builtin_and_external():
+    """Test that _apply_configurations correctly routes built-in keys
+    under 'data_set' and external keys at the top level when both
+    are present in the same dataset_config."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "SomeDataset",
+        "dataset_config": {
+            "HyraxRandomDataset": {
+                "shape": [3, 3, 3],
+            },
+            "ext_lib": {
+                "ExtDS": {
+                    "foo": "bar",
+                },
+            },
+        },
+    }
+
+    merged = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    # Built-in key should be merged under data_set
+    assert merged["data_set"]["HyraxRandomDataset"]["shape"] == [3, 3, 3]
+    # External key should be at top level
+    assert merged["ext_lib"]["ExtDS"]["foo"] == "bar"
+    assert "ext_lib" not in merged["data_set"]
+    assert merged["general"] == base_config["general"]
+
+
+def test_apply_configurations_no_dataset_config():
+    """Test that _apply_configurations returns the base_config unmodified
+    when dataset_definition has no 'dataset_config' key."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "HyraxRandomDataset",
+        "data_location": "/path/to/data",
+    }
+
+    result = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    # The else branch returns base_config directly (identity)
+    assert result is base_config
+
+
+def test_apply_configurations_empty_dataset_config():
+    """Test that _apply_configurations with an empty dataset_config
+    returns a config equivalent to the base."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "HyraxRandomDataset",
+        "dataset_config": {},
+    }
+
+    merged = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    assert merged["data_set"] == base_config["data_set"]
+    assert merged["general"] == base_config["general"]
+
+
+def test_apply_configurations_multiple_builtin_keys():
+    """Test that _apply_configurations preserves all built-in keys
+    when multiple are present in a single dataset_config."""
+
+    from hyrax import Hyrax
+
+    h = Hyrax()
+    base_config = h.config
+
+    dataset_definition = {
+        "dataset_class": "SomeDataset",
+        "dataset_config": {
+            "HyraxRandomDataset": {
+                "shape": [7, 7, 7],
+            },
+            "HyraxCSVDataset": {
+                "some_param": "some_value",
+            },
+        },
+    }
+
+    merged = DataProvider._apply_configurations(base_config, dataset_definition)
+
+    # Both built-in keys should survive under data_set
+    assert merged["data_set"]["HyraxRandomDataset"]["shape"] == [7, 7, 7]
+    assert merged["data_set"]["HyraxCSVDataset"]["some_param"] == "some_value"
 
 
 def test_primary_dataset(multimodal_config):
@@ -288,10 +426,10 @@ def test_primary_dataset(multimodal_config):
     h = Hyrax()
 
     # Base case with `primary_id_field` defined on `random_0`
-    model_inputs = multimodal_config
-    h.config["model_inputs"] = model_inputs
+    data_request = multimodal_config
+    h.config["data_request"] = data_request
 
-    dp = DataProvider(h.config, model_inputs["train"])
+    dp = DataProvider(h.config, data_request["train"])
     dp.prepare_datasets()
 
     assert dp.primary_dataset == "random_0"
@@ -301,18 +439,18 @@ def test_primary_dataset(multimodal_config):
     assert primary_dataset.data_location == "./in_memory_0"
 
     # Secondary case with no `primary_id_field` defined
-    model_inputs["train"]["random_0"].pop("primary_id_field", None)
-    h.config["model_inputs"] = model_inputs
+    data_request["train"]["random_0"].pop("primary_id_field", None)
+    h.config["data_request"] = data_request
 
     with pytest.raises(RuntimeError) as execinfo:
-        dp = DataProvider(h.config, model_inputs["train"])
+        dp = DataProvider(h.config, data_request["train"])
 
     assert "No Primary Dataset Defined" in str(execinfo.value)
     # Tertiary case with `primary_id_field` defined on `random_1`
-    model_inputs["train"]["random_1"]["primary_id_field"] = "object_id"
-    h.config["model_inputs"] = model_inputs
+    data_request["train"]["random_1"]["primary_id_field"] = "object_id"
+    h.config["data_request"] = data_request
 
-    dp = DataProvider(h.config, model_inputs["train"])
+    dp = DataProvider(h.config, data_request["train"])
     dp.prepare_datasets()
 
     assert dp.primary_dataset == "random_1"
@@ -396,7 +534,9 @@ def test_sample_data():
             "data_directory": "./in_memory_0",
             "fields": ["object_id", "image", "label"],
             "dataset_config": {
-                "shape": [2, 16, 16],
+                "HyraxRandomDataset": {
+                    "shape": [2, 16, 16],
+                },
             },
             "primary_id_field": "object_id",
         },
@@ -405,13 +545,15 @@ def test_sample_data():
             "data_directory": "./in_memory_1",
             "fields": ["image"],
             "dataset_config": {
-                "shape": [5, 16, 16],
-                "seed": 4200,
+                "HyraxRandomDataset": {
+                    "shape": [5, 16, 16],
+                    "seed": 4200,
+                },
             },
         },
     }
 
-    h.config["model_inputs"] = multimodal_config
+    h.config["data_request"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config)
     dp.prepare_datasets()
 
@@ -434,6 +576,11 @@ def test_sample_data():
         if friendly_name == "random_0":
             assert "object_id" in dataset_sample
             assert "label" in dataset_sample
+
+    # Verify the dataset_config overrides actually took effect
+    # (default shape is [2, 5, 5] — these should differ)
+    assert sample["random_0"]["image"].shape == (2, 16, 16)
+    assert sample["random_1"]["image"].shape == (5, 16, 16)
 
 
 def test_data_provider_get_item(data_provider):
@@ -566,27 +713,29 @@ def test_primary_id_field_fetched_when_not_in_fields():
 
     # Configure a dataset where primary_id_field is NOT in the fields list
     # This would previously cause a KeyError in resolve_data
-    model_inputs = {
+    data_request = {
         "test_dataset": {
             "dataset_class": "HyraxRandomDataset",
             "data_location": "./test_data",
             "fields": ["image", "label"],  # Note: "object_id" is NOT included
             "primary_id_field": "object_id",  # But this field is set as primary
             "dataset_config": {
-                "shape": [2, 3, 3],
-                "size": 5,
-                "seed": 42,
-                "provided_labels": ["cat", "dog"],
-                "number_invalid_values": 0,
-                "invalid_value_type": "nan",
+                "HyraxRandomDataset": {
+                    "shape": [2, 3, 3],
+                    "size": 5,
+                    "seed": 42,
+                    "provided_labels": ["cat", "dog"],
+                    "number_invalid_values": 0,
+                    "invalid_value_type": "nan",
+                },
             },
         }
     }
 
-    h.config["model_inputs"] = model_inputs
+    h.config["data_request"] = data_request
 
     # Create DataProvider
-    dp = DataProvider(h.config, model_inputs)
+    dp = DataProvider(h.config, data_request)
 
     # Verify the primary_id_field was NOT added to the fields list
     test_dataset_def = dp.data_request["test_dataset"]
@@ -606,6 +755,9 @@ def test_primary_id_field_fetched_when_not_in_fields():
     # object_id should NOT be in dataset data since it wasn't requested in fields
     assert "object_id" not in data["test_dataset"]
 
+    # Verify the dataset_config overrides took effect (default shape is [2, 5, 5])
+    assert data["test_dataset"]["image"].shape == (2, 3, 3)
+
 
 def test_primary_id_field_reused_when_already_in_fields():
     """Test that primary_id_field is reused when already in fields list.
@@ -621,27 +773,29 @@ def test_primary_id_field_reused_when_already_in_fields():
     h = Hyrax()
 
     # Configure a dataset where primary_id_field IS already in the fields list
-    model_inputs = {
+    data_request = {
         "test_dataset": {
             "dataset_class": "HyraxRandomDataset",
             "data_location": "./test_data",
             "fields": ["object_id", "image", "label"],  # object_id already included
             "primary_id_field": "object_id",
             "dataset_config": {
-                "shape": [2, 3, 3],
-                "size": 5,
-                "seed": 42,
-                "provided_labels": ["cat", "dog"],
-                "number_invalid_values": 0,
-                "invalid_value_type": "nan",
+                "HyraxRandomDataset": {
+                    "shape": [2, 3, 3],
+                    "size": 5,
+                    "seed": 42,
+                    "provided_labels": ["cat", "dog"],
+                    "number_invalid_values": 0,
+                    "invalid_value_type": "nan",
+                },
             },
         }
     }
 
-    h.config["model_inputs"] = model_inputs
+    h.config["data_request"] = data_request
 
     # Create DataProvider - should not duplicate object_id in fields
-    dp = DataProvider(h.config, model_inputs)
+    dp = DataProvider(h.config, data_request)
 
     # Verify the fields list is unchanged
     test_dataset_def = dp.data_request["test_dataset"]
@@ -671,6 +825,9 @@ def test_primary_id_field_reused_when_already_in_fields():
 
     # The top-level object_id should match the dataset's object_id (reused value)
     assert data["object_id"] == data["test_dataset"]["object_id"]
+
+    # Verify the dataset_config overrides took effect (default shape is [2, 5, 5])
+    assert data["test_dataset"]["image"].shape == (2, 3, 3)
 
 
 def test_collate_function(data_provider):
@@ -757,3 +914,45 @@ def test_custom_collate_function_applied(custom_collate_data_provider):
 
     # assert that the object_id key is a numpy array
     assert isinstance(collated_batch["object_id"], np.ndarray)
+
+
+def test_object_id_is_string():
+    """Ensure that the object_id field is returned as a string at the top level of
+    the sample, even if the dataset's get_object_id method returns an int. And
+    also ensure that the original integer ID is preserved within the dataset-specific
+    entry."""
+
+    class IntIDDataset(HyraxDataset):
+        """Toy dataset class that returns object_id as an integer."""
+
+        def __init__(self, config, data_location):
+            super().__init__(config)
+
+        def __len__(self):
+            return 1
+
+        def get_object_id(self, idx):
+            """Return the integer object_id for the given index."""
+            return idx
+
+    h = Hyrax()
+    data_request = {
+        "train": {
+            "int_id_dataset": {
+                "dataset_class": "IntIDDataset",
+                "data_location": "./test_data",
+                "fields": ["object_id"],
+                "primary_id_field": "object_id",
+            }
+        }
+    }
+    h.config["data_request"] = data_request
+
+    dp = DataProvider(h.config, data_request["train"])
+    dp.prepare_datasets()
+
+    sample = dp[0]
+    assert "object_id" in sample
+    assert isinstance(sample["object_id"], str)
+    assert sample["object_id"] == "0"
+    assert sample["int_id_dataset"]["object_id"] == 0

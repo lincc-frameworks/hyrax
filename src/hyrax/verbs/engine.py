@@ -58,8 +58,8 @@ class Engine(Verb):
             create_results_dir,
             find_most_recent_results_dir,
         )
-        from hyrax.data_sets.data_provider import DataProvider
-        from hyrax.data_sets.result_factories import create_results_writer
+        from hyrax.datasets.data_provider import DataProvider
+        from hyrax.datasets.result_factories import create_results_writer
         from hyrax.plugin_utils import load_prepare_inputs, load_to_tensor
         from hyrax.pytorch_ignite import setup_dataset
 

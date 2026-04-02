@@ -21,7 +21,7 @@ from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, Sampler
 
-from hyrax.data_sets.data_provider import DataProvider, generate_data_request_from_config
+from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
@@ -120,7 +120,7 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     ----------
     config : dict
         The runtime configuration
-    dataset : Dataset
+    dataset : DataProvider
         The dataset object that will provide data to the model for training or
         inference. Here it is only used to provide a data sample to the model so
         that it can resize itself at runtime if necessary.
@@ -135,26 +135,17 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
 
-    # Pass a single sample of data through the model's prepare_inputs function
-    # ? I don't think that the `if` portion of this logic is used, should double check
-    if isinstance(dataset, dict):
-        # If we have multiple datasets, just take the first one
-        first_dataset = next(iter(dataset.values()))
+    # Grab a single data sample
+    data_sample = dataset.sample_data()
 
-        # TODO: This call creates an inconsistency in the interface to prepare_inputs
-        # prepare_inputs must simultaneously deal with two cases:
-        # 1. A single Datum (e.g. tensor of dim (3,200,200) for a 200x200 3-band image)
-        # 2. A batch of data (e.g. tensor of dim (8,3,200,200) for the same with a batch size of 8)
-        #
-        # Ideally we should make a single one-element batch here, so model writers only have to program
-        # against the #2 interface, but we don't right now.
-        # xcxc file as issue.
-        data_sample = model_cls.prepare_inputs(first_dataset.sample_data())
-    else:
-        data_sample = model_cls.prepare_inputs(dataset.sample_data())
+    # Collate the data sample
+    collated_sample = dataset.collate([data_sample])
 
-    # Provide the data sample for runtime modifications to the model architecture
-    retval = model_cls(config=config, data_sample=data_sample)  # type: ignore[attr-defined]
+    # Prepare the data sample with the model's prepare_inputs function
+    prepared_sample = model_cls.prepare_inputs(collated_sample)
+
+    # Provide the sample for runtime modifications to the model architecture
+    retval = model_cls(config=config, data_sample=prepared_sample)  # type: ignore[attr-defined]
 
     # After model pre-flighting succeeds (presumably) reset the trace so it represents
     # just what the verb does afterward.
@@ -174,7 +165,7 @@ def dist_data_loader(
 
     Parameters
     ----------
-    dataset : hyrax.data_sets.data_set_registry.HyraxDataset
+    dataset : hyrax.datasets.dataset_registry.HyraxDataset
         A Hyrax dataset instance
     config : dict
         Hyrax runtime configuration
@@ -628,6 +619,7 @@ def create_evaluator(
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(evaluator)
 
+    evaluator.hyrax_label = "evaluator"
     return evaluator
 
 
@@ -695,6 +687,7 @@ def create_validator(
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
+    validator.hyrax_label = "validator"
     return validator
 
 
@@ -758,7 +751,74 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
         # Log to tensorboard
         tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
 
+    tester.hyrax_label = "tester"
     return tester
+
+
+def attach_best_checkpoint(
+    engine: Engine,
+    model: torch.nn.Module,
+    trainer: Engine,
+    results_directory: Path,
+) -> None:
+    """Attach a best-checkpoint handler to ``engine``, scored on ``engine.state.output["loss"]``.
+
+    Call this function *after* both ``create_trainer`` and (optionally) ``create_validator``
+    have been called so that handler registration order is correct.  When a validator is
+    available, pass it as ``engine`` so that checkpointing is driven by validation loss.
+    When no validator is available, pass the trainer as ``engine`` so that checkpointing
+    falls back to training loss — preserving the previous behaviour.
+
+    The saved checkpoint format is identical to the one produced by ``create_trainer``, so
+    existing resume logic is fully backward-compatible.
+
+    Parameters
+    ----------
+    engine : pytorch-ignite.Engine
+        The engine whose ``output["loss"]`` is used as the checkpoint score.  Pass the
+        validator when one exists; otherwise pass the trainer. If the engine has a
+        ``hyrax_label`` attribute, it will be included in the checkpoint filename.
+    model : torch.nn.Module
+        The model being trained.  Must expose ``model.optimizer`` and optionally
+        ``model.scheduler``.
+    trainer : pytorch-ignite.Engine
+        The training engine.  Used to derive the global step counter and to attach the
+        end-of-training log handler.
+    results_directory : Path
+        Directory where checkpoint files are written.
+    """
+    wrapped_model = idist.auto_model(model)
+
+    to_save = {
+        "model": wrapped_model,
+        "optimizer": model.optimizer,
+        "trainer": trainer,
+    }
+
+    if model.scheduler:
+        to_save["scheduler"] = model.scheduler
+
+    def neg_loss_score(eng):
+        return -eng.state.output["loss"]
+
+    score_name = f"{engine.hyrax_label}_loss" if hasattr(engine, "hyrax_label") else "loss"
+
+    best_checkpoint = Checkpoint(
+        to_save,
+        DiskSaver(results_directory, require_empty=False),
+        n_saved=1,
+        global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
+        score_name=score_name,
+        score_function=neg_loss_score,
+        greater_or_equal=True,
+    )
+
+    engine.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
+
+    def log_best_checkpoint_location(_, chkpt):
+        logger.debug(f"Best metric checkpoint saved as: {chkpt.last_checkpoint}")
+
+    trainer.add_event_handler(Events.COMPLETED, log_best_checkpoint_location, best_checkpoint)
 
 
 def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path) -> Engine:
@@ -797,28 +857,12 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     if model.scheduler:
         to_save["scheduler"] = model.scheduler
 
-    #! We may want to move the checkpointing logic over to the `validator`.
-    #! It was created here initially because this was the only place where the
-    #! model training was happening.
     latest_checkpoint = Checkpoint(
         to_save,
         DiskSaver(results_directory, require_empty=False),
         n_saved=1,
         global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
         filename_pattern="{name}_epoch_{global_step}.{ext}",
-    )
-
-    def neg_loss_score(engine):
-        return -engine.state.output["loss"]
-
-    best_checkpoint = Checkpoint(
-        to_save,
-        DiskSaver(results_directory, require_empty=False),
-        n_saved=1,
-        global_step_transform=global_step_from_engine(trainer, Events.EPOCH_COMPLETED),
-        score_name="loss",
-        score_function=neg_loss_score,
-        greater_or_equal=True,
     )
 
     if config["train"]["resume"]:
@@ -871,7 +915,6 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
             model.scheduler.step()
 
     trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, latest_checkpoint)
-    trainer.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, best_checkpoint)
 
     @trainer.on(Events.COMPLETED)
     def log_total_time(trainer):
@@ -880,11 +923,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     def log_last_checkpoint_location(_, latest_checkpoint):
         logger.debug(f"Latest checkpoint saved as: {latest_checkpoint.last_checkpoint}")
 
-    def log_best_checkpoint_location(_, best_checkpoint):
-        logger.debug(f"Best metric checkpoint saved as: {best_checkpoint.last_checkpoint}")
-
     trainer.add_event_handler(Events.COMPLETED, log_last_checkpoint_location, latest_checkpoint)
-    trainer.add_event_handler(Events.COMPLETED, log_best_checkpoint_location, best_checkpoint)
 
     @trainer.on(Events.COMPLETED)
     def attach_final_metrics_to_model(trainer):
@@ -894,6 +933,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(trainer)
 
+    trainer.hyrax_label = "trainer"
     return trainer
 
 
@@ -914,7 +954,7 @@ def create_save_batch_callback(results_dir):
     callable
         A callback function with signature (batch, batch_results) that saves results
     """
-    from hyrax.data_sets.result_factories import create_results_writer
+    from hyrax.datasets.result_factories import create_results_writer
 
     data_writer = create_results_writer(results_dir)
 

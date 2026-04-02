@@ -18,12 +18,13 @@ def loopback_hyrax_map_only(tmp_path_factory):
     h.config["general"]["results_dir"] = str(results_dir)
     h.config["general"]["dev_mode"] = True
 
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.6,
             },
         },
         "validate": {
@@ -31,6 +32,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.2,
             },
         },
         "test": {
@@ -38,6 +40,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.2,
             },
         },
         "infer": {
@@ -120,7 +123,7 @@ def test_test(loopback_hyrax_map_only):
     result = h.test()
 
     # Verify we got a ResultDataset back
-    from hyrax.data_sets.result_dataset import ResultDataset
+    from hyrax.datasets.result_dataset import ResultDataset
 
     assert result is not None
     assert isinstance(result, ResultDataset)
@@ -153,7 +156,7 @@ def test_test_with_explicit_weights(loopback_hyrax_map_only, tmp_path):
     result = h.test()
 
     # Verify we got a ResultDataset back
-    from hyrax.data_sets.result_dataset import ResultDataset
+    from hyrax.datasets.result_dataset import ResultDataset
 
     assert result is not None
     assert isinstance(result, ResultDataset)
@@ -178,7 +181,7 @@ def test_test_auto_detects_weights(loopback_hyrax_map_only, tmp_path):
     result = h.test()
 
     # Verify we got a ResultDataset back
-    from hyrax.data_sets.result_dataset import ResultDataset
+    from hyrax.datasets.result_dataset import ResultDataset
 
     assert result is not None
     assert isinstance(result, ResultDataset)

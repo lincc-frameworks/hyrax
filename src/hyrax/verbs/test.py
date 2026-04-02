@@ -43,7 +43,7 @@ class Test(Verb):
 
         Returns
         -------
-        InferenceDataSet
+        InferenceDataset
             Dataset containing test results that can be used for further analysis
         """
 
@@ -54,7 +54,7 @@ class Test(Verb):
             create_results_dir,
             log_runtime_config,
         )
-        from hyrax.data_sets.result_factories import load_results_dataset
+        from hyrax.datasets.result_factories import load_results_dataset
         from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
             create_evaluator,

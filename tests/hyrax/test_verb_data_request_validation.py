@@ -24,14 +24,18 @@ def _make_config(data_request: dict) -> dict:
 
 
 def _make_single_group(group: str, data_location: str = "/tmp/data", **kwargs) -> dict:
-    """Return a data_request dict with a single named group."""
+    """Return a data_request dict with a single named group.
+
+    The dataset source is nested under the friendly name ``"data"`` as required
+    by the schema (a friendly name must always be explicitly provided).
+    """
     cfg = {
         "dataset_class": "HyraxRandomDataset",
         "data_location": data_location,
         "primary_id_field": "id",
     }
     cfg.update(kwargs)
-    return {group: cfg}
+    return {group: {"data": cfg}}
 
 
 # ---------------------------------------------------------------------------
@@ -134,22 +138,28 @@ def test_issue_787_train_validate_with_infer_no_split():
     """
     data_request = {
         "train": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "/tmp/data",
-            "primary_id_field": "id",
-            "split_fraction": 0.8,
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "/tmp/data",
+                "primary_id_field": "id",
+                "split_fraction": 0.8,
+            }
         },
         "validate": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "/tmp/data",
-            "primary_id_field": "id",
-            "split_fraction": 0.2,
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "/tmp/data",
+                "primary_id_field": "id",
+                "split_fraction": 0.2,
+            }
         },
         "infer": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "/tmp/data",
-            "primary_id_field": "id",
-            # No split_fraction — used for full-dataset inference
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "/tmp/data",
+                "primary_id_field": "id",
+                # No split_fraction — used for full-dataset inference
+            }
         },
     }
     config = _make_config(data_request)
@@ -163,17 +173,21 @@ def test_inactive_groups_do_not_affect_validation():
     """Groups outside REQUIRED+OPTIONAL are ignored in cross-group checks."""
     data_request = {
         "train": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "/tmp/data",
-            "primary_id_field": "id",
-            "split_fraction": 0.8,
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "/tmp/data",
+                "primary_id_field": "id",
+                "split_fraction": 0.8,
+            }
         },
         # 'infer' is outside Train's active groups — its absence of split_fraction
         # must not cause a consistency failure for Train
         "infer": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "/tmp/data",
-            "primary_id_field": "id",
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "/tmp/data",
+                "primary_id_field": "id",
+            }
         },
     }
     config = _make_config(data_request)
@@ -206,14 +220,15 @@ def test_structurally_invalid_data_request_raises():
     as a clear RuntimeError instead of silently skipping cross-group validation.
     """
     cm = ConfigManager()
-    # split_fraction > 1.0 is invalid; inject directly to simulate set_config
-    # storing a bad config after its own ValidationError catch.
+    # Flat dict without a friendly name — fails schema validation with a
+    # "friendly name" error; inject directly to simulate set_config storing
+    # the bad config as-is after its own ValidationError catch.
     cm.config["data_request"] = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
             "data_location": "/tmp/data",
             "primary_id_field": "id",
-            "split_fraction": 1.5,  # out of range (le=1.0)
+            "split_fraction": 1.5,  # also out of range (le=1.0)
         }
     }
     with pytest.raises(RuntimeError, match="Invalid data_request"):
@@ -233,26 +248,30 @@ def test_model_inputs_fallback_validated():
         "model_inputs",
         {
             "train": {
-                "dataset_class": "HyraxRandomDataset",
-                "data_location": "/tmp/data",
-                "primary_id_field": "id",
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "data_location": "/tmp/data",
+                    "primary_id_field": "id",
+                }
             }
         },
     )
     Train(cm.config)  # should not raise — 'train' group is present
 
 
-def test_model_inputs_missing_required_group_raises():
-    """Missing required group in model_inputs also raises RuntimeError."""
+def test_data_request_missing_required_group_raises():
+    """Missing required group in data_request also raises RuntimeError."""
     cm = ConfigManager()
     cm.config.pop("data_request", None)
     cm.set_config(
-        "model_inputs",
+        "data_request",
         {
             "infer": {
-                "dataset_class": "HyraxRandomDataset",
-                "data_location": "/tmp/data",
-                "primary_id_field": "id",
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "data_location": "/tmp/data",
+                    "primary_id_field": "id",
+                }
             }
         },
     )

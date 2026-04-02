@@ -58,7 +58,7 @@ Add `lancedb` and `pyarrow` to `pyproject.toml` dependencies, as the prototype d
 
 ### Design
 
-Create `src/hyrax/data_sets/result_dataset.py` containing `ResultDatasetWriter`.
+Create `src/hyrax/datasets/result_dataset.py` containing `ResultDatasetWriter`.
 
 ```python
 class ResultDatasetWriter:
@@ -127,7 +127,7 @@ getter interface.
 
 ### Design
 
-Create `ResultDataset` in `src/hyrax/data_sets/result_dataset.py`.
+Create `ResultDataset` in `src/hyrax/datasets/result_dataset.py`.
 
 ```python
 class ResultDataset(HyraxDataset, Dataset):

@@ -4,12 +4,12 @@
 # You can set these variables from the command line, and also
 # from the environment for the first two.
 SPHINXOPTS    ?= -T -E -d _build/doctrees -D language=en -W --keep-going -n
-EXCLUDENB     ?= -D exclude_patterns="notebooks/*","pre_executed/*","_build","**.ipynb_checkpoints"
+EXCLUDENB     ?= -D exclude_patterns="notebooks/*","pre_executed/*","_build","**.ipynb_checkpoints","archived_notebooks/*"
 SPHINXBUILD   ?= sphinx-build
 SOURCEDIR     = .
 BUILDDIR      = ../_readthedocs/
 
-.PHONY: help clean Makefile no-nb no-notebooks
+.PHONY: help clean Makefile no-nb no-notebooks preview
 
 # Put it first so that "make" without argument is like "make help".
 help:
@@ -29,4 +29,7 @@ clean:
 # "make mode" option.  $(O) is meant as a shortcut for $(SPHINXOPTS).
 %: Makefile
 	@$(SPHINXBUILD) -M $@ "$(SOURCEDIR)" "$(BUILDDIR)" $(SPHINXOPTS) $(O)
+
+preview:
+	open $(BUILDDIR)/html/index.html
 

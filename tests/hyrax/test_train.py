@@ -58,6 +58,71 @@ def test_train(loopback_hyrax):
     h.train()
 
 
+def test_best_checkpoint_uses_validation_loss(loopback_hyrax, tmp_path):
+    """
+    When a validator is present, the best checkpoint should be scored on
+    validation loss (not training loss).  Verify that a best-checkpoint
+    file is written to the results directory after training.
+    """
+    h, _ = loopback_hyrax
+    h.config["general"]["results_dir"] = str(tmp_path)
+    h.config["train"]["epochs"] = 2
+
+    h.train()
+
+    results_dir = find_most_recent_results_dir(h.config, "train")
+    best_checkpoints = list(results_dir.glob("*validator_loss=*.pt"))
+    assert len(best_checkpoints) == 1, (
+        f"Expected 1 validation-loss best-checkpoint file, found: {best_checkpoints}"
+    )
+
+
+def test_best_checkpoint_without_validation(tmp_path):
+    """
+    When no validator is present, the best checkpoint should fall back to
+    training loss scoring.  Verify that a best-checkpoint file is still
+    written to the results directory.
+    """
+    import hyrax
+
+    h = hyrax.Hyrax()
+    h.config["model"]["name"] = "HyraxLoopback"
+    h.config["train"]["epochs"] = 2
+    h.config["data_loader"]["batch_size"] = 5
+    h.config["general"]["results_dir"] = str(tmp_path)
+    h.config["general"]["dev_mode"] = True
+
+    # Only train + infer — no validate group
+    h.config["data_request"] = {
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path / "data_train"),
+                "primary_id_field": "object_id",
+                "split_fraction": 1.0,
+            }
+        },
+        "infer": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path / "data_infer"),
+                "primary_id_field": "object_id",
+            }
+        },
+    }
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
+
+    h.train()
+
+    results_dir = find_most_recent_results_dir(h.config, "train")
+    best_checkpoints = list(results_dir.glob("*trainer_loss=*.pt"))
+    assert len(best_checkpoints) == 1, (
+        f"Expected 1 training-loss best-checkpoint file, found: {best_checkpoints}"
+    )
+
+
 def test_train_resume(loopback_hyrax, tmp_path):
     """
     Ensure that training can be resumed from a checkpoint
@@ -87,7 +152,7 @@ def test_train_resume(loopback_hyrax, tmp_path):
 def test_train_percent_split(tmp_path):
     """
     Ensure backward compatibility with percent-based splits when the
-    configuration provides only a `train` and `infer` model_inputs section
+    configuration provides only a `train` and `infer` data_request section
     (no explicit `validate` table). This should exercise the code path
     that creates train/validate splits from a single dataset location.
     """
@@ -100,8 +165,8 @@ def test_train_percent_split(tmp_path):
     h.config["general"]["results_dir"] = str(tmp_path)
     h.config["general"]["dev_mode"] = True
 
-    # Only provide `train` and `infer` model_inputs (no `validate` key).
-    h.config["model_inputs"] = {
+    # Only provide `train` and `infer` data_request (no `validate` key).
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",

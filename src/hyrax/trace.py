@@ -299,7 +299,7 @@ class TraceResult(TracePrintable):
                         self.instrument_class_data_handler(model_cls, trace_def)
 
         # Drop the length of the dataprovider so we end train/inference/test/engine runs early
-        from hyrax.data_sets.data_provider import DataProvider
+        from hyrax.datasets.data_provider import DataProvider
 
         self.reduce_len(DataProvider)
 

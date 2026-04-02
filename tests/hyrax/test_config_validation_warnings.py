@@ -13,13 +13,15 @@ def test_set_config_warns_on_invalid_data_request(caplog):
     """ConfigManager.set_config logs warning when data_request validation fails."""
 
     cm = ConfigManager()
-    # Invalid: missing primary_id_field required by DataRequestDefinition validation
+    # Invalid: flat dict without a friendly name — no "dataset_class" nested inside
+    # a named sub-key.  Fails DataRequestDefinition validation with a
+    # "friendly name" error.
     invalid_dict = {
         "train": {
             "dataset_class": "HyraxRandomDataset",
             "data_location": "/dev/null",
             "fields": ["image"],
-            # Missing primary_id_field - fails DataRequestDefinition validation
+            # dataset_class at top level — friendly name is missing
         }
     }
 
@@ -28,7 +30,7 @@ def test_set_config_warns_on_invalid_data_request(caplog):
 
     # Should log a warning
     assert "Configuration for 'data_request' failed Pydantic validation" in caplog.text
-    assert "primary_id_field" in caplog.text
+    assert "friendly name" in caplog.text
     assert "will be used as-is" in caplog.text
 
     # Invalid data is still stored as-is (backward compatibility)
@@ -36,42 +38,19 @@ def test_set_config_warns_on_invalid_data_request(caplog):
     assert rendered == invalid_dict
 
 
-def test_set_config_warns_on_invalid_model_inputs(caplog):
-    """ConfigManager.set_config logs warning when model_inputs validation fails."""
-
-    cm = ConfigManager()
-    # Invalid structure that can't be validated
-    invalid_dict = {
-        "train": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "/dev/null",
-            # Missing primary_id_field
-        }
-    }
-
-    with caplog.at_level(logging.WARNING):
-        cm.set_config("model_inputs", invalid_dict)
-
-    # Should log a warning
-    assert "Configuration for 'model_inputs' failed Pydantic validation" in caplog.text
-    assert "will be used as-is" in caplog.text
-
-    # Invalid data is still stored as-is
-    rendered = cm.config["model_inputs"]
-    assert rendered == invalid_dict
-
-
 def test_set_config_no_warning_on_valid_data_request(caplog):
     """ConfigManager.set_config does not warn when validation succeeds."""
 
     cm = ConfigManager()
-    # Valid configuration
+    # Valid configuration — friendly name "data" explicitly provided
     valid_dict = {
         "train": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_location": "somewhere",
-            "fields": ["image"],
-            "primary_id_field": "object_id",
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": "somewhere",
+                "fields": ["image"],
+                "primary_id_field": "object_id",
+            }
         }
     }
 
@@ -84,14 +63,15 @@ def test_set_config_no_warning_on_valid_data_request(caplog):
     # Valid data is validated and coerced
     rendered = cm.config["data_request"]
     assert "train" in rendered
-    # After validation, structure is wrapped in 'data' key
+    # Friendly name "data" is preserved verbatim
     assert rendered["train"]["data"]["dataset_class"] == "HyraxRandomDataset"
 
 
 def test_init_warns_on_invalid_data_request_in_toml(caplog, tmp_path):
     """ConfigManager.__init__ logs warning when TOML has invalid data_request."""
 
-    # Create a TOML file with invalid data_request
+    # Create a TOML file with invalid data_request — flat structure without a
+    # friendly name sub-key (dataset_class directly under train).
     config_file = tmp_path / "test_config.toml"
     config_file.write_text(
         """
@@ -102,7 +82,7 @@ dev_mode = true
 dataset_class = "HyraxRandomDataset"
 data_location = "/dev/null"
 fields = ["image"]
-# Missing primary_id_field - fails validation
+# dataset_class at group level — friendly name sub-key is missing
 """
     )
 
@@ -123,7 +103,7 @@ dev_mode = false
 
     # Should log a warning
     assert "Configuration loaded from TOML has 'data_request' that failed Pydantic validation" in caplog.text
-    assert "primary_id_field" in caplog.text
+    assert "friendly name" in caplog.text
     assert "will be used as-is" in caplog.text
 
     # Invalid config is still loaded as-is
@@ -134,14 +114,15 @@ dev_mode = false
 def test_init_no_warning_on_valid_data_request_in_toml(caplog, tmp_path):
     """ConfigManager.__init__ does not warn when TOML has valid data_request."""
 
-    # Create a TOML file with valid data_request
+    # Create a TOML file with valid data_request — friendly name sub-key "data"
+    # is explicitly provided under [data_request.train.data].
     config_file = tmp_path / "test_config.toml"
     config_file.write_text(
         """
 [general]
 dev_mode = true
 
-[data_request.train]
+[data_request.train.data]
 dataset_class = "HyraxRandomDataset"
 data_location = "/dev/null"
 fields = ["image"]
@@ -233,6 +214,7 @@ def test_init_validates_both_data_request_and_model_inputs(caplog, tmp_path):
     """ConfigManager.__init__ validates both data_request and model_inputs if both present."""
 
     # Create a TOML file with both invalid data_request and invalid model_inputs
+    # (flat structure — friendly name sub-keys are missing).
     config_file = tmp_path / "test_config.toml"
     config_file.write_text(
         """
@@ -242,12 +224,12 @@ dev_mode = true
 [data_request.train]
 dataset_class = "HyraxRandomDataset"
 data_location = "/dev/null"
-# Missing primary_id_field - should trigger warning
+# dataset_class at group level — friendly name is missing → triggers warning
 
 [model_inputs.validate]
 dataset_class = "HyraxCifarDataset"
 data_location = "/dev/null"
-# Missing primary_id_field - should also trigger warning
+# dataset_class at group level — friendly name is missing → triggers warning
 """
     )
 
@@ -269,7 +251,6 @@ dev_mode = false
     # Should log warnings for both keys
     assert "Configuration loaded from TOML has 'data_request' that failed Pydantic validation" in caplog.text
     assert "Configuration loaded from TOML has 'model_inputs' that failed Pydantic validation" in caplog.text
-    assert caplog.text.count("primary_id_field") >= 2  # Should mention it for both
 
     # Both invalid configs are still loaded as-is
     assert "data_request" in cm.config

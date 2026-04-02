@@ -48,6 +48,7 @@ class Train(Verb):
         from hyrax.config_utils import create_results_dir, log_runtime_config
         from hyrax.gpu_monitor import GpuMonitor
         from hyrax.pytorch_ignite import (
+            attach_best_checkpoint,
             create_trainer,
             create_validator,
             dist_data_loader,
@@ -190,7 +191,10 @@ class Train(Verb):
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:
-            create_validator(model, config, validation_data_loader, trainer)
+            validator = create_validator(model, config, validation_data_loader, trainer)
+            attach_best_checkpoint(validator, model, trainer, results_dir)
+        else:
+            attach_best_checkpoint(trainer, model, trainer, results_dir)
 
         monitor = GpuMonitor()
 

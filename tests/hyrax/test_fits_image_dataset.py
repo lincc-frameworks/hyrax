@@ -16,17 +16,18 @@ def test_hyrax_small_dataset_hscstars(request):
     catalog_file = this_file_dir / "test_data" / "small_dataset_hscstars" / f"star_cat_correct{request.param}"
 
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
-                "dataset_class": "FitsImageDataSet",
+                "dataset_class": "FitsImageDataset",
                 "data_location": str(catalog_file.parent),
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             },
         },
         "infer": {
             "data": {
-                "dataset_class": "FitsImageDataSet",
+                "dataset_class": "FitsImageDataset",
                 "data_location": str(catalog_file.parent),
                 "primary_id_field": "object_id",
             },
@@ -45,7 +46,7 @@ def test_hyrax_small_dataset_hscstars(request):
 
 def test_prepare(test_hyrax_small_dataset_hscstars):
     """Check that the hsc stars dataset was correctly read, and that basic access
-    of FitsImageDataSet returns sane values
+    of FitsImageDataset returns sane values
     """
     ds = test_hyrax_small_dataset_hscstars.prepare()
 

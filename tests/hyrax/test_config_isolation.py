@@ -42,12 +42,13 @@ def test_prepare_does_not_mutate_hyrax_config(tmp_path):
     h.config["model"]["name"] = "HyraxLoopback"
     h.config["general"]["results_dir"] = str(tmp_path)
     h.config["general"]["dev_mode"] = True
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path / "data"),
                 "primary_id_field": "object_id",
+                "split_fraction": 1.0,
             },
         },
         "infer": {

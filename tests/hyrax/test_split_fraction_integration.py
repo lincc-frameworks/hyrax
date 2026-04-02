@@ -9,7 +9,7 @@ configs flow correctly through the system:
 import pytest
 
 import hyrax
-from hyrax.data_sets.data_provider import DataProvider
+from hyrax.datasets.data_provider import DataProvider
 from hyrax.pytorch_ignite import create_splits_from_fractions
 
 
@@ -468,7 +468,7 @@ class TestEngineSplitIndices:
         dp.split_indices = expected_split_indices
 
         # Simulate what engine.py does: determine which indices to process
-        from hyrax.data_sets.data_provider import DataProvider
+        from hyrax.datasets.data_provider import DataProvider
 
         if isinstance(dp, DataProvider) and dp.split_indices is not None:
             indices_to_process = dp.split_indices
@@ -495,7 +495,7 @@ class TestEngineSplitIndices:
         assert dp.split_indices is None
 
         # Simulate what engine.py does
-        from hyrax.data_sets.data_provider import DataProvider
+        from hyrax.datasets.data_provider import DataProvider
 
         if isinstance(dp, DataProvider) and dp.split_indices is not None:
             indices_to_process = dp.split_indices

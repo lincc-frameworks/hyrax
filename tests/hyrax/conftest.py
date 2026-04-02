@@ -5,7 +5,7 @@ import numpy as np
 import pytest
 
 import hyrax
-from hyrax.data_sets.data_provider import DataProvider
+from hyrax.datasets.data_provider import DataProvider
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +47,13 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
-    h.config["model_inputs"] = {
+    h.config["data_request"] = {
         "train": {
             "data": {
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.6,
             },
         },
         "validate": {
@@ -60,6 +61,7 @@ def loopback_hyrax(tmp_path_factory, request):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.2,
             },
         },
         "test": {
@@ -67,6 +69,7 @@ def loopback_hyrax(tmp_path_factory, request):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
+                "split_fraction": 0.2,
             },
         },
         "infer": {
@@ -80,10 +83,6 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
-
-    h.config["data_set"]["validate_size"] = 0.2
-    h.config["data_set"]["test_size"] = 0.2
-    h.config["data_set"]["train_size"] = 0.6
 
     weights_file = results_dir / "fakeweights"
     with open(weights_file, "a"):
@@ -118,7 +117,9 @@ def multimodal_config():
                 "data_location": "./in_memory_0",
                 "fields": ["object_id", "image", "label"],
                 "dataset_config": {
-                    "shape": [2, 16, 16],
+                    "HyraxRandomDataset": {
+                        "shape": [2, 16, 16],
+                    },
                 },
                 "primary_id_field": "object_id",
             },
@@ -127,8 +128,10 @@ def multimodal_config():
                 "data_location": "./in_memory_1",
                 "fields": ["image"],
                 "dataset_config": {
-                    "shape": [5, 16, 16],
-                    "seed": 4200,
+                    "HyraxRandomDataset": {
+                        "shape": [5, 16, 16],
+                        "seed": 4200,
+                    },
                 },
             },
         },
@@ -138,7 +141,9 @@ def multimodal_config():
                 "data_location": "./in_memory_0",
                 "fields": ["object_id", "image", "label"],
                 "dataset_config": {
-                    "shape": [2, 16, 16],
+                    "HyraxRandomDataset": {
+                        "shape": [2, 16, 16],
+                    },
                 },
                 "primary_id_field": "object_id",
             },
@@ -147,8 +152,10 @@ def multimodal_config():
                 "data_location": "./in_memory_1",
                 "fields": ["image"],
                 "dataset_config": {
-                    "shape": [5, 16, 16],
-                    "seed": 4200,
+                    "HyraxRandomDataset": {
+                        "shape": [5, 16, 16],
+                        "seed": 4200,
+                    },
                 },
             },
         },
@@ -159,7 +166,7 @@ def multimodal_config():
 def data_provider(multimodal_config):
     """Use the multimodal_config fixture to create a DataProvider instance."""
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = multimodal_config
+    h.config["data_request"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config["train"])
     return dp
 
@@ -169,34 +176,31 @@ def custom_collate_data_provider(multimodal_config):
     """Use the multimodal_config fixture to create a DataProvider instance
     with custom collate functions for each dataset."""
 
-    from hyrax.data_sets.random.hyrax_random_dataset import HyraxRandomDataset
+    from hyrax.datasets.random.hyrax_random_dataset import HyraxRandomDataset
 
     @staticmethod
     def collate(batch):
         """Contrived custom collate function that will return collated image
         data as well as a boolean 'mask' of the same shape.
         """
-        returned_data = {"data": {}}
-        if "image" in batch[0]["data"]:
-            batch_array = np.stack([item["data"]["image"] for item in batch], axis=0)
-            returned_data["data"]["image"] = batch_array
-            returned_data["data"]["image_mask"] = np.ones_like(batch_array, dtype=bool)
+        returned_data = {}
+        if "image" in batch[0]:
+            batch_array = np.stack([item["image"] for item in batch], axis=0)
+            returned_data["image"] = batch_array
+            returned_data["image_mask"] = np.ones_like(batch_array, dtype=bool)
 
-        if "object_id" in batch[0]["data"]:
-            returned_data["data"]["object_id"] = np.stack(
-                [item["data"]["object_id"] for item in batch], axis=0
-            )
-            returned_data["object_id"] = returned_data["data"]["object_id"]
+        if "object_id" in batch[0]:
+            returned_data["object_id"] = np.stack([item["object_id"] for item in batch], axis=0)
 
-        if "label" in batch[0]["data"]:
-            returned_data["data"]["label"] = np.stack([item["data"]["label"] for item in batch], axis=0)
+        if "label" in batch[0]:
+            returned_data["label"] = np.stack([item["label"] for item in batch], axis=0)
 
         return returned_data
 
     HyraxRandomDataset.collate = collate
 
     h = hyrax.Hyrax()
-    h.config["model_inputs"] = multimodal_config
+    h.config["data_request"] = multimodal_config
     dp = DataProvider(h.config, multimodal_config["train"])
 
     yield dp

@@ -5,7 +5,9 @@ Common workflows
    :maxdepth: 1
 
    Configuration basics <notebooks/config_basics>
+   Data requests <notebooks/data_requests>
    List available models and dataset classes <notebooks/list_available_models_and_datasets>
+   Evaluating with TensorBoard and MLFlow <notebooks/using_tensorboard_and_mlflow>
    Working with result datasets <pre_executed/working_with_results_data>
    Look up results by ID <notebooks/lookup_results_by_id>
    Converting Hyrax results to pandas <notebooks/convert_inference_results_to_pandas>
@@ -15,3 +17,7 @@ Common workflows
    Checkpointing <pre_executed/hyrax_checkpointing>
    Loading pretrained weights <pre_executed/load_pretrained_model>
    Hyperparameter tuning <pre_executed/hyperparameter_tuning_examples>
+   Using UMAP <pre_executed/using_umap>
+   Custom training metrics <notebooks/custom_training_metrics>
+   Dataset custom collation <notebooks/custom_dataset_collation>
+   Customizing prepare_inputs <notebooks/custom_prepare_inputs>

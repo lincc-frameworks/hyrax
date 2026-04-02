@@ -43,7 +43,7 @@ copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
 extensions.append("sphinx_togglebutton")
 
 templates_path: list[str] = []
-exclude_patterns = ["_build", "**.ipynb_checkpoints"]
+exclude_patterns = ["_build", "**.ipynb_checkpoints", "archived_notebooks/*"]
 
 # This assumes that sphinx-build is called from the root directory
 master_doc = "index"
@@ -121,7 +121,7 @@ nitpick_ignore_regex = [
     (r"^py:.*", r"^ArgumentParser"),
     (r"^py:.*", r"^Namespace"),
     # Types defined by our package that autodoc misidentifies in annotations
-    (r"^py:.*", r"^hyrax.data_sets.fits_image_dataset.files_dict$"),
+    (r"^py:.*", r"^hyrax.datasets.fits_image_dataset.files_dict$"),
     (r"^py:.*", r"^dim_dict$"),
     (r"^py:.*", r"^dC.Rect$"),
     (r"^py:.*", r"^hyrax.downloadCutout.downloadCutout.Rect$"),
@@ -130,3 +130,5 @@ nitpick_ignore_regex = [
 ]
 
 html_theme = "sphinx_book_theme"
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]

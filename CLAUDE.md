@@ -37,7 +37,7 @@ Primary interface is Jupyter notebooks; the `hyrax` CLI is secondary (HPC/Slurm)
 5. Add tests in `tests/hyrax/test_<name>.py`.
 
 ### New Dataset
-1. Create a file in `src/hyrax/data_sets/`.
+1. Create a file in `src/hyrax/datasets/`.
 2. Subclass `HyraxDataset` (auto-registered via `__init_subclass__`). Use `Dataset` spelling.
 3. For image datasets, also inherit `HyraxImageDataset` for transform stacking.
 4. Add default config under `[data_set.YourDatasetName]` in `hyrax_default_config.toml`.

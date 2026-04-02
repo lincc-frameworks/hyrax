@@ -225,7 +225,7 @@ class Hyrax:
         list[str]
             Alphabetically sorted list of dataset class names.
         """
-        from .data_sets.data_set_registry import DATASET_REGISTRY
+        from .datasets.dataset_registry import DATASET_REGISTRY
 
         return sorted(DATASET_REGISTRY.keys())
 

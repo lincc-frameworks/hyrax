@@ -16,7 +16,7 @@ class Prepare(Verb):
 
     @staticmethod
     def setup_parser(parser):
-        """No complex arg parsing for prepare"""
+        """We don't need any parser setup for CLI opts"""
         pass
 
     def run_cli(self, args=None):
