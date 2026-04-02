@@ -146,7 +146,8 @@ def _join_cache_path(data_location: str | None, fingerprint: str) -> Path | None
     caching is not possible (e.g. no ``data_location``)."""
     if not data_location:
         return None
-    parent = Path(data_location).resolve().parent
+    location = Path(data_location).resolve()
+    parent = location if location.is_dir() else location.parent
     if not parent.is_dir():
         return None
     return parent / f".hyrax_join_cache_{fingerprint}.pkl"
