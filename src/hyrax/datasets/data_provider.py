@@ -1142,6 +1142,10 @@ class DataProvider:
                 if isinstance(values, list):
                     batch_dict[friendly_name][field] = np.array(values)
 
+        # Add __matched masks for joined datasets that had any None entries.
+        for friendly_name, mask in none_masks.items():
+            batch_dict[f"{friendly_name}__matched"] = np.array(mask, dtype=bool)
+
         return self.handle_nans(batch_dict)
 
     def handle_nans(self, batch_dict):
@@ -1171,9 +1175,5 @@ class DataProvider:
             # Handle direct numpy arrays (e.g., from custom collate that returns arrays directly)
             elif isinstance(fields, np.ndarray):
                 batch_dict[friendly_name] = _handle_nans(fields, self.config)
-
-        # Add __matched masks for joined datasets that had any None entries.
-        for friendly_name, mask in none_masks.items():
-            batch_dict[f"{friendly_name}__matched"] = np.array(mask, dtype=bool)
 
         return batch_dict

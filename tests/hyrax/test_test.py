@@ -74,11 +74,7 @@ def test_test_trace(loopback_hyrax_map_only):
 
     h, _ = loopback_hyrax_map_only
     h.train()  # Need trained weights before running the test verb
-
-    # trace=5: keeps the traced batch small while ensuring the DataProvider is
-    # large enough for the percentage-based split path to produce non-empty
-    # partitions (round(5 × 0.2) = 1 sample per 20% split).
-    trace_result = h.test(trace=5)
+    trace_result = h.test(trace=4)
 
     # User would first print the result
     assert isinstance(trace_result, TraceResult)

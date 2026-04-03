@@ -12,12 +12,7 @@ def test_train_trace(loopback_hyrax):
     from hyrax.trace import TraceResult, TraceStage
 
     h, _ = loopback_hyrax
-    # trace=5: the trace shim shrinks DataProvider length to 5.  At that size
-    # the 20% validation split still yields at least 1 sample
-    # (round(5 × 0.2) = 1), which is the minimum needed by the legacy
-    # percentage-based split path.  Smaller values (e.g. trace=2) produce an
-    # empty validation split and raise a KeyError.
-    trace_result = h.train(trace=5)
+    trace_result = h.train(trace=4)
 
     # User would first print the result
     assert isinstance(trace_result, TraceResult)

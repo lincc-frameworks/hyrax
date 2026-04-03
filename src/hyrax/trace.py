@@ -346,7 +346,12 @@ class TraceResult(TracePrintable):
                 return obj.split_indices[self.trace_batch_size - 1] + 1
 
             split_fraction = 1.0 if obj.split_fraction is None else obj.split_fraction
-            return int(np.ceil(self.trace_batch_size / split_fraction))
+            max_len = int(np.ceil(self.trace_batch_size / split_fraction))
+
+            # Don't ever make the new length longer than the old length
+            # Can happen in some weird split situations on small datasets (like RandomDataset)
+            # in testing contexts
+            return min(max_len, raw_func(obj))
 
         cls.__len__ = new_len
         self.shimmed_funcs.append((cls, "__len__", raw_func))
