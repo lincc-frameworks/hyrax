@@ -149,7 +149,7 @@ def _join_cache_path(data_location: str | None, fingerprint: str) -> Path | None
         return None
     location = Path(data_location).resolve()
     parent = location if location.is_dir() else location.parent
-    if not parent.is_dir():
+    if not parent.is_dir() or not parent.exists():
         return None
     return parent / f".hyrax_join_cache_{fingerprint}.pkl"
 
