@@ -292,7 +292,7 @@ class TraceResult(TracePrintable):
                             disp_name=f"{model_cls.__name__}__{name}",
                             func_name=name,
                             params_to_capture={"batch_dict": 0},
-                            result_name="batch_tensor",
+                            result_name="batch_ndarray",
                             stage_name="prepare_inputs",
                         )
                     if trace_def:
