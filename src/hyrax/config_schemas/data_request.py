@@ -37,6 +37,16 @@ class DataRequestConfig(BaseConfigModel):
         le=1.0,
     )
 
+    join_field: str | None = Field(
+        None,
+        description=(
+            "Field in this dataset whose values match the primary dataset's "
+            "primary_id_field. When set, the DataProvider joins this secondary "
+            "dataset to the primary by matching field values instead of requiring "
+            "index alignment."
+        ),
+    )
+
     dataset_config: dict | None = Field(
         None,
         description="Dataset-specific configuration as a free-form dictionary.",
@@ -57,6 +67,16 @@ class DataRequestConfig(BaseConfigModel):
         """Ensure that split_fraction is only set when primary_id_field is also provided."""
         if self.split_fraction is not None and self.primary_id_field is None:
             raise ValueError("'split_fraction' can only be specified when 'primary_id_field' is also set.")
+        return self
+
+    @model_validator(mode="after")
+    def join_field_excludes_primary(self) -> DataRequestConfig:
+        """Ensure that join_field and primary_id_field are mutually exclusive."""
+        if self.join_field is not None and self.primary_id_field is not None:
+            raise ValueError(
+                "'join_field' and 'primary_id_field' are mutually exclusive. "
+                "'join_field' is for secondary datasets that join to the primary."
+            )
         return self
 
     def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:

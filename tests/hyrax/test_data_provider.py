@@ -956,3 +956,370 @@ def test_object_id_is_string():
     assert isinstance(sample["object_id"], str)
     assert sample["object_id"] == "0"
     assert sample["int_id_dataset"]["object_id"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Join tests
+# ---------------------------------------------------------------------------
+
+
+class _JoinableDataset(HyraxDataset):
+    """Toy dataset whose object IDs and data are fully controllable."""
+
+    def __init__(self, config, data_location, *, ids, values):
+        self._ids = list(ids)
+        self._values = list(values)
+        super().__init__(config)
+
+    def __len__(self):
+        return len(self._ids)
+
+    def get_object_id(self, idx):
+        return str(self._ids[idx])
+
+    def get_value(self, idx):
+        return self._values[idx]
+
+
+def _make_join_provider(primary_ids, primary_vals, secondary_ids, secondary_vals):
+    """Helper: build a DataProvider with a primary and a joined secondary."""
+    from hyrax import Hyrax
+
+    h = Hyrax()
+
+    # Stash data on the class so __init__ can pick it up.
+    _JoinableDataset._pending_primary = (primary_ids, primary_vals)
+    _JoinableDataset._pending_secondary = (secondary_ids, secondary_vals)
+
+    # We need two distinct classes so they get separate instances.
+    class PrimaryDS(_JoinableDataset):
+        def __init__(self, config, data_location):
+            ids, vals = _JoinableDataset._pending_primary
+            super().__init__(config, data_location, ids=ids, values=vals)
+
+    class SecondaryDS(_JoinableDataset):
+        def __init__(self, config, data_location):
+            ids, vals = _JoinableDataset._pending_secondary
+            super().__init__(config, data_location, ids=ids, values=vals)
+
+    request = {
+        "primary": {
+            "dataset_class": "PrimaryDS",
+            "data_location": "./mem_primary",
+            "fields": ["object_id", "value"],
+            "primary_id_field": "object_id",
+        },
+        "secondary": {
+            "dataset_class": "SecondaryDS",
+            "data_location": "./mem_secondary",
+            "fields": ["object_id", "value"],
+            "join_field": "object_id",
+        },
+    }
+
+    h.config["data_request"] = {"train": request}
+    return DataProvider(h.config, request)
+
+
+def test_join_basic_matching():
+    """Joined datasets with overlapping IDs return correctly paired data."""
+    dp = _make_join_provider(
+        primary_ids=["A", "B", "C"],
+        primary_vals=[10, 20, 30],
+        secondary_ids=["C", "A", "B"],  # same IDs, different order
+        secondary_vals=[300, 100, 200],
+    )
+
+    assert len(dp) == 3
+
+    # Collect all resolved pairs
+    pairs = {}
+    for i in range(len(dp)):
+        sample = dp[i]
+        oid = sample["object_id"]
+        pairs[oid] = (sample["primary"]["value"], sample["secondary"]["value"])
+
+    assert pairs["A"] == (10, 100)
+    assert pairs["B"] == (20, 200)
+    assert pairs["C"] == (30, 300)
+
+
+def test_join_left_outer_none_for_missing():
+    """Unmatched primary items get None for the joined secondary (left outer join)."""
+    dp = _make_join_provider(
+        primary_ids=["A", "B", "C", "D"],
+        primary_vals=[1, 2, 3, 4],
+        secondary_ids=["B", "D", "E"],
+        secondary_vals=[20, 40, 50],
+    )
+
+    # All primary items are present.
+    assert len(dp) == 4
+
+    ids_seen = {dp.get_object_id(i) for i in range(len(dp))}
+    assert ids_seen == {"A", "B", "C", "D"}
+
+    # B and D have secondary data; A and C are None.
+    sample_a = dp[0]
+    assert sample_a["object_id"] == "A"
+    assert sample_a["secondary"] is None
+
+    sample_b = dp[1]
+    assert sample_b["object_id"] == "B"
+    assert sample_b["secondary"]["value"] == 20
+
+
+def test_join_preserves_primary_order():
+    """All primary items appear in their original order."""
+    dp = _make_join_provider(
+        primary_ids=["X", "Y", "Z", "W"],
+        primary_vals=[1, 2, 3, 4],
+        secondary_ids=["Z", "X"],
+        secondary_vals=[30, 10],
+    )
+
+    assert len(dp) == 4
+    assert dp.get_object_id(0) == "X"
+    assert dp.get_object_id(1) == "Y"
+    assert dp.get_object_id(2) == "Z"
+    assert dp.get_object_id(3) == "W"
+
+    # Y and W have no match
+    assert dp[1]["secondary"] is None
+    assert dp[3]["secondary"] is None
+    # X and Z have matches
+    assert dp[0]["secondary"]["value"] == 10
+    assert dp[2]["secondary"]["value"] == 30
+
+
+def test_join_ids_method():
+    """DataProvider.ids() returns ALL primary IDs (left outer join)."""
+    dp = _make_join_provider(
+        primary_ids=["A", "B", "C"],
+        primary_vals=[1, 2, 3],
+        secondary_ids=["B", "C"],
+        secondary_vals=[20, 30],
+    )
+
+    assert dp.ids() == ["A", "B", "C"]
+
+
+def test_join_zero_overlap_allowed():
+    """Zero overlap between primary and secondary is allowed (all None)."""
+    dp = _make_join_provider(
+        primary_ids=["A", "B"],
+        primary_vals=[1, 2],
+        secondary_ids=["C", "D"],
+        secondary_vals=[3, 4],
+    )
+
+    assert len(dp) == 2
+    assert dp[0]["secondary"] is None
+    assert dp[1]["secondary"] is None
+
+
+def test_join_collate():
+    """Collation works correctly with fully-matched joined datasets."""
+    import numpy as np
+
+    dp = _make_join_provider(
+        primary_ids=["A", "B"],
+        primary_vals=[10, 20],
+        secondary_ids=["B", "A"],
+        secondary_vals=[200, 100],
+    )
+
+    batch = [dp[i] for i in range(len(dp))]
+    collated = dp.collate(batch)
+
+    assert "primary" in collated
+    assert "secondary" in collated
+    assert "object_id" in collated
+    assert isinstance(collated["object_id"], np.ndarray)
+    assert len(collated["object_id"]) == 2
+    # No __matched mask when all items match
+    assert "secondary__matched" not in collated
+
+
+def test_join_collate_with_missing():
+    """Collation adds __matched mask and passes through None for unmatched items."""
+    import numpy as np
+
+    dp = _make_join_provider(
+        primary_ids=["A", "B", "C"],
+        primary_vals=[1, 2, 3],
+        secondary_ids=["B"],
+        secondary_vals=[20],
+    )
+
+    batch = [dp[i] for i in range(len(dp))]
+    collated = dp.collate(batch)
+
+    # Primary is always fully present
+    assert "primary" in collated
+    assert len(collated["primary"]["value"]) == 3
+
+    # Secondary should NOT have collated data for all 3 — only the 1 match
+    # was aggregated.  The __matched mask tells the consumer which positions
+    # have real data.
+    assert "secondary__matched" in collated
+    mask = collated["secondary__matched"]
+    assert isinstance(mask, np.ndarray)
+    assert mask.dtype == bool
+    assert list(mask) == [False, True, False]
+
+    # The secondary dict should only contain the 1 matched item.
+    assert "secondary" in collated
+    assert len(collated["secondary"]["value"]) == 1
+
+
+def test_join_field_mutually_exclusive_with_primary_id_field():
+    """join_field and primary_id_field cannot both be set on the same dataset."""
+    from hyrax.config_schemas.data_request import DataRequestConfig
+
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        DataRequestConfig(
+            dataset_class="Foo",
+            data_location="./x",
+            primary_id_field="object_id",
+            join_field="object_id",
+        )
+
+
+def test_no_join_field_preserves_existing_behavior(data_provider):
+    """When no join_field is set, DataProvider behaves exactly as before."""
+    dp = data_provider
+
+    assert dp._join_maps == {}
+
+    # Verify normal index-aligned access works
+    sample = dp[0]
+    assert "random_0" in sample
+    assert "random_1" in sample
+    assert "object_id" in sample
+
+
+def test_join_cache_roundtrip(tmp_path):
+    """Verify that join maps are persisted and reloaded from disk."""
+    from hyrax.datasets.data_provider import _load_join_cache, _save_join_cache
+
+    ids = ["X", "Y", "Z"]
+
+    def getter(idx):
+        return ids[idx]
+
+    reverse_map = {str(k): i for i, k in enumerate(ids)}
+
+    # Save to tmp_path (which exists as a directory).
+    data_location = str(tmp_path / "fake_data.csv")
+
+    _save_join_cache(data_location, len(ids), getter, reverse_map)
+
+    # Reload should succeed and return the same map.
+    loaded = _load_join_cache(data_location, len(ids), getter)
+    assert loaded is not None
+    assert loaded == reverse_map
+
+
+def test_join_cache_invalidated_on_length_change(tmp_path):
+    """Cache is invalidated when the dataset length changes."""
+    from hyrax.datasets.data_provider import _load_join_cache, _save_join_cache
+
+    ids = ["A", "B", "C"]
+
+    def getter(idx):
+        return ids[idx]
+
+    reverse_map = {"A": 0, "B": 1, "C": 2}
+    data_location = str(tmp_path / "data.csv")
+
+    _save_join_cache(data_location, 3, getter, reverse_map)
+
+    # Attempting to load with a different length should miss.
+    loaded = _load_join_cache(data_location, 4, getter)
+    assert loaded is None
+
+
+def test_join_cache_invalidated_on_key_change(tmp_path):
+    """Cache is invalidated when sampled key values change."""
+    from hyrax.datasets.data_provider import _load_join_cache, _save_join_cache
+
+    ids_v1 = ["A", "B", "C"]
+    ids_v2 = ["A", "B", "D"]  # last key changed
+
+    def getter_v1(idx):
+        return ids_v1[idx]
+
+    def getter_v2(idx):
+        return ids_v2[idx]
+
+    reverse_map = {"A": 0, "B": 1, "C": 2}
+    data_location = str(tmp_path / "data.csv")
+
+    _save_join_cache(data_location, 3, getter_v1, reverse_map)
+
+    # Load with changed keys should miss.
+    loaded = _load_join_cache(data_location, 3, getter_v2)
+    assert loaded is None
+
+
+def test_join_parallel_build():
+    """Join maps for multiple secondaries are built (potentially in parallel)."""
+    from hyrax import Hyrax
+
+    class PrimaryMulti(_JoinableDataset):
+        def __init__(self, config, data_location):
+            super().__init__(config, data_location, ids=["A", "B", "C"], values=[1, 2, 3])
+
+    class SecondaryMultiA(_JoinableDataset):
+        def __init__(self, config, data_location):
+            super().__init__(config, data_location, ids=["C", "B", "A"], values=[30, 20, 10])
+
+    class SecondaryMultiB(_JoinableDataset):
+        def __init__(self, config, data_location):
+            super().__init__(config, data_location, ids=["A", "C"], values=[100, 300])
+
+    h = Hyrax()
+    request = {
+        "primary": {
+            "dataset_class": "PrimaryMulti",
+            "data_location": "./mem",
+            "fields": ["object_id", "value"],
+            "primary_id_field": "object_id",
+        },
+        "sec_a": {
+            "dataset_class": "SecondaryMultiA",
+            "data_location": "./mem_a",
+            "fields": ["value"],
+            "join_field": "object_id",
+        },
+        "sec_b": {
+            "dataset_class": "SecondaryMultiB",
+            "data_location": "./mem_b",
+            "fields": ["value"],
+            "join_field": "object_id",
+        },
+    }
+
+    h.config["data_request"] = {"train": request}
+    dp = DataProvider(h.config, request)
+
+    # Left outer join: all 3 primary items are present
+    assert len(dp) == 3
+
+    for i in range(len(dp)):
+        sample = dp[i]
+        oid = sample["object_id"]
+        if oid == "A":
+            assert sample["primary"]["value"] == 1
+            assert sample["sec_a"]["value"] == 10
+            assert sample["sec_b"]["value"] == 100
+        elif oid == "B":
+            assert sample["primary"]["value"] == 2
+            assert sample["sec_a"]["value"] == 20
+            assert sample["sec_b"] is None  # B not in sec_b
+        else:
+            assert oid == "C"
+            assert sample["primary"]["value"] == 3
+            assert sample["sec_a"]["value"] == 30
+            assert sample["sec_b"]["value"] == 300

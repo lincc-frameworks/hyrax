@@ -1,8 +1,13 @@
 import copy
 import functools
+import hashlib
 import logging
+import os
+import pickle
 import time
 import warnings
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -94,6 +99,108 @@ def _handle_nan_zero_numpy(batch):
         batch = np.nan_to_num(batch, nan=0.0)
 
     return batch
+
+
+# ---------------------------------------------------------------------------
+# Join-map disk cache helpers
+# ---------------------------------------------------------------------------
+
+_JOIN_CACHE_VERSION = 1
+"""Bump when the cache format changes to invalidate all existing caches."""
+
+
+def _join_cache_fingerprint(dataset_len: int, getter, *, n_probes: int = 8) -> str:
+    """Compute a lightweight fingerprint for a dataset's join-key column.
+
+    The fingerprint incorporates the dataset length and a small number of
+    deterministically sampled key values.  If any of these change, the
+    fingerprint changes and the cache is considered stale.
+
+    Parameters
+    ----------
+    dataset_len : int
+        Number of items in the dataset.
+    getter : callable
+        The ``get_<join_field>`` method; called with integer indices.
+    n_probes : int
+        How many key values to sample.  Kept small so the cost is negligible.
+    """
+    h = hashlib.sha256()
+    h.update(str(dataset_len).encode())
+    h.update(str(_JOIN_CACHE_VERSION).encode())
+
+    if dataset_len == 0:
+        return h.hexdigest()
+
+    # Deterministic, spread-out probe indices.
+    step = max(1, dataset_len // n_probes)
+    for i in range(0, dataset_len, step):
+        h.update(str(getter(i)).encode())
+    # Always include the last element.
+    h.update(str(getter(dataset_len - 1)).encode())
+
+    return h.hexdigest()
+
+
+def _join_cache_path(data_location: str | None, fingerprint: str) -> Path | None:
+    """Return the path where a join cache file would live, or ``None`` if
+    caching is not possible (e.g. no ``data_location``)."""
+    if not data_location:
+        return None
+    location = Path(data_location).resolve()
+    parent = location if location.is_dir() else location.parent
+    if not parent.is_dir() or not parent.exists():
+        return None
+    return parent / f".hyrax_join_cache_{fingerprint}.pkl"
+
+
+def _load_join_cache(
+    data_location: str | None,
+    dataset_len: int,
+    getter,
+) -> dict[str, int] | None:
+    """Attempt to load a cached reverse-index map from disk.
+
+    Returns ``None`` on any cache miss (file absent, fingerprint mismatch,
+    corrupt data, permission error, etc.).
+    """
+    try:
+        fp = _join_cache_fingerprint(dataset_len, getter)
+        path = _join_cache_path(data_location, fp)
+        if path is None or not path.exists():
+            return None
+        with path.open("rb") as fh:
+            data = pickle.load(fh)  # noqa: S301
+        if not isinstance(data, dict):
+            return None
+        # Sanity check: the number of keys should match dataset_len at most.
+        if len(data) > dataset_len:
+            return None
+        return data
+    except Exception:
+        return None
+
+
+def _save_join_cache(
+    data_location: str | None,
+    dataset_len: int,
+    getter,
+    reverse_map: dict[str, int],
+) -> None:
+    """Persist a reverse-index map to disk.  Failures are silently ignored
+    (caching is best-effort)."""
+    try:
+        fp = _join_cache_fingerprint(dataset_len, getter)
+        path = _join_cache_path(data_location, fp)
+        if path is None:
+            return
+        tmp_path = path.with_suffix(".tmp")
+        with tmp_path.open("wb") as fh:
+            pickle.dump(reverse_map, fh, protocol=pickle.HIGHEST_PROTOCOL)
+        tmp_path.rename(path)
+        logger.debug("Join cache written to %s", path)
+    except Exception:
+        logger.debug("Failed to write join cache for %s", data_location, exc_info=True)
 
 
 def generate_data_request_from_config(config):
@@ -228,11 +335,20 @@ class DataProvider:
         # contains the list of indices that this provider should serve.
         self.split_indices = None
 
+        # Join support: populated by _build_join_indices after prepare_datasets.
+        # Maps friendly_name → join_field name for datasets that use joining.
+        self._join_fields: dict[str, str] = {}
+        # Maps friendly_name → {str(join_key): secondary_index}.
+        self._join_maps: dict[str, dict[str, int]] = {}
+
         self.prepare_datasets()
 
         if self.primary_dataset is None or self.primary_dataset_id_field_name is None:
             msg = "No Primary Dataset Defined. Somehow a DataProvider was made without pydantic validation."
             raise RuntimeError(msg)
+
+        if self._join_fields:
+            self._build_join_indices()
 
         self.pull_up_primary_dataset_methods()
 
@@ -303,6 +419,8 @@ class DataProvider:
                     repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
                 if self.primary_dataset_id_field_name:
                     repr_str += f"  Primary ID field: {self.primary_dataset_id_field_name}\n"
+                if friendly_name in self._join_fields:
+                    repr_str += f"  Join field: {self._join_fields[friendly_name]}\n"
                 if "fields" in data:
                     repr_str += f"  Requested fields: {', '.join(data.get('fields', []))}\n"
                 else:
@@ -411,11 +529,83 @@ class DataProvider:
                 self.split_fraction = dataset_definition.get("split_fraction", None)
                 self.primary_data_location = dataset_definition.get("data_location", None)
 
+            # Record join_field for secondary datasets that join by key.
+            if dataset_definition.get("join_field"):
+                self._join_fields[friendly_name] = dataset_definition["join_field"]
+
             # Cache the requested fields for each dataset as a tuple.
             # Tuples are immutable (preventing accidental modification) and can
             # provide slightly faster iteration than lists, which is beneficial
             # for repeated access in `resolve_data`.
             self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
+    def _build_join_indices(self):
+        """Build reverse-index mappings for datasets that declare a ``join_field``.
+
+        For each joined secondary dataset, a dict ``{str(key): int(index)}``
+        is built by iterating over all items in that dataset.  At runtime,
+        ``resolve_data`` uses these maps to translate primary object IDs to
+        secondary indices (left outer join — unmatched primaries get ``None``).
+
+        Reverse maps for independent secondaries are built in parallel using
+        threads.  Built maps are persisted to a cache file next to the
+        dataset's ``data_location``; a fingerprint check on subsequent runs
+        avoids the O(N) rebuild.
+
+        This method is called once during ``__init__``.  Runtime lookups in
+        ``resolve_data`` remain O(1) dict access.
+        """
+        # Validate that all join_field getters exist before launching threads.
+        for friendly_name, join_field in self._join_fields.items():
+            getter = self.dataset_getters[friendly_name].get(join_field)
+            if getter is None:
+                raise RuntimeError(
+                    f"Dataset '{friendly_name}' declares join_field='{join_field}' "
+                    f"but has no 'get_{join_field}' method."
+                )
+
+        # Build reverse maps — one per joined secondary, in parallel.
+        def _build_one_map(friendly_name: str) -> tuple[str, dict[str, int]]:
+            join_field = self._join_fields[friendly_name]
+            secondary = self.prepped_datasets[friendly_name]
+            getter = self.dataset_getters[friendly_name][join_field]
+            data_location = self.data_request[friendly_name].get("data_location")
+
+            # Try loading from persistent cache first.
+            cached = _load_join_cache(data_location, len(secondary), getter)
+            if cached is not None:
+                logger.info("Join map for '%s' loaded from cache.", friendly_name)
+                return friendly_name, cached
+
+            reverse_map: dict[str, int] = {}
+            n = len(secondary)
+            for idx in range(n):
+                key = str(getter(idx))
+                if key in reverse_map:
+                    logger.warning(
+                        "Duplicate join key '%s' in dataset '%s' at index %d; "
+                        "earlier occurrence at index %d will be shadowed.",
+                        key,
+                        friendly_name,
+                        idx,
+                        reverse_map[key],
+                    )
+                reverse_map[key] = idx
+
+            # Persist for future runs.
+            _save_join_cache(data_location, len(secondary), getter, reverse_map)
+
+            return friendly_name, reverse_map
+
+        names = list(self._join_fields.keys())
+        if len(names) == 1:
+            # Skip thread overhead for the single-secondary case.
+            fname, rmap = _build_one_map(names[0])
+            self._join_maps[fname] = rmap
+        else:
+            with ThreadPoolExecutor(max_workers=min(4, os.cpu_count())) as pool:
+                for fname, rmap in pool.map(_build_one_map, names):
+                    self._join_maps[fname] = rmap
 
     @staticmethod
     def _apply_configurations(base_config: dict, dataset_definition: dict) -> dict:
@@ -568,8 +758,13 @@ class DataProvider:
         """
         return [self.get_object_id(idx) for idx in range(len(self))]
 
-    def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str]:
+    def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str | None]:
         """This method requests the field data from the prepared datasets by index.
+
+        For joined secondary datasets (those with ``join_field``), the primary
+        dataset's object ID is looked up in the secondary's reverse map.  If a
+        match exists the secondary's data is returned normally; if no match
+        exists the friendly-name entry is set to ``None`` (left outer join).
 
         Parameters
         ----------
@@ -578,9 +773,10 @@ class DataProvider:
 
         Returns
         -------
-        dict[str, dict[str, Any] | str]
+        dict[str, dict[str, Any] | str | None]
             A dictionary containing the requested data from the prepared datasets.
-            Each key is a dataset friendly name mapped to a dict of field values.
+            Each key is a dataset friendly name mapped to a dict of field values,
+            or ``None`` when a joined secondary has no match for this item.
             If a primary dataset is configured, the top-level ``"object_id"`` key
             holds a string representation of the primary ID.
         """
@@ -591,19 +787,41 @@ class DataProvider:
             tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
             return cached_data
 
-        returned_data: dict[str, dict[str, Any] | str] = {}
+        # Pre-fetch the primary object ID when any joins are configured.
+        if self._join_maps:
+            primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
+            object_id_str = str(primary_id_getter(idx))
+        else:
+            object_id_str = None  # computed lazily below if needed
+
+        returned_data: dict[str, dict[str, Any] | str | None] = {}
 
         for friendly_name, fields in self.requested_fields.items():
             getters = self.dataset_getters[friendly_name]
-            data_dict = {field: getters[field](idx) for field in fields}
+
+            # Determine the real index for this dataset.
+            if friendly_name in self._join_maps:
+                real_idx = self._join_maps[friendly_name].get(object_id_str)
+                if real_idx is None:
+                    # Left outer join: no match in this secondary.
+                    returned_data[friendly_name] = None
+                    continue
+            else:
+                real_idx = idx
+
+            data_dict = {field: getters[field](real_idx) for field in fields}
             returned_data[friendly_name] = data_dict
 
         # Because there is machinery in the consuming code that expects an "object_id"
         # key in the returned data, we will add that here if a primary dataset.
         if self.primary_dataset:
             # If the primary id field wasn't already requested, we fetch it now.
-            if self.primary_dataset_id_field_name not in returned_data[self.primary_dataset]:
-                object_id = self.get_object_id(idx)
+            if self.primary_dataset_id_field_name not in returned_data.get(self.primary_dataset, {}):
+                if object_id_str is not None:
+                    object_id = object_id_str
+                else:
+                    primary_getter = self.dataset_getters[self.primary_dataset]
+                    object_id = str(primary_getter[self.primary_dataset_id_field_name](idx))
             else:
                 object_id = returned_data[self.primary_dataset][self.primary_dataset_id_field_name]
 
@@ -672,7 +890,14 @@ class DataProvider:
             ]
 
             if metadata_fields_to_fetch:
-                this_metadata = dataset.metadata(idxs, metadata_fields_to_fetch)
+                # Translate indices for joined datasets; unmatched items are
+                # omitted from the secondary's metadata result.
+                effective_idxs, _mask = self._translate_metadata_indices(idxs, friendly_name)
+                if not effective_idxs and idxs:
+                    # All requested indices were unmatched in this joined
+                    # secondary — skip it entirely.
+                    continue
+                this_metadata = dataset.metadata(effective_idxs, metadata_fields_to_fetch)
                 # Append the friendly name to the columns
                 this_metadata.dtype.names = [f"{name}_{friendly_name}" for name in this_metadata.dtype.names]
 
@@ -726,6 +951,33 @@ class DataProvider:
 
         return all_fields
 
+    def _translate_metadata_indices(self, idxs, friendly_name):
+        """Translate primary indices to real dataset indices for metadata.
+
+        For joined secondaries, looks up the matching secondary index via the
+        join map.  Indices with no match in the secondary are omitted (the
+        caller receives fewer rows than requested for that secondary).
+
+        Returns a tuple ``(translated_idxs, mask)`` where *mask* is a boolean
+        list of the same length as *idxs* indicating which positions had a
+        valid match.  Non-joined datasets always return a full-True mask.
+        """
+        if friendly_name not in self._join_maps:
+            return idxs, [True] * len(idxs)
+
+        translated = []
+        mask = []
+        primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
+        for pi in idxs:
+            key = str(primary_id_getter(pi))
+            secondary_idx = self._join_maps[friendly_name].get(key)
+            if secondary_idx is not None:
+                translated.append(secondary_idx)
+                mask.append(True)
+            else:
+                mask.append(False)
+        return translated, mask
+
     def _primary_or_first_dataset(self):
         """Returns the primary dataset instance if it exists, otherwise returns
         the first dataset in the prepped_datasets."""
@@ -757,11 +1009,15 @@ class DataProvider:
             a list of values for that field across the batch.
         """
 
-        batch_dict: dict[str, dict[str, list], list] = {}
+        batch_dict: dict[str, dict[str, list] | list] = {}
         custom_collate: dict[str, list] = {}
 
+        # Track which batch positions are None per friendly_name (left outer
+        # join misses).  Only populated for names that have at least one None.
+        none_masks: dict[str, list[bool]] = {}
+
         # Aggregate values per friendly_name -> field -> list(values)
-        for sample in batch:
+        for sample_idx, sample in enumerate(batch):
             for friendly_name, fields in sample.items():
                 # Special handling for "object_id" for the time being. "object_id"
                 # hangs on the edge of the data dictionary so that it can be consumed
@@ -773,6 +1029,17 @@ class DataProvider:
                     val = fields[""] if isinstance(fields, dict) and "" in fields else fields
                     batch_dict.setdefault("object_id", []).append(str(val))
                     continue
+
+                # Left outer join: None means no match in this secondary.
+                if fields is None:
+                    if friendly_name not in none_masks:
+                        none_masks[friendly_name] = [True] * sample_idx
+                    none_masks[friendly_name].append(False)
+                    continue
+
+                # Track matched position if we're already tracking this name.
+                if friendly_name in none_masks:
+                    none_masks[friendly_name].append(True)
 
                 # If we find that `friendly_name` is in self.custom_collate_functions
                 # we accumulate the samples from that dataset and hand off to
@@ -787,16 +1054,22 @@ class DataProvider:
                 for field, value in fields.items():
                     batch_dict[friendly_name].setdefault(field, []).append(value)
 
+        # Pad any none_masks that are shorter than the batch (trailing matches).
+        batch_size = len(batch)
+        for name in none_masks:
+            while len(none_masks[name]) < batch_size:
+                none_masks[name].append(True)
+
         # Convert object_id list -> numpy array of strings
         if "object_id" in batch_dict:
             batch_dict["object_id"] = np.asarray(batch_dict["object_id"], dtype=str)
 
-        # Handle custom collate functions for datasets that define them
+        # Handle custom collate functions for datasets that define them.
+        # For joined datasets with None entries, filter out the Nones before
+        # calling the custom function.
         for friendly_name, samples in custom_collate.items():
-            # Get the collate function from the mapping dictionary
             custom_collate_fn = self.custom_collate_functions[friendly_name]
 
-            # Pass the list of data samples to the collation
             try:
                 custom_collated_data = custom_collate_fn(samples)
             except Exception as err:
@@ -809,7 +1082,6 @@ class DataProvider:
                     "using its custom collate function."
                 ) from err
 
-            # Add the collated data to the batch dictionary
             batch_dict[friendly_name] = custom_collated_data
 
         # Try to convert lists of values into numpy arrays. We skip the "object_id"
@@ -863,5 +1135,9 @@ class DataProvider:
             # Handle direct numpy arrays (e.g., from custom collate that returns arrays directly)
             elif isinstance(fields, np.ndarray):
                 batch_dict[friendly_name] = _handle_nans(fields, self.config)
+
+        # Add __matched masks for joined datasets that had any None entries.
+        for friendly_name, mask in none_masks.items():
+            batch_dict[f"{friendly_name}__matched"] = np.array(mask, dtype=bool)
 
         return batch_dict
