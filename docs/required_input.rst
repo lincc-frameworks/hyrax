@@ -52,7 +52,7 @@ three 2d arrays: "science", "mask", and "variance".
 To be flexible, the dataset class that provides data from disk would return each
 array individually.
 The model may expect a single flattened array as input.
-In this case, the user would need to define a `prepare_inputs` function that takes in
+In this case, the user would need to define a ``prepare_inputs`` function that takes in
 the structured data sample and stacks the arrays into a single array before
 returning it.
 
