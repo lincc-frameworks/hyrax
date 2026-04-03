@@ -715,10 +715,12 @@ class TraceCall(TracePrintable):
 
         repr = f"{self.disp_name}({params_repr}) -> {retval_repr} duration={duration_ms:.3g} ms\n"
 
+        repr += "inputs:\n"
         for param_name, param_value in self.params.items():
             value_str = self._repr_value(param_value).replace("\n", "\n\t")
             repr += f"\t{param_name} = {value_str}\n"
 
+        repr += "outputs:\n"
         for param_name, param_value in self.retval.items():
             value_str = self._repr_value(param_value).replace("\n", "\n\t")
             repr += f"\t{param_name} = {value_str}\n"

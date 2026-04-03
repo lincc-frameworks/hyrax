@@ -98,7 +98,7 @@ def test_trace_context_restores_dataprovider_len_after_exit():
     During an active trace TraceContext shims DataProvider.__len__.
     After __exit__ the original method is restored.
     """
-    from hyrax.data_sets.data_provider import DataProvider
+    from hyrax.datasets.data_provider import DataProvider
 
     from hyrax.trace import TraceContext
 
@@ -118,7 +118,7 @@ def test_trace_context_restores_dataprovider_len_on_exception():
     TraceContext restores DataProvider.__len__ even when an exception is raised
     inside the context block.
     """
-    from hyrax.data_sets.data_provider import DataProvider
+    from hyrax.datasets.data_provider import DataProvider
 
     from hyrax.trace import TraceContext, get_trace
 
