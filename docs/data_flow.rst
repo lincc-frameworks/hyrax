@@ -43,7 +43,8 @@ the method signature.
    automatically in the training and inference engines.
 
 .. note::
-   The older function name ``to_tensor`` is deprecated but still supported for backward compatibility. Please use ``prepare_inputs`` in new code.
+   The older function name ``to_tensor`` is deprecated but still supported for backward compatibility. 
+   Please use ``prepare_inputs`` in new code.
 
 Training and Inference Pipelines
 ---------------------------------
@@ -74,12 +75,12 @@ Data Format Summary
      - Format
    * - ``dataset.get_*(idx)``
      - Single item: numpy array, scalar, or string
-   * - ``DataProvider.__getitem__(idx)``
-     - Nested dict: ``{source_name: {field: value, ...}, "object_id": str}``
-   * - After ``collate`` (DataLoader batch)
-     - Dict of numpy arrays: ``{source_name: {field: np.ndarray, ...}}``
+   * - Before ``collate``
+     - List of nested dict. Each item: ``{source_name: {field: value, ...}, "object_id": str}``
+   * - After ``collate`` Before ``prepare_inputs``
+     - Dict of numpy arrays: ``{source_name: {field: np.ndarray, ...}}`` Each contains a whole batch
    * - After ``prepare_inputs``
-     - Tuple of numpy arrays (or single ``np.ndarray``)
+     - Tuple of numpy arrays (or single ``np.ndarray``). Shape is model-specific.
    * - Inside model methods
      - Tuple of ``torch.Tensor`` on device
    * - Inference output (saved to disk)

@@ -152,6 +152,8 @@ Look up the inference result for a single object by its ID.
 
 Returns a ``numpy.ndarray`` (the latent vector) or ``None`` if not found.
 
+Defaults to using the most recent ``infer`` output directory as a data source.
+
 .. tab-set::
 
     .. tab-item:: Notebook
@@ -209,7 +211,8 @@ Returns a vector database connection object.
 ``to_onnx``
 ------------
 Export a trained PyTorch model to ONNX format for portable, framework-free
-inference via the ``engine`` verb.
+inference via the ``engine`` verb. By default uses the most recent results 
+directory from the ``train`` verb.
 
 .. tab-set::
 
