@@ -58,7 +58,7 @@ Returns a ``ResultDataset`` in a notebook context.
 ``test``
 --------
 Evaluate a trained model on test data, computing metrics and logging results
-to MLflow.
+to MLflow and TensorBoard.
 
 Returns a ``ResultDataset`` in a notebook context.
 
