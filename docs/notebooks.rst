@@ -11,3 +11,4 @@ Example notebooks
     Working with a vector database <pre_executed/vector_db_demo>
     Exporting a Model <pre_executed/export_model>
     HyraxQL data requests <pre_executed/hyraxql_demo>
+    Tracing Data Flow <pre_executed/trace_feature>

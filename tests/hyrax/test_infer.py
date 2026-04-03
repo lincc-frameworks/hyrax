@@ -5,6 +5,50 @@ import numpy as np
 import pytest
 
 
+def test_infer_trace(loopback_hyrax):
+    """
+    Integration test: infer(trace=N) returns a TraceResult that can be
+    printed and inspected stage by stage, modelling how a user would use
+    the trace feature from a notebook.
+    """
+    from hyrax.trace import TraceResult, TraceStage
+
+    h, _ = loopback_hyrax
+    # trace=5: keeps the traced batch small while ensuring the DataProvider is
+    # large enough for the percentage-based split path to produce non-empty
+    # partitions (round(5 × 0.2) = 1 sample per 20% split).
+    trace_result = h.infer(trace=5)
+
+    # User would first print the result
+    assert isinstance(trace_result, TraceResult)
+    assert len(str(trace_result)) > 0
+
+    # User accesses stages via attribute notation: trace_result.resolve_data
+    assert isinstance(trace_result.resolve_data, TraceStage)
+
+    # User accesses stages via dict notation: trace_result["collate"]
+    assert isinstance(trace_result["collate"], TraceStage)
+
+    # Stages should have captured calls from the data pipeline
+    assert len(trace_result["resolve_data"]) > 0
+    assert len(trace_result["collate"]) > 0
+
+    # User can dive into individual calls within a stage
+    first_resolve_call = trace_result["resolve_data"][0]
+    assert str(first_resolve_call)
+
+    # Verify access to captured function parameters by name and by number
+    # The resolve_data stage captures {"index": 0} as the first positional parameter
+    index_by_name = first_resolve_call["index"]
+    assert index_by_name is not None
+
+    index_by_number = first_resolve_call[0]
+    assert index_by_number is not None
+
+    # Numeric and named access should return the same captured parameter value
+    assert index_by_name == index_by_number
+
+
 @pytest.mark.parametrize("shuffle", [True, False])
 def test_infer_order(loopback_hyrax, shuffle):
     """Test that the order of data run through infer
