@@ -102,10 +102,11 @@ multiple large secondary datasets are joined.
 
 Reverse maps are serialized to disk as pickle files alongside the dataset's
 `data_location`. A content-based fingerprint (SHA-256 of dataset length +
-sampled keys) detects staleness and triggers a rebuild. This avoids the O(N)
-init cost on repeated runs with the same data.
+sampled keys) is used to detect staleness, trigger a rebuild when needed,
+and name the cache file. This avoids the O(N) init cost on repeated runs
+with the same data.
 
-Cache files follow the naming pattern `.hyrax_join_cache_<friendly_name>.pkl`
+Cache files follow the naming pattern `.hyrax_join_cache_<fingerprint>.pkl`
 and are excluded from version control via `.gitignore`.
 
 ### Affected methods
