@@ -7,7 +7,7 @@ and (unless noted) as a subcommand of the ``hyrax`` CLI.
 
 ``train``
 ---------
-Train a model. The specific model and training data are specified via the
+Train a model. The model and training data are specified via the
 :doc:`configuration </configuration>` or by calling ``h.set_config()`` after
 creating a ``Hyrax`` instance.
 
@@ -35,8 +35,7 @@ Returns the trained ``torch.nn.Module`` in a notebook context.
 ---------
 Run inference using a trained model. If no model weights are specified,
 Hyrax automatically finds the most recently trained model in the results
-directory. You can also choose which :ref:`dataset split <dataset_splits>`
-to run inference on.
+directory. 
 
 Returns a ``ResultDataset`` in a notebook context.
 
