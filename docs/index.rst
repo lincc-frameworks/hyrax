@@ -66,12 +66,12 @@ search, and interactive exploration.
    h.download()              # Retrieve cutouts from LSST, HSC, or other surveys
    h.train()                 # Train any PyTorch model with automatic logging & multi-GPU support
    h.infer()                 # Run inference and store results
-   h.umap()                  # Reduce latent vectors to 2D/3D with UMAP
    h.save_to_database()      # Index embeddings in a vector database
+   h.umap()                  # Reduce latent vectors to 2D/3D with UMAP
+   h.visualize()             # Interactively explore latent spaces in 2D or 3D
    db = h.database_connection()
    v = ...                   # numpy vector representing the object to search for
    db.search_by_vector(v)    # Find similar objects via integrated vector databases
-   h.visualize()             # Interactively explore latent spaces in 2D or 3D
 
 Each step can be used on its own, or combined into an end-to-end workflow.
 
