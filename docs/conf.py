@@ -43,7 +43,7 @@ copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
 extensions.append("sphinx_togglebutton")
 
 templates_path: list[str] = []
-exclude_patterns = ["_build", "**.ipynb_checkpoints"]
+exclude_patterns = ["_build", "**.ipynb_checkpoints", "archived_notebooks/*"]
 
 # This assumes that sphinx-build is called from the root directory
 master_doc = "index"

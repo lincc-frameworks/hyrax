@@ -29,7 +29,8 @@ Required methods (checklist)
 Your class must have these:
 
 1. Inherit from ``torch.nn.Module``.
-2. Add ``@hyrax_model`` above the class.
+2. Add ``@hyrax_model`` above the class (this registers your model so Hyrax can
+   find it by name in the :doc:`configuration </configuration>`).
 3. Implement:
 
    * ``__init__(self, config, data_sample=None)``
@@ -109,7 +110,8 @@ Example:
 ``@staticmethod prepare_inputs(data_dict)``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-This converts collated dataset fields into model inputs.
+This converts collated dataset fields into model inputs. For background on where
+this sits in the pipeline, see :doc:`/data_flow`.
 
 Important:
 
@@ -179,7 +181,8 @@ Important details:
 
 * Hyrax treats **lower ``loss`` as better** for best-checkpoint selection.
 * Any extra metrics you return (like ``acc``) are logged to TensorBoard and MLflow.
-  See :doc:`/notebooks/using_tensorboard_and_mlflow`.
+  See :doc:`/notebooks/using_tensorboard_and_mlflow`. For documentation on comparing
+  runs across experiments, see :doc:`model_comparison`.
 
 
 Optional methods
