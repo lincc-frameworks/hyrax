@@ -58,10 +58,7 @@ class MultimodalUniverseDataset(HyraxDataset):
             )
 
         self.data_location = str(data_location)
-        dataset_settings = (
-            config.get("data_set", {}).get("MultimodalUniverseDataset", {}) if config is not None else {}
-        )
-
+        dataset_settings = config["data_set"]["MultimodalUniverseDataset"]
         self.split = dataset_settings["split"]
         self.max_samples = int(dataset_settings["max_samples"]) if dataset_settings["max_samples"] else None
         self.streaming = dataset_settings["streaming"]
@@ -110,6 +107,18 @@ class MultimodalUniverseDataset(HyraxDataset):
         return _IndexedSubset(dataset, limit)
 
     def _build_column_name_map(self) -> dict[str, str]:
+        """
+        Returns a map from sanitized column names to the original column names.
+
+        Its possible for a column name to have puctuation or start with a number.
+        In these cases we also allow column access via a sanitized name where all
+        punctuation is replaced with the underscore character, and any field starting
+        with a number is replaced by "field_"
+
+        Every field is entered in the dictionary regardless of whether it needed
+        sanitization or not. In this case the sanitized name is exactly the field
+        name.
+        """
         sample = self.dataset[0]
         column_name_map: dict[str, str] = {}
         for key in sample:
@@ -119,11 +128,17 @@ class MultimodalUniverseDataset(HyraxDataset):
 
             # Register a sanitized alias for convenience.
             sanitized = self._sanitize_name(key)
+            # Note that if the sanitized name is the key name, this line is a noop
+            # because the key was already set above.
             column_name_map.setdefault(sanitized, key)
 
         return column_name_map
 
     def _sanitize_name(self, column_name: str) -> str:
+        """
+        Take a column name that may contain punctuation and return a version with
+        underscore replacing the punctuation
+        """
         sanitized = re.sub(r"\W", "_", column_name)
         if not sanitized:
             return "field"
@@ -155,9 +170,3 @@ class MultimodalUniverseDataset(HyraxDataset):
 
     def __len__(self) -> int:
         return len(self.dataset)
-
-    # def __getitem__(self, idx: int) -> dict[str, Any]:
-    #     return self.dataset[idx]
-
-    # def sample_data(self) -> dict[str, dict[str, Any]]:
-    #     return {"data": self.dataset[0]}
