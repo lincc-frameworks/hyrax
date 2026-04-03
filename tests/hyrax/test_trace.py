@@ -99,6 +99,7 @@ def test_trace_context_restores_dataprovider_len_after_exit():
     After __exit__ the original method is restored.
     """
     from hyrax.data_sets.data_provider import DataProvider
+
     from hyrax.trace import TraceContext
 
     original_len = DataProvider.__dict__.get("__len__")
@@ -118,6 +119,7 @@ def test_trace_context_restores_dataprovider_len_on_exception():
     inside the context block.
     """
     from hyrax.data_sets.data_provider import DataProvider
+
     from hyrax.trace import TraceContext, get_trace
 
     original_len = DataProvider.__dict__.get("__len__")
