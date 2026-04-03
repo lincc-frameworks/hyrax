@@ -2,6 +2,7 @@ import copy
 import functools
 import hashlib
 import logging
+import os
 import pickle
 import time
 import warnings
@@ -602,7 +603,7 @@ class DataProvider:
             fname, rmap = _build_one_map(names[0])
             self._join_maps[fname] = rmap
         else:
-            with ThreadPoolExecutor(max_workers=len(names)) as pool:
+            with ThreadPoolExecutor(max_workers=min(4, os.cpu_count())) as pool:
                 for fname, rmap in pool.map(_build_one_map, names):
                     self._join_maps[fname] = rmap
 
