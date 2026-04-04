@@ -58,14 +58,14 @@ def trace_verb_data(verb_run_func):
     """
     Simple wrapper decorator for verbs to implement the trace=<num data items> interface
 
-    This decorator:
-    1. Adds a keyword argument "trace" which takes a number controlling how many data items
-       are run through the verb. This is accomplished by hyrax config modification and by shimming
-       particuar DataProvider methods
+    This decorator does two things:
 
-    2. Allows the verb's return value to be passed through, but in the case of trace being set
-       the verb returns a TraceResult object that captures the order, parameter values, and return values
-       of the main steps in Hyrax's default data pipeline for debugging purposes.
+    * Adds a ``trace`` keyword argument that controls how many data items are
+      run through the verb by modifying Hyrax config and shimming selected
+      DataProvider methods.
+    * Preserves the verb's return value in normal mode, but when ``trace`` is
+      set it returns a TraceResult object that captures call order, parameter
+      values, and return values for major steps in Hyrax's default pipeline.
 
     """
 
@@ -89,9 +89,9 @@ class TraceContext:
     remove these shims. This removal returns classes to their pre-trace state and keeps the effects of
     the shimming contained to the runtime of a single verb in a long-running notebook.
 
-    Therefore verbs using data tracing should use the @trace_data decorator or implement the pattern below
+    Therefore verbs using data tracing should use the @trace_data decorator or implement the pattern below::
 
-    with TraceContext(trace, self.config) as modified_config:
+        with TraceContext(trace, self.config) as modified_config:
         self.config = modified_config
 
         ...verb code...

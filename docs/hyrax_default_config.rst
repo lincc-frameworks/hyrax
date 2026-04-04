@@ -1,4 +1,4 @@
-.. _complete_default_config:
+.. _hyrax_default_config_file:
 
 Hyrax default configuration
 ---------------------------

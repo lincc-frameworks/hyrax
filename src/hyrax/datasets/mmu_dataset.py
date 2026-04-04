@@ -113,7 +113,7 @@ class MultimodalUniverseDataset(HyraxDataset):
         Its possible for a column name to have puctuation or start with a number.
         In these cases we also allow column access via a sanitized name where all
         punctuation is replaced with the underscore character, and any field starting
-        with a number is replaced by "field_"
+        with a number is replaced by ``field_``
 
         Every field is entered in the dictionary regardless of whether it needed
         sanitization or not. In this case the sanitized name is exactly the field
