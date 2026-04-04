@@ -11,7 +11,7 @@ fi
 
 VENV_PATH="$HOME/hyrax-venv"
 
-# Check if venv exists, if not create it
+# Check if venv exists, if not exit (venv must be created by the setup script)
 if [ ! -d "$VENV_PATH" ]; then
   echo "No virtual environment found... exiting"
   exit 0
