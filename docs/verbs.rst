@@ -1,19 +1,17 @@
 Hyrax Verbs
 ===========
-The term "verb" is used to describe the functions that Hyrax supports.
-For instance, the ``train`` verb is used to train a model.
-Each of the builtin verbs are detailed here.
+The term "verb" describes the actions that Hyrax can perform.
+Each verb is available as a method on the ``Hyrax`` object in a notebook
+and (unless noted) as a subcommand of the ``hyrax`` CLI.
 
 
 ``train``
 ---------
-Train a model. The specific model to train and the data used for training is
-specified in the :doc:`configuration file </configuration>` or by updating the
-default configurations after creating an instance of the Hyrax object.
+Train a model. The model and training data are specified via the
+:doc:`configuration </configuration>` or by calling ``h.set_config()`` after
+creating a ``Hyrax`` instance.
 
-When called from a notebook or python, ``train()`` returns a trained pytorch
-model which you can :doc:`immediately evaluate, inspect, or export </pre_executed/export_model>`. Batch evaluations of datasets
-are enabled using the ``infer`` verb, see below.
+Returns the trained ``torch.nn.Module`` in a notebook context.
 
 .. tab-set::
 
@@ -23,27 +21,23 @@ are enabled using the ``infer`` verb, see below.
 
            from hyrax import Hyrax
 
-           # Create an instance of the Hyrax object
            h = Hyrax()
-
-           # Train the model specified in the configuration file
            model = h.train()
 
     .. tab-item:: CLI
 
         .. code-block:: bash
 
-           >> hyrax train
+           $ hyrax train
 
 
 ``infer``
 ---------
-Run inference using a trained model. The specific model to use for inference can
-be specified in the :doc:`configuration file </configuration>`. If no model is
-specified, Hyrax will find the most recently trained model in the results directory
-and use that for inference. The data used for inference is also specified in the
-configuration file. You can also choose which :ref:`dataset split <dataset_splits>`
-to run inference on.
+Run inference using a trained model. If no model weights are specified,
+Hyrax automatically finds the most recently trained model in the results
+directory. 
+
+Returns a ``ResultDataset`` in a notebook context.
 
 .. tab-set::
 
@@ -51,31 +45,21 @@ to run inference on.
 
         .. code-block:: python
 
-           from hyrax import Hyrax
-
-           # Create an instance of the Hyrax object
-           h = Hyrax()
-
-           # Pass data through a trained model to produce embeddings or predictions.
            h.infer()
 
     .. tab-item:: CLI
 
         .. code-block:: bash
 
-           >> hyrax infer
+           $ hyrax infer
 
-When running infer in a notebook context, the infer verb returns an
-:doc:`InferenceDataset </autoapi/hyrax/datasets/inference_dataset/index>` object which can be accessed using
-the ``[]`` operators in python.
 
-``umap``
+``test``
 --------
-Run UMAP (`Uniform Manifold Approximation and Projection`_) on the
-output of inference or a dataset. By default, Hyrax will use the most
-recently generated output from the ``infer`` verb.
+Evaluate a trained model on test data, computing metrics and logging results
+to MLflow and TensorBoard.
 
-.. _`Uniform Manifold Approximation and Projection`: https://umap-learn.readthedocs.io
+Returns a ``ResultDataset`` in a notebook context.
 
 .. tab-set::
 
@@ -83,66 +67,92 @@ recently generated output from the ``infer`` verb.
 
         .. code-block:: python
 
-           from hyrax import Hyrax
+           h.test()
 
-           # Create an instance of the Hyrax object
-           h = Hyrax()
+    .. tab-item:: CLI
 
-           # Train a UMAP and process the entire dataset.
+        .. code-block:: bash
+
+           $ hyrax test
+
+
+``umap``
+--------
+Run `UMAP <https://umap-learn.readthedocs.io>`_ on the output of inference
+to reduce high-dimensional embeddings to 2D (or 3D) for visualization. By
+default, Hyrax uses the most recent inference output. See the
+:doc:`UMAP notebook </pre_executed/using_umap>` for configuration options.
+
+Returns a ``ResultDataset`` containing the reduced embeddings.
+
+.. tab-set::
+
+    .. tab-item:: Notebook
+
+        .. code-block:: python
+
            h.umap()
 
     .. tab-item:: CLI
 
         .. code-block:: bash
 
-           >> hyrax umap
+           $ hyrax umap [-i <path_to_inference_output>]
 
 
 ``visualize``
 -------------
-Interactively visualize the embedded space produced by the ``umap`` verb. For more
-on dimensionality reduction options, see the :doc:`UMAP notebook </pre_executed/using_umap>`.
-Due to the fact that the visualization is interactive, it is not available in the CLI.
+Interactively visualize the embedded space produced by the ``umap`` verb.
+Renders an interactive Holoviews/Bokeh scatter plot with linked data table
+and optional image thumbnails.
+
+.. note::
+   Notebook-only. Not available from the CLI.
 
 .. code-block:: python
 
-    from hyrax import Hyrax
-
-    # Create an instance of the Hyrax object
-    h = Hyrax()
-
-    # Visualize the model specified in the configuration file
-    h.visualize()
+    h.visualize(width=800, height=800)
 
 
 ``prepare``
 -----------
-Create and return an instance of a Hyrax dataset object. This allows for convenient
-investigation of the dataset. While this can be run from the CLI, it is primarily
-intended for use in a notebook environment for exploration and debugging.
+Load and return the configured datasets without running any training or
+inference. Useful for inspecting data, verifying the pipeline, and
+prototyping ``prepare_inputs`` or ``collate`` functions.
+
+Returns a dictionary of ``DataProvider`` objects keyed by split name
+(e.g. ``"train"``, ``"infer"``).
+
+.. note::
+   Notebook-only. Not available from the CLI.
 
 .. code-block:: python
 
-    from hyrax import Hyrax
-
-    # Create an instance of the Hyrax object
-    h = Hyrax()
-
-    # Prepare the dataset for exploration
-    dataset = h.prepare()
+    datasets = h.prepare()
+    sample = datasets["train"][0]
 
 
-``index``
+``model``
 ---------
-Builds a vector database index from the output of inference. See the
-:doc:`vector database notebook </pre_executed/vector_db_demo>` for an end-to-end
-walkthrough. By default, Hyrax will use the most recently generated output from
-the ``infer`` verb, and will write the resulting database to a new timestamped
-directory under the default ``./results/`` directory with the form
-<timestamp>-index-<uid>.
+Resolve and return the model *class* (not an instantiated model) from the
+current configuration. Useful for inspecting or overriding ``prepare_inputs``
+before training.
 
-An existing database directory can be specified in order to add more vectors to
-an existing index.
+.. note::
+   Notebook-only. Not available from the CLI.
+
+.. code-block:: python
+
+    ModelClass = h.model()
+
+
+``lookup``
+----------
+Look up the inference result for a single object by its ID.
+
+Returns a ``numpy.ndarray`` (the latent vector) or ``None`` if not found.
+
+Defaults to using the most recent ``infer`` output directory as a data source.
 
 .. tab-set::
 
@@ -150,16 +160,90 @@ an existing index.
 
         .. code-block:: python
 
-            from hyrax import Hyrax
-
-            # Create an instance of the Hyrax object
-            h = Hyrax()
-
-            # Build a vector database index from the output of inference
-            h.index()
+           result = h.lookup(id="object_42")
 
     .. tab-item:: CLI
 
         .. code-block:: bash
 
-           >> hyrax index [-i <path_to_inference_output> -o <path_to_database_directory>]
+           $ hyrax lookup -i <object_id> [-r <results_dir>]
+
+
+``save_to_database``
+--------------------
+Insert inference results into a vector database for similarity search.
+Supports ChromaDB and Qdrant backends (configured via ``[vector_db]``).
+By default uses the most recent inference output. See the
+:doc:`vector database notebook </pre_executed/vector_db_demo>` for an
+end-to-end walkthrough.
+
+.. tab-set::
+
+    .. tab-item:: Notebook
+
+        .. code-block:: python
+
+           h.save_to_database()
+
+    .. tab-item:: CLI
+
+        .. code-block:: bash
+
+           $ hyrax save_to_database [-i <inference_dir> -o <database_dir>]
+
+
+``database_connection``
+-----------------------
+Open a connection to an existing vector database for interactive similarity
+queries (``search_by_id``, ``search_by_vector``, ``get_by_id``).
+
+Returns a vector database connection object.
+
+.. note::
+   Notebook-only. Not available from the CLI.
+
+.. code-block:: python
+
+    db = h.database_connection()
+    neighbors = db.search_by_id("object_42", k=5)
+
+
+``to_onnx``
+------------
+Export a trained PyTorch model to ONNX format for portable, framework-free
+inference via the ``engine`` verb. By default uses the most recent results 
+directory from the ``train`` verb.
+
+.. tab-set::
+
+    .. tab-item:: Notebook
+
+        .. code-block:: python
+
+           h.to_onnx()
+
+    .. tab-item:: CLI
+
+        .. code-block:: bash
+
+           $ hyrax to_onnx [--input-model-directory <dir>]
+
+
+``engine``
+----------
+Run inference using an exported ONNX model. Intended for production
+deployments that do not require PyTorch at runtime.
+
+.. tab-set::
+
+    .. tab-item:: Notebook
+
+        .. code-block:: python
+
+           h.engine()
+
+    .. tab-item:: CLI
+
+        .. code-block:: bash
+
+           $ hyrax engine [--model-directory <dir>]
