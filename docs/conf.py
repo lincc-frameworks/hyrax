@@ -112,7 +112,6 @@ nitpick_ignore_regex = [
     (r"^py:.*", r"^pydantic\.RootModel$"),
     (r"^py:.*", r"^DatasetGroupValue$"),
     (r"^py:.*", r"^ValidationError$"),
-    (r"^py:.*", r"^DataProvider$"),
     (r"^py:class", r"^callable$"),
     (r"^py:class", r"^class$"),
     (r"^py:class", r"^class instance$"),
