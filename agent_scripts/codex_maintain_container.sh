@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # To use this as your maintenance script in codex
-# put the following line into the maintenence script
+# put the following line into the maintenance script
 # setup box on the webpage:
 #
 # ./agent_scripts/codex_maintain_container.sh
