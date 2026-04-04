@@ -17,6 +17,13 @@ if [ ! -d "$VENV_PATH" ]; then
   exit 0
 fi
 
-# Activate the venv and install dependencies
+# Activate the venv to capture environment modifications
 source "$VENV_PATH/bin/activate"
+
+# Persist environment variables to the Claude Code session
+if [ -n "${CLAUDE_ENV_FILE:-}" ]; then
+  echo "export PATH=\"$PATH\"" >> "$CLAUDE_ENV_FILE"
+  echo "export VIRTUAL_ENV=\"$VIRTUAL_ENV\"" >> "$CLAUDE_ENV_FILE"
+fi
+
 echo "Virtual environment activated: $VENV_PATH"
