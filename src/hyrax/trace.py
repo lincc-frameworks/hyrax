@@ -89,7 +89,8 @@ class TraceContext:
     remove these shims. This removal returns classes to their pre-trace state and keeps the effects of
     the shimming contained to the runtime of a single verb in a long-running notebook.
 
-    Therefore verbs using data tracing should use the @trace_verb_data decorator or implement the pattern below::
+    Therefore verbs using data tracing should use the @trace_verb_data decorator or 
+    implement the pattern below::
 
         with TraceContext(trace, self.config) as modified_config:
             self.config = modified_config
