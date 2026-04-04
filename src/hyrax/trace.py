@@ -92,11 +92,11 @@ class TraceContext:
     Therefore verbs using data tracing should use the @trace_verb_data decorator or implement the pattern below::
 
         with TraceContext(trace, self.config) as modified_config:
-        self.config = modified_config
+            self.config = modified_config
 
-        ...verb code...
+            ...verb code...
 
-        return get_trace() if trace else retval
+            return get_trace() if trace else retval
 
     """
 
