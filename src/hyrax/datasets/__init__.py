@@ -46,7 +46,7 @@ The remaining classes in this module exist primarily for Hyrax interface purpose
 result, and may be returned from those verbs to provide data access
 
 :doc:`HyraxDataset <dataset_registry/index>` is a base class for all datasets in Hyrax and must be within
-the inheretence hierarchy of all custom datasets. It is not usable on it's own, but provides various fall-back
+the inheritance hierarchy of all custom datasets. It is not usable on its own, but provides various fall-back
 functionality to make custom datasets easier to write. See the
 :doc:`dataset class reference </dataset_class_reference>` and
 :doc:`example notebook </pre_executed/external_dataset_class>` for more information.
