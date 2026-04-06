@@ -35,7 +35,7 @@ class HyraxDataset:
     ``metadata`` functions.  If desired, a subclass may override these functions directly
     rather than using the astropy Table interface.
 
-    Further documentation is in the :doc:`/pre_executed/custom_dataset` example notebook.
+    Further documentation is in the :doc:`/pre_executed/external_dataset_class` example notebook.
 
     """
 

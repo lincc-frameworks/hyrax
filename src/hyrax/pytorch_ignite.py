@@ -392,7 +392,7 @@ def create_splits_from_fractions(
     shuffle: bool = True,
 ) -> dict[str, list[int]]:
     """Partition a shared set of indices across dataset groups using the
-    ``split_fraction`` defined on each :class:`DataProvider`.
+    ``split_fraction`` defined on each ``DataProvider``.
 
     All providers in *dataset_providers* are expected to wrap the **same
     underlying data source** (same ``data_location``).  The full index range
@@ -403,9 +403,9 @@ def create_splits_from_fractions(
 
     Parameters
     ----------
-    dataset_providers : dict[str, DataProvider]
+    dataset_providers : dict[str, Any]
         Mapping of group name (e.g. ``"train"``, ``"validate"``) to a
-        :class:`DataProvider` instance whose ``split_fraction`` is set.
+        ``DataProvider`` instance whose ``split_fraction`` is set.
     config : dict
         The Hyrax runtime configuration.  Only ``config["data_set"]["seed"]``
         is used here.
