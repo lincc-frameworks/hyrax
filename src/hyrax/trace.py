@@ -90,7 +90,9 @@ class TraceContext:
     the shimming contained to the runtime of a single verb in a long-running notebook.
 
     Therefore verbs using data tracing should use the @trace_verb_data decorator or
-    implement the pattern below::
+    implement the pattern below:
+
+    .. code-block:: python
 
         with TraceContext(trace, self.config) as modified_config:
             self.config = modified_config
