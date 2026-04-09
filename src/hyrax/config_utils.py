@@ -178,6 +178,8 @@ class ConfigManager:
         ["general", "data_dir"],
     ]
 
+    PYDANTIC_VALIDATED_KEYS = ["data_request", "model_inputs"]
+
     def __init__(
         self,
         runtime_config_filepath: Union[Path, str] | None = None,
@@ -194,7 +196,7 @@ class ConfigManager:
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
 
         # Validate data_request/model_inputs if present in loaded config
-        for key in ("data_request", "model_inputs"):
+        for key in ConfigManager.PYDANTIC_VALIDATED_KEYS:
             if key in self.config:
                 value = self.config[key]
                 try:
@@ -475,9 +477,10 @@ class ConfigManager:
         """
         for key in runtime_config:
             if key not in default_config:
-                msg = f"Runtime config contains key or section '{key}' which has no default defined. "
-                msg += f"All configuration keys and sections must be defined in {DEFAULT_CONFIG_FILEPATH}"
-                logger.warning(msg)
+                if key not in ConfigManager.PYDANTIC_VALIDATED_KEYS:
+                    msg = f"Runtime config contains key or section '{key}' which has no default defined. "
+                    msg += f"All configuration keys and sections must be defined in {DEFAULT_CONFIG_FILEPATH}"
+                    logger.warning(msg)
                 continue
 
             if isinstance(runtime_config[key], dict):
