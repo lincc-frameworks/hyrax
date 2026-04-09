@@ -19,6 +19,7 @@ def _write_nested_lightcurve_parquet(path: Path) -> None:
 
 
 def test_nested_pandas_dataset_reads_parquet_and_exposes_nested_fields(tmp_path):
+    """Test that NestedPandasDataset reads a parquet file and exposes nested field getters."""
     data_path = tmp_path / "random_lightcurve.parquet"
     _write_nested_lightcurve_parquet(data_path)
 
@@ -34,6 +35,7 @@ def test_nested_pandas_dataset_reads_parquet_and_exposes_nested_fields(tmp_path)
 
 
 def test_nested_pandas_dataset_passes_read_kwargs(tmp_path):
+    """Test that read_kwargs are forwarded to nested_pandas.read_parquet."""
     data_path = tmp_path / "random_lightcurve.parquet"
     _write_nested_lightcurve_parquet(data_path)
 
@@ -54,5 +56,6 @@ def test_nested_pandas_dataset_passes_read_kwargs(tmp_path):
 
 
 def test_nested_pandas_dataset_requires_data_location():
+    """Test that omitting data_location raises a ValueError."""
     with pytest.raises(ValueError):
         NestedPandasDataset(config={"data_set": {}})

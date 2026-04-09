@@ -1,6 +1,5 @@
 from pathlib import Path
 from types import MethodType
-from typing import Any
 
 from hyrax.datasets.dataset_registry import HyraxDataset
 
@@ -21,7 +20,7 @@ class NestedPandasDataset(HyraxDataset):
         self._register_getters()
         super().__init__(config)
 
-    def _load_nested_frame(self, read_kwargs: dict[str, Any]):
+    def _load_nested_frame(self, read_kwargs: dict):
         try:
             import nested_pandas as npd
         except ImportError as err:
@@ -38,23 +37,10 @@ class NestedPandasDataset(HyraxDataset):
             fields.extend(self.nested_frame.get_subcolumns())
         return fields
 
-    def _value_for_field(self, idx: int, field: str):
-        if "." not in field:
-            return self.nested_frame.iloc[idx][field]
-
-        nested_col, sub_col = field.split(".", maxsplit=1)
-        if nested_col not in self.nested_frame.columns:
-            return self.nested_frame.iloc[idx][field]
-
-        nested_value = self.nested_frame.iloc[idx][nested_col]
-        if nested_value is None:
-            return None
-        return nested_value[sub_col]
-
     def _register_getters(self) -> None:
         def _make_getter(field_name: str):
             def getter(self, idx, _field_name=field_name):
-                return self._value_for_field(idx, _field_name)
+                return self.nested_frame[_field_name].loc[self.nested_frame.index[idx]]
 
             return getter
 
