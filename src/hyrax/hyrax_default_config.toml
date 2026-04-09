@@ -367,9 +367,6 @@ invalid_value_type = "nan"
 # Extra keyword arguments passed directly to the selected nested_pandas reader.
 read_kwargs = {}
 
-# Maximum number of rows to load. Set to false for all rows.
-max_samples = false
-
 [data_set.MultimodalUniverseDataset]
 # Hugging Face split name to load (for example: "train", "validation", or "test").
 split = "train"

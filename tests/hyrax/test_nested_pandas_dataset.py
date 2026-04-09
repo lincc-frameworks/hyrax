@@ -33,7 +33,7 @@ def test_nested_pandas_dataset_reads_parquet_and_exposes_nested_fields(tmp_path)
     assert getattr(dataset, "get_lightcurve.flux")(1).tolist() == [12.0, 13.0]
 
 
-def test_nested_pandas_dataset_passes_read_kwargs_and_max_samples(tmp_path):
+def test_nested_pandas_dataset_passes_read_kwargs(tmp_path):
     data_path = tmp_path / "random_lightcurve.parquet"
     _write_nested_lightcurve_parquet(data_path)
 
@@ -42,14 +42,13 @@ def test_nested_pandas_dataset_passes_read_kwargs_and_max_samples(tmp_path):
             "data_set": {
                 "NestedPandasDataset": {
                     "read_kwargs": {"columns": ["object_id", "lightcurve"]},
-                    "max_samples": 2,
                 }
             }
         },
         data_location=data_path,
     )
 
-    assert len(dataset) == 2
+    assert len(dataset) == 3
     assert dataset.get_object_id(1) == "o2"
     assert getattr(dataset, "get_lightcurve.time")(1).tolist() == [3.0, 4.0]
 

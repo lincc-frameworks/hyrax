@@ -14,12 +14,9 @@ class NestedPandasDataset(HyraxDataset):
 
         self.data_location = str(data_location)
         settings = config.get("data_set", {}).get("NestedPandasDataset", {})
-        self.max_samples = int(settings["max_samples"]) if settings.get("max_samples") else None
         self.read_kwargs = settings.get("read_kwargs") or {}
 
         self.nested_frame = self._load_nested_frame(self.read_kwargs)
-        if self.max_samples is not None:
-            self.nested_frame = self.nested_frame.head(self.max_samples)
 
         self._register_getters()
         super().__init__(config)
