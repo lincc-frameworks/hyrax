@@ -361,6 +361,12 @@ number_invalid_values = 0
 # "nan", "inf", "-inf", "none" or a float value.
 invalid_value_type = "nan"
 
+
+
+[data_set.NestedPandasDataset]
+# Extra keyword arguments passed directly to the selected nested_pandas reader.
+read_kwargs = {}
+
 [data_set.MultimodalUniverseDataset]
 # Hugging Face split name to load (for example: "train", "validation", or "test").
 split = "train"
