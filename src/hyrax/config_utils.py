@@ -178,7 +178,7 @@ class ConfigManager:
         ["general", "data_dir"],
     ]
 
-    PYDANTIC_VALIDATED_KEYS = ["data_request", "model_inputs"]
+    PYDANTIC_VALIDATED_KEYS = ("data_request", "model_inputs")
 
     def __init__(
         self,
@@ -258,7 +258,7 @@ class ConfigManager:
             The value to set the key to.
         """
         keys = parse_dotted_key(key)
-        if key in ("data_request", "model_inputs"):
+        if key in ConfigManager.PYDANTIC_VALIDATED_KEYS:
             try:
                 value = self._validate_data_request(value)
             except ValidationError as e:
