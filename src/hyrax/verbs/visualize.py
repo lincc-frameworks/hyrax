@@ -19,6 +19,7 @@ class Visualize(Verb):
 
     cli_name = "visualize"
     add_parser_kwargs = {}
+    description = "Generate a visualization of a latent space created by a UMAP reduction."
 
     # Dataset groups that the Visualize verb knows about.
     # REQUIRED_DATA_GROUPS must be present in the data request configuration.
