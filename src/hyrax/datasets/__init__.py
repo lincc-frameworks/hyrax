@@ -37,8 +37,8 @@ are under development.
 
 Each of these datasets can be used a starting point for a Custom Dataset by inheriting your custom dataset
 from e.g. `FitsImageDataset`, or you can make an entirely custom dataset following the
-:ref:`custom dataset instructions <custom-dataset-instructions>` and/or
-:doc:`custom dataset example notebook </pre_executed/custom_dataset>`.
+:doc:`dataset class reference </dataset_class_reference>` and/or
+:doc:`dataset class notebook example </pre_executed/external_dataset_class>`.
 
 The remaining classes in this module exist primarily for Hyrax interface purposes:
 
@@ -46,10 +46,10 @@ The remaining classes in this module exist primarily for Hyrax interface purpose
 result, and may be returned from those verbs to provide data access
 
 :doc:`HyraxDataset <dataset_registry/index>` is a base class for all datasets in Hyrax and must be within
-the inheretence hierarchy of all custom datasets. It is not usable on it's own, but provides various fall-back
+the inheritance hierarchy of all custom datasets. It is not usable on its own, but provides various fall-back
 functionality to make custom datasets easier to write. See the
-:ref:`custom dataset instructions <custom-dataset-instructions>` and
-:doc:`example notebook </pre_executed/custom_dataset>` for more information.
+:doc:`dataset class reference </dataset_class_reference>` and
+:doc:`example notebook </pre_executed/external_dataset_class>` for more information.
 
 """
 
@@ -70,6 +70,7 @@ from .result_dataset import ResultDataset, ResultDatasetWriter
 from .result_factories import create_results_writer, load_results_dataset
 from .dataset_registry import HyraxDataset
 from .hyrax_csv_dataset import HyraxCSVDataset
+from .mmu_dataset import MultimodalUniverseDataset
 from .data_cache import DataCache
 
 __all__ = [
@@ -87,5 +88,6 @@ __all__ = [
     "HyraxRandomDataset",
     "HyraxRandomDatasetBase",
     "HyraxCSVDataset",
+    "MultimodalUniverseDataset",
     "DataCache",
 ]

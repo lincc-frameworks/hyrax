@@ -61,13 +61,17 @@ search, and interactive exploration.
    from hyrax import Hyrax
 
    # Load a runtime configuration that defines the dataset, model, outputs, etc.
-   h = Hyrax("path/to/runtime_config.toml")
+   h = Hyrax(config_file="path/to/runtime_config.toml")
 
-   h.download()          # Retrieve cutouts from LSST, HSC, or other surveys
-   h.train()             # Train any PyTorch model with automatic logging & multi-GPU support
-   h.infer()             # Run inference and store results
-   h.search_by_vector()  # Find similar objects via integrated vector databases
-   h.visualize()         # Interactively explore latent spaces in 2D or 3D
+   h.download()              # Retrieve cutouts from LSST, HSC, or other surveys
+   h.train()                 # Train any PyTorch model with automatic logging & multi-GPU support
+   h.infer()                 # Run inference and store results
+   h.save_to_database()      # Index embeddings in a vector database
+   h.umap()                  # Reduce latent vectors to 2D/3D with UMAP
+   h.visualize()             # Interactively explore latent spaces in 2D or 3D
+   db = h.database_connection()
+   v = ...                   # numpy vector representing the object to search for
+   db.search_by_vector(v)    # Find similar objects via integrated vector databases
 
 Each step can be used on its own, or combined into an end-to-end workflow.
 

@@ -165,3 +165,10 @@ mlruns/
 
 #JSON data files used by the 3d visualizer
 *.json
+
+# Hyrax dataset join cache files
+.hyrax_join_cache_*.pkl
+
+# Claude code local settings file
+.claude/settings.local.json
+

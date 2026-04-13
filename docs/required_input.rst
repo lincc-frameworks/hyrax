@@ -44,14 +44,15 @@ i.e. the form of the data provided by a dataset class should not be customized f
 specific model, nor should a model architecture be hardcoded to a specific dataset.
 
 In order to convert the content of a dataset into a form that is suitable for a model,
-Hyrax requires a user-defined function that will prepare the data for the model.
+Hyrax requires a ``prepare_inputs`` static method on the model class that will prepare
+the data for the model (see :doc:`/model_class_reference` for full details).
 
 As a contrived example, consider a dataset where each data point is composed of
 three 2d arrays: "science", "mask", and "variance".
 To be flexible, the dataset class that provides data from disk would return each
 array individually.
 The model may expect a single flattened array as input.
-In this case, the user would need to define a `prepare_inputs` function that takes in
+In this case, the user would need to define a ``prepare_inputs`` function that takes in
 the structured data sample and stacks the arrays into a single array before
 returning it.
 
