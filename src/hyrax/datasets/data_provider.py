@@ -418,8 +418,9 @@ class DataProvider:
                     repr_str += f"  Data location: {data['data_location']}\n"
                 if "split_fraction" in data:
                     repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
-                if "primary_id_field" in data:
-                    repr_str += f"  Primary ID field: {data['primary_id_field']}\n"
+                primary_id_field = data.get("primary_id_field")
+                if primary_id_field not in (None, False):
+                    repr_str += f"  Primary ID field: {primary_id_field}\n"
                 if friendly_name in self._join_fields:
                     repr_str += f"  Join field: {self._join_fields[friendly_name]}\n"
                 if "fields" in data:
@@ -538,9 +539,10 @@ class DataProvider:
 
             # If this dataset is marked as the primary dataset, store that
             # information for later use.
-            if dataset_definition.get("primary_id_field") is not None:
+            primary_id_field = dataset_definition.get("primary_id_field")
+            if primary_id_field not in (None, False):
                 self.primary_dataset = friendly_name
-                self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
+                self.primary_dataset_id_field_name = primary_id_field
 
                 # Store the split_fraction and data_location from the primary
                 # dataset's definition.  The Pydantic validator on
