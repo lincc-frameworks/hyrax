@@ -182,7 +182,7 @@ load the original test data to get the true labels for comparison.
    # Accumulate the predicted classes
    predicted_classes = np.zeros(len(inference_results)).astype(int)
    for i, result in enumerate(inference_results):
-       predicted_classes[i] = np.argmax(result["model_output"])
+       predicted_classes[i] = np.argmax(result)
 
    # Load the true labels
    with open("./data/cifar-10-batches-py/test_batch", "rb") as f_in:
