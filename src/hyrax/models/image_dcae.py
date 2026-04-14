@@ -298,7 +298,22 @@ class ImageDCAE(nn.Module):
 
     @staticmethod
     def prepare_inputs(data_dict):
-        """Convert structured data to tensor format."""
+        """Extract the image array from the batch dictionary.
+
+        Hyrax will convert the returned array to a PyTorch tensor and move it
+        to the appropriate device automatically.
+
+        Parameters
+        ----------
+        data_dict : dict
+            The collated batch dictionary produced by the data pipeline.
+            Expected to contain a ``"data"`` key with an ``"image"`` field.
+
+        Returns
+        -------
+        image : numpy.ndarray
+            The image array extracted from the batch.
+        """
         data_dict = data_dict["data"]
         if "image" in data_dict:
             return data_dict["image"]

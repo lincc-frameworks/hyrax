@@ -241,6 +241,24 @@ def hyrax_model(cls):
     cls.__init__ = wrapped_init
 
     def default_prepare_inputs(data_dict):
+        """Extract image and label arrays from the batch dictionary.
+
+        This is the default implementation used when a model does not define its
+        own ``prepare_inputs``. Hyrax will convert the returned arrays to PyTorch
+        tensors and move them to the appropriate device automatically.
+
+        Parameters
+        ----------
+        data_dict : dict
+            The collated batch dictionary produced by the data pipeline.
+            Expected to contain a ``"data"`` key with ``"image"`` and optionally
+            ``"label"`` fields.
+
+        Returns
+        -------
+        inputs : tuple of numpy.ndarray
+            A tuple of ``(image, label)`` arrays.
+        """
         if "data" not in data_dict:
             msg = "Hyrax couldn't find a 'data' key in the data dictionaries from your dataset.\n"
             msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"

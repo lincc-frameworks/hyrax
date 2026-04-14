@@ -163,9 +163,23 @@ class HyraxCNN(nn.Module):
 
     @staticmethod
     def prepare_inputs(data_dict) -> tuple:
-        """Does NOT convert to PyTorch Tensors.
-        This works exclusively with numpy data types and returns
-        a tuple of numpy data types."""
+        """Extract image and label arrays from the batch dictionary.
+
+        Hyrax will convert the returned arrays to PyTorch tensors and move them
+        to the appropriate device automatically.
+
+        Parameters
+        ----------
+        data_dict : dict
+            The collated batch dictionary produced by the data pipeline.
+            Expected to contain a ``"data"`` key with ``"image"`` and optionally
+            ``"label"`` fields.
+
+        Returns
+        -------
+        inputs : tuple of numpy.ndarray
+            A tuple of ``(image, label)`` as float32 and int64 arrays respectively.
+        """
 
         import numpy as np
 

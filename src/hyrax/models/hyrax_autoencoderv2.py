@@ -269,12 +269,21 @@ class HyraxAutoencoderV2(nn.Module):
 
     @staticmethod
     def prepare_inputs(data_dict) -> tuple:
-        """This function converts structured data to the input tensor we need to run
+        """Extract the image array from the batch dictionary.
+
+        Hyrax will convert the returned array to a PyTorch tensor and move it
+        to the appropriate device automatically.
 
         Parameters
         ----------
         data_dict : dict
-            The dictionary returned from our data source
+            The collated batch dictionary produced by the data pipeline.
+            Expected to contain a ``"data"`` key with an ``"image"`` field.
+
+        Returns
+        -------
+        image : numpy.ndarray
+            The image array extracted from the batch.
         """
         if "data" not in data_dict:
             raise RuntimeError("Unable to find `data` key in data_dict")
