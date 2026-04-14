@@ -70,6 +70,20 @@ jobs:
       with:
         path: ${{env.WORKING_DIR}}
         key: nightly-results-${{steps.nightly-dates.outputs.today}}
+    - name: Generate dashboard HTML
+      run: asv publish || true
+    - name: Upload benchmark HTML artifact
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: benchmark-html
+        path: ${{env.WORKING_DIR}}/_html
+    - name: Upload benchmark results artifact
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: benchmark-results
+        path: ${{env.WORKING_DIR}}/_results
     - name: Notify Slack on success
       if: success()
       uses: slackapi/slack-github-action@v2

@@ -1,0 +1,42 @@
+# This workflow publishes the nightly benchmark results to GitHub Pages and the
+# "benchmarks" branch. It is triggered after the benchmarks are computed in the
+# asv-nightly workflow.
+name: Publish nightly benchmarks
+
+on:
+  workflow_run:
+    workflows: ["Run benchmarks nightly job"]
+    types: [completed]
+
+jobs:
+  publish-benchmarks-nightly:
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    permissions:
+      contents: write
+    steps:
+    - name: Download benchmark HTML artifact
+      continue-on-error: true
+      uses: dawidd6/action-download-artifact@v19
+      with:
+        name: benchmark-html
+        run_id: ${{ github.event.workflow_run.id }}
+    - name: Deploy dashboard to GitHub Pages
+      if: ${{ hashFiles('benchmarks/_html/**') != '' }}
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        branch: gh-pages
+        folder: benchmarks/_html
+    - name: Download benchmark results artifact
+      continue-on-error: true
+      uses: dawidd6/action-download-artifact@v19
+      with:
+        name: benchmark-results
+        run_id: ${{ github.event.workflow_run.id }}
+    - name: Submit new results to "benchmarks" branch
+      if: ${{ hashFiles('benchmarks/_results/**') != '' }}
+      uses: JamesIves/github-pages-deploy-action@v4
+      with:
+        branch: benchmarks
+        folder: benchmarks/_results
+        target-folder: _results
