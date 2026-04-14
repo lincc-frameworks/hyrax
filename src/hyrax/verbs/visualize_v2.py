@@ -55,6 +55,10 @@ class VisualizeV2(Verb):
         tuple of (panel.Column, VisualizeV2)
             If return_verb is True.
         """
+        import math
+        import os
+        from concurrent.futures import ThreadPoolExecutor
+
         import datashader as ds
         import holoviews as hv
         import matplotlib.figure as mpl_figure
@@ -88,16 +92,16 @@ class VisualizeV2(Verb):
         # umap_results = load_results_dataset(self.config, results_dir=input_dir, verb="umap")
 
         # ── Build DataProvider for metadata access ────────────────────────────
-        datasets = setup_dataset(self.config)
-        if not set(VisualizeV2.REQUIRED_DATA_GROUPS).intersection(set(datasets.keys())):
+        self.datasets = setup_dataset(self.config)
+        if not set(VisualizeV2.REQUIRED_DATA_GROUPS).intersection(set(self.datasets.keys())):
             required_keys = ", ".join(sorted(VisualizeV2.REQUIRED_DATA_GROUPS))
-            available_keys = ", ".join(sorted(datasets.keys())) or "<none>"
+            available_keys = ", ".join(sorted(self.datasets.keys())) or "<none>"
             raise RuntimeError(
                 f"VisualizeV2 requires dataset entries {required_keys} in the data request. "
                 f"Available: {available_keys}"
             )
 
-        reduced_dim_dataset = datasets["infer"].prepped_datasets["results"]
+        reduced_dim_dataset = self.datasets["infer"].prepped_datasets["results"]
         reduced_dim_results = reduced_dim_dataset.__getitem__(range(0, len(reduced_dim_dataset)))
 
         # ── Build DataFrame from UMAP 2D results ─────────────────────────────
@@ -110,6 +114,28 @@ class VisualizeV2(Verb):
         # Store references on self for downstream use
         self.df = df
         self.reduced_dim_results = reduced_dim_results
+
+        # ── Probe available scalar fields ─────────────────────────────────────
+        # Call DataProvider[0] to sample the structure and filter to scalar fields only.
+        # This drops large array/tensor fields (e.g. image, data) automatically.
+        _sample = self.datasets["infer"][0]
+        _dataset_getters = self.datasets["infer"].dataset_getters
+        _scalar_col_options: list[str] = []
+        _scalar_types = (int, float, str, bool, np.integer, np.floating)
+        if "object_id" in _sample and isinstance(_sample["object_id"], _scalar_types):
+            _scalar_col_options.append("object_id")
+        for _fn, _field_dict in _sample.items():
+            if _fn == "object_id" or not isinstance(_field_dict, dict):
+                continue
+            for _field, _val in _field_dict.items():
+                if isinstance(_val, _scalar_types):
+                    _scalar_col_options.append(f"{_fn}.{_field}")
+        # Warn if any dataset sub-config has a 'fields' restriction
+        _fields_restricted = any(
+            bool(ds_conf.get("fields"))
+            for ds_conf in self.config.get("data_request", {}).get("infer", {}).values()
+            if isinstance(ds_conf, dict)
+        )
 
         # ── HoloViews / Panel init ────────────────────────────────────────────
         # pn.extension must come before hv.extension so Panel can patch HoloViews'
@@ -189,9 +215,28 @@ class VisualizeV2(Verb):
         bounds_stream = BoundsXY(source=dmap, bounds=(0, 0, 0, 0))
         lasso_stream = Lasso(source=dmap)
 
+        # ── Column selector ───────────────────────────────────────────────────
+        col_selector_title = pn.pane.Markdown("### Columns", margin=(0, 0))
+        _default_cols = ["object_id"] if "object_id" in _scalar_col_options else []
+        col_selector = pn.widgets.CheckBoxGroup(
+            options=_scalar_col_options,
+            value=_default_cols,
+            inline=False,
+            width=340,
+        )
+        _fields_alert = (
+            pn.pane.Alert(
+                "Additional fields may be available. Remove `fields` from the data request to see them.",
+                alert_type="info",
+                width=340,
+                margin=(0, 0, 6, 0),
+            )
+            if _fields_restricted
+            else None
+        )
+
         # ── Selection table ───────────────────────────────────────────────────
-        table_columns = ["row_index", "x", "y"]
-        _empty = pd.DataFrame(columns=table_columns)
+        _empty = pd.DataFrame(columns=["row_index"])
 
         selection_table = pn.widgets.Tabulator(
             _empty.copy(),
@@ -202,30 +247,65 @@ class VisualizeV2(Verb):
             width=340,
             header_align="right",
             configuration={"columnDefaults": {"headerSort": True}},
+            disabled=True,
         )
         table_title = pn.pane.Markdown("### Selected Points", margin=(0, 0))
 
         # Selected subsets, accessible via verb instance
         self.selected_box = pd.DataFrame()
         self.selected_lasso = pd.DataFrame()
+        _table_df: list[pd.DataFrame] = [pd.DataFrame()]  # authoritative copy unaffected by user edits
 
         def _update_table(sel: pd.DataFrame) -> None:
+            active_cols: list[str] = col_selector.value
             if sel.empty:
-                selection_table.value = _empty.copy()
+                computed = pd.DataFrame(columns=["row_index"] + [c for c in active_cols])
+                _table_df[0] = computed.copy()
+                selection_table.value = computed
                 table_title.object = "### Selected Points"
                 return
 
-            display_df = sel.iloc[:max_table_rows][["x", "y"]].copy()
-            display_df.insert(0, "row_index", display_df.index)
+            capped_indices = list(sel.index[:max_table_rows])
 
-            display_df = display_df.reset_index(drop=True)
+            if not active_cols:
+                computed = pd.DataFrame({"row_index": capped_indices})
+                _table_df[0] = computed.copy()
+                selection_table.value = computed
+                table_title.object = f"### Selected Points — {len(sel):,}"
+                return
+
+            _top_level = [c for c in active_cols if c == "object_id"]
+            _nested = [(c.split(".", 1)[0], c.split(".", 1)[1]) for c in active_cols if "." in c]
+
+            def _fetch_row(idx):
+                row: dict = {"row_index": idx}
+                if _top_level:
+                    row["object_id"] = self.datasets["infer"][idx].get("object_id")
+                for fn, field in _nested:
+                    row[f"{fn}.{field}"] = _dataset_getters[fn][field](idx)
+                return row
+
+            with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1)) as pool:
+                rows = list(pool.map(_fetch_row, capped_indices))
+
+            display_df = pd.DataFrame(rows).reset_index(drop=True)
+            _table_df[0] = display_df.copy()
             selection_table.value = display_df
             table_title.object = f"### Selected Points — {len(sel):,}"
+
+        # Re-fetch columns whenever the selector changes
+        col_selector.param.watch(
+            lambda _e: _update_table(
+                self.selected_box if not self.selected_box.empty else self.selected_lasso
+            ),
+            "value",
+        )
 
         # ── Detail panes ─────────────────────────────────────────────────────
         _total_width = plot_width + 340
         _detail_pane_width = (_total_width - (20 * (num_detail_plots - 1))) // num_detail_plots
-        _tab_names = viz_config.get("tab_names", ["Data 1", "Data 2"]) or ["Data 1", "Data 2"]
+        _prepped_datasets = self.datasets["infer"].prepped_datasets
+        _tab_names = list(_prepped_datasets.keys())
 
         def _make_placeholder_fig():
             fig = mpl_figure.Figure(figsize=(3, 3))
@@ -243,6 +323,29 @@ class VisualizeV2(Verb):
             )
             ax.set_xticks([])
             ax.set_yticks([])
+            for spine in ax.spines.values():
+                spine.set_edgecolor("#cccccc")
+            fig.tight_layout()
+            return fig
+
+        def _make_text_fig(text, index):
+            fig = mpl_figure.Figure(figsize=(3, 3))
+            ax = fig.add_subplot(111)
+            ax.set_facecolor("#f8f8f8")
+            ax.text(
+                0.05,
+                0.95,
+                text,
+                ha="left",
+                va="top",
+                transform=ax.transAxes,
+                fontsize=7,
+                family="monospace",
+                wrap=True,
+            )
+            ax.set_xticks([])
+            ax.set_yticks([])
+            ax.set_title(f"Index: {index}" if index is not None else "No selection")
             for spine in ax.spines.values():
                 spine.set_edgecolor("#cccccc")
             fig.tight_layout()
@@ -277,26 +380,81 @@ class VisualizeV2(Verb):
             Override this method or supply custom render functions via config
             to customise the per-object detail view.
             """
-            fig = mpl_figure.Figure(figsize=(3, 3))
-            ax = fig.add_subplot(111)
-            ax.text(
-                0.5,
-                0.5,
-                f"idx {index}",
-                ha="center",
-                va="center",
-                transform=ax.transAxes,
-                fontsize=9,
-            )
-            ax.set_xticks([])
-            ax.set_yticks([])
-            fig.tight_layout()
-            return fig
+            if index is None:
+                return _make_placeholder_fig()
+            dataset_name = _tab_names[tab_index]
+            dataset = _prepped_datasets[dataset_name]
+            if not callable(getattr(dataset, "display", None)):
+                return _make_text_fig(str(dataset[index]), index)
+            return dataset.display(index)
 
         def _update_detail_panes(indices):
             for tab_index, tab_panes in enumerate(detail_panes):
                 for i, pane in enumerate(tab_panes):
                     pane.object = _make_detail_fig(indices[i] if i < len(indices) else None, tab_index)
+
+        # ── Pagination controls ───────────────────────────────────────────────
+        _page_state: dict = {"page": 0, "indices": []}
+
+        btn_first = pn.widgets.Button(name="|◀", width=44, button_type="default", disabled=True)
+        btn_prev = pn.widgets.Button(name="◀", width=44, button_type="default", disabled=True)
+        page_numbers_row = pn.Row(margin=(0, 4))
+        btn_next = pn.widgets.Button(name="▶", width=44, button_type="default", disabled=True)
+        btn_last = pn.widgets.Button(name="▶|", width=44, button_type="default", disabled=True)
+
+        def _total_pages() -> int:
+            return max(1, math.ceil(len(_page_state["indices"]) / num_detail_plots))
+
+        def _refresh_pagination_widgets() -> None:
+            page = _page_state["page"]
+            total = _total_pages()
+            window_start = max(0, page - 3)
+            window_end = min(total - 1, page + 3)
+            page_btns = []
+            for p in range(window_start, window_end + 1):
+                is_current = p == page
+                btn = pn.widgets.Button(
+                    name=str(p + 1),
+                    width=44,
+                    button_type="primary" if is_current else "default",
+                    disabled=is_current,
+                )
+                if not is_current:
+                    btn.on_click(lambda _e, _p=p: _go_to_page(_p))
+                page_btns.append(btn)
+            page_numbers_row.objects = page_btns
+            btn_first.disabled = page == 0
+            btn_prev.disabled = page == 0
+            btn_next.disabled = page >= total - 1
+            btn_last.disabled = page >= total - 1
+
+        def _render_page() -> None:
+            page = _page_state["page"]
+            start = page * num_detail_plots
+            _update_detail_panes(list(_page_state["indices"][start : start + num_detail_plots]))
+            _refresh_pagination_widgets()
+
+        def _go_to_page(new_page: int) -> None:
+            _page_state["page"] = max(0, min(new_page, _total_pages() - 1))
+            _render_page()
+
+        btn_first.on_click(lambda _e: _go_to_page(0))
+        btn_prev.on_click(lambda _e: _go_to_page(_page_state["page"] - 1))
+        btn_next.on_click(lambda _e: _go_to_page(_page_state["page"] + 1))
+        btn_last.on_click(lambda _e: _go_to_page(_total_pages() - 1))
+
+        pagination_row = pn.Row(
+            pn.Spacer(),
+            btn_first,
+            btn_prev,
+            page_numbers_row,
+            btn_next,
+            btn_last,
+            pn.Spacer(),
+            width=_total_width,
+            align="center",
+        )
+        _refresh_pagination_widgets()  # initialise the page-number buttons
 
         # ── Selection overlay callback ────────────────────────────────────────
         _prev = {"bounds": (0, 0, 0, 0), "geometry": None}
@@ -374,7 +532,9 @@ class VisualizeV2(Verb):
             if bounds_changed or (geometry_changed and geometry is not None):
                 try:
                     sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
-                    _update_detail_panes(sel.index)
+                    _page_state["page"] = 0
+                    _page_state["indices"] = list(sel.index)
+                    _render_page()
                 except Exception:
                     pass  # never let detail-pane errors break the overlay return
 
@@ -394,13 +554,14 @@ class VisualizeV2(Verb):
             sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
             if sel.empty:
                 return
+            exported = _table_df[0].copy() if not _table_df[0].empty else sel
             try:
                 _ipy = get_ipython()  # noqa: F821
-                _ipy.user_ns["selected_points"] = sel
+                _ipy.user_ns["selected_points"] = exported
             except NameError:
                 pass
             export_btn.icon = "check-lg"
-            export_btn.name = f"Exported {len(sel):,} rows to selected_points"
+            export_btn.name = f"Exported {len(exported):,} rows to selected_points"
 
         export_btn.on_click(_on_export)
 
@@ -414,6 +575,10 @@ class VisualizeV2(Verb):
             pn.Row(
                 combined,
                 pn.Column(
+                    *([_fields_alert] if _fields_alert else []),
+                    col_selector_title,
+                    col_selector,
+                    pn.Spacer(height=6),
                     table_title,
                     selection_table,
                     pn.Spacer(height=10),
@@ -423,6 +588,7 @@ class VisualizeV2(Verb):
             ),
             pn.Spacer(height=10),
             detail_tabs,
+            pagination_row,
         )
 
         try:
