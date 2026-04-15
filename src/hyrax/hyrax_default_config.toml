@@ -1,3 +1,8 @@
+# Schema version of this config file. Hyrax auto-migrates older user configs
+# forward on load — users don't edit this by hand. When renaming or restructuring
+# config keys, bump this value and add a migration in src/hyrax/config_migrations.py.
+config_version = 2
+
 [general]
 # Set to `true` during development to skip checking for default config values
 # in external libraries. Use `false` otherwise.
@@ -241,9 +246,6 @@ input_model_directory = false
 # [data_request]
 # Top-level table that defines the dataset(s) used for training, validation, and inference.
 # Configure with [data_request.train], [data_request.validate], or [data_request.infer] sections.
-
-# [model_inputs]
-# DEPRECATED: Use [data_request] instead. This will be removed in the next major release.
 
 
 [data_set]

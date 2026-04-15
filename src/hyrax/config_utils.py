@@ -178,7 +178,7 @@ class ConfigManager:
         ["general", "data_dir"],
     ]
 
-    PYDANTIC_VALIDATED_KEYS = ("data_request", "model_inputs")
+    PYDANTIC_VALIDATED_KEYS = ("data_request",)
 
     def __init__(
         self,
@@ -193,9 +193,17 @@ class ConfigManager:
         else:
             self.user_specific_config = ConfigManager.read_runtime_config(self.runtime_config_filepath)
 
+        # Upgrade older user configs forward through the registered schema
+        # migrations before they are merged against the current defaults. Local
+        # import to avoid a circular dependency with config_migrations, which
+        # imports from this module.
+        from hyrax.config_migrations import migrate_config
+
+        self.user_specific_config = migrate_config(self.user_specific_config)
+
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
 
-        # Validate data_request/model_inputs if present in loaded config
+        # Validate data_request if present in loaded config
         for key in ConfigManager.PYDANTIC_VALIDATED_KEYS:
             if key in self.config:
                 value = self.config[key]

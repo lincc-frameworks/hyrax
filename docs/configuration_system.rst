@@ -31,7 +31,26 @@ The validation happens automatically when you load a TOML configuration or use
 ``set_config()``. If there are validation errors, Hyrax will log a warning but continue
 to use the configuration as-is for backward compatibility.
 
-Backward compatibility for the legacy ``[model_inputs]`` table name is maintained at
-the configuration loading layer.
+Backward compatibility for legacy table names is provided by the schema
+versioning system (see :ref:`config-schema-versioning` below). For example,
+the legacy ``[model_inputs]`` table is automatically renamed to
+``[data_request]`` on load and a ``DeprecationWarning`` is emitted.
+
+.. _config-schema-versioning:
+
+Schema versioning
+-----------------
+
+The packaged default config declares a top-level ``config_version = N`` scalar.
+When Hyrax loads a user config whose ``config_version`` is lower than the
+current schema (or missing, in which case it is assumed to be version 1), the
+document is passed through the migrations registered in
+``src/hyrax/config_migrations.py`` before being merged against the defaults.
+This lets old user configs keep working across schema changes, with clear
+deprecation warnings guiding users to update their files.
+
+Configs declaring a ``config_version`` higher than the installed Hyrax
+understands are refused with a ``RuntimeError`` pointing at
+``pip install -U hyrax``.
 
 After training is completed, ``hyrax`` will write out all of the variables (combined from all the various source configs) used at runtime in the runtime directory as a ``runtime_config.toml`` file, so that the user can see what variables were actually used in one place.

@@ -1,10 +1,11 @@
 """Tests for configuration validation warnings.
 
 This module tests that ConfigManager properly warns users when data_request
-or model_inputs configuration fails Pydantic validation.
+configuration fails Pydantic validation.
 """
 
 import logging
+import warnings
 
 from hyrax.config_utils import ConfigManager
 
@@ -210,48 +211,56 @@ def test_completely_invalid_structure_still_warns(caplog):
     assert rendered == invalid_data
 
 
-def test_init_validates_both_data_request_and_model_inputs(caplog, tmp_path):
-    """ConfigManager.__init__ validates both data_request and model_inputs if both present."""
+def test_init_migrates_legacy_model_inputs_to_data_request(caplog, tmp_path):
+    """Legacy configs with [model_inputs] are auto-migrated to [data_request].
 
-    # Create a TOML file with both invalid data_request and invalid model_inputs
-    # (flat structure — friendly name sub-keys are missing).
+    The v1 → v2 migration in ``hyrax.config_migrations`` renames the legacy
+    table, emits a ``DeprecationWarning``, and then the unchanged Pydantic
+    validation runs against ``data_request`` as usual.
+    """
+
+    # Legacy-style config: no config_version, uses the old [model_inputs] name,
+    # and the subgroup is invalid (friendly name sub-key missing).
     config_file = tmp_path / "test_config.toml"
     config_file.write_text(
         """
 [general]
 dev_mode = true
 
-[data_request.train]
+[model_inputs.train]
 dataset_class = "HyraxRandomDataset"
-data_location = "/dev/null"
-# dataset_class at group level — friendly name is missing → triggers warning
-
-[model_inputs.validate]
-dataset_class = "HyraxCifarDataset"
 data_location = "/dev/null"
 # dataset_class at group level — friendly name is missing → triggers warning
 """
     )
 
-    # Create a minimal default config
+    # Minimal default config
     default_config_file = tmp_path / "default_config.toml"
     default_config_file.write_text(
         """
+config_version = 2
+
 [general]
 dev_mode = false
 """
     )
 
-    with caplog.at_level(logging.WARNING):
+    with caplog.at_level(logging.WARNING), warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
         cm = ConfigManager(
             runtime_config_filepath=str(config_file),
             default_config_filepath=str(default_config_file),
         )
 
-    # Should log warnings for both keys
-    assert "Configuration loaded from TOML has 'data_request' that failed Pydantic validation" in caplog.text
-    assert "Configuration loaded from TOML has 'model_inputs' that failed Pydantic validation" in caplog.text
+    # Migration emits a DeprecationWarning naming [model_inputs].
+    assert any(
+        issubclass(w.category, DeprecationWarning) and "model_inputs" in str(w.message) for w in caught
+    ), "Expected a DeprecationWarning about [model_inputs]"
 
-    # Both invalid configs are still loaded as-is
+    # After migration, the legacy key is gone and data_request carries the content.
+    assert "model_inputs" not in cm.config
     assert "data_request" in cm.config
-    assert "model_inputs" in cm.config
+    assert "train" in cm.config["data_request"]
+
+    # Pydantic still flags the broken subgroup on the migrated content.
+    assert "Configuration loaded from TOML has 'data_request' that failed Pydantic validation" in caplog.text

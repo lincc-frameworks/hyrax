@@ -209,6 +209,30 @@ defaults, not by Pydantic schemas.
 Note: `ConfigDict` appearing in `config_schemas/` is **Pydantic's `ConfigDict`**, not a
 custom Hyrax wrapper. The runtime config itself is an ordinary `dict`.
 
+### Schema versioning
+
+User configs carry a top-level `config_version = N` scalar. Hyrax stamps the
+current version into `hyrax_default_config.toml` and uses
+`src/hyrax/config_migrations.py` to upgrade older user configs forward on
+load, before the merge step. Legacy configs without a `config_version` field
+are assumed to be version 1.
+
+**When you rename or restructure a config key, you must:**
+
+1. Write a new migration function in `src/hyrax/config_migrations.py`
+   (`_migrate_vN_to_vN_plus_1`) using the `rename_table` / `move_key` helpers.
+   Emit a `DeprecationWarning` and a `logger.warning` when the migration
+   actually fires, so users are told exactly what to update.
+2. Register it in the `MIGRATIONS` dict under its source version.
+3. Bump `CURRENT_CONFIG_VERSION` and update the `config_version` scalar at
+   the top of `hyrax_default_config.toml` to match.
+4. Add a unit test to `tests/hyrax/test_config_migrations.py` covering both
+   the "legacy config triggers migration" and "clean current-version config
+   is a no-op" cases.
+
+Configs declaring a `config_version` higher than the installed Hyrax supports
+are refused with a `RuntimeError` pointing at `pip install -U hyrax`.
+
 ## Data Flow
 
 High-level pipeline:
