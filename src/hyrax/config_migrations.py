@@ -178,13 +178,21 @@ def migrate_config(user_config: TOMLDocument) -> TOMLDocument:
         return user_config
 
     user_version = user_config.pop("config_version", 1)
-    try:
-        user_version = int(user_version)
-    except (TypeError, ValueError) as exc:
+    # Reject booleans (int subclass in Python — True/False would otherwise
+    # sneak through as 1/0) and any non-int type (floats, strings, ...).
+    # tomlkit parses TOML integers into a subclass of int, so tomlkit-parsed
+    # ``config_version = 2`` still satisfies isinstance(..., int).
+    if isinstance(user_version, bool) or not isinstance(user_version, int):
         raise RuntimeError(
-            f"config_version must be an integer, got {user_version!r}. "
-            "Remove the key or set it to a supported integer version."
-        ) from exc
+            f"config_version must be a non-boolean integer, got {user_version!r} "
+            f"(type {type(user_version).__name__}). Set it to a supported "
+            "integer schema version (>= 1)."
+        )
+
+    if user_version < 1:
+        raise RuntimeError(
+            f"config_version must be >= 1, got {user_version}. Version 1 is the lowest supported schema."
+        )
 
     if user_version > CURRENT_CONFIG_VERSION:
         raise RuntimeError(

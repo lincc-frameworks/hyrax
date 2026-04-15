@@ -114,9 +114,37 @@ def test_migrate_config_future_version_raises():
 
 
 def test_migrate_config_non_integer_version_raises():
-    """A non-integer config_version is rejected with a clear message."""
+    """A string config_version is rejected with a clear message."""
     cfg = tomlkit.parse('config_version = "two"\n')
-    with pytest.raises(RuntimeError, match="config_version must be an integer"):
+    with pytest.raises(RuntimeError, match="config_version must be a non-boolean integer"):
+        migrate_config(cfg)
+
+
+def test_migrate_config_float_version_raises():
+    """A float config_version is rejected — we don't silently truncate."""
+    cfg = tomlkit.parse("config_version = 2.9\n")
+    with pytest.raises(RuntimeError, match="config_version must be a non-boolean integer"):
+        migrate_config(cfg)
+
+
+def test_migrate_config_bool_version_raises():
+    """A boolean config_version is rejected — bool is an int subclass in Python."""
+    cfg = tomlkit.parse("config_version = true\n")
+    with pytest.raises(RuntimeError, match="config_version must be a non-boolean integer"):
+        migrate_config(cfg)
+
+
+def test_migrate_config_zero_version_raises():
+    """A zero or negative config_version is rejected with an explicit minimum."""
+    cfg = tomlkit.parse("config_version = 0\n")
+    with pytest.raises(RuntimeError, match="config_version must be >= 1"):
+        migrate_config(cfg)
+
+
+def test_migrate_config_negative_version_raises():
+    """A negative config_version is rejected."""
+    cfg = tomlkit.parse("config_version = -3\n")
+    with pytest.raises(RuntimeError, match="config_version must be >= 1"):
         migrate_config(cfg)
 
 
