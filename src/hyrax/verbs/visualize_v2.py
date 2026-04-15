@@ -52,7 +52,8 @@ class VisualizeV2(Verb):
         """
         import math
         import os
-        from concurrent.futures import ThreadPoolExecutor
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         import datashader as ds
         import holoviews as hv
@@ -255,8 +256,13 @@ class VisualizeV2(Verb):
         self.selected_box = pd.DataFrame()
         self.selected_lasso = pd.DataFrame()
         _table_df: list[pd.DataFrame] = [pd.DataFrame()]  # authoritative copy unaffected by user edits
+        _pool = ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
 
-        def _update_table(sel: pd.DataFrame) -> None:
+        def _update_table(
+            sel: pd.DataFrame,
+            progress_callback=None,
+            should_abort=None,
+        ) -> None:
             active_cols: list[str] = col_selector.value
             if sel.empty:
                 computed = pd.DataFrame(columns=["row_index"] + [c for c in active_cols])
@@ -285,8 +291,16 @@ class VisualizeV2(Verb):
                     row[f"{fn}.{field}"] = _dataset_getters[fn][field](idx)
                 return row
 
-            with ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1)) as pool:
-                rows = list(pool.map(_fetch_row, capped_indices))
+            total = len(capped_indices)
+            _progress_step = max(1, total // 100)
+            futures = {_pool.submit(_fetch_row, idx): i for i, idx in enumerate(capped_indices)}
+            rows: list = [None] * total
+            for done, future in enumerate(as_completed(futures)):
+                if should_abort and should_abort():
+                    return  # stale generation — abandon before writing to the table
+                rows[futures[future]] = future.result()
+                if progress_callback and (done % _progress_step == 0 or done == total - 1):
+                    progress_callback(int((done + 1) / total * 100))
 
             display_df = pd.DataFrame(rows).reset_index(drop=True)
             _table_df[0] = display_df.copy()
@@ -496,6 +510,11 @@ class VisualizeV2(Verb):
         _refresh_pagination_widgets()  # initialise the page-number buttons
 
         # ── Selection overlay callback ────────────────────────────────────────
+        _progress_bar = pn.indicators.Progress(width=300, value=0, max=100, visible=False, bar_color="info")
+        _status_text = pn.pane.Markdown("", visible=False, margin=(6, 0))
+        _status_pane = pn.Row(_status_text, _progress_bar, visible=False)
+        _gen: list[int] = [0]
+
         _prev = {"bounds": (0, 0, 0, 0), "geometry": None}
 
         def selection_overlay(bounds, geometry):
@@ -525,7 +544,6 @@ class VisualizeV2(Verb):
                 if x0 != x1 and y0 != y1:
                     mask = (df["x"] >= x0) & (df["x"] <= x1) & (df["y"] >= y0) & (df["y"] <= y1)
                     self.selected_box = df[mask]
-                    _update_table(self.selected_box)
                     box_el = Rectangles([(x0, y0, x1, y1)]).opts(
                         fill_alpha=0.1,
                         fill_color="cyan",
@@ -535,7 +553,6 @@ class VisualizeV2(Verb):
                     )
                 else:
                     self.selected_box = pd.DataFrame()
-                    _update_table(pd.DataFrame())
 
             elif geometry_changed and geometry is not None:
                 self.selected_box = pd.DataFrame()
@@ -555,7 +572,6 @@ class VisualizeV2(Verb):
                     path = MplPath(coords)
                     inside = path.contains_points(df_candidates[["x", "y"]].values)
                     self.selected_lasso = df_candidates[inside]
-                    _update_table(self.selected_lasso)
                     lasso_el = Polygons([{("x", "y"): coords}]).opts(
                         fill_alpha=0.1,
                         fill_color="orange",
@@ -565,19 +581,46 @@ class VisualizeV2(Verb):
                     )
                 else:
                     self.selected_lasso = pd.DataFrame()
-                    _update_table(pd.DataFrame())
 
-            # Update detail plots
+            # Spawn background thread for slow work; return overlay immediately
             if bounds_changed or (geometry_changed and geometry is not None):
+                sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
+                _gen[0] += 1
+                my_gen = _gen[0]
+                threading.Thread(target=_do_selection_work, args=(sel, my_gen), daemon=True).start()
+
+            return box_el * lasso_el
+
+        def _do_selection_work(sel: "pd.DataFrame", my_gen: int) -> None:
+            try:
+                _status_text.object = f"Loading {len(sel):,} points…"
+                _status_text.visible = True
+                _progress_bar.value = 0
+                _progress_bar.visible = True
+                _status_pane.visible = True
+
+                if _gen[0] != my_gen:
+                    return
+
+                _update_table(
+                    sel,
+                    progress_callback=lambda pct: setattr(_progress_bar, "value", pct),
+                    should_abort=lambda: _gen[0] != my_gen,
+                )
+
+                if _gen[0] != my_gen:
+                    return
+
                 try:
-                    sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
                     _page_state["page"] = 0
                     _page_state["indices"] = list(sel.index)
                     _render_page()
                 except Exception:
-                    pass  # never let detail-pane errors break the overlay return
-
-            return box_el * lasso_el
+                    pass  # never let detail-pane errors break status cleanup
+            finally:
+                _status_text.visible = False
+                _progress_bar.visible = False
+                _status_pane.visible = False
 
         selection_dmap = DynamicMap(selection_overlay, streams=[bounds_stream, lasso_stream])
 
@@ -629,6 +672,7 @@ class VisualizeV2(Verb):
         pane = pn.Column(
             combined,
             pn.Spacer(height=10),
+            _status_pane,
             pn.Row(
                 _col_selector_col,
                 pn.Spacer(width=20),
