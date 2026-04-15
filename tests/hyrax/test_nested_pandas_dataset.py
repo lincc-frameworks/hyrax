@@ -24,7 +24,7 @@ def test_nested_pandas_dataset_reads_parquet_and_exposes_nested_fields(tmp_path)
     _write_nested_lightcurve_parquet(data_path)
 
     dataset = NestedPandasDataset(
-        config={"data_set": {}},
+        config={"data_set": {"NestedPandasDataset": {"read_kwargs": {}}}},
         data_location=data_path,
     )
 
