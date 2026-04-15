@@ -12,8 +12,8 @@ class NestedPandasDataset(HyraxDataset):
             raise ValueError("A `data_location` must be provided.")
 
         self.data_location = str(data_location)
-        settings = config.get("data_set", {}).get("NestedPandasDataset", {})
-        self.read_kwargs = settings.get("read_kwargs") or {}
+        settings = config["data_set"]["NestedPandasDataset"]
+        self.read_kwargs = settings["read_kwargs"]
 
         self.nested_frame = self._load_nested_frame(self.read_kwargs)
 
@@ -40,7 +40,10 @@ class NestedPandasDataset(HyraxDataset):
     def _register_getters(self) -> None:
         def _make_getter(field_name: str):
             def getter(self, idx, _field_name=field_name):
-                return self.nested_frame[_field_name].loc[self.nested_frame.index[idx]]
+                import pandas as pd
+
+                retval = self.nested_frame[_field_name].loc[self.nested_frame.index[idx]]
+                return retval.to_numpy() if isinstance(retval, (pd.DataFrame, pd.Series)) else retval
 
             return getter
 
