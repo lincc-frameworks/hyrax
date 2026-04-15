@@ -63,7 +63,20 @@ jobs:
         REGRESSION=false
         if [ -f $HASH_FILE ]; then
           PREV_HASH=$(cat $HASH_FILE)
-          asv continuous $PREV_HASH $CURRENT_HASH --verbose || REGRESSION=true
+          set +e
+          asv continuous $PREV_HASH $CURRENT_HASH --verbose
+          asv_continuous_exit_code=$?
+          set -e
+          case $asv_continuous_exit_code in
+            0)
+              ;;
+            2)
+              REGRESSION=true
+              ;;
+            *)
+              exit $asv_continuous_exit_code
+              ;;
+          esac
           asv compare $PREV_HASH $CURRENT_HASH --sort ratio --verbose
         fi
         echo $CURRENT_HASH > $HASH_FILE
@@ -74,7 +87,9 @@ jobs:
         path: ${{env.WORKING_DIR}}
         key: nightly-results-${{steps.nightly-dates.outputs.today}}
     - name: Generate dashboard HTML
-      run: asv publish || true
+      run: |
+        asv publish
+        test -d _html
     - name: Upload benchmark HTML artifact
       continue-on-error: true
       uses: actions/upload-artifact@v7

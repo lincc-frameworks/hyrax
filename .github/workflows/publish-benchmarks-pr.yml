@@ -13,6 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success'
     permissions:
+      actions: read
       contents: write
     steps:
     - name: Download benchmark HTML artifact
@@ -21,6 +22,7 @@ jobs:
       with:
         name: benchmark-html
         run_id: ${{ github.event.workflow_run.id }}
+        path: benchmarks
     - name: Deploy dashboard to GitHub Pages
       if: ${{ hashFiles('benchmarks/_html/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
@@ -33,6 +35,7 @@ jobs:
       with:
         name: benchmark-results
         run_id: ${{ github.event.workflow_run.id }}
+        path: benchmarks
     - name: Submit new results to "benchmarks" branch
       if: ${{ hashFiles('benchmarks/_results/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
