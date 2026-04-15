@@ -165,6 +165,10 @@ class HyraxCNN(nn.Module):
     def prepare_inputs(data_dict) -> tuple:
         """Extract image and label arrays from the batch dictionary.
 
+        This static method is the interface between the data pipeline and the
+        model. Override it on the model class to reshape or select fields from
+        the collated batch to match the inputs your model expects.
+
         Hyrax will convert the returned arrays to PyTorch tensors and move them
         to the appropriate device automatically.
 

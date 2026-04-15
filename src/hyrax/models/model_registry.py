@@ -243,9 +243,14 @@ def hyrax_model(cls):
     def default_prepare_inputs(data_dict):
         """Extract image and label arrays from the batch dictionary.
 
-        This is the default implementation used when a model does not define its
-        own ``prepare_inputs``. Hyrax will convert the returned arrays to PyTorch
-        tensors and move them to the appropriate device automatically.
+        This static method is the interface between the data pipeline and the
+        model. Override it on the model class to reshape or select fields from
+        the collated batch to match the inputs your model expects. This is the
+        default implementation used when a model does not define its own
+        ``prepare_inputs``.
+
+        Hyrax will convert the returned arrays to PyTorch tensors and move them
+        to the appropriate device automatically.
 
         Parameters
         ----------

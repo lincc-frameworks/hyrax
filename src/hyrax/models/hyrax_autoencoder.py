@@ -206,6 +206,10 @@ class HyraxAutoencoder(nn.Module):
     def prepare_inputs(data_dict) -> tuple:
         """Extract the image array from the batch dictionary.
 
+        This static method is the interface between the data pipeline and the
+        model. Override it on the model class to reshape or select fields from
+        the collated batch to match the inputs your model expects.
+
         Hyrax will convert the returned array to a PyTorch tensor and move it
         to the appropriate device automatically.
 
