@@ -16,6 +16,7 @@ class Test(Verb):
 
     cli_name = "test"
     add_parser_kwargs = {}
+    description = "Evaluate a trained model on test data."
 
     # Dataset groups that the Test verb knows about.
     REQUIRED_DATA_GROUPS = ("test",)

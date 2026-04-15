@@ -21,6 +21,7 @@ class Umap(Verb):
 
     cli_name = "umap"
     add_parser_kwargs = {}
+    description = "Transforms the entire dataset into a lower-dimensional space by fitting a UMAP model."
 
     @staticmethod
     def setup_parser(parser: ArgumentParser):
