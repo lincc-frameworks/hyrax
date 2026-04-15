@@ -1,7 +1,6 @@
 import logging
 from argparse import ArgumentParser, Namespace
-from pathlib import Path
-from typing import TYPE_CHECKING, Union
+from typing import TYPE_CHECKING
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -18,7 +17,7 @@ class VisualizeV2(Verb):
     cli_name = "visualize_v2"
     add_parser_kwargs = {}
 
-    REQUIRED_DATA_GROUPS = ("infer",)
+    REQUIRED_DATA_GROUPS = ("visualize",)
     OPTIONAL_DATA_GROUPS = ()
 
     @staticmethod
@@ -32,7 +31,6 @@ class VisualizeV2(Verb):
 
     def run(
         self,
-        input_dir: Union[Path, str] | None = None,
         **kwargs,
     ):
         """Generate an interactive hexbin visualization of a latent space projected to 2D.
@@ -42,9 +40,6 @@ class VisualizeV2(Verb):
 
         Parameters
         ----------
-        input_dir : Optional[Union[Path, str]], optional
-            Directory holding output from the 'umap' verb. When not provided, reads
-            from ``[results][inference_dir]`` in config.
         kwargs :
             Additional keyword arguments passed as HexTiles opts overrides.
 
@@ -61,7 +56,9 @@ class VisualizeV2(Verb):
 
         import datashader as ds
         import holoviews as hv
+        import matplotlib.axes
         import matplotlib.figure as mpl_figure
+        import matplotlib.pyplot as plt
         import numpy as np
         import pandas as pd
         import panel as pn
@@ -85,12 +82,6 @@ class VisualizeV2(Verb):
         max_table_rows = viz_config["max_table_rows"]  # This doesn't need to be a config
         num_detail_plots = viz_config["num_detail_plots"]  # This doesn't need to be a config
 
-        # ── Load UMAP results ────────────────────────────────────────────────
-        if input_dir is None:
-            input_dir = self.config["data_request"]["infer"]["results"]["data_location"]
-
-        # umap_results = load_results_dataset(self.config, results_dir=input_dir, verb="umap")
-
         # ── Build DataProvider for metadata access ────────────────────────────
         self.datasets = setup_dataset(self.config)
         if not set(VisualizeV2.REQUIRED_DATA_GROUPS).intersection(set(self.datasets.keys())):
@@ -101,7 +92,14 @@ class VisualizeV2(Verb):
                 f"Available: {available_keys}"
             )
 
-        reduced_dim_dataset = self.datasets["infer"].prepped_datasets["results"]
+        # The primary dataset (identified by primary_id_field) holds the UMAP coordinates.
+        _primary_ds_name = self.datasets["visualize"].primary_dataset
+        if _primary_ds_name is None:
+            raise RuntimeError(
+                "No sub-dataset in data_request.visualize has a 'primary_id_field'. "
+                "Set 'primary_id_field' on the dataset that contains the UMAP 2D coordinates."
+            )
+        reduced_dim_dataset = self.datasets["visualize"].prepped_datasets[_primary_ds_name]
         reduced_dim_results = reduced_dim_dataset.__getitem__(range(0, len(reduced_dim_dataset)))
 
         # ── Build DataFrame from UMAP 2D results ─────────────────────────────
@@ -118,8 +116,8 @@ class VisualizeV2(Verb):
         # ── Probe available scalar fields ─────────────────────────────────────
         # Call DataProvider[0] to sample the structure and filter to scalar fields only.
         # This drops large array/tensor fields (e.g. image, data) automatically.
-        _sample = self.datasets["infer"][0]
-        _dataset_getters = self.datasets["infer"].dataset_getters
+        _sample = self.datasets["visualize"][0]
+        _dataset_getters = self.datasets["visualize"].dataset_getters
         _scalar_col_options: list[str] = []
         _scalar_types = (int, float, str, bool, np.integer, np.floating)
         if "object_id" in _sample and isinstance(_sample["object_id"], _scalar_types):
@@ -133,7 +131,7 @@ class VisualizeV2(Verb):
         # Warn if any dataset sub-config has a 'fields' restriction
         _fields_restricted = any(
             bool(ds_conf.get("fields"))
-            for ds_conf in self.config.get("data_request", {}).get("infer", {}).values()
+            for ds_conf in self.config.get("data_request", {}).get("visualize", {}).values()
             if isinstance(ds_conf, dict)
         )
 
@@ -222,13 +220,12 @@ class VisualizeV2(Verb):
             options=_scalar_col_options,
             value=_default_cols,
             inline=False,
-            width=340,
+            stylesheets=["label { font-size: 16px !important; }"],
         )
         _fields_alert = (
             pn.pane.Alert(
                 "Additional fields may be available. Remove `fields` from the data request to see them.",
                 alert_type="info",
-                width=340,
                 margin=(0, 0, 6, 0),
             )
             if _fields_restricted
@@ -238,13 +235,16 @@ class VisualizeV2(Verb):
         # ── Selection table ───────────────────────────────────────────────────
         _empty = pd.DataFrame(columns=["row_index"])
 
+        # 21 data rows × 35px + 30px header + 35px footer/pagination bar ≈ one row of breathing room
+        _table_height = 21 * 35 + 30 + 35
+
         selection_table = pn.widgets.Tabulator(
             _empty.copy(),
             pagination="remote",
             page_size=25,
             show_index=False,
-            sizing_mode="stretch_height",
-            width=340,
+            sizing_mode="stretch_width",
+            height=_table_height,
             header_align="right",
             configuration={"columnDefaults": {"headerSort": True}},
             disabled=True,
@@ -280,7 +280,7 @@ class VisualizeV2(Verb):
             def _fetch_row(idx):
                 row: dict = {"row_index": idx}
                 if _top_level:
-                    row["object_id"] = self.datasets["infer"][idx].get("object_id")
+                    row["object_id"] = self.datasets["visualize"][idx].get("object_id")
                 for fn, field in _nested:
                     row[f"{fn}.{field}"] = _dataset_getters[fn][field](idx)
                 return row
@@ -302,10 +302,16 @@ class VisualizeV2(Verb):
         )
 
         # ── Detail panes ─────────────────────────────────────────────────────
-        _total_width = plot_width + 340
+        _total_width = plot_width
         _detail_pane_width = (_total_width - (20 * (num_detail_plots - 1))) // num_detail_plots
-        _prepped_datasets = self.datasets["infer"].prepped_datasets
+        _prepped_datasets = self.datasets["visualize"].prepped_datasets
         _tab_names = list(_prepped_datasets.keys())
+
+        # Consistent subplot margins applied to every figure shown in a detail pane.
+        # Using fixed subplots_adjust (instead of tight_layout) together with tight=False
+        # in the Matplotlib pane ensures all plots occupy identical canvas geometry
+        # regardless of content type.
+        _detail_layout = dict(left=0.03, right=0.97, bottom=0.03, top=0.9)
 
         def _make_placeholder_fig():
             fig = mpl_figure.Figure(figsize=(3, 3))
@@ -325,7 +331,7 @@ class VisualizeV2(Verb):
             ax.set_yticks([])
             for spine in ax.spines.values():
                 spine.set_edgecolor("#cccccc")
-            fig.tight_layout()
+            fig.subplots_adjust(**_detail_layout)
             return fig
 
         def _make_text_fig(text, index):
@@ -339,7 +345,7 @@ class VisualizeV2(Verb):
                 ha="left",
                 va="top",
                 transform=ax.transAxes,
-                fontsize=7,
+                fontsize=12,
                 family="monospace",
                 wrap=True,
             )
@@ -348,14 +354,14 @@ class VisualizeV2(Verb):
             ax.set_title(f"Index: {index}" if index is not None else "No selection")
             for spine in ax.spines.values():
                 spine.set_edgecolor("#cccccc")
-            fig.tight_layout()
+            fig.subplots_adjust(**_detail_layout)
             return fig
 
         def _make_pane_row():
             return [
                 pn.pane.Matplotlib(
                     _make_placeholder_fig(),
-                    tight=True,
+                    tight=False,
                     format="png",
                     width=_detail_pane_width,
                     height=_detail_pane_width,
@@ -377,16 +383,49 @@ class VisualizeV2(Verb):
         def _make_detail_fig(index, tab_index):
             """Create a matplotlib figure for one detail pane.
 
-            Override this method or supply custom render functions via config
-            to customise the per-object detail view.
+            Accepts whatever ``dataset.display()`` returns and normalises it to a
+            ``matplotlib.figure.Figure`` before handing it to the Matplotlib pane:
+
+            - ``Figure``        → used directly
+            - ``Axes``          → parent figure extracted
+            - ``numpy.ndarray`` → imshow'd into a new Figure
+            - anything else     → rendered as text via ``_make_text_fig``
+
+            Any pyplot-managed figures accidentally created inside ``display()`` are
+            closed after the call so they don't leak into the notebook output.
             """
             if index is None:
                 return _make_placeholder_fig()
             dataset_name = _tab_names[tab_index]
             dataset = _prepped_datasets[dataset_name]
             if not callable(getattr(dataset, "display", None)):
-                return _make_text_fig(str(dataset[index]), index)
-            return dataset.display(index)
+                fig = _make_text_fig(str(dataset[index]), index)
+            else:
+                _fignums_before = set(plt.get_fignums())
+                try:
+                    result = dataset.display(index)
+                finally:
+                    # Close any pyplot figures created as a side-effect of display()
+                    for _fn in set(plt.get_fignums()) - _fignums_before:
+                        plt.close(_fn)
+
+                if isinstance(result, mpl_figure.Figure):
+                    fig = result
+                elif isinstance(result, matplotlib.axes.Axes):
+                    fig = result.figure
+                elif isinstance(result, np.ndarray):
+                    fig = mpl_figure.Figure(figsize=(3, 3))
+                    ax = fig.add_subplot(111)
+                    ax.imshow(result)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    ax.set_title(f"Index: {index}")
+                else:
+                    fig = _make_text_fig(str(result), index)
+
+            fig.set_size_inches(3, 3)
+            fig.subplots_adjust(**_detail_layout)
+            return fig
 
         def _update_detail_panes(indices):
             for tab_index, tab_panes in enumerate(detail_panes):
@@ -571,20 +610,30 @@ class VisualizeV2(Verb):
             hv.opts.Polygons(apply_ranges=False),
         )
 
+        _col_selector_col = pn.Column(
+            *([_fields_alert] if _fields_alert else []),
+            col_selector_title,
+            col_selector,
+            width=280,
+            height=_table_height,
+            scroll=True,
+        )
+        _table_col = pn.Column(
+            table_title,
+            selection_table,
+            pn.Spacer(height=6),
+            export_btn,
+            sizing_mode="stretch_width",
+        )
+
         pane = pn.Column(
+            combined,
+            pn.Spacer(height=10),
             pn.Row(
-                combined,
-                pn.Column(
-                    *([_fields_alert] if _fields_alert else []),
-                    col_selector_title,
-                    col_selector,
-                    pn.Spacer(height=6),
-                    table_title,
-                    selection_table,
-                    pn.Spacer(height=10),
-                    export_btn,
-                    sizing_mode="stretch_height",
-                ),
+                _col_selector_col,
+                pn.Spacer(width=20),
+                _table_col,
+                width=_total_width,
             ),
             pn.Spacer(height=10),
             detail_tabs,

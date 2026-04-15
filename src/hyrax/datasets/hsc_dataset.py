@@ -598,14 +598,15 @@ class HSCDataset(FitsImageDataset):
 
         # make_lupton_rgb applies an asinh stretch and returns values in [0, 1] range
         # Use configurable options for make_lupton_rgb
-        arr = make_lupton_rgb(r_band, g_band, b_band)
+        arr = make_lupton_rgb(r_band, g_band, b_band, stretch=5, Q=8)
 
         # create a scatter plot using matplotlib
         fig = mpl_figure.Figure(figsize=(3, 3))
         ax = fig.add_subplot(111)
         ax.imshow(arr)
-        # make the axes ticks on the inside of the plot
-        ax.tick_params(axis="both", direction="in")
+        # turn off the x and y axis
+        ax.set_xticks([])
+        ax.set_yticks([])
         ax.set_title(f"Index: {index}" if index is not None else "No selection")
         fig.tight_layout()
         return fig
