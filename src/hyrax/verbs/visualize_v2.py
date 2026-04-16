@@ -66,7 +66,7 @@ class VisualizeV2(Verb):
         from holoviews import DynamicMap, Polygons, Rectangles, extension
         from holoviews.element.stats import HexTiles
         from holoviews.operation.datashader import rasterize
-        from holoviews.streams import BoundsXY, Lasso, RangeXY
+        from holoviews.streams import BoundsXY, Lasso, Params, RangeXY
         from IPython import get_ipython
         from matplotlib.path import Path as MplPath
 
@@ -79,7 +79,7 @@ class VisualizeV2(Verb):
         buffer_factor = viz_config["buffer_factor"]  # This doesn't need to be a config
         plot_width = viz_config["plot_width"]  # This doesn't need to be a config
         plot_height = viz_config["plot_height"]  # This doesn't need to be a config
-        cmap = viz_config["cmap"]  # We should turn this into a UI widget.
+        cmap = viz_config["cmap"]  # Sets the initial colormap; user can change it via the UI slider.
         max_table_rows = viz_config["max_table_rows"]  # This doesn't need to be a config
         num_detail_plots = viz_config["num_detail_plots"]  # This doesn't need to be a config
 
@@ -142,6 +142,38 @@ class VisualizeV2(Verb):
         pn.extension("tabulator")
         extension("bokeh")
 
+        # ── Colormap selector ─────────────────────────────────────────────────
+        # Keys are display names, values are matplotlib colormap identifiers.
+        _cmap_entries = {
+            "Viridis": "viridis",
+            "Inferno": "inferno",
+            "Plasma": "plasma",
+            "Magma": "magma",
+            "Cividis": "cividis",
+            "Turbo": "turbo",
+            "Blues": "Blues",
+            "Greens": "Greens",
+            "Purples": "Purples",
+            "Reds": "Reds",
+            "YlOrRd": "YlOrRd",
+            "YlGnBu": "YlGnBu",
+            "Spring": "spring",
+            "Summer": "summer",
+            "Autumn": "autumn",
+            "Winter": "winter",
+        }
+        _cmap_display_names = list(_cmap_entries.keys())
+        _cmap_initial = next(
+            (k for k, v in _cmap_entries.items() if v == cmap.lower()), _cmap_display_names[0]
+        )
+        _cmap_slider = pn.widgets.IntSlider(
+            name=f"Colormap: {_cmap_initial}",
+            start=0,
+            end=len(_cmap_display_names) - 1,
+            value=_cmap_display_names.index(_cmap_initial),
+            width=plot_width,
+        )
+
         # ── Determine initial range from data ─────────────────────────────────
         x_lo, x_hi = float(df["x"].min()), float(df["x"].max())
         y_lo, y_hi = float(df["y"].min()), float(df["y"].max())
@@ -154,8 +186,9 @@ class VisualizeV2(Verb):
 
         # ── Adaptive hexbin callback ──────────────────────────────────────────
         range_xy = RangeXY()
+        _cmap_stream = Params(_cmap_slider, ["value"], rename={"value": "cmap_idx"})
 
-        def make_hexbin(x_range, y_range):
+        def make_hexbin(x_range, y_range, cmap_idx=0):
             xr = x_range if (x_range is not None and None not in x_range) else initial_x_range
             yr = y_range if (y_range is not None and None not in y_range) else initial_y_range
 
@@ -185,20 +218,20 @@ class VisualizeV2(Verb):
                 data[count_col] = np.log1p(data[count_col])
                 hexbin = hexbin.clone(data)
 
-            return hexbin
+            return hexbin.opts(hv.opts.HexTiles(cmap=_cmap_entries[_cmap_display_names[cmap_idx]]))
 
-        dmap = DynamicMap(make_hexbin, streams=[range_xy])
+        dmap = DynamicMap(make_hexbin, streams=[range_xy, _cmap_stream])
 
         # ── Plot opts ─────────────────────────────────────────────────────────
         plot_opts = {
-            "cmap": cmap,
             "cnorm": "linear",
             "colorbar": True,
+            "colorbar_position": "bottom",
             "colorbar_opts": {"title": "log(Count + 1)"},
             "width": plot_width,
             "height": plot_height,
-            "xlabel": "x",
-            "ylabel": "y",
+            "xlabel": "",
+            "ylabel": "",
             "title": f"Hexbin — {n_points:,} samples  |  ~{target_bins} bins across",
             "toolbar": "above",
             "tools": ["hover", "pan", "wheel_zoom", "reset", "box_select", "lasso_select"],
@@ -215,6 +248,13 @@ class VisualizeV2(Verb):
             for tool in plot.state.tools:
                 if isinstance(tool, WheelZoomTool):
                     tool.zoom_on_axis = False
+            plot.state.match_aspect = True
+            for axis in [*plot.state.xaxis, *plot.state.yaxis]:
+                axis.major_tick_in = 6
+                axis.major_tick_out = 0
+                axis.minor_tick_in = 3
+                axis.minor_tick_out = 0
+                axis.major_label_standoff = -20
 
         plot = dmap.opts(hv.opts.HexTiles(**plot_opts, hooks=[_disable_axis_zoom]))
 
@@ -242,7 +282,7 @@ class VisualizeV2(Verb):
         )
 
         # ── Selection table ───────────────────────────────────────────────────
-        _empty = pd.DataFrame(columns=["row_index"])
+        _empty = pd.DataFrame(columns=["row_index"] + _default_cols)
 
         # 21 data rows × 35px + 30px header + 35px footer/pagination bar ≈ one row of breathing room
         _table_height = 21 * 35 + 30 + 35
@@ -265,24 +305,6 @@ class VisualizeV2(Verb):
         self.selected_lasso = pd.DataFrame()
         _table_df: list[pd.DataFrame] = [pd.DataFrame()]  # authoritative copy unaffected by user edits
         _pool = ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
-
-        # ── Selection history ─────────────────────────────────────────────────
-        _history: list[dict] = []  # newest first; each: {type, n_points, bounds, geometry}
-        _replaying: list[bool] = [False]  # guard: prevent replay from adding to history
-
-        _history_table = pn.widgets.Tabulator(
-            pd.DataFrame(columns=["Type", "Points"]),
-            pagination="remote",
-            page_size=10,
-            show_index=False,
-            selectable="checkbox-single",
-            sizing_mode="stretch_width",
-            height=_table_height // 2,
-            header_align="right",
-            configuration={
-                "columnDefaults": {"headerSort": False, "editable": False},
-            },
-        )
 
         def _update_table(
             sel: pd.DataFrame,
@@ -340,6 +362,12 @@ class VisualizeV2(Verb):
             ),
             "value",
         )
+
+        # Update slider label whenever the colormap changes
+        def _on_cmap_slide(event):
+            _cmap_slider.name = f"Colormap: {_cmap_display_names[event.new]}"
+
+        _cmap_slider.param.watch(_on_cmap_slide, "value")
 
         # ── Detail panes ─────────────────────────────────────────────────────
         _total_width = plot_width
@@ -568,13 +596,14 @@ class VisualizeV2(Verb):
                 if x0 != x1 and y0 != y1:
                     mask = (df["x"] >= x0) & (df["x"] <= x1) & (df["y"] >= y0) & (df["y"] <= y1)
                     self.selected_box = df[mask]
-                    box_el = Rectangles([(x0, y0, x1, y1)]).opts(
-                        fill_alpha=0.1,
-                        fill_color="cyan",
-                        line_color="cyan",
-                        line_width=1.5,
-                        apply_ranges=False,
-                    )
+                    if not self.selected_box.empty:
+                        box_el = Rectangles([(x0, y0, x1, y1)]).opts(
+                            fill_alpha=0.1,
+                            fill_color="cyan",
+                            line_color="cyan",
+                            line_width=1.5,
+                            apply_ranges=False,
+                        )
                 else:
                     self.selected_box = pd.DataFrame()
 
@@ -596,13 +625,14 @@ class VisualizeV2(Verb):
                     path = MplPath(coords)
                     inside = path.contains_points(df_candidates[["x", "y"]].values)
                     self.selected_lasso = df_candidates[inside]
-                    lasso_el = Polygons([{("x", "y"): coords}]).opts(
-                        fill_alpha=0.1,
-                        fill_color="orange",
-                        line_color="orange",
-                        line_width=1.5,
-                        apply_ranges=False,
-                    )
+                    if not self.selected_lasso.empty:
+                        lasso_el = Polygons([{("x", "y"): coords}]).opts(
+                            fill_alpha=0.1,
+                            fill_color="orange",
+                            line_color="orange",
+                            line_width=1.5,
+                            apply_ranges=False,
+                        )
                 else:
                     self.selected_lasso = pd.DataFrame()
 
@@ -618,22 +648,6 @@ class VisualizeV2(Verb):
                     _page_state["indices"] = []
                     _render_page()
                 else:
-                    # Append to history (skip if this is a replay)
-                    if not _replaying[0]:
-                        sel_type = "Box" if bounds_changed else "Lasso"
-                        _history.insert(
-                            0,
-                            {
-                                "type": sel_type,
-                                "n_points": len(sel),
-                                "bounds": bounds if bounds_changed else None,
-                                "geometry": coords.copy() if not bounds_changed else None,
-                            },
-                        )
-                        _history_table.value = pd.DataFrame(
-                            [{"Type": e["type"], "Points": e["n_points"]} for e in _history]
-                        )
-                        _history_table.selection = [0]
                     threading.Thread(target=_do_selection_work, args=(sel, my_gen), daemon=True).start()
 
             return box_el * lasso_el
@@ -662,36 +676,6 @@ class VisualizeV2(Verb):
                     pass  # never let detail-pane errors break status cleanup
             finally:
                 _progress_bar.value = 0
-
-        def _replay_selection(entry: dict) -> None:
-            _replaying[0] = True
-            try:
-                # Reset prev so changed-checks always fire
-                _prev["bounds"] = (0, 0, 0, 0)
-                _prev["geometry"] = None
-                if entry["type"] == "Box":
-                    bounds_stream.event(bounds=entry["bounds"])
-                else:
-                    # Silently reset bounds_stream so bounds_changed stays False when the
-                    # lasso event fires (otherwise old box bounds would make bounds_changed=True)
-                    bounds_stream.update(bounds=(0, 0, 0, 0))
-                    # Pass a new array object so the identity check (`is not`) fires
-                    lasso_stream.event(geometry=np.array(entry["geometry"]))
-            finally:
-                _replaying[0] = False
-
-        def _on_history_click(event) -> None:
-            rows = _history_table.selection
-            if not rows:
-                return
-            # With checkbox-single, multiple rows can briefly appear; take the newest click
-            row_index = rows[-1]
-            if row_index < len(_history):
-                # Force exactly this row selected (clears any stale previous selection)
-                _history_table.selection = [row_index]
-                _replay_selection(_history[row_index])
-
-        _history_table.param.watch(_on_history_click, "selection")
 
         selection_dmap = DynamicMap(selection_overlay, streams=[bounds_stream, lasso_stream])
 
@@ -725,9 +709,6 @@ class VisualizeV2(Verb):
         )
 
         _col_selector_col = pn.Column(
-            pn.pane.Markdown("### History", margin=(0, 0)),
-            _history_table,
-            pn.Spacer(height=10),
             col_selector_title,
             *([_fields_alert] if _fields_alert else []),
             pn.Column(
@@ -747,6 +728,7 @@ class VisualizeV2(Verb):
 
         pane = pn.Column(
             combined,
+            _cmap_slider,
             _progress_bar,
             pn.Row(
                 _col_selector_col,

@@ -470,8 +470,8 @@ target_bins = 50
 buffer_factor = 0.2
 
 # Plot dimensions in pixels
-plot_width = 1200
-plot_height = 1100
+plot_width = 1000
+plot_height = 1000
 
 # Colormap for hexbin density
 cmap = "Viridis"
