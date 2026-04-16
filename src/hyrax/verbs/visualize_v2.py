@@ -208,7 +208,15 @@ class VisualizeV2(Verb):
             "nonselection_line_alpha": 1.0,
         }
         plot_opts.update(kwargs)
-        plot = dmap.opts(hv.opts.HexTiles(**plot_opts))
+
+        def _disable_axis_zoom(plot, element):
+            from bokeh.models import WheelZoomTool
+
+            for tool in plot.state.tools:
+                if isinstance(tool, WheelZoomTool):
+                    tool.zoom_on_axis = False
+
+        plot = dmap.opts(hv.opts.HexTiles(**plot_opts, hooks=[_disable_axis_zoom]))
 
         # ── Selection streams ─────────────────────────────────────────────────
         bounds_stream = BoundsXY(source=dmap, bounds=(0, 0, 0, 0))
@@ -757,10 +765,6 @@ class VisualizeV2(Verb):
             display(pane)
         except ImportError:
             logger.warning("Couldn't find IPython display environment. Skipping display step.")
-
-        # if return_verb:
-        #     return pane, self
-        # return pane
 
     def get_selected_df(self) -> "pd.DataFrame":
         """Return the current selection as a DataFrame."""

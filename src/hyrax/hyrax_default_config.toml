@@ -482,11 +482,6 @@ max_table_rows = 50000
 # Number of detail plots per tab row
 num_detail_plots = 6
 
-# Metadata field names to include in the selection table
-fields = []
-
-# Tab names for the detail pane area (list of strings)
-tab_names = ["Data 1", "Data 2"]
 
 
 [engine]
