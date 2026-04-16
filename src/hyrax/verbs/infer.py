@@ -2,6 +2,8 @@ import logging
 
 from colorama import Back, Fore, Style
 
+from hyrax.trace import trace_verb_data
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -13,6 +15,7 @@ class Infer(Verb):
 
     cli_name = "infer"
     add_parser_kwargs = {}
+    description = "Run inference on a model using a dataset."
 
     # Dataset groups that the Infer verb knows about.
     REQUIRED_DATA_GROUPS = ("infer",)
@@ -29,6 +32,7 @@ class Infer(Verb):
 
         self.run()
 
+    @trace_verb_data
     def run(self):
         """Run inference on a model using a dataset
 

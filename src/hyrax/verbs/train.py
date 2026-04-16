@@ -4,6 +4,8 @@ from pathlib import Path
 
 from colorama import Back, Fore, Style
 
+from hyrax.trace import trace_verb_data
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -15,6 +17,7 @@ class Train(Verb):
 
     cli_name = "train"
     add_parser_kwargs = {}
+    description = "Train a model using provided data."
 
     # Dataset groups that the Train verb knows about.
     # REQUIRED_DATA_GROUPS must be present in the dataset dict returned by setup_dataset.
@@ -33,6 +36,7 @@ class Train(Verb):
 
         self.run()
 
+    @trace_verb_data
     def run(self):
         """
         Run the training process for the configured model and data loader.

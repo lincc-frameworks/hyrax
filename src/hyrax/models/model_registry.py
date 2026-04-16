@@ -13,6 +13,7 @@ from hyrax.plugin_utils import (
     save_prepare_inputs,
     update_registry,
 )
+from hyrax.trace import get_trace
 
 logger = logging.getLogger(__name__)
 
@@ -65,13 +66,11 @@ def _torch_load(self: nn.Module, load_path: Path):
 
     # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
     prepare_inputs_fn = load_prepare_inputs(load_path.parent)
+    old_prepare_inputs = getattr(self, "prepare_inputs", None)
 
     if prepare_inputs_fn:
         # Successfully loaded prepare_inputs.py
-        if isinstance(prepare_inputs_fn, staticmethod):
-            self.prepare_inputs = prepare_inputs_fn
-        else:
-            self.prepare_inputs = staticmethod(prepare_inputs_fn)
+        self.prepare_inputs = prepare_inputs_fn
     else:
         # Fall back to loading to_tensor for backward compatibility
         to_tensor_fn = load_to_tensor(load_path.parent)
@@ -82,15 +81,19 @@ def _torch_load(self: nn.Module, load_path: Path):
                 "to_tensor is deprecated, please re-save your model with the new version "
                 "to use prepare_inputs."
             )
-            if isinstance(to_tensor_fn, staticmethod):
-                self.prepare_inputs = to_tensor_fn
-            else:
-                self.prepare_inputs = staticmethod(to_tensor_fn)
+            self.prepare_inputs = to_tensor_fn
         else:
             logger.warning(
                 f"Could not find prepare_inputs or to_tensor function in {load_path.parent}. "
                 "Using the model's existing methods."
             )
+
+    # Instrument prepare_inputs, but only if we changed it and tracing is on.
+    # If tracing is on but we didn't change it, its already instrumented.
+    if old_prepare_inputs != getattr(self, "prepare_inputs", None):
+        trace = get_trace()
+        if trace:
+            trace.instrument_prepare_inputs(self)
 
 
 def _torch_criterion(self: nn.Module):
@@ -238,6 +241,29 @@ def hyrax_model(cls):
     cls.__init__ = wrapped_init
 
     def default_prepare_inputs(data_dict):
+        """Extract image and label arrays from the batch dictionary.
+
+        This static method is the interface between the data pipeline and the
+        model. Override it on the model class to reshape or select fields from
+        the collated batch to match the inputs your model expects. This is the
+        default implementation used when a model does not define its own
+        ``prepare_inputs``.
+
+        Hyrax will convert the returned arrays to PyTorch tensors and move them
+        to the appropriate device automatically.
+
+        Parameters
+        ----------
+        data_dict : dict
+            The collated batch dictionary produced by the data pipeline.
+            Expected to contain a ``"data"`` key with ``"image"`` and optionally
+            ``"label"`` fields.
+
+        Returns
+        -------
+        inputs : tuple of numpy.ndarray
+            A tuple of ``(image, label)`` arrays.
+        """
         if "data" not in data_dict:
             msg = "Hyrax couldn't find a 'data' key in the data dictionaries from your dataset.\n"
             msg += f"We recommend you implement a function on {cls.__name__} to unpack the appropriate\n"

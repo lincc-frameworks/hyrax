@@ -1,5 +1,7 @@
 import logging
 
+from hyrax.trace import get_trace, trace_verb_data
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -11,6 +13,7 @@ class Engine(Verb):
 
     cli_name = "engine"
     add_parser_kwargs = {}
+    description = "Run inference with an ONNX model."
 
     @staticmethod
     def setup_parser(parser):
@@ -28,6 +31,7 @@ class Engine(Verb):
 
         self.run(model_directory=args.model_directory if args else None)
 
+    @trace_verb_data
     def run(self, model_directory: str = None):
         """
         Run inference with an ONNX model.
@@ -97,9 +101,12 @@ class Engine(Verb):
             logger.error("No prepare_inputs or to_tensor function found in the model directory.")
             return
 
+        # Setup tracing on all data handling functions for this verb (noop if tracing not enabled.)
+        prepare_inputs_fn = self._setup_trace(prepare_inputs_fn)
+
         # ~ Load the ONNX model from the input directory.
         onnx_file_name = input_directory / "model.onnx"
-        ort_session = onnxruntime.InferenceSession(onnx_file_name)
+        self.ort_session = onnxruntime.InferenceSession(onnx_file_name)
 
         # For now we use `setup_dataset` to get our datasets back. Later we can
         # optimize this, because we know that we'll only need the `infer` part
@@ -139,21 +146,8 @@ class Engine(Verb):
             # Pass the collated batch to the prepare_inputs function
             prepared_batch = prepare_inputs_fn(collated_batch)
 
-            # Create the inputs array for the ONNX model using the expected inputs
-            # from the loaded ONNX model and the type and shape of the prepared batch.
-            ort_inputs = {}
-            if isinstance(prepared_batch, tuple):
-                for i in range(len(prepared_batch)):
-                    # For a supervised model, we expect that at least one of the
-                    # element in the prepared batch will be empty, so we only
-                    # add non-empty inputs.
-                    if len(prepared_batch[i]):
-                        ort_inputs[ort_session.get_inputs()[i].name] = prepared_batch[i]
-            else:
-                ort_inputs = {ort_session.get_inputs()[0].name: prepared_batch}
-
-            # Run the ONNX model with the prepared batch as input
-            onnx_results = ort_session.run(None, ort_inputs)
+            ort_inputs = self.create_ort_inputs(prepared_batch)
+            onnx_results = self.run_onnx_batch(ort_inputs)
 
             # Finally, we persist the results of inference.
             # For now, collated_batch will always have an "object_id" key that
@@ -172,3 +166,37 @@ class Engine(Verb):
 
         # Write the final index file for the inference results.
         self.results_writer.commit()
+
+    def create_ort_inputs(self, prepared_batch):
+        """
+        Create the inputs array for the ONNX model using the expected inputs
+        from the loaded ONNX model and the type and shape of the prepared batch.
+        """
+
+        ort_inputs = {}
+        if isinstance(prepared_batch, tuple):
+            for i in range(len(prepared_batch)):
+                # For a supervised model, we expect that at least one of the
+                # element in the prepared batch will be empty, so we only
+                # add non-empty inputs.
+                if len(prepared_batch[i]):
+                    ort_inputs[self.ort_session.get_inputs()[i].name] = prepared_batch[i]
+        else:
+            ort_inputs = {self.ort_session.get_inputs()[0].name: prepared_batch}
+
+        return ort_inputs
+
+    def run_onnx_batch(self, ort_inputs):
+        """
+        Run the batch using our onnx runtime session
+
+        Only split out because this is when data is mutated and we need to be able to trace it.
+        """
+        return self.ort_session.run(None, ort_inputs)
+
+    def _setup_trace(self, prepare_inputs_fn):
+        trace = get_trace()
+        if trace:
+            trace.instrument_engine_verb(self)
+            return trace.instrument_prepare_inputs_fn(prepare_inputs_fn)
+        return prepare_inputs_fn

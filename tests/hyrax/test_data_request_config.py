@@ -28,6 +28,26 @@ def test_data_request_config_basic_fields():
     assert dumped["dataset_config"] == {"shuffle": True}
 
 
+def test_data_request_config_preserves_hf_uri_data_location():
+    """Test that HF URIs are preserved when they're used as a data location"""
+    cfg = DataRequestConfig(
+        dataset_class="MultimodalUniverseDataset",
+        data_location="hf://MultimodalUniverse/plasticc",
+        primary_id_field="object_id",
+    )
+    assert cfg.data_location == "hf://MultimodalUniverse/plasticc"
+
+
+def test_data_request_config_preserves_http_uri_data_location():
+    """Test that HTTP URIs are preserved when they're used as a data location"""
+    cfg = DataRequestConfig(
+        dataset_class="SomeDatasetClass",
+        data_location="https://example.com/public/data.parquet",
+        primary_id_field="object_id",
+    )
+    assert cfg.data_location == "https://example.com/public/data.parquet"
+
+
 def test_data_request_definition_flat_dict_without_friendly_name_raises():
     """Flat dict with dataset_class at top level (no friendly name) raises ValidationError."""
     with pytest.raises(ValidationError, match="friendly name"):

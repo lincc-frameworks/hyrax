@@ -130,6 +130,7 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     torch.nn.Module
         An instance of the model class specified in the configuration
     """
+    from hyrax.trace import reset_trace
 
     # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
@@ -144,7 +145,13 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     prepared_sample = model_cls.prepare_inputs(collated_sample)
 
     # Provide the sample for runtime modifications to the model architecture
-    return model_cls(config=config, data_sample=prepared_sample)  # type: ignore[attr-defined]
+    retval = model_cls(config=config, data_sample=prepared_sample)  # type: ignore[attr-defined]
+
+    # After model pre-flighting succeeds (presumably) reset the trace so it represents
+    # just what the verb does afterward.
+    reset_trace()
+
+    return retval
 
 
 def dist_data_loader(
@@ -180,6 +187,7 @@ def dist_data_loader(
     # Extract the config dictionary that will be provided as kwargs to the DataLoader
     data_loader_kwargs = dict(config["data_loader"])
 
+    # TODO: Actually DataProvider.collate. Callsites and parameter signature above have not been updated.
     data_loader_kwargs["collate_fn"] = dataset.collate
 
     # Handle case where no split is needed.
@@ -384,7 +392,7 @@ def create_splits_from_fractions(
     shuffle: bool = True,
 ) -> dict[str, list[int]]:
     """Partition a shared set of indices across dataset groups using the
-    ``split_fraction`` defined on each :class:`DataProvider`.
+    ``split_fraction`` defined on each ``DataProvider``.
 
     All providers in *dataset_providers* are expected to wrap the **same
     underlying data source** (same ``data_location``).  The full index range
@@ -395,9 +403,9 @@ def create_splits_from_fractions(
 
     Parameters
     ----------
-    dataset_providers : dict[str, DataProvider]
+    dataset_providers : dict[str, Any]
         Mapping of group name (e.g. ``"train"``, ``"validate"``) to a
-        :class:`DataProvider` instance whose ``split_fraction`` is set.
+        ``DataProvider`` instance whose ``split_fraction`` is set.
     config : dict
         The Hyrax runtime configuration.  Only ``config["data_set"]["seed"]``
         is used here.

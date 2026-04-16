@@ -72,6 +72,10 @@ autoapi_options = [
 
 suppress_warnings = [
     "autoapi.python_import_resolution",
+    # We intentionally keep some docs pages out of the main toctree.
+    "toc.not_included",
+    # AutoAPI can emit ambiguous python xrefs when objects are re-exported.
+    "ref.python",
 ]
 
 nitpick_ignore_regex = [
@@ -104,6 +108,13 @@ nitpick_ignore_regex = [
     (r"^py:.*", r"^enum\..*"),
     (r"^py:class", r"^butler$"),
     # Types and idiomatic ways we document types
+    (r"^py:.*", r"^pydantic\.BaseModel$"),
+    (r"^py:.*", r"^pydantic\.RootModel$"),
+    (r"^py:.*", r"^DatasetGroupValue$"),
+    (r"^py:.*", r"^ValidationError$"),
+    (r"^py:class", r"^callable$"),
+    (r"^py:class", r"^class$"),
+    (r"^py:class", r"^class instance$"),
     (r"^py:.*", r"^T$"),
     (r"^py:class", r"^[oO]ptional[:]?$"),
     (r"^py:class", r"^tuple$"),
