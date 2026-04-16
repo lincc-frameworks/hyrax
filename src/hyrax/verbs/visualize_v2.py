@@ -258,6 +258,24 @@ class VisualizeV2(Verb):
         _table_df: list[pd.DataFrame] = [pd.DataFrame()]  # authoritative copy unaffected by user edits
         _pool = ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
 
+        # ── Selection history ─────────────────────────────────────────────────
+        _history: list[dict] = []  # newest first; each: {type, n_points, bounds, geometry}
+        _replaying: list[bool] = [False]  # guard: prevent replay from adding to history
+
+        _history_table = pn.widgets.Tabulator(
+            pd.DataFrame(columns=["Type", "Points"]),
+            pagination="remote",
+            page_size=10,
+            show_index=False,
+            selectable="checkbox-single",
+            sizing_mode="stretch_width",
+            height=_table_height // 2,
+            header_align="right",
+            configuration={
+                "columnDefaults": {"headerSort": False, "editable": False},
+            },
+        )
+
         def _update_table(
             sel: pd.DataFrame,
             progress_callback=None,
@@ -510,9 +528,7 @@ class VisualizeV2(Verb):
         _refresh_pagination_widgets()  # initialise the page-number buttons
 
         # ── Selection overlay callback ────────────────────────────────────────
-        _progress_bar = pn.indicators.Progress(width=300, value=0, max=100, visible=False, bar_color="info")
-        _status_text = pn.pane.Markdown("", visible=False, margin=(6, 0))
-        _status_pane = pn.Row(_status_text, _progress_bar, visible=False)
+        _progress_bar = pn.indicators.Progress(width=_total_width, value=0, max=100, bar_color="info")
         _gen: list[int] = [0]
 
         _prev = {"bounds": (0, 0, 0, 0), "geometry": None}
@@ -587,17 +603,36 @@ class VisualizeV2(Verb):
                 sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
                 _gen[0] += 1
                 my_gen = _gen[0]
-                threading.Thread(target=_do_selection_work, args=(sel, my_gen), daemon=True).start()
+                if sel.empty:
+                    # Empty selection is fast — handle inline to avoid thread overhead
+                    _update_table(sel)
+                    _page_state["page"] = 0
+                    _page_state["indices"] = []
+                    _render_page()
+                else:
+                    # Append to history (skip if this is a replay)
+                    if not _replaying[0]:
+                        sel_type = "Box" if bounds_changed else "Lasso"
+                        _history.insert(
+                            0,
+                            {
+                                "type": sel_type,
+                                "n_points": len(sel),
+                                "bounds": bounds if bounds_changed else None,
+                                "geometry": coords.copy() if not bounds_changed else None,
+                            },
+                        )
+                        _history_table.value = pd.DataFrame(
+                            [{"Type": e["type"], "Points": e["n_points"]} for e in _history]
+                        )
+                        _history_table.selection = [0]
+                    threading.Thread(target=_do_selection_work, args=(sel, my_gen), daemon=True).start()
 
             return box_el * lasso_el
 
         def _do_selection_work(sel: "pd.DataFrame", my_gen: int) -> None:
             try:
-                _status_text.object = f"Loading {len(sel):,} points…"
-                _status_text.visible = True
                 _progress_bar.value = 0
-                _progress_bar.visible = True
-                _status_pane.visible = True
 
                 if _gen[0] != my_gen:
                     return
@@ -618,9 +653,37 @@ class VisualizeV2(Verb):
                 except Exception:
                     pass  # never let detail-pane errors break status cleanup
             finally:
-                _status_text.visible = False
-                _progress_bar.visible = False
-                _status_pane.visible = False
+                _progress_bar.value = 0
+
+        def _replay_selection(entry: dict) -> None:
+            _replaying[0] = True
+            try:
+                # Reset prev so changed-checks always fire
+                _prev["bounds"] = (0, 0, 0, 0)
+                _prev["geometry"] = None
+                if entry["type"] == "Box":
+                    bounds_stream.event(bounds=entry["bounds"])
+                else:
+                    # Silently reset bounds_stream so bounds_changed stays False when the
+                    # lasso event fires (otherwise old box bounds would make bounds_changed=True)
+                    bounds_stream.update(bounds=(0, 0, 0, 0))
+                    # Pass a new array object so the identity check (`is not`) fires
+                    lasso_stream.event(geometry=np.array(entry["geometry"]))
+            finally:
+                _replaying[0] = False
+
+        def _on_history_click(event) -> None:
+            rows = _history_table.selection
+            if not rows:
+                return
+            # With checkbox-single, multiple rows can briefly appear; take the newest click
+            row_index = rows[-1]
+            if row_index < len(_history):
+                # Force exactly this row selected (clears any stale previous selection)
+                _history_table.selection = [row_index]
+                _replay_selection(_history[row_index])
+
+        _history_table.param.watch(_on_history_click, "selection")
 
         selection_dmap = DynamicMap(selection_overlay, streams=[bounds_stream, lasso_stream])
 
@@ -654,12 +717,17 @@ class VisualizeV2(Verb):
         )
 
         _col_selector_col = pn.Column(
-            *([_fields_alert] if _fields_alert else []),
+            pn.pane.Markdown("### History", margin=(0, 0)),
+            _history_table,
+            pn.Spacer(height=10),
             col_selector_title,
-            col_selector,
+            *([_fields_alert] if _fields_alert else []),
+            pn.Column(
+                col_selector,
+                height=_table_height // 2,
+                scroll=True,
+            ),
             width=280,
-            height=_table_height,
-            scroll=True,
         )
         _table_col = pn.Column(
             table_title,
@@ -671,8 +739,7 @@ class VisualizeV2(Verb):
 
         pane = pn.Column(
             combined,
-            pn.Spacer(height=10),
-            _status_pane,
+            _progress_bar,
             pn.Row(
                 _col_selector_col,
                 pn.Spacer(width=20),
