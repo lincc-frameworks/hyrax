@@ -56,17 +56,79 @@ jobs:
         path: ${{env.WORKING_DIR}}
         key: nightly-results-${{steps.nightly-dates.outputs.yesterday}}
     - name: Run comparison of main against last nightly build
+      id: benchmark-run
       run: |
         HASH_FILE=${{env.NIGHTLY_HASH_FILE}}
         CURRENT_HASH=${{github.sha}}
+        REGRESSION=false
         if [ -f $HASH_FILE ]; then
           PREV_HASH=$(cat $HASH_FILE)
-          asv continuous $PREV_HASH $CURRENT_HASH --verbose || true
+          set +e
+          asv continuous $PREV_HASH $CURRENT_HASH --verbose
+          asv_continuous_exit_code=$?
+          set -e
+          case $asv_continuous_exit_code in
+            0)
+              ;;
+            2)
+              REGRESSION=true
+              ;;
+            *)
+              exit $asv_continuous_exit_code
+              ;;
+          esac
           asv compare $PREV_HASH $CURRENT_HASH --sort ratio --verbose
         fi
         echo $CURRENT_HASH > $HASH_FILE
+        echo "regression=$REGRESSION" >> $GITHUB_OUTPUT
     - name: Update last nightly hash in cache
       uses: actions/cache@v5
       with:
         path: ${{env.WORKING_DIR}}
         key: nightly-results-${{steps.nightly-dates.outputs.today}}
+    - name: Generate dashboard HTML
+      run: |
+        asv publish
+        test -d _html
+    - name: Upload benchmark HTML artifact
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: benchmark-html
+        path: ${{env.WORKING_DIR}}/_html
+    - name: Upload benchmark results artifact
+      continue-on-error: true
+      uses: actions/upload-artifact@v7
+      with:
+        name: benchmark-results
+        path: ${{env.WORKING_DIR}}/_results
+    - name: Notify Slack on success
+      if: success() && steps.benchmark-run.outputs.regression != 'true'
+      uses: slackapi/slack-github-action@v2
+      with:
+        webhook: ${{secrets.SLACK_WEBHOOK_URL}}
+        webhook-type: incoming-webhook
+        payload: |
+          {
+            "text": "✅ Hyrax nightly benchmarks succeeded on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
+          }
+    - name: Notify Slack on benchmark regression
+      if: success() && steps.benchmark-run.outputs.regression == 'true'
+      uses: slackapi/slack-github-action@v2
+      with:
+        webhook: ${{secrets.SLACK_WEBHOOK_URL}}
+        webhook-type: incoming-webhook
+        payload: |
+          {
+            "text": "⚠️ Hyrax nightly benchmarks detected regressions on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
+          }
+    - name: Notify Slack on failure
+      if: failure()
+      uses: slackapi/slack-github-action@v2
+      with:
+        webhook: ${{secrets.SLACK_WEBHOOK_URL}}
+        webhook-type: incoming-webhook
+        payload: |
+          {
+            "text": "❌ Hyrax nightly benchmarks failed on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
+          }
