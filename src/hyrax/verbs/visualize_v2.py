@@ -101,7 +101,7 @@ class VisualizeV2(Verb):
                 "Set 'primary_id_field' on the dataset that contains the UMAP 2D coordinates."
             )
         reduced_dim_dataset = self.datasets["visualize"].prepped_datasets[_primary_ds_name]
-        reduced_dim_results = reduced_dim_dataset.__getitem__(range(0, len(reduced_dim_dataset)))
+        reduced_dim_results = reduced_dim_dataset.__get_all__()
 
         # ── Build DataFrame from UMAP 2D results ─────────────────────────────
         points_array = np.array([np.asarray(pt) for pt in reduced_dim_results])
@@ -182,43 +182,50 @@ class VisualizeV2(Verb):
         initial_x_range = (x_lo - x_pad, x_hi + x_pad)
         initial_y_range = (y_lo - y_pad, y_hi + y_pad)
 
-        tiles = HexTiles(df, kdims=["x", "y"]).redim.range(x=initial_x_range, y=initial_y_range)  # noqa: F841
-
         # ── Adaptive hexbin callback ──────────────────────────────────────────
         range_xy = RangeXY()
         _cmap_stream = Params(_cmap_slider, ["value"], rename={"value": "cmap_idx"})
+
+        # Cache the last rasterized element so colormap changes skip re-rasterization.
+        _hex_cache: dict = {"range_key": None, "element": None}
 
         def make_hexbin(x_range, y_range, cmap_idx=0):
             xr = x_range if (x_range is not None and None not in x_range) else initial_x_range
             yr = y_range if (y_range is not None and None not in y_range) else initial_y_range
 
-            x_pad_buf = (xr[1] - xr[0]) * buffer_factor
-            y_pad_buf = (yr[1] - yr[0]) * buffer_factor
-            mask = (
-                (df["x"] >= xr[0] - x_pad_buf)
-                & (df["x"] <= xr[1] + x_pad_buf)
-                & (df["y"] >= yr[0] - y_pad_buf)
-                & (df["y"] <= yr[1] + y_pad_buf)
+            range_key = (xr, yr)
+            if _hex_cache["range_key"] != range_key or _hex_cache["element"] is None:
+                x_pad_buf = (xr[1] - xr[0]) * buffer_factor
+                y_pad_buf = (yr[1] - yr[0]) * buffer_factor
+                mask = (
+                    (df["x"] >= xr[0] - x_pad_buf)
+                    & (df["x"] <= xr[1] + x_pad_buf)
+                    & (df["y"] >= yr[0] - y_pad_buf)
+                    & (df["y"] <= yr[1] + y_pad_buf)
+                )
+                df_view = df[mask]
+
+                bin_size = (xr[1] - xr[0]) / target_bins
+
+                hexbin = rasterize(
+                    HexTiles(df_view, kdims=["x", "y"]).redim.range(x=xr, y=yr),
+                    aggregator=ds.count(),
+                    x_sampling=bin_size,
+                    y_sampling=bin_size,
+                    dynamic=False,
+                )
+
+                if hexbin.vdims:
+                    count_col = hexbin.vdims[0].name
+                    hexbin = hexbin.clone(hexbin.data.assign(**{count_col: np.log1p(hexbin.data[count_col])}))
+
+                _hex_cache["range_key"] = range_key
+                _hex_cache["element"] = hexbin
+
+            # Cheap: apply colormap to cached element (no re-rasterization)
+            return _hex_cache["element"].opts(
+                hv.opts.HexTiles(cmap=_cmap_entries[_cmap_display_names[cmap_idx]])
             )
-            df_view = df[mask]
-
-            bin_size = (xr[1] - xr[0]) / target_bins
-
-            hexbin = rasterize(
-                HexTiles(df_view, kdims=["x", "y"]).redim.range(x=xr, y=yr),
-                aggregator=ds.count(),
-                x_sampling=bin_size,
-                y_sampling=bin_size,
-                dynamic=False,
-            )
-
-            if hexbin.vdims:
-                count_col = hexbin.vdims[0].name
-                data = hexbin.data.copy()
-                data[count_col] = np.log1p(data[count_col])
-                hexbin = hexbin.clone(data)
-
-            return hexbin.opts(hv.opts.HexTiles(cmap=_cmap_entries[_cmap_display_names[cmap_idx]]))
 
         dmap = DynamicMap(make_hexbin, streams=[range_xy, _cmap_stream])
 
@@ -325,7 +332,12 @@ class VisualizeV2(Verb):
                 computed = pd.DataFrame({"row_index": capped_indices})
                 _table_df[0] = computed.copy()
                 selection_table.value = computed
-                table_title.object = f"### Selected Points — {len(sel):,}"
+                _truncated = len(sel) > max_table_rows
+                table_title.object = (
+                    f"### Selected Points — {len(sel):,} (showing first {max_table_rows:,} — export to see all)"  # noqa: E501
+                    if _truncated
+                    else f"### Selected Points — {len(sel):,}"
+                )
                 return
 
             _top_level = [c for c in active_cols if c == "object_id"]
@@ -353,15 +365,34 @@ class VisualizeV2(Verb):
             display_df = pd.DataFrame(rows).reset_index(drop=True)
             _table_df[0] = display_df.copy()
             selection_table.value = display_df
-            table_title.object = f"### Selected Points — {len(sel):,}"
+            _truncated = len(sel) > max_table_rows
+            table_title.object = (
+                f"### Selected Points — {len(sel):,} (showing first {max_table_rows:,} — export to see all)"  # noqa: E501
+                if _truncated
+                else f"### Selected Points — {len(sel):,}"
+            )
 
         # Re-fetch columns whenever the selector changes
-        col_selector.param.watch(
-            lambda _e: _update_table(
-                self.selected_box if not self.selected_box.empty else self.selected_lasso
-            ),
-            "value",
-        )
+        def _on_col_selector_change(_e):
+            sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
+            if sel.empty:
+                _update_table(sel)
+                return
+            _gen[0] += 1
+            my_gen = _gen[0]
+
+            def _run():
+                _progress_bar.value = 0
+                _update_table(
+                    sel,
+                    progress_callback=lambda pct: setattr(_progress_bar, "value", pct),
+                    should_abort=lambda: _gen[0] != my_gen,
+                )
+                _progress_bar.value = 0
+
+            threading.Thread(target=_run, daemon=True).start()
+
+        col_selector.param.watch(_on_col_selector_change, "value")
 
         # Update slider label whenever the colormap changes
         def _on_cmap_slide(event):
@@ -588,7 +619,11 @@ class VisualizeV2(Verb):
 
             if bounds_changed or (geometry_changed and geometry is not None):
                 export_btn.icon = ""
-                export_btn.name = "Export to selected_points"
+                export_btn.name = "Export table to selected_points"
+                export_btn.disabled = True
+                export_all_btn.icon = ""
+                export_all_btn.name = "Export all to selected_points"
+                export_all_btn.disabled = True
 
             if bounds_changed:
                 self.selected_lasso = pd.DataFrame()
@@ -628,8 +663,8 @@ class VisualizeV2(Verb):
                     if not self.selected_lasso.empty:
                         lasso_el = Polygons([{("x", "y"): coords}]).opts(
                             fill_alpha=0.1,
-                            fill_color="orange",
-                            line_color="orange",
+                            fill_color="cyan",
+                            line_color="cyan",
                             line_width=1.5,
                             apply_ranges=False,
                         )
@@ -647,6 +682,8 @@ class VisualizeV2(Verb):
                     _page_state["page"] = 0
                     _page_state["indices"] = []
                     _render_page()
+                    export_btn.disabled = False
+                    export_all_btn.disabled = False
                 else:
                     threading.Thread(target=_do_selection_work, args=(sel, my_gen), daemon=True).start()
 
@@ -655,6 +692,7 @@ class VisualizeV2(Verb):
         def _do_selection_work(sel: "pd.DataFrame", my_gen: int) -> None:
             try:
                 _progress_bar.value = 0
+                export_btn.name = "Loading selected data..."
 
                 if _gen[0] != my_gen:
                     return
@@ -674,6 +712,10 @@ class VisualizeV2(Verb):
                     _render_page()
                 except Exception:
                     pass  # never let detail-pane errors break status cleanup
+
+                export_btn.name = "Export table to selected_points"
+                export_btn.disabled = False
+                export_all_btn.disabled = False
             finally:
                 _progress_bar.value = 0
 
@@ -681,9 +723,9 @@ class VisualizeV2(Verb):
 
         # ── Export button ─────────────────────────────────────────────────────
         export_btn = pn.widgets.Button(
-            name="Export to selected_points",
+            name="Export table to selected_points",
             button_type="primary",
-            width=340,
+            width=300,
             icon="",
         )
 
@@ -691,7 +733,7 @@ class VisualizeV2(Verb):
             sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
             if sel.empty:
                 return
-            exported = _table_df[0].copy() if not _table_df[0].empty else sel
+            exported = _table_df[0] if not _table_df[0].empty else sel
             try:
                 _ipy = get_ipython()  # noqa: F821
                 _ipy.user_ns["selected_points"] = exported
@@ -701,6 +743,73 @@ class VisualizeV2(Verb):
             export_btn.name = f"Exported {len(exported):,} rows to selected_points"
 
         export_btn.on_click(_on_export)
+
+        # ── Export All button ──────────────────────────────────────────
+        export_all_btn = pn.widgets.Button(
+            name="Export all to selected_points",
+            button_type="warning",
+            width=300,
+            icon="",
+            disabled=True,
+        )
+
+        def _do_export_all(sel: "pd.DataFrame") -> None:
+            active_cols: list[str] = col_selector.value
+            if not active_cols:
+                try:
+                    _ipy = get_ipython()  # noqa: F821
+                    _ipy.user_ns["selected_points"] = pd.DataFrame({"row_index": list(sel.index)})
+                except NameError:
+                    pass
+                export_all_btn.icon = "check-lg"
+                export_all_btn.name = f"Exported {len(sel):,} rows to selected_points"
+                export_all_btn.disabled = False
+                _progress_bar.value = 0
+                return
+
+            _top_level = [c for c in active_cols if c == "object_id"]
+            _nested = [(c.split(".", 1)[0], c.split(".", 1)[1]) for c in active_cols if "." in c]
+
+            def _fetch_row_all(idx):
+                row: dict = {"row_index": idx}
+                if _top_level:
+                    row["object_id"] = self.datasets["visualize"][idx].get("object_id")
+                for fn, field in _nested:
+                    row[f"{fn}.{field}"] = _dataset_getters[fn][field](idx)
+                return row
+
+            all_indices = list(sel.index)
+            total = len(all_indices)
+            _progress_step = max(1, total // 100)
+            futures = {_pool.submit(_fetch_row_all, idx): i for i, idx in enumerate(all_indices)}
+            rows: list = [None] * total
+            for done, future in enumerate(as_completed(futures)):
+                rows[futures[future]] = future.result()
+                if done % _progress_step == 0 or done == total - 1:
+                    _progress_bar.value = int((done + 1) / total * 100)
+
+            full_df = pd.DataFrame(rows).reset_index(drop=True)
+            try:
+                _ipy = get_ipython()  # noqa: F821
+                _ipy.user_ns["selected_points"] = full_df
+            except NameError:
+                pass
+            export_all_btn.icon = "check-lg"
+            export_all_btn.name = f"Exported {len(full_df):,} rows to selected_points"
+            export_all_btn.disabled = False
+            _progress_bar.value = 0
+
+        def _on_export_all(event):
+            sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
+            if sel.empty:
+                return
+            export_all_btn.disabled = True
+            export_all_btn.icon = ""
+            export_all_btn.name = f"Fetching all {len(sel):,} rows..."
+            _progress_bar.value = 0
+            threading.Thread(target=_do_export_all, args=(sel,), daemon=True).start()
+
+        export_all_btn.on_click(_on_export_all)
 
         # ── Layout ────────────────────────────────────────────────────────────
         combined = (plot * selection_dmap).opts(
@@ -722,7 +831,7 @@ class VisualizeV2(Verb):
             table_title,
             selection_table,
             pn.Spacer(height=6),
-            export_btn,
+            pn.Row(export_btn, pn.Spacer(width=10), export_all_btn),
             sizing_mode="stretch_width",
         )
 

@@ -488,7 +488,7 @@ plot_height = 1000
 cmap = "Viridis"
 
 # Maximum rows rendered in the selection table
-max_table_rows = 50000
+max_table_rows = 1000
 
 # Number of detail plots per tab row
 num_detail_plots = 6

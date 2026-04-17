@@ -224,30 +224,54 @@ class ResultDataset(HyraxDataset):
         # Handle single index
         is_single = isinstance(idx, (int, np.integer))
         if is_single:
-            idx = [int(idx)]
+            idx = np.array([int(idx)])
         else:
             idx = np.asarray(idx)
-            idx = [int(idx)] if len(idx.shape) == 0 else idx.tolist()  # scalar array
+            idx = np.array([int(idx)]) if len(idx.shape) == 0 else idx  # scalar array
 
         # Validate indices
         table_len = len(self)
-        for i in idx:
-            if i < 0 or i >= table_len:
-                raise IndexError(f"Index {i} is out of range for dataset of length {table_len}")
+        # Using vectorized check for out-of-range indices instead of loop for better performance
+        if np.any((idx < 0) | (idx >= table_len)):
+            bad = idx[(idx < 0) | (idx >= table_len)]
+            raise IndexError(f"Indices {bad} are out of range for dataset of length {table_len}")
 
-        # Use take for O(1) random access
+        # Use take for O(k) random access, where k is the number of indices.
         result = self.lance_dataset.take(idx)
 
-        # Extract data column and reshape
-        data_column = result["data"].to_pylist()
-        tensors = []
-        for flat_data in data_column:
-            tensor = np.array(flat_data, dtype=self.tensor_dtype)
-            tensor = tensor.reshape(self.tensor_shape)
-            tensors.append(tensor)
+        # Extract data column and reshape; combine chunks if needed before accessing values buffer
+        data_column = result["data"]
+        if isinstance(data_column, pa.ChunkedArray):
+            data_column = data_column.combine_chunks()
+
+        flat_np = data_column.values.to_numpy(zero_copy_only=False)
+
+        # Reshape to original tensor shape
+        tensors = flat_np.reshape(-1, *self.tensor_shape).astype(self.tensor_dtype, copy=False)
 
         # Return single tensor or array of tensors
-        return tensors[0] if is_single else np.array(tensors)
+        return tensors[0] if is_single else tensors
+
+    def __get_all__(self):
+        """Get all data tensors in the dataset.
+
+        Returns
+        -------
+        np.ndarray
+            All data tensors
+        """
+        arrow_col = self.lance_dataset.to_table(columns=["data"])["data"]
+
+        # If ChunkedArray (multiple fragments), combine first
+        if hasattr(arrow_col, "combine_chunks"):
+            arrow_col = arrow_col.combine_chunks()
+
+        # Access the flat buffer directly — no Python objects created
+        flat_np = arrow_col.values.to_numpy(zero_copy_only=False)
+
+        # Reshape is O(1) (a view, no data copy)
+        tensors = flat_np.reshape(-1, *self.tensor_shape).astype(self.tensor_dtype, copy=False)
+        return tensors
 
     def get_data(self, idx: int):
         """Get data tensor at index (HyraxQL getter).
