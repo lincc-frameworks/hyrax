@@ -353,11 +353,19 @@ class VisualizeV2(Verb):
 
             total = len(capped_indices)
             _progress_step = max(1, total // 100)
+
+            # Bail out before submitting any futures if already stale
+            if should_abort and should_abort():
+                return
+
             futures = {_pool.submit(_fetch_row, idx): i for i, idx in enumerate(capped_indices)}
             rows: list = [None] * total
             for done, future in enumerate(as_completed(futures)):
                 if should_abort and should_abort():
-                    return  # stale generation — abandon before writing to the table
+                    # Cancel all queued-but-not-started futures to drain the pool backlog
+                    for f in futures:
+                        f.cancel()
+                    return
                 rows[futures[future]] = future.result()
                 if progress_callback and (done % _progress_step == 0 or done == total - 1):
                     progress_callback(int((done + 1) / total * 100))
