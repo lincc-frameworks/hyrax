@@ -115,6 +115,17 @@ latent_dim = 512
 final_layer = "identity"
 
 
+[model.HyraxAutoencoderV2APCT]
+# The number of output channels from the first layer.
+base_channel_size = 32
+
+# The length of the latent space vector. 
+latent_dim = 64
+
+# The activation function of the final layer.
+final_layer = "tanh"
+
+
 [model.SimCLR]
 # The dimension of the projection head for SimCLR
 projection_dimension = 128
@@ -146,6 +157,10 @@ gaussian_blur_sigma_range = [0.1, 2.0]
 # The number of classes to predict as the output of the model. i.e. 2 would be a
 # binary classifer, 10 would predict the 10 classes in the CiFAR dataset.
 output_classes = 10
+
+[model.HyraxConvNeXt]
+# The number of classes at the end
+num_classes = 256
 
 
 [criterion]

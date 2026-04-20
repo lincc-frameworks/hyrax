@@ -5,7 +5,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
-import torchvision.transforms as T # noqa N812
+import torchvision.transforms as T  # noqa N812
 from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
@@ -144,8 +144,8 @@ class HyraxAutoencoderV2APCT(nn.Module):
 
         _, self.num_input_channels, self.image_width, self.image_height = shape
 
-        self.c_hid = self.config["model"]["HyraxAutoencoderV2"]["base_channel_size"]
-        self.latent_dim = self.config["model"]["HyraxAutoencoderV2"]["latent_dim"]
+        self.c_hid = self.config["model"]["HyraxAutoencoderV2APCT"]["base_channel_size"]
+        self.latent_dim = self.config["model"]["HyraxAutoencoderV2APCT"]["latent_dim"]
 
         # Calculate how much our convolutional layers will affect the size of final convolution
         # Formula evaluated from: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
@@ -197,7 +197,7 @@ class HyraxAutoencoderV2APCT(nn.Module):
 
         # Configure final activation
         # Should be set to the same value as ["dataset"]["transform"] in most cases
-        final_layer_value = self.config["model"]["HyraxAutoencoderV2"]["final_layer"]
+        final_layer_value = self.config["model"]["HyraxAutoencoderV2APCT"]["final_layer"]
         final_layer = final_layer_value if final_layer_value else "tanh"
         if final_layer == "sigmoid":
             self.final_activation = nn.Sigmoid()

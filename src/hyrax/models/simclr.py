@@ -218,8 +218,6 @@ class SimCLR(nn.Module):
             ]
         )
 
-        # aug = APCTTransform(ref_channel=2)
-
         x1 = torch.stack([aug(img) for img in x]).squeeze(1)
         x2 = torch.stack([aug(img) for img in x]).squeeze(1)
 
@@ -252,8 +250,6 @@ class SimCLR(nn.Module):
             ]
         )
 
-        aug = APCTTransform(ref_channel=2)
-
         x1 = torch.stack([aug(img) for img in x]).squeeze(1)
         x2 = torch.stack([aug(img) for img in x]).squeeze(1)
 
@@ -279,5 +275,16 @@ class SimCLR(nn.Module):
         torch.Tensor
             Output tensor of shape (batch_size, projection_dimension).
         """
+        # Extract the tensors from the single-element tuple
+        x = x[0]
+
+        aug = T.Compose(
+            [
+                APCTTransform(ref_channel=2),
+            ]
+        )
+
+        x = torch.stack([aug(img) for img in x]).squeeze(1)
+        
         # We don't need to include the projection head during the inference
-        return self.backbone(x[0])
+        return self.backbone(x)
