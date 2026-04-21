@@ -34,6 +34,14 @@ class Umap(Verb):
             help="Directory containing inference results to umap.",
         )
 
+        parser.add_argument(
+            "-m",
+            "--model-path",
+            type=str,
+            required=False,
+            help="Path to a pre-existing UMAP model.",
+        )
+
     # Should there be a version of this on the base class which uses a dict on the Verb
     # superclass to build the call to run based on what the subclass verb defined in setup_parser
     def run_cli(self, args: Namespace | None = None):
@@ -44,9 +52,9 @@ class Umap(Verb):
 
         # This is where we map from CLI parsed args to a
         # self.run (args) call.
-        return self.run(input_dir=args.input_dir)
+        return self.run(input_dir=args.input_dir, model_path=args.model_path)
 
-    def run(self, input_dir: Union[Path, str] | None = None):
+    def run(self, input_dir: Union[Path, str] | None = None, model_path: Union[Path, str] | None = None):
         """
         Create a umap of a particular inference run
 
@@ -60,6 +68,10 @@ class Umap(Verb):
         input_dir : str or Path, Optional
             The directory containing the inference results.
 
+        model_path : str or Path, Optional
+            The path to a pre-existing UMAP model.
+            If provided, the method will use this model instead of fitting a new one.
+
         Returns
         -------
         None
@@ -67,9 +79,9 @@ class Umap(Verb):
         """
         with warnings.catch_warnings():
             warnings.simplefilter(action="ignore", category=FutureWarning)
-            return self._run(input_dir)
+            return self._run(input_dir, model_path)
 
-    def _run(self, input_dir: Union[Path, str] | None = None):
+    def _run(self, input_dir: Union[Path, str] | None = None, model_path: Union[Path, str] | None = None):
         """See run()"""
         import multiprocessing as mp
 
@@ -99,17 +111,48 @@ class Umap(Verb):
         # If the input to umap is not of the shape [samples,input_dims] we reshape the input accordingly
         data_sample = np.asarray(inference_results[index_choices]).reshape((sample_size, -1))
 
-        self._log_memory_usage("Before fitting umap")
-        logger.info("Fitting the UMAP")
-        # Fit a single reducer on the sampled data
-        self.reducer.fit(data_sample)
-        self._log_memory_usage("After fitting umap")
+        if model_path is not None:
+            # check validity of the path
+            model_path = Path(model_path)
+            if not model_path.is_file():
+                raise FileNotFoundError(f"UMAP model file not found: {model_path}")
 
-        # Save the reducer to our results directory
-        if self.config["umap"]["save_fit_umap"]:
-            logger.info("Saving fitted UMAP Reducer")
-            with open(results_dir / "umap.pickle", "wb") as f:
-                pickle.dump(self.reducer, f)
+            logger.info(f"Loading pre-existing UMAP model from {model_path}")
+            # Load the pre-fitted reducer from the provided path.
+            with open(model_path, "rb") as f:
+                reducer = pickle.load(f)
+
+                # UMAP type check
+                if not isinstance(reducer, umap.UMAP):
+                    raise ValueError(f"The loaded model is not a UMAP instance: {type(reducer)}")
+
+                # input feature dim check
+                if reducer._raw_data.shape[1] != data_sample.shape[1]:
+                    raise ValueError(
+                        f"The input dimension of the loaded UMAP model ({reducer._raw_data.shape[1]})"
+                        f" does not match the dimension of the inference data ({data_sample.shape[1]})."
+                    )
+
+                # output dim check
+                if reducer.n_components != self.reducer.n_components:
+                    raise ValueError(
+                        f"The output dimension of the loaded UMAP model ({reducer.n_components})"
+                        f" does not match the dimension of the inference data ({self.reducer.n_components})."
+                    )
+
+                self.reducer = reducer
+
+        else:
+            self._log_memory_usage("Before fitting umap")
+            logger.info("Fitting the UMAP")
+            # Fit a single reducer on the sampled data
+            self.reducer.fit(data_sample)
+            self._log_memory_usage("After fitting umap")
+            # Save the reducer to our results directory
+            if self.config["umap"]["save_fit_umap"]:
+                logger.info("Saving fitted UMAP Reducer")
+                with open(results_dir / "umap.pickle", "wb") as f:
+                    pickle.dump(self.reducer, f)
 
         # Reclaim Memory
         del data_sample
