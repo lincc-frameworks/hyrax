@@ -11,21 +11,17 @@ The artifact is built by `.github/workflows/build-agent-env-artifact.yml` on pus
 
 These setup scripts require outbound internet access. They will not work in a fully offline or no-egress container.
 
-### Minimum allow-list for artifact download
+### If you use restricted egress / custom allow-lists
 
-Using the current setup script flow (`list artifacts` + `download artifact zip`), the required domains are:
+Use the provider defaults for package managers, then add only the GitHub artifact domains.
 
-- `api.github.com` (GitHub Actions artifacts API)
-- `*.blob.core.windows.net` (signed Azure Blob URL that GitHub redirects to for artifact bytes)
+- **Codex Cloud**: enable **Common Dependencies** domain allow-list.
+- **Claude Code Web**: choose **Custom** domains and check **also include default list of package managers**.
 
-In a live query against this repo, the redirect resolved to `productionresultssa14.blob.core.windows.net` (the exact subdomain can vary), so allow-list the wildcard form.
+Then add these custom domains:
 
-### Additional domains commonly needed by the full setup scripts
-
-Both setup scripts also run package install steps, so most environments should additionally allow:
-
-- Ubuntu/Debian apt mirrors (for `apt -y install pandoc`)
-- Python package index endpoints (for `python -m pip install -e '.[dev]'`, typically `pypi.org` and `files.pythonhosted.org`)
+- `api.github.com`
+- `*.blob.core.windows.net`
 
 ## 1) Create a GitHub token for artifact download
 
