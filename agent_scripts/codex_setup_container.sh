@@ -13,10 +13,20 @@ apt -y install pandoc
 
 ARTIFACT_REPO="${HYRAX_REPO:-lincc-frameworks/hyrax}"
 ARTIFACT_NAME="${HYRAX_ENV_ARTIFACT_NAME:-hyrax-agent-venv-main}"
+ARTIFACT_ID="${HYRAX_ENV_ARTIFACT_ID:-}"
 VENV_DIR="${HYRAX_VENV_DIR:-$HOME/hyrax-venv}"
+GITHUB_TOKEN_VALUE="${HYRAX_GITHUB_TOKEN:-${GITHUB_TOKEN:-}}"
+AUTH_HEADER=()
 
-ARTIFACT_ID=$(curl -fsSL "https://api.github.com/repos/${ARTIFACT_REPO}/actions/artifacts?per_page=100" | jq -r ".artifacts[] | select(.name == \"${ARTIFACT_NAME}\") | .id" | head -n1)
-curl -fsSL "https://api.github.com/repos/${ARTIFACT_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" -o /tmp/hyrax-agent-venv.zip
+if [ -n "$GITHUB_TOKEN_VALUE" ]; then
+    AUTH_HEADER=(-H "Authorization: Bearer $GITHUB_TOKEN_VALUE")
+fi
+
+if [ -z "$ARTIFACT_ID" ]; then
+    ARTIFACT_ID=$(curl -fsSL "${AUTH_HEADER[@]}" "https://api.github.com/repos/${ARTIFACT_REPO}/actions/artifacts?per_page=100" | jq -r ".artifacts[] | select(.name == \"${ARTIFACT_NAME}\") | .id" | head -n1)
+fi
+
+curl -fsSL "${AUTH_HEADER[@]}" "https://api.github.com/repos/${ARTIFACT_REPO}/actions/artifacts/${ARTIFACT_ID}/zip" -o /tmp/hyrax-agent-venv.zip
 
 rm -rf "$VENV_DIR"
 mkdir -p "$VENV_DIR"
