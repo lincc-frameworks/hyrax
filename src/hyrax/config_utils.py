@@ -193,14 +193,22 @@ class ConfigManager:
         else:
             self.user_specific_config = ConfigManager.read_runtime_config(self.runtime_config_filepath)
 
-        # Upgrade older user configs forward through the registered schema
-        # migrations before they are merged against the current defaults. Local
-        # import to avoid a circular dependency with config_migrations, which
-        # imports from this module.
+        # Local import to avoid a circular dependency with config_migrations,
+        # which imports from this module.
         from hyrax.config_migrations import migrate_config
 
+        # Upgrade older configs forward through the registered schema migrations
+        # before merging with defaults and validating.
+        # We assume that the hyrax default config will be correctly versioned for
+        # the Hyrax release the users is working with.
+        # If the user passes in a partial config (i.e. a user config) or a complete
+        # runtime config produced by a previous run, those files will have either
+        # 1) no config_version number or 2) may have
+        # an outdated config_version and will need to be updated before merging
+        # with the hyrax default config.
         self.user_specific_config = migrate_config(self.user_specific_config)
 
+        # Fully resolve user defined, external library and hyrax default configs
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
 
         # Validate data_request if present in loaded config

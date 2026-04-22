@@ -1,6 +1,5 @@
-# Schema version of this config file. Hyrax auto-migrates older user configs
-# forward on load — users don't edit this by hand. When renaming or restructuring
-# config keys, bump this value and add a migration in src/hyrax/config_migrations.py.
+# DO NOT MODIFY config_version MANUALLY!!!
+# Hyrax will migrate older configs forward on load — do not edit this by hand.
 config_version = 2
 
 [general]

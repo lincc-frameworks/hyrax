@@ -264,3 +264,47 @@ dev_mode = false
 
     # Pydantic still flags the broken subgroup on the migrated content.
     assert "Configuration loaded from TOML has 'data_request' that failed Pydantic validation" in caplog.text
+
+
+def test_init_migrates_up_to_date_legacy_model_inputs_to_data_request(caplog, tmp_path):
+    """Legacy configs with [data_request] but no config_version are migrated correctly.
+
+    The v1 → v2 migration in ``hyrax.config_migrations`` works as expected even
+    if the legacy config has the correct table name.
+    """
+
+    # Legacy-style config: no config_version, uses the new [data_request] name,
+    # and the subgroup is invalid (friendly name sub-key missing).
+    config_file = tmp_path / "test_config.toml"
+    config_file.write_text(
+        """
+[general]
+dev_mode = true
+
+[data_request.train]
+dataset_class = "HyraxRandomDataset"
+data_location = "/dev/null"
+# dataset_class at group level — friendly name is missing → triggers warning
+"""
+    )
+
+    # Minimal default config
+    default_config_file = tmp_path / "default_config.toml"
+    default_config_file.write_text(
+        """
+config_version = 2
+
+[general]
+dev_mode = false
+"""
+    )
+
+    cm = ConfigManager(
+        runtime_config_filepath=str(config_file),
+        default_config_filepath=str(default_config_file),
+    )
+
+    # After migration, the legacy key is gone and data_request carries the content.
+    assert "model_inputs" not in cm.config
+    assert "data_request" in cm.config
+    assert "train" in cm.config["data_request"]

@@ -74,6 +74,11 @@ def rename_table(cfg: TOMLDocument | dict, old: str, new: str) -> bool:
         cfg[new] = old_value
 
     del cfg[old]
+
+    msg = f"Migration: `[{old}]` has been renamed to `[{new}]`; "
+    warnings.warn(msg, DeprecationWarning, stacklevel=3)
+    logger.warning(msg)
+
     return True
 
 
@@ -128,13 +133,8 @@ def move_key(cfg: TOMLDocument | dict, old_path: str, new_path: str) -> bool:
 
 def _migrate_v1_to_v2(cfg: TOMLDocument) -> TOMLDocument:
     """Rename the legacy ``[model_inputs]`` table to ``[data_request]``."""
-    if rename_table(cfg, "model_inputs", "data_request"):
-        msg = (
-            "[model_inputs] has been renamed to [data_request]; update your "
-            "config file. Hyrax has migrated the value for this run."
-        )
-        warnings.warn(msg, DeprecationWarning, stacklevel=3)
-        logger.warning(msg)
+    rename_table(cfg, "model_inputs", "data_request")
+
     return cfg
 
 
@@ -210,7 +210,22 @@ def migrate_config(user_config: TOMLDocument) -> TOMLDocument:
                 f"{current + 1}. This is a Hyrax bug — please report it."
             )
         user_config = migration(user_config)
+
+        version_migration_complete_msg = (
+            f"The configuration file has been migrated from version {current} to version {current + 1}. "
+        )
+
+        logger.warning(version_migration_complete_msg)
+
         current += 1
+
+    final_migration_msg = (
+        "All migrations complete. Your configuration file is now up to date with the latest schema. "
+        "The runtime config saved in the output directory will reflect the new schema, "
+        "and your original config file will remain unchanged on disk."
+    )
+
+    logger.warning(final_migration_msg)
 
     user_config["config_version"] = CURRENT_CONFIG_VERSION
     return user_config
