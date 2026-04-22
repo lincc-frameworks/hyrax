@@ -64,9 +64,8 @@ def rename_table(cfg: TOMLDocument | dict, old: str, new: str) -> bool:
     """Rename a top-level table from ``old`` to ``new``.
 
     If only ``old`` exists it is moved. If both exist, ``cfg[new]`` wins on
-    leaf collisions; the two are deep-merged via
-    :meth:`ConfigManager.merge_configs` and ``old`` is removed. If neither
-    exists this is a no-op.
+    leaf collisions; the two are deep-merged via `ConfigManager.merge_configs`
+    and ``old`` is removed. If neither exists this is a no-op.
 
     Parameters
     ----------
