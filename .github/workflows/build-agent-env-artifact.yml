@@ -27,7 +27,7 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install -y conda-pack pip
-          pip install -e '.[dev]'
+          pip install '.[dev]'
           pip check
 
       - name: Pack conda env
