@@ -38,4 +38,4 @@ conda-unpack
 echo "installing hyrax..."
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO_ROOT"
-pip install -e '.[dev]'
+python -m pip install -e '.[dev]'
