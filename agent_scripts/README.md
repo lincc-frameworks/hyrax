@@ -7,6 +7,26 @@ This repo ships setup scripts that download a prebuilt conda environment artifac
 
 The artifact is built by `.github/workflows/build-agent-env-artifact.yml` on pushes to `main` (and can also be run manually with **workflow_dispatch**).
 
+## Network access requirements
+
+These setup scripts require outbound internet access. They will not work in a fully offline or no-egress container.
+
+### Minimum allow-list for artifact download
+
+Using the current setup script flow (`list artifacts` + `download artifact zip`), the required domains are:
+
+- `api.github.com` (GitHub Actions artifacts API)
+- `*.blob.core.windows.net` (signed Azure Blob URL that GitHub redirects to for artifact bytes)
+
+In a live query against this repo, the redirect resolved to `productionresultssa14.blob.core.windows.net` (the exact subdomain can vary), so allow-list the wildcard form.
+
+### Additional domains commonly needed by the full setup scripts
+
+Both setup scripts also run package install steps, so most environments should additionally allow:
+
+- Ubuntu/Debian apt mirrors (for `apt -y install pandoc`)
+- Python package index endpoints (for `python -m pip install -e '.[dev]'`, typically `pypi.org` and `files.pythonhosted.org`)
+
 ## 1) Create a GitHub token for artifact download
 
 You need a token because the setup scripts call the GitHub Actions Artifacts API.
