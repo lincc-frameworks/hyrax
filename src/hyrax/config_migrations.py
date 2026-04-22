@@ -8,8 +8,12 @@ forward one version at a time until it matches :data:`CURRENT_CONFIG_VERSION`.
 
 Developers renaming a table or key should:
 
-1. Add a new migration function ``_migrate_vN_to_vN_plus_1``.
-2. Register it in :data:`MIGRATIONS` under its source version.
+1. Add a new migration function ``_migrate_vN_to_vN_plus_1`` using the
+   :func:`rename_table` / :func:`move_key` helpers.
+2. Register it in :data:`MIGRATIONS` under its source version as a
+   :class:`MigrationStep`, with ``key_renames`` mapping every old dotted path
+   to its new name.  This is the single source of truth for both TOML-load
+   migration and the ``set_config`` deprecation warnings.
 3. Bump :data:`CURRENT_CONFIG_VERSION` and update the ``config_version`` value
    in ``hyrax_default_config.toml``.
 4. Add a unit test in ``tests/hyrax/test_config_migrations.py``.
