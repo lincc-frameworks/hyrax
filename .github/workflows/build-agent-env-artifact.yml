@@ -1,0 +1,67 @@
+name: Build agent Python environment artifact
+
+on:
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  build-agent-env:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+
+      - name: Build venv
+        run: |
+          python -m venv .venv-hyrax-dev
+          source .venv-hyrax-dev/bin/activate
+          pip install --upgrade pip
+          pip install -e '.[dev]'
+          pip check
+
+      - name: Pack venv
+        run: |
+          tar -czf hyrax-agent-venv-linux-x86_64-py311.tar.gz -C .venv-hyrax-dev .
+
+      - name: Upload artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyrax-agent-venv-main
+          path: hyrax-agent-venv-linux-x86_64-py311.tar.gz
+          retention-days: 90
+
+      - name: Delete older artifacts with same name
+        uses: actions/github-script@v8
+        env:
+          CURRENT_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        with:
+          script: |
+            const currentArtifactId = Number(process.env.CURRENT_ARTIFACT_ID)
+            const { owner, repo } = context.repo
+            const artifactName = 'hyrax-agent-venv-main'
+            const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {
+              owner,
+              repo,
+              per_page: 100,
+            })
+
+            for (const artifact of artifacts) {
+              if (artifact.name === artifactName && artifact.id !== currentArtifactId) {
+                await github.rest.actions.deleteArtifact({
+                  owner,
+                  repo,
+                  artifact_id: artifact.id,
+                })
+              }
+            }
