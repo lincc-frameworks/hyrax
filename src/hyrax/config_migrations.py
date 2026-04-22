@@ -156,7 +156,6 @@ def move_key(cfg: TOMLDocument | dict, old_path: str, new_path: str) -> bool:
 def _migrate_v1_to_v2(cfg: TOMLDocument) -> TOMLDocument:
     """Rename the legacy ``[model_inputs]`` table to ``[data_request]``."""
     rename_table(cfg, "model_inputs", "data_request")
-
     return cfg
 
 
@@ -164,7 +163,10 @@ def _migrate_v1_to_v2(cfg: TOMLDocument) -> TOMLDocument:
 #: A missing entry for version ``N`` means there is no ``N → N+1`` migration
 #: and :func:`migrate_config` will raise ``RuntimeError``.
 MIGRATIONS: dict[int, MigrationStep] = {
-    1: MigrationStep(func=_migrate_v1_to_v2, key_renames={"model_inputs": "data_request"}),
+    1: MigrationStep(
+        func=_migrate_v1_to_v2,
+        key_renames={"model_inputs": "data_request"},
+    ),
 }
 
 
