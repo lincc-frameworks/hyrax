@@ -18,6 +18,7 @@ Developers renaming a table or key should:
 import logging
 import warnings
 from collections.abc import Callable
+from dataclasses import dataclass, field
 
 import tomlkit
 from tomlkit.toml_document import TOMLDocument
@@ -26,11 +27,32 @@ from hyrax.config_utils import ConfigManager, parse_dotted_key
 
 __all__ = [
     "CURRENT_CONFIG_VERSION",
+    "DEPRECATED_KEY_NAMES",
     "MIGRATIONS",
+    "MigrationStep",
     "migrate_config",
     "rename_table",
     "move_key",
 ]
+
+
+@dataclass(frozen=True)
+class MigrationStep:
+    """A single schema migration with optional key-rename metadata.
+
+    Parameters
+    ----------
+    func : Callable[[TOMLDocument], TOMLDocument]
+        The function that upgrades a config document by one version.
+    key_renames : dict[str, str]
+        Old dotted path -> new dotted path for every key renamed by this
+        migration. Used by ``ConfigManager.set_config`` to warn callers
+        who still reference the old names at runtime.
+    """
+
+    func: Callable[[TOMLDocument], TOMLDocument]
+    key_renames: dict[str, str] = field(default_factory=dict)
+
 
 #: The highest config schema version understood by this Hyrax install.
 CURRENT_CONFIG_VERSION: int = 2
@@ -138,12 +160,25 @@ def _migrate_v1_to_v2(cfg: TOMLDocument) -> TOMLDocument:
     return cfg
 
 
-#: Mapping from source version to the function that upgrades it by one step.
+#: Mapping from source version to the migration step that upgrades it by one.
 #: A missing entry for version ``N`` means there is no ``N → N+1`` migration
 #: and :func:`migrate_config` will raise ``RuntimeError``.
-MIGRATIONS: dict[int, Callable[[TOMLDocument], TOMLDocument]] = {
-    1: _migrate_v1_to_v2,
+MIGRATIONS: dict[int, MigrationStep] = {
+    1: MigrationStep(func=_migrate_v1_to_v2, key_renames={"model_inputs": "data_request"}),
 }
+
+
+def _build_deprecated_key_map() -> dict[str, str]:
+    result: dict[str, str] = {}
+    for step in MIGRATIONS.values():
+        result.update(step.key_renames)
+    return result
+
+
+#: Cumulative old-name -> new-name map derived from all registered migrations.
+#: ``ConfigManager.set_config`` checks incoming keys against this to warn users
+#: about deprecated key names.
+DEPRECATED_KEY_NAMES: dict[str, str] = _build_deprecated_key_map()
 
 
 def migrate_config(user_config: TOMLDocument) -> TOMLDocument:
@@ -203,13 +238,13 @@ def migrate_config(user_config: TOMLDocument) -> TOMLDocument:
 
     current = user_version
     while current < CURRENT_CONFIG_VERSION:
-        migration = MIGRATIONS.get(current)
-        if migration is None:
+        step = MIGRATIONS.get(current)
+        if step is None:
             raise RuntimeError(
                 f"No migration registered from config_version {current} to "
                 f"{current + 1}. This is a Hyrax bug — please report it."
             )
-        user_config = migration(user_config)
+        user_config = step.func(user_config)
 
         version_migration_complete_msg = (
             f"The configuration file has been migrated from version {current} to version {current + 1}. "

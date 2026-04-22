@@ -9,6 +9,8 @@ import tomlkit
 from hyrax import config_migrations
 from hyrax.config_migrations import (
     CURRENT_CONFIG_VERSION,
+    DEPRECATED_KEY_NAMES,
+    MigrationStep,
     migrate_config,
     move_key,
     rename_table,
@@ -175,7 +177,7 @@ def test_migrate_config_is_idempotent():
 def test_migrate_config_missing_migration_step_raises(monkeypatch):
     """A gap in the MIGRATIONS registry surfaces as a clear runtime error."""
     monkeypatch.setattr(config_migrations, "CURRENT_CONFIG_VERSION", 5)
-    monkeypatch.setattr(config_migrations, "MIGRATIONS", {1: lambda c: c})
+    monkeypatch.setattr(config_migrations, "MIGRATIONS", {1: MigrationStep(func=lambda c: c)})
 
     cfg = tomlkit.parse("config_version = 1\n")
     with pytest.raises(RuntimeError, match="No migration registered"):
@@ -226,3 +228,74 @@ dev_mode = false
     assert any(
         issubclass(w.category, DeprecationWarning) and "model_inputs" in str(w.message) for w in caught
     )
+
+
+# ---------------------------------------------------------------------------
+# MigrationStep and DEPRECATED_KEY_NAMES
+# ---------------------------------------------------------------------------
+
+
+def test_deprecated_key_names_derived_from_migrations():
+    """DEPRECATED_KEY_NAMES is automatically built from MigrationStep.key_renames."""
+    assert "model_inputs" in DEPRECATED_KEY_NAMES
+    assert DEPRECATED_KEY_NAMES["model_inputs"] == "data_request"
+
+
+def test_migration_step_without_key_renames():
+    """A MigrationStep with no renames still works as a migration."""
+    step = MigrationStep(func=lambda c: c)
+    assert step.key_renames == {}
+
+
+# ---------------------------------------------------------------------------
+# set_config: deprecated key warnings
+# ---------------------------------------------------------------------------
+
+
+def test_set_config_deprecated_key_warns(tmp_path):
+    """set_config with a deprecated top-level key emits a DeprecationWarning."""
+    user_config = tmp_path / "user.toml"
+    user_config.write_text("[general]\ndev_mode = true\n")
+
+    default_config = tmp_path / "default.toml"
+    default_config.write_text(
+        "config_version = 2\n\n[general]\ndev_mode = false\n\n[model_inputs]\ntrain = {}\n"
+    )
+
+    cm = ConfigManager(
+        runtime_config_filepath=str(user_config),
+        default_config_filepath=str(default_config),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        cm.set_config("model_inputs", {"train": {"data": "test"}})
+
+    assert any(
+        issubclass(w.category, DeprecationWarning)
+        and "model_inputs" in str(w.message)
+        and "data_request" in str(w.message)
+        for w in caught
+    )
+
+
+def test_set_config_current_key_no_warn(tmp_path):
+    """set_config with the current key name does not emit a DeprecationWarning."""
+    user_config = tmp_path / "user.toml"
+    user_config.write_text("[general]\ndev_mode = true\n")
+
+    default_config = tmp_path / "default.toml"
+    default_config.write_text(
+        "config_version = 2\n\n[general]\ndev_mode = false\n\n[data_request]\ntrain = {}\n"
+    )
+
+    cm = ConfigManager(
+        runtime_config_filepath=str(user_config),
+        default_config_filepath=str(default_config),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        cm.set_config("data_request", {"train": {"data": "test"}})
+
+    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)

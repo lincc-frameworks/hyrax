@@ -5,6 +5,7 @@ import importlib
 import logging
 import random
 import re
+import warnings
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any, Union
@@ -274,6 +275,19 @@ class ConfigManager:
             The value to set the key to.
         """
         keys = parse_dotted_key(key)
+
+        from hyrax.config_migrations import DEPRECATED_KEY_NAMES
+
+        for old_path, new_path in DEPRECATED_KEY_NAMES.items():
+            if key == old_path or key.startswith(old_path + "."):
+                msg = (
+                    f"Config key '{old_path}' has been renamed to '{new_path}'. "
+                    f"Please update your code to use '{new_path}' instead."
+                )
+                warnings.warn(msg, DeprecationWarning, stacklevel=2)
+                logger.warning(msg)
+                break
+
         if key in ConfigManager.PYDANTIC_VALIDATED_KEYS:
             try:
                 value = self._validate_data_request(value)

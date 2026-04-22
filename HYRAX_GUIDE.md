@@ -223,7 +223,10 @@ are assumed to be version 1.
    (`_migrate_vN_to_vN_plus_1`) using the `rename_table` / `move_key` helpers.
    Emit a `DeprecationWarning` and a `logger.warning` when the migration
    actually fires, so users are told exactly what to update.
-2. Register it in the `MIGRATIONS` dict under its source version.
+2. Register it in the `MIGRATIONS` dict under its source version as a
+   `MigrationStep`. Include a `key_renames` dict mapping every old dotted
+   path to its new name — this is the single source of truth for both
+   TOML-load migration and `set_config` deprecation warnings.
 3. Bump `CURRENT_CONFIG_VERSION` and update the `config_version` scalar at
    the top of `hyrax_default_config.toml` to match.
 4. Add a unit test to `tests/hyrax/test_config_migrations.py` covering both
