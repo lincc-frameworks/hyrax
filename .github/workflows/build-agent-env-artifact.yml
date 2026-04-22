@@ -26,8 +26,11 @@ jobs:
       - name: Build conda env
         shell: bash -l {0}
         run: |
-          conda install -y conda-pack pip
+          conda install -y conda-pack pip setuptools
           pip install '.[dev]'
+          conda list
+          conda install -y setuptools
+          conda list setuptools
           pip check
 
       - name: Pack conda env
