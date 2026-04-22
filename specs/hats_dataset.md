@@ -66,23 +66,31 @@ Responsibilities:
 
 1. Read HATS catalog via LSDB (`lsdb.read_hats`).
 2. Materialize a pandas DataFrame (MVP implementation).
-3. Normalize column names to valid Python getter suffixes.
-4. Dynamically add `get_<column>(idx)` methods for each normalized column.
-5. Expose `__len__`, `__getitem__`, and `sample_data` helpers consistent with existing built-in datasets.
+3. Dynamically add `get_<column>(idx)` methods for each column, preserving raw column names.
+4. Expose `__len__`, `__getitem__`, and `sample_data` helpers consistent with existing built-in datasets.
 
 ### Column naming
 
-HATS column names may contain characters invalid in method names.
+Column names are preserved as-is from the HATS catalog — no normalization is applied.
 
-- Normalize using `re.sub(r"\W", "_", column_name)`.
-- Ensure uniqueness by suffixing (`_2`, `_3`, ...`) when collisions occur.
-- Rename DataFrame columns to normalized names so user-requested fields can map directly to generated getters.
+`get_<column>` methods are generated using the raw column name as the suffix. For column names
+that are valid Python identifiers (e.g., `object_id`, `coord_ra`), these methods can be called
+via normal dot syntax:
+
+```python
+dataset.get_object_id(0)
+dataset.get_coord_ra(1)
+```
+
+For column names that contain non-identifier characters (e.g., `mag-r`), use `getattr`:
+
+```python
+getattr(dataset, "get_mag-r")(2)
+```
 
 ### Primary ID behavior
 
 For phase 1, users should set `primary_id_field` to the exact column name present in the HATS catalog.
-
-Column names are preserved as-is in this phase.
 
 ---
 
