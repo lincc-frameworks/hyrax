@@ -72,7 +72,7 @@ def test_hats_dataset_sample_data(test_hyrax_hats_dataset):
     assert sample["data"]["mag-r"] == pytest.approx(19.1)
 
 
-def test_hats_dataset_with_data_request_fields_still_builds_all_getters(hats_catalog_path: Path):
+def test_hats_dataset_with_data_request_fields_only_builds_requested_getters(hats_catalog_path: Path):
     h = hyrax.Hyrax()
     h.config["data_request"] = {
         "train": {
@@ -91,5 +91,5 @@ def test_hats_dataset_with_data_request_fields_still_builds_all_getters(hats_cat
 
     assert hasattr(hats_dataset, "get_object_id")
     assert hasattr(hats_dataset, "get_coord_ra")
-    assert hasattr(hats_dataset, "get_coord_dec")
-    assert hasattr(hats_dataset, "get_mag-r")
+    assert not hasattr(hats_dataset, "get_coord_dec")
+    assert not hasattr(hats_dataset, "get_mag-r")

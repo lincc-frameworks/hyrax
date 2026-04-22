@@ -18,10 +18,14 @@ class HyraxHATSDataset(HyraxDataset):
             raise ValueError("A `data_location` to a HATS catalog must be provided.")
 
         self.data_location = data_location
+        requested_columns = self._requested_columns_from_config(config)
 
         import lsdb
 
-        catalog = lsdb.read_hats(data_location)
+        if requested_columns:
+            catalog = lsdb.read_hats(data_location, columns=requested_columns)
+        else:
+            catalog = lsdb.read_hats(data_location)
         self.dataframe = catalog.compute()
         self.column_names = list(self.dataframe.columns)
 
@@ -45,6 +49,30 @@ class HyraxHATSDataset(HyraxDataset):
                 setattr(self, method_name, MethodType(_make_getter(col), self))
 
         super().__init__(config)
+
+    def _requested_columns_from_config(self, config: dict) -> list[str]:
+        data_request = config.get("data_request") or config.get("model_inputs") or {}
+        requested_columns = set()
+        target_location = str(Path(self.data_location).resolve())
+
+        for request_group in data_request.values():
+            for dataset_definition in request_group.values():
+                if dataset_definition.get("dataset_class") != type(self).__name__:
+                    continue
+                if str(Path(dataset_definition["data_location"]).resolve()) != target_location:
+                    continue
+
+                requested_columns.update(dataset_definition.get("fields", []))
+
+                primary_id_field = dataset_definition.get("primary_id_field")
+                if primary_id_field:
+                    requested_columns.add(primary_id_field)
+
+                join_field = dataset_definition.get("join_field")
+                if join_field:
+                    requested_columns.add(join_field)
+
+        return sorted(requested_columns)
 
     def __len__(self) -> int:
         return len(self.dataframe)
