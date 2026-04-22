@@ -26,10 +26,9 @@ jobs:
       - name: Build conda env
         shell: bash -l {0}
         run: |
-          conda install -y conda-pack pip setuptools
+          conda install -y conda-pack pip "setuptools<82"
           pip install '.[dev]'
           conda list
-          conda install -y setuptools
           conda list setuptools
           pip check
 
