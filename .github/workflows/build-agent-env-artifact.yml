@@ -1,7 +1,7 @@
 name: Build agent conda environment artifact
 
 on:
-  pull_request:
+  push:
     branches: [ main ]
   workflow_dispatch:
 
