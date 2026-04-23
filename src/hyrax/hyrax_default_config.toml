@@ -432,6 +432,9 @@ fit_sample_size = 1024
 # Save the fitted umap as a pickle file 
 save_fit_umap = true
 
+# Path to a pre-existing umap reducer model
+model_path = false
+
 # Use multiprocessing during transforming to umap space (More memory intensive)
 parallel = false
 

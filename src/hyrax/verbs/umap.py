@@ -111,7 +111,10 @@ class Umap(Verb):
         # If the input to umap is not of the shape [samples,input_dims] we reshape the input accordingly
         data_sample = np.asarray(inference_results[index_choices]).reshape((sample_size, -1))
 
-        if model_path is not None:
+        if model_path is None:
+            model_path = self.config["umap"]["model_path"]
+
+        if model_path:
             # check validity of the path
             model_path = Path(model_path)
             if not model_path.is_file():
