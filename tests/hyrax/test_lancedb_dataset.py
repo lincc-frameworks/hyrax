@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import lancedb
 import pyarrow as pa
@@ -170,3 +170,33 @@ def test_lancedb_dataset_requires_table_name_when_multiple_tables(monkeypatch, t
             },
             data_location=tmp_path / "db",
         )
+
+
+def test_lancedb_dataset_row_cache_avoids_redundant_reads(lancedb_fixture):
+    """Verify that accessing multiple fields for the same row index results in only
+    one underlying ``lance_dataset.take`` call.
+
+    ``LanceDBDataset`` maintains a small FIFO row cache keyed by index.  When
+    DataProvider resolves several fields for a single sample (e.g. ``get_flux`` and
+    ``get_label`` both for index 0) the row should be fetched from LanceDB exactly
+    once.  This test confirms the cache is working by patching ``lance_dataset.take``
+    and asserting it is called only once after two field accesses at the same index.
+    """
+    dataset = LanceDBDataset(
+        config={
+            "data_set": {
+                "LanceDBDataset": {
+                    "table_name": False,
+                    "connect_kwargs": {},
+                    "open_table_kwargs": {},
+                }
+            }
+        },
+        data_location=lancedb_fixture,
+    )
+
+    with patch.object(dataset.lance_dataset, "take", wraps=dataset.lance_dataset.take) as mock_take:
+        _ = dataset.get_flux(0)
+        _ = dataset.get_label(0)
+
+    mock_take.assert_called_once_with([0])

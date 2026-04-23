@@ -1,7 +1,10 @@
+from collections import OrderedDict
 from pathlib import Path
 from types import MethodType
 
 from hyrax.datasets.dataset_registry import HyraxDataset
+
+_ROW_CACHE_SIZE = 16
 
 
 class LanceDBDataset(HyraxDataset):
@@ -28,12 +31,28 @@ class LanceDBDataset(HyraxDataset):
         self.table_name = self._resolve_table_name(self.table_name)
         self.table = self.db.open_table(self.table_name, **self.open_table_kwargs)
         self.lance_dataset = self.table.to_lance()
+        self._row_cache: OrderedDict = OrderedDict()
 
         self._register_getters()
         super().__init__(config)
 
     def _all_available_fields(self) -> list[str]:
         return list(self.table.schema.names)
+
+    def _get_row(self, idx: int):
+        """Return the PyArrow record-batch for *idx*, using a small FIFO row cache.
+
+        Caching avoids redundant ``lance_dataset.take`` calls when multiple
+        ``get_<field>`` accessors are invoked for the same sample index, which is
+        the common pattern when DataProvider resolves all fields for a single item.
+        The cache holds at most ``_ROW_CACHE_SIZE`` rows; the oldest entry is
+        evicted once that limit is reached.
+        """
+        if idx not in self._row_cache:
+            if len(self._row_cache) >= _ROW_CACHE_SIZE:
+                self._row_cache.popitem(last=False)
+            self._row_cache[idx] = self.lance_dataset.take([idx])
+        return self._row_cache[idx]
 
     def _resolve_table_name(self, configured_table_name) -> str:
         if isinstance(configured_table_name, str) and configured_table_name:
@@ -54,7 +73,7 @@ class LanceDBDataset(HyraxDataset):
     def _register_getters(self) -> None:
         def _make_getter(field_name: str):
             def getter(self, idx, _field_name=field_name):
-                row = self.lance_dataset.take([int(idx)])
+                row = self._get_row(int(idx))
                 return row[_field_name][0].as_py()
 
             return getter
