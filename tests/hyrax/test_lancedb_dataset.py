@@ -43,9 +43,7 @@ def test_lancedb_dataset_reads_table_and_exposes_getters(lancedb_fixture):
     assert dataset.get_label(2) == 0
 
 
-def test_lancedb_dataset_passes_through_connect_and_open_table_kwargs(
-    lancedb_fixture, monkeypatch
-):
+def test_lancedb_dataset_passes_through_connect_and_open_table_kwargs(lancedb_fixture, monkeypatch):
     original_connect = lancedb.connect
     mock_db = MagicMock()
 
@@ -77,9 +75,7 @@ def test_lancedb_dataset_passes_through_connect_and_open_table_kwargs(
     )
 
     assert wrapped_connect.kwargs == {"api_key": "example-key"}
-    mock_db.open_table.assert_called_once_with(
-        "observations", storage_options={"region": "us-west-2"}
-    )
+    mock_db.open_table.assert_called_once_with("observations", storage_options={"region": "us-west-2"})
     assert len(dataset) == 0
 
 

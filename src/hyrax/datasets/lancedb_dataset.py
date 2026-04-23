@@ -15,8 +15,7 @@ class LanceDBDataset(HyraxDataset):
             import lancedb
         except ImportError as err:
             raise ImportError(
-                "LanceDBDataset requires the `lancedb` package. "
-                "Install it with `pip install lancedb`."
+                "LanceDBDataset requires the `lancedb` package. Install it with `pip install lancedb`."
             ) from err
 
         settings = config["data_set"]["LanceDBDataset"]
