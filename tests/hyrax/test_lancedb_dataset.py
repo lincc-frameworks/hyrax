@@ -9,6 +9,12 @@ from hyrax.datasets.lancedb_dataset import LanceDBDataset
 
 @pytest.fixture
 def lancedb_fixture(tmp_path):
+    """Create a real LanceDB database on disk with a single 'observations' table
+    containing three rows across three columns (object_id, flux, label).
+
+    Used by tests that need to verify behaviour against an actual LanceDB file
+    rather than a mock.
+    """
     db_path = tmp_path / "demo_lancedb"
     db = lancedb.connect(str(db_path))
 
@@ -24,6 +30,12 @@ def lancedb_fixture(tmp_path):
 
 
 def test_lancedb_dataset_reads_table_and_exposes_getters(lancedb_fixture):
+    """Verify that LanceDBDataset opens a real LanceDB table and dynamically creates
+    ``get_<field>`` accessor methods for every column.
+
+    Checks that the dataset length matches the number of rows in the table and that
+    each accessor returns the correct scalar value for a given row index.
+    """
     dataset = LanceDBDataset(
         config={
             "data_set": {
@@ -44,6 +56,14 @@ def test_lancedb_dataset_reads_table_and_exposes_getters(lancedb_fixture):
 
 
 def test_lancedb_dataset_passes_through_connect_and_open_table_kwargs(lancedb_fixture, monkeypatch):
+    """Verify that ``connect_kwargs`` and ``open_table_kwargs`` from the config are
+    forwarded to ``lancedb.connect`` and ``db.open_table`` respectively.
+
+    Uses a wrapper around ``lancedb.connect`` to capture the keyword arguments it
+    received, and a mock table to inspect how ``open_table`` was called.  This
+    ensures remote/cloud LanceDB connections (which require auth or storage options)
+    work correctly when configured via Hyrax config.
+    """
     original_connect = lancedb.connect
     mock_db = MagicMock()
 
@@ -80,11 +100,25 @@ def test_lancedb_dataset_passes_through_connect_and_open_table_kwargs(lancedb_fi
 
 
 def test_lancedb_dataset_requires_data_location():
+    """Verify that constructing a LanceDBDataset without a ``data_location`` raises
+    a ``ValueError`` with a clear error message.
+
+    ``data_location`` points to the LanceDB database directory and has no
+    meaningful default, so its absence should be caught eagerly before any
+    connection attempt is made.
+    """
     with pytest.raises(ValueError):
         LanceDBDataset(config={"data_set": {"LanceDBDataset": {}}})
 
 
 def test_lancedb_dataset_infers_only_table_name(monkeypatch, tmp_path):
+    """Verify that when ``table_name`` is unset (``False``) and the database contains
+    exactly one table, that table is automatically selected without requiring explicit
+    configuration.
+
+    Uses a mocked LanceDB connection so the test does not require a real database
+    on disk, and asserts that ``open_table`` is called with the inferred table name.
+    """
     mock_db = MagicMock()
     mock_table = MagicMock()
     mock_table.schema.names = ["object_id"]
@@ -112,6 +146,13 @@ def test_lancedb_dataset_infers_only_table_name(monkeypatch, tmp_path):
 
 
 def test_lancedb_dataset_requires_table_name_when_multiple_tables(monkeypatch, tmp_path):
+    """Verify that when ``table_name`` is unset (``False``) and the database contains
+    multiple tables, a ``RuntimeError`` is raised listing the available table names.
+
+    Automatic table inference is only safe when there is exactly one table.  With
+    multiple tables the user must specify which one to open, and the error message
+    should include the names of the existing tables to help the user fix their config.
+    """
     mock_db = MagicMock()
     mock_db.table_names.return_value = ["table_a", "table_b"]
     monkeypatch.setattr(lancedb, "connect", lambda *_args, **_kwargs: mock_db)
