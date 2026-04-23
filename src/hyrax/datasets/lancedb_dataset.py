@@ -35,8 +35,8 @@ class LanceDBDataset(HyraxDataset):
     def _all_available_fields(self) -> list[str]:
         return list(self.table.schema.names)
 
-    def _resolve_table_name(self, configured_table_name: str | bool) -> str:
-        if configured_table_name is not False:
+    def _resolve_table_name(self, configured_table_name) -> str:
+        if isinstance(configured_table_name, str) and configured_table_name:
             return configured_table_name
 
         table_names = self.db.table_names()
