@@ -50,6 +50,16 @@ def migration_step(from_version: int, key_renames: dict[str, str] | None = None)
     """
 
     def decorator(func: Callable[[TOMLDocument], TOMLDocument]):
+        # Error if from_version is already registered
+        if from_version in MIGRATIONS:
+            existing_func = MIGRATIONS[from_version].func
+            msg = (
+                f"Duplicate migration from version: {from_version}! "
+                f"Already registered: {existing_func.__module__}.{existing_func.__name__} "
+                f"Attempted to register: {func.__module__}.{func.__name__}"
+            )
+            logger.error(msg)
+
         MIGRATIONS[from_version] = MigrationStep(func=func, key_renames=key_renames or {})
         return func
 

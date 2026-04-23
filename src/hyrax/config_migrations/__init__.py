@@ -24,7 +24,7 @@ Adding a new migration:
 
 # ruff: noqa: I001  — import order matters: machinery before migration modules
 
-from hyrax.config_migrations._machinery import (  # noqa: F401
+from hyrax.config_migrations.migration_utils import (  # noqa: F401
     MIGRATIONS,
     MigrationStep,
     _build_deprecated_key_map,
@@ -34,8 +34,9 @@ from hyrax.config_migrations._machinery import (  # noqa: F401
     rename_table,
 )
 
-# Import migration modules in version order to trigger @migration_step registration.
-from hyrax.config_migrations import v1_to_v2  # noqa: F401
+# Import migration modules to trigger @migration_step registration.
+from hyrax.config_migrations.migrations import *  # noqa: F403
+
 
 # Derived AFTER all migration modules are imported and registered.
 CURRENT_CONFIG_VERSION: int = max(MIGRATIONS.keys()) + 1 if MIGRATIONS else 1
