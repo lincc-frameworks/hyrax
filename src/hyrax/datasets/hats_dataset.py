@@ -10,11 +10,11 @@ class HyraxHATSDataset(HyraxDataset):
     Notes
     -----
     This phase-1 implementation materializes the LSDB catalog to a pandas
-    DataFrame and dynamically creates ``get_<column>`` methods for all columns.
+    DataFrame and dynamically creates ``get_<column>`` methods for requested columns.
     """
 
     def __init__(self, config: dict, data_location: Path = None):
-        if data_location is None:
+        if data_location is None or data_location is False:
             raise ValueError("A `data_location` to a HATS catalog must be provided.")
 
         self.data_location = data_location
