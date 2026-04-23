@@ -27,7 +27,7 @@ class HyraxHATSDataset(HyraxDataset):
 
         catalog = lsdb.open_catalog(data_location, **open_catalog_kwargs)
         self.dataframe = catalog.compute()
-        self.column_names = list(self.dataframe.columns)
+        self.column_names = requested_columns if requested_columns else list(self.dataframe.columns)
 
         def _make_getter(column: str):
             def getter(self, idx: int, _col: str = column):
@@ -62,6 +62,11 @@ class HyraxHATSDataset(HyraxDataset):
                 if str(Path(dataset_definition["data_location"]).resolve()) != target_location:
                     continue
 
+                # If any dataset request has no fields specified, that means we need all the columns
+                # no matter what any other request group says, so just early-return requesting everything.
+                if not dataset_definition.get("fields", None):
+                    return None
+                
                 requested_columns.update(dataset_definition.get("fields", []))
 
                 primary_id_field = dataset_definition.get("primary_id_field")
@@ -75,7 +80,7 @@ class HyraxHATSDataset(HyraxDataset):
         return sorted(requested_columns)
 
     def _open_catalog_kwargs_from_config(self, config: dict) -> dict:
-        return dict((config.get("data_set") or {}).get(type(self).__name__, {}).get("open_catalog") or {})
+        return config["data_set"][type(self).__name__].get("open_catalog_kwargs")
 
     def __len__(self) -> int:
         return len(self.dataframe)

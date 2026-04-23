@@ -107,7 +107,7 @@ def test_hats_dataset_open_catalog_filters_from_dataset_config(hats_catalog_path
                 "split_fraction": 1.0,
                 "dataset_config": {
                     "HyraxHATSDataset": {
-                        "open_catalog": {
+                        "open_catalog_kwargs": {
                             "filters": [("coord_ra", ">", 150.15)],
                         }
                     }
