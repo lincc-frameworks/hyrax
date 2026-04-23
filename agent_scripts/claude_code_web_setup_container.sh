@@ -34,7 +34,10 @@ TARBALL_PATH=$(find /tmp/hyrax-agent-conda-env -name '*.tar.gz' | head -n1)
 tar -xzf "$TARBALL_PATH" -C "$ENV_DIR"
 
 echo "activating env..."
+# shellcheck disable=SC1091
+set +u
 source "$ENV_DIR/bin/activate"
+set -u
 conda-unpack
 
 echo "installing hyrax..."
