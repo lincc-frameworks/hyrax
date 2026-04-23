@@ -213,22 +213,25 @@ custom Hyrax wrapper. The runtime config itself is an ordinary `dict`.
 
 User configs carry a top-level `config_version = N` scalar. Hyrax stamps the
 current version into `hyrax_default_config.toml` and uses
-`src/hyrax/config_migrations.py` to upgrade older user configs forward on
+`src/hyrax/config_migrations/` to upgrade older user configs forward on
 load, before the merge step. Legacy configs without a `config_version` field
 are assumed to be version 1.
 
+Each migration step lives in its own versioned module (e.g. `v1_to_v2.py`)
+and self-registers via the `@migration_step` decorator. `CURRENT_CONFIG_VERSION`
+is auto-derived from the highest registered migration — do not bump it manually.
+
 **When you rename or restructure a config key, you must:**
 
-1. Write a new migration function in `src/hyrax/config_migrations.py`
-   (`_migrate_vN_to_vN_plus_1`) using the `rename_table` / `move_key` helpers.
-   Emit a `DeprecationWarning` and a `logger.warning` when the migration
-   actually fires, so users are told exactly what to update.
-2. Register it in the `MIGRATIONS` dict under its source version as a
-   `MigrationStep`. Include a `key_renames` dict mapping every old dotted
-   path to its new name — this is the single source of truth for both
-   TOML-load migration and `set_config` deprecation warnings.
-3. Bump `CURRENT_CONFIG_VERSION` and update the `config_version` scalar at
-   the top of `hyrax_default_config.toml` to match.
+1. Create `src/hyrax/config_migrations/vN_to_vN_plus_1.py`. Decorate the
+   migration function with `@migration_step(from_version=N, key_renames={...})`.
+   Import the decorator and helpers (`rename_table`, `move_key`) from
+   `hyrax.config_migrations._machinery`.
+2. Add `from hyrax.config_migrations import vN_to_vN_plus_1  # noqa: F401` to
+   `src/hyrax/config_migrations/__init__.py`, in version order after existing
+   migration imports. `CURRENT_CONFIG_VERSION` auto-derives — do **not** bump
+   it manually.
+3. Update `config_version = N+1` in `src/hyrax/hyrax_default_config.toml`.
 4. Add a unit test to `tests/hyrax/test_config_migrations.py` covering both
    the "legacy config triggers migration" and "clean current-version config
    is a no-op" cases.

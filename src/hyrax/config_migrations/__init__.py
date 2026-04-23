@@ -1,0 +1,53 @@
+"""Versioned migrations for Hyrax user configuration files.
+
+Hyrax tags its config schema with a top-level ``config_version`` scalar in
+``hyrax_default_config.toml``. When a user loads an older config, the
+migrations registered here run before the merge step in
+:class:`hyrax.config_utils.ConfigManager`, bringing the user's document
+forward one version at a time until it matches :data:`CURRENT_CONFIG_VERSION`.
+
+Each migration step lives in its own versioned module (e.g. ``v1_to_v2.py``)
+and self-registers via the :func:`migration_step` decorator, which populates
+the :data:`MIGRATIONS` dict. :data:`CURRENT_CONFIG_VERSION` is auto-derived
+from the highest registered migration — developers do not bump it manually.
+
+Adding a new migration:
+
+1. Create ``src/hyrax/config_migrations/vN_to_vN_plus_1.py``. Decorate the
+   migration function with ``@migration_step(from_version=N, key_renames={...})``.
+   Import the decorator and helpers from ``hyrax.config_migrations._machinery``.
+2. Add ``from hyrax.config_migrations import vN_to_vN_plus_1`` to this file,
+   in version order after the existing migration imports.
+3. Update ``config_version`` in ``hyrax_default_config.toml`` to ``N+1``.
+4. Add a unit test in ``tests/hyrax/test_config_migrations.py``.
+"""
+
+# ruff: noqa: I001  — import order matters: machinery before migration modules
+
+from hyrax.config_migrations._machinery import (  # noqa: F401
+    MIGRATIONS,
+    MigrationStep,
+    _build_deprecated_key_map,
+    migrate_config,
+    migration_step,
+    move_key,
+    rename_table,
+)
+
+# Import migration modules in version order to trigger @migration_step registration.
+from hyrax.config_migrations import v1_to_v2  # noqa: F401
+
+# Derived AFTER all migration modules are imported and registered.
+CURRENT_CONFIG_VERSION: int = max(MIGRATIONS.keys()) + 1 if MIGRATIONS else 1
+DEPRECATED_KEY_NAMES: dict[str, str] = _build_deprecated_key_map()
+
+__all__ = [
+    "CURRENT_CONFIG_VERSION",
+    "DEPRECATED_KEY_NAMES",
+    "MIGRATIONS",
+    "MigrationStep",
+    "migrate_config",
+    "migration_step",
+    "move_key",
+    "rename_table",
+]

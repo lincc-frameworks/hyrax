@@ -1,23 +1,4 @@
-"""Versioned migrations for Hyrax user configuration files.
-
-Hyrax tags its config schema with a top-level ``config_version`` scalar in
-``hyrax_default_config.toml``. When a user loads an older config, the
-migrations registered here run before the merge step in
-:class:`hyrax.config_utils.ConfigManager`, bringing the user's document
-forward one version at a time until it matches :data:`CURRENT_CONFIG_VERSION`.
-
-Developers renaming a table or key should:
-
-1. Add a new migration function ``_migrate_vN_to_vN_plus_1`` using the
-   :func:`rename_table` / :func:`move_key` helpers.
-2. Register it in :data:`MIGRATIONS` under its source version as a
-   :class:`MigrationStep`, with ``key_renames`` mapping every old dotted path
-   to its new name.  This is the single source of truth for both TOML-load
-   migration and the ``set_config`` deprecation warnings.
-3. Bump :data:`CURRENT_CONFIG_VERSION` and update the ``config_version`` value
-   in ``hyrax_default_config.toml``.
-4. Add a unit test in ``tests/hyrax/test_config_migrations.py``.
-"""
+"""Migration engine, helpers, and registry for versioned config migrations."""
 
 import logging
 import warnings
@@ -29,15 +10,12 @@ from tomlkit.toml_document import TOMLDocument
 
 from hyrax.config_utils import ConfigManager, parse_dotted_key
 
-__all__ = [
-    "CURRENT_CONFIG_VERSION",
-    "DEPRECATED_KEY_NAMES",
-    "MIGRATIONS",
-    "MigrationStep",
-    "migrate_config",
-    "rename_table",
-    "move_key",
-]
+logger = logging.getLogger(__name__)
+
+#: Mapping from source version to the migration step that upgrades it by one.
+#: Populated at import time by the :func:`migration_step` decorator in each
+#: versioned migration module.
+MIGRATIONS: dict[int, "MigrationStep"] = {}
 
 
 @dataclass(frozen=True)
@@ -58,10 +36,24 @@ class MigrationStep:
     key_renames: dict[str, str] = field(default_factory=dict)
 
 
-#: The highest config schema version understood by this Hyrax install.
-CURRENT_CONFIG_VERSION: int = 2
+def migration_step(from_version: int, key_renames: dict[str, str] | None = None):
+    """Decorator that registers a migration function into :data:`MIGRATIONS`.
 
-logger = logging.getLogger(__name__)
+    Parameters
+    ----------
+    from_version : int
+        The config schema version this function upgrades FROM. The target
+        version is implicitly ``from_version + 1``.
+    key_renames : dict[str, str], optional
+        Old dotted path -> new dotted path for every key renamed by this
+        migration.
+    """
+
+    def decorator(func: Callable[[TOMLDocument], TOMLDocument]):
+        MIGRATIONS[from_version] = MigrationStep(func=func, key_renames=key_renames or {})
+        return func
+
+    return decorator
 
 
 def rename_table(cfg: TOMLDocument | dict, old: str, new: str) -> bool:
@@ -156,23 +148,6 @@ def move_key(cfg: TOMLDocument | dict, old_path: str, new_path: str) -> bool:
     return True
 
 
-def _migrate_v1_to_v2(cfg: TOMLDocument) -> TOMLDocument:
-    """Rename the legacy ``[model_inputs]`` table to ``[data_request]``."""
-    rename_table(cfg, "model_inputs", "data_request")
-    return cfg
-
-
-#: Mapping from source version to the migration step that upgrades it by one.
-#: A missing entry for version ``N`` means there is no ``N → N+1`` migration
-#: and :func:`migrate_config` will raise ``RuntimeError``.
-MIGRATIONS: dict[int, MigrationStep] = {
-    1: MigrationStep(
-        func=_migrate_v1_to_v2,
-        key_renames={"model_inputs": "data_request"},
-    ),
-}
-
-
 def _build_deprecated_key_map() -> dict[str, str]:
     result: dict[str, str] = {}
     for step in MIGRATIONS.values():
@@ -180,26 +155,29 @@ def _build_deprecated_key_map() -> dict[str, str]:
     return result
 
 
-#: Cumulative old-name -> new-name map derived from all registered migrations.
-#: ``ConfigManager.set_config`` checks incoming keys against this to warn users
-#: about deprecated key names.
-DEPRECATED_KEY_NAMES: dict[str, str] = _build_deprecated_key_map()
-
-
-def migrate_config(user_config: TOMLDocument) -> TOMLDocument:
-    """Upgrade a user config document to :data:`CURRENT_CONFIG_VERSION`.
+def migrate_config(
+    user_config: TOMLDocument,
+    *,
+    _migrations: dict[int, MigrationStep] | None = None,
+    _target_version: int | None = None,
+) -> TOMLDocument:
+    """Upgrade a user config document to the current schema version.
 
     The document is mutated in place (and also returned for convenience). If
     ``config_version`` is absent it is assumed to be ``1`` — older configs
-    predate the versioning field. If it is greater than
-    :data:`CURRENT_CONFIG_VERSION`, a :class:`RuntimeError` is raised because
-    the installed Hyrax does not know how to read the schema.
+    predate the versioning field. If it is greater than the current schema
+    version, a :class:`RuntimeError` is raised because the installed Hyrax
+    does not know how to read the schema.
 
     Parameters
     ----------
     user_config : TOMLDocument
         The parsed user config. An empty document (the "no user config" case)
         is returned unchanged.
+    _migrations : dict[int, MigrationStep], optional
+        Override the global :data:`MIGRATIONS` registry (testing only).
+    _target_version : int, optional
+        Override the auto-derived target version (testing only).
 
     Returns
     -------
@@ -213,6 +191,11 @@ def migrate_config(user_config: TOMLDocument) -> TOMLDocument:
         If ``user_config`` declares a version newer than this Hyrax can
         understand, or if a migration step is missing from :data:`MIGRATIONS`.
     """
+    migrations = _migrations if _migrations is not None else MIGRATIONS
+    current_config_version = (
+        _target_version if _target_version is not None else (max(migrations.keys()) + 1 if migrations else 1)
+    )
+
     # Empty user config (e.g. falling back to packaged defaults): nothing to do.
     if not user_config:
         return user_config
@@ -234,16 +217,16 @@ def migrate_config(user_config: TOMLDocument) -> TOMLDocument:
             f"config_version must be >= 1, got {user_version}. Version 1 is the lowest supported schema."
         )
 
-    if user_version > CURRENT_CONFIG_VERSION:
+    if user_version > current_config_version:
         raise RuntimeError(
             f"Config declares config_version = {user_version} but this Hyrax "
             f"install only understands up to config_version = "
-            f"{CURRENT_CONFIG_VERSION}. Upgrade with `pip install -U hyrax`."
+            f"{current_config_version}. Upgrade with `pip install -U hyrax`."
         )
 
     current = user_version
-    while current < CURRENT_CONFIG_VERSION:
-        step = MIGRATIONS.get(current)
+    while current < current_config_version:
+        step = migrations.get(current)
         if step is None:
             raise RuntimeError(
                 f"No migration registered from config_version {current} to "
@@ -267,5 +250,5 @@ def migrate_config(user_config: TOMLDocument) -> TOMLDocument:
 
     logger.warning(final_migration_msg)
 
-    user_config["config_version"] = CURRENT_CONFIG_VERSION
+    user_config["config_version"] = current_config_version
     return user_config

@@ -6,7 +6,6 @@ import warnings
 import pytest
 import tomlkit
 
-from hyrax import config_migrations
 from hyrax.config_migrations import (
     CURRENT_CONFIG_VERSION,
     DEPRECATED_KEY_NAMES,
@@ -174,14 +173,12 @@ def test_migrate_config_is_idempotent():
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught_second)
 
 
-def test_migrate_config_missing_migration_step_raises(monkeypatch):
+def test_migrate_config_missing_migration_step_raises():
     """A gap in the MIGRATIONS registry surfaces as a clear runtime error."""
-    monkeypatch.setattr(config_migrations, "CURRENT_CONFIG_VERSION", 5)
-    monkeypatch.setattr(config_migrations, "MIGRATIONS", {1: MigrationStep(func=lambda c: c)})
-
+    sparse = {1: MigrationStep(func=lambda c: c)}
     cfg = tomlkit.parse("config_version = 1\n")
     with pytest.raises(RuntimeError, match="No migration registered"):
-        migrate_config(cfg)
+        migrate_config(cfg, _migrations=sparse, _target_version=5)
 
 
 # ---------------------------------------------------------------------------

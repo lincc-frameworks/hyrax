@@ -59,8 +59,8 @@ See `HYRAX_GUIDE.md` for the full list. Key points:
 - **Verbs are internal only** — external plugins register models and datasets, not verbs.
 - **Manifest files** — ask the user before extending this pattern.
 - **Pydantic validation** — do not add to new config sections.
-- **Renaming config keys** — write a migration function, register it in
-  `MIGRATIONS` as a `MigrationStep` with `key_renames` listing every old→new
-  path, bump `CURRENT_CONFIG_VERSION`, and update `config_version` in
-  `hyrax_default_config.toml`. See the "Schema versioning" section in
-  `HYRAX_GUIDE.md`.
+- **Renaming config keys** — create `src/hyrax/config_migrations/vN_to_vN_plus_1.py`
+  using `@migration_step(from_version=N, key_renames={...})`, add one import line
+  to `config_migrations/__init__.py`, and update `config_version` in
+  `hyrax_default_config.toml`. `CURRENT_CONFIG_VERSION` auto-derives — do not bump
+  it manually. See "Schema versioning" in `HYRAX_GUIDE.md`.
