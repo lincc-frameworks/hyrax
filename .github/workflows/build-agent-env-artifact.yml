@@ -1,0 +1,71 @@
+name: Build agent conda environment artifact
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  build-agent-env:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up Miniconda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          auto-activate-base: false
+          activate-environment: hyrax-env
+          python-version: '3.11'
+
+      - name: Build conda env
+        shell: bash -l {0}
+        run: |
+          conda install -y conda-pack pip "setuptools<82"
+          pip install '.[dev]'
+          conda list
+          conda list setuptools
+          pip check
+
+      - name: Pack conda env
+        shell: bash -l {0}
+        run: |
+          conda-pack -n hyrax-env -o hyrax-agent-conda-env.tar.gz
+
+      - name: Upload artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: hyrax-agent-conda-env-main
+          path: hyrax-agent-conda-env.tar.gz
+          retention-days: 90
+
+      - name: Delete older artifacts with same name
+        uses: actions/github-script@v8
+        env:
+          CURRENT_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
+        with:
+          script: |
+            const currentArtifactId = Number(process.env.CURRENT_ARTIFACT_ID)
+            const { owner, repo } = context.repo
+            const artifactName = 'hyrax-agent-conda-env-main'
+            const artifacts = await github.paginate(github.rest.actions.listArtifactsForRepo, {
+              owner,
+              repo,
+              per_page: 100,
+            })
+
+            for (const artifact of artifacts) {
+              if (artifact.name === artifactName && artifact.id !== currentArtifactId) {
+                await github.rest.actions.deleteArtifact({
+                  owner,
+                  repo,
+                  artifact_id: artifact.id,
+                })
+              }
+            }
