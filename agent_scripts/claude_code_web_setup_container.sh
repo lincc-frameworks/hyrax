@@ -11,7 +11,9 @@ set -euo pipefail
 # This works together with a session start hook to place
 # claude code in the created conda env
 
-apt -y install pandoc
+apt -y -v install pandoc
+
+echo "INSTALLED PANDOC"
 
 ARTIFACT_REPO="lincc-frameworks/hyrax"
 ARTIFACT_NAME="hyrax-agent-conda-env-main"
