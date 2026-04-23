@@ -19,13 +19,13 @@ class HyraxHATSDataset(HyraxDataset):
 
         self.data_location = data_location
         requested_columns = self._requested_columns_from_config(config)
+        open_catalog_kwargs = self._open_catalog_kwargs_from_config(config)
+        if requested_columns and "columns" not in open_catalog_kwargs:
+            open_catalog_kwargs["columns"] = requested_columns
 
         import lsdb
 
-        if requested_columns:
-            catalog = lsdb.read_hats(data_location, columns=requested_columns)
-        else:
-            catalog = lsdb.read_hats(data_location)
+        catalog = lsdb.open_catalog(data_location, **open_catalog_kwargs)
         self.dataframe = catalog.compute()
         self.column_names = list(self.dataframe.columns)
 
@@ -73,6 +73,9 @@ class HyraxHATSDataset(HyraxDataset):
                     requested_columns.add(join_field)
 
         return sorted(requested_columns)
+
+    def _open_catalog_kwargs_from_config(self, config: dict) -> dict:
+        return dict((config.get("data_set") or {}).get(type(self).__name__, {}).get("open_catalog") or {})
 
     def __len__(self) -> int:
         return len(self.dataframe)

@@ -93,3 +93,35 @@ def test_hats_dataset_with_data_request_fields_only_builds_requested_getters(hat
     assert hasattr(hats_dataset, "get_coord_ra")
     assert not hasattr(hats_dataset, "get_coord_dec")
     assert not hasattr(hats_dataset, "get_mag-r")
+
+
+def test_hats_dataset_open_catalog_filters_from_dataset_config(hats_catalog_path: Path):
+    h = hyrax.Hyrax()
+    h.config["data_request"] = {
+        "train": {
+            "data": {
+                "dataset_class": "HyraxHATSDataset",
+                "data_location": str(hats_catalog_path),
+                "fields": ["coord_ra"],
+                "primary_id_field": "object_id",
+                "split_fraction": 1.0,
+                "dataset_config": {
+                    "HyraxHATSDataset": {
+                        "open_catalog": {
+                            "filters": [("coord_ra", ">", 150.15)],
+                        }
+                    }
+                },
+            }
+        }
+    }
+
+    dataset = h.prepare()
+    hats_dataset = dataset["train"]._primary_or_first_dataset()
+
+    assert len(hats_dataset) == 2
+    assert hasattr(hats_dataset, "get_object_id")
+    assert hasattr(hats_dataset, "get_coord_ra")
+    assert not hasattr(hats_dataset, "get_coord_dec")
+    assert not hasattr(hats_dataset, "get_mag-r")
+    assert hats_dataset.get_object_id(0) == 1002
