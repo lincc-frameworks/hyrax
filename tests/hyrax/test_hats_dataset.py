@@ -10,6 +10,7 @@ lsdb = pytest.importorskip("lsdb")
 
 @pytest.fixture(scope="function")
 def hats_catalog_path(tmp_path: Path) -> Path:
+    """Write a small synthetic HATS catalog to a temp directory and return its path."""
     df = pd.DataFrame(
         {
             "object_id": [1001, 1002, 1003],
@@ -28,6 +29,7 @@ def hats_catalog_path(tmp_path: Path) -> Path:
 
 @pytest.fixture(scope="function")
 def test_hyrax_hats_dataset(hats_catalog_path: Path):
+    """Fixture that gives a Hyrax object configured to use the synthetic HATS catalog with all columns."""
     h = hyrax.Hyrax()
     h.config["data_request"] = {
         "train": {
@@ -43,11 +45,13 @@ def test_hyrax_hats_dataset(hats_catalog_path: Path):
 
 
 def test_hats_dataset_initialization(test_hyrax_hats_dataset):
+    """Check that HyraxHATSDataset loads the catalog and reports the correct row count."""
     dataset = test_hyrax_hats_dataset.prepare()
     assert len(dataset["train"]) == 3
 
 
 def test_hats_dataset_dynamic_getters(test_hyrax_hats_dataset):
+    """Check that get_<column> methods are generated for every column, including non-identifier names like 'mag-r'."""
     dataset = test_hyrax_hats_dataset.prepare()
     hats_dataset = dataset["train"]._primary_or_first_dataset()
 
@@ -62,6 +66,7 @@ def test_hats_dataset_dynamic_getters(test_hyrax_hats_dataset):
 
 
 def test_hats_dataset_sample_data(test_hyrax_hats_dataset):
+    """Check that sample_data returns the first catalog row wrapped in a 'data' dict."""
     dataset = test_hyrax_hats_dataset.prepare()
     hats_dataset = dataset["train"]._primary_or_first_dataset()
     sample = hats_dataset.sample_data()
@@ -73,6 +78,7 @@ def test_hats_dataset_sample_data(test_hyrax_hats_dataset):
 
 
 def test_hats_dataset_with_data_request_fields_only_builds_requested_getters(hats_catalog_path: Path):
+    """Check that only getters for requested fields (plus primary_id_field) are created when fields are specified."""
     h = hyrax.Hyrax()
     h.config["data_request"] = {
         "train": {
@@ -96,6 +102,7 @@ def test_hats_dataset_with_data_request_fields_only_builds_requested_getters(hat
 
 
 def test_hats_dataset_open_catalog_filters_from_dataset_config(hats_catalog_path: Path):
+    """Check that open_catalog_kwargs.filters are passed to lsdb.read_hats, limiting which rows are loaded."""
     h = hyrax.Hyrax()
     h.config["data_request"] = {
         "train": {
