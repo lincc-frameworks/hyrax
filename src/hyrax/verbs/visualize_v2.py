@@ -61,8 +61,9 @@ class VisualizeV2(Verb):
 
         Returns
         -------
-        panel.Column
-            The assembled Panel layout.
+        VisualizeV2
+            This verb instance. Use it to call ``restart_ui()`` or ``get_selected_df()``
+            after the UI has been displayed.
         """
         import panel as pn
 
@@ -92,7 +93,8 @@ class VisualizeV2(Verb):
         if clear_output is not None:
             clear_output(wait=True)
 
-        return self._build_ui(**kwargs)
+        self._build_ui(**kwargs)  # Build the UI once to cache any heavy operations before showing it.
+        return self
 
     def restart_ui(self, **kwargs):
         """Rebuild and re-display the Panel UI without reloading data.
@@ -107,12 +109,14 @@ class VisualizeV2(Verb):
 
         Returns
         -------
-        panel.Column
-            The assembled Panel layout.
+        VisualizeV2
+            This verb instance. Use it to call ``restart_ui()`` or ``get_selected_df()``
+            after the UI has been displayed.
         """
         if not getattr(self, "_data_loaded", False):
             raise RuntimeError("No data loaded yet. Call run() first.")
-        return self._build_ui(**kwargs)
+        self._build_ui(**kwargs)
+        return self
 
     def _load_data(self):
         """Load dataset and build the points DataFrame.
@@ -934,9 +938,8 @@ class VisualizeV2(Verb):
             display(pane)
         except ImportError:
             logger.warning("Couldn't find IPython display environment. Skipping display step.")
-        return pane
 
-    def get_selected_df(self) -> "pd.DataFrame":
+    def get_selected_df(self):
         """Return the current selection as a DataFrame."""
         import pandas as pd
 
