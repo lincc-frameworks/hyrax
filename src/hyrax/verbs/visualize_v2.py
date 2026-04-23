@@ -10,6 +10,22 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+def _disable_axis_zoom(plot, element):
+    """Bokeh hook: disable axis-only zoom and align tick marks inward."""
+    from bokeh.models import WheelZoomTool
+
+    for tool in plot.state.tools:
+        if isinstance(tool, WheelZoomTool):
+            tool.zoom_on_axis = False
+    plot.state.match_aspect = True
+    for axis in [*plot.state.xaxis, *plot.state.yaxis]:
+        axis.major_tick_in = 6
+        axis.major_tick_out = 0
+        axis.minor_tick_in = 3
+        axis.minor_tick_out = 0
+        axis.major_label_standoff = -20
+
+
 @hyrax_verb
 class VisualizeV2(Verb):
     """Verb to create a hexbin visualization of a 2D latent space."""
@@ -47,41 +63,70 @@ class VisualizeV2(Verb):
         -------
         panel.Column
             The assembled Panel layout.
-        tuple of (panel.Column, VisualizeV2)
-            If return_verb is True.
         """
-        import math
-        import os
-        import threading
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        import panel as pn
 
-        import datashader as ds
-        import holoviews as hv
-        import matplotlib.axes
-        import matplotlib.figure as mpl_figure
-        import matplotlib.pyplot as plt
+        # pn.extension must be called before displaying any Panel widget.
+        # Keep it here (in addition to _build_ui) so the loading indicator works on first run.
+        pn.extension("tabulator")
+
+        def _status(dataset_done: bool, ui_done: bool) -> str:
+            dataset_icon = "✅" if dataset_done else "⏳"
+            ui_icon = "✅" if ui_done else "⏳"
+            return f"- {dataset_icon} Loading dataset\n- {ui_icon} Rendering UI"
+
+        _loading = pn.pane.Markdown(_status(False, False))
+        ipy_display = clear_output = None
+        try:
+            from IPython.display import clear_output
+            from IPython.display import display as ipy_display
+
+            ipy_display(_loading)
+        except ImportError:
+            pass
+
+        self._load_data()
+        _loading.object = _status(True, False)
+
+        # Wipe the loading indicator so the full UI replaces it cleanly in the cell output.
+        if clear_output is not None:
+            clear_output(wait=True)
+
+        return self._build_ui(**kwargs)
+
+    def restart_ui(self, **kwargs):
+        """Rebuild and re-display the Panel UI without reloading data.
+
+        Call this after a Jupyter websocket disconnect instead of re-running the cell.
+        The expensive data-loading step is skipped — only the widgets are rebuilt.
+
+        Parameters
+        ----------
+        kwargs :
+            Additional keyword arguments passed as HexTiles opts overrides.
+
+        Returns
+        -------
+        panel.Column
+            The assembled Panel layout.
+        """
+        if not getattr(self, "_data_loaded", False):
+            raise RuntimeError("No data loaded yet. Call run() first.")
+        return self._build_ui(**kwargs)
+
+    def _load_data(self):
+        """Load dataset and build the points DataFrame.
+
+        Guards with a ``_data_loaded`` sentinel so the expensive steps only run
+        once per verb instance. Safe to call multiple times.
+        """
+        if getattr(self, "_data_loaded", False):
+            return
+
         import numpy as np
         import pandas as pd
-        import panel as pn
-        from holoviews import DynamicMap, Polygons, Rectangles, extension
-        from holoviews.element.stats import HexTiles
-        from holoviews.operation.datashader import rasterize
-        from holoviews.streams import BoundsXY, Lasso, Params, RangeXY
-        from IPython import get_ipython
-        from matplotlib.path import Path as MplPath
 
         from hyrax.pytorch_ignite import setup_dataset
-
-        # ── Config ────────────────────────────────────────────────────────────
-        viz_config = self.config["visualize_v2"]
-
-        target_bins = viz_config["target_bins"]
-        buffer_factor = viz_config["buffer_factor"]  # This doesn't need to be a config
-        plot_width = viz_config["plot_width"]  # This doesn't need to be a config
-        plot_height = viz_config["plot_height"]  # This doesn't need to be a config
-        cmap = viz_config["cmap"]  # Sets the initial colormap; user can change it via the UI slider.
-        max_table_rows = viz_config["max_table_rows"]  # This doesn't need to be a config
-        num_detail_plots = viz_config["num_detail_plots"]  # This doesn't need to be a config
 
         # ── Build DataProvider for metadata access ────────────────────────────
         self.datasets = setup_dataset(self.config)
@@ -108,17 +153,17 @@ class VisualizeV2(Verb):
         df = pd.DataFrame(
             {"x": points_array[:, 0].astype(np.float32), "y": points_array[:, 1].astype(np.float32)}
         )
-        n_points = len(df)
 
         # Store references on self for downstream use
         self.df = df
         self.reduced_dim_results = reduced_dim_results
+        self._n_points = len(df)
 
         # ── Probe available scalar fields ─────────────────────────────────────
         # Call DataProvider[0] to sample the structure and filter to scalar fields only.
         # This drops large array/tensor fields (e.g. image, data) automatically.
         _sample = self.datasets["visualize"][0]
-        _dataset_getters = self.datasets["visualize"].dataset_getters
+        self._dataset_getters = self.datasets["visualize"].dataset_getters
         _scalar_col_options: list[str] = []
         _scalar_types = (int, float, str, bool, np.integer, np.floating)
         if "object_id" in _sample and isinstance(_sample["object_id"], _scalar_types):
@@ -129,12 +174,55 @@ class VisualizeV2(Verb):
             for _field, _val in _field_dict.items():
                 if isinstance(_val, _scalar_types):
                     _scalar_col_options.append(f"{_fn}.{_field}")
+        self._scalar_col_options = _scalar_col_options
         # Warn if any dataset sub-config has a 'fields' restriction
-        _fields_restricted = any(
+        self._fields_restricted = any(
             bool(ds_conf.get("fields"))
             for ds_conf in self.config.get("data_request", {}).get("visualize", {}).values()
             if isinstance(ds_conf, dict)
         )
+
+        self._data_loaded = True
+
+    def _build_ui(self, **kwargs):
+        """Build and display the Panel UI using data already loaded by ``_load_data()``."""
+        import math
+        import os
+        import threading
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        import datashader as ds
+        import holoviews as hv
+        import matplotlib.axes
+        import matplotlib.figure as mpl_figure
+        import matplotlib.pyplot as plt
+        import numpy as np
+        import pandas as pd
+        import panel as pn
+        from holoviews import DynamicMap, Polygons, Rectangles, extension
+        from holoviews.element.stats import HexTiles
+        from holoviews.operation.datashader import rasterize
+        from holoviews.streams import BoundsXY, Lasso, Params, RangeXY
+        from IPython import get_ipython
+        from matplotlib.path import Path as MplPath
+
+        # ── Local aliases for data loaded by _load_data() ─────────────────────
+        df = self.df
+        n_points = self._n_points
+        _scalar_col_options = self._scalar_col_options
+        _dataset_getters = self._dataset_getters
+        _fields_restricted = self._fields_restricted
+
+        # ── Config ────────────────────────────────────────────────────────────
+        viz_config = self.config["visualize_v2"]
+
+        target_bins = viz_config["target_bins"]
+        buffer_factor = viz_config["buffer_factor"]
+        plot_width = viz_config["plot_width"]
+        plot_height = viz_config["plot_height"]
+        cmap = viz_config["cmap"]  # Sets the initial colormap; user can change it via the UI slider.
+        max_table_rows = viz_config["max_table_rows"]
+        num_detail_plots = viz_config["num_detail_plots"]
 
         # ── HoloViews / Panel init ────────────────────────────────────────────
         # pn.extension must come before hv.extension so Panel can patch HoloViews'
@@ -249,20 +337,6 @@ class VisualizeV2(Verb):
         }
         plot_opts.update(kwargs)
 
-        def _disable_axis_zoom(plot, element):
-            from bokeh.models import WheelZoomTool
-
-            for tool in plot.state.tools:
-                if isinstance(tool, WheelZoomTool):
-                    tool.zoom_on_axis = False
-            plot.state.match_aspect = True
-            for axis in [*plot.state.xaxis, *plot.state.yaxis]:
-                axis.major_tick_in = 6
-                axis.major_tick_out = 0
-                axis.minor_tick_in = 3
-                axis.minor_tick_out = 0
-                axis.major_label_standoff = -20
-
         plot = dmap.opts(hv.opts.HexTiles(**plot_opts, hooks=[_disable_axis_zoom]))
 
         # ── Selection streams ─────────────────────────────────────────────────
@@ -313,6 +387,21 @@ class VisualizeV2(Verb):
         _table_df: list[pd.DataFrame] = [pd.DataFrame()]  # authoritative copy unaffected by user edits
         _pool = ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
 
+        def _make_fetcher(active_cols: list[str]):
+            """Return a row-fetching callable for the given active columns."""
+            top_level = [c for c in active_cols if c == "object_id"]
+            nested = [(c.split(".", 1)[0], c.split(".", 1)[1]) for c in active_cols if "." in c]
+
+            def _fetch_row(idx):
+                row: dict = {"row_index": idx}
+                if top_level:
+                    row["object_id"] = self.datasets["visualize"][idx].get("object_id")
+                for fn, field in nested:
+                    row[f"{fn}.{field}"] = _dataset_getters[fn][field](idx)
+                return row
+
+            return _fetch_row
+
         def _update_table(
             sel: pd.DataFrame,
             progress_callback=None,
@@ -340,16 +429,7 @@ class VisualizeV2(Verb):
                 )
                 return
 
-            _top_level = [c for c in active_cols if c == "object_id"]
-            _nested = [(c.split(".", 1)[0], c.split(".", 1)[1]) for c in active_cols if "." in c]
-
-            def _fetch_row(idx):
-                row: dict = {"row_index": idx}
-                if _top_level:
-                    row["object_id"] = self.datasets["visualize"][idx].get("object_id")
-                for fn, field in _nested:
-                    row[f"{fn}.{field}"] = _dataset_getters[fn][field](idx)
-                return row
+            _fetch_row = _make_fetcher(active_cols)
 
             total = len(capped_indices)
             _progress_step = max(1, total // 100)
@@ -535,9 +615,15 @@ class VisualizeV2(Verb):
             return fig
 
         def _update_detail_panes(indices):
-            for tab_index, tab_panes in enumerate(detail_panes):
-                for i, pane in enumerate(tab_panes):
-                    pane.object = _make_detail_fig(indices[i] if i < len(indices) else None, tab_index)
+            def _apply():
+                for tab_index, tab_panes in enumerate(detail_panes):
+                    for i, pane in enumerate(tab_panes):
+                        pane.object = _make_detail_fig(indices[i] if i < len(indices) else None, tab_index)
+
+            if pn.state.curdoc is not None:
+                pn.state.execute(_apply)
+            else:
+                _apply()
 
         # ── Pagination controls ───────────────────────────────────────────────
         _page_state: dict = {"page": 0, "indices": []}
@@ -705,21 +791,23 @@ class VisualizeV2(Verb):
                 if _gen[0] != my_gen:
                     return
 
-                _update_table(
-                    sel,
-                    progress_callback=lambda pct: setattr(_progress_bar, "value", pct),
-                    should_abort=lambda: _gen[0] != my_gen,
-                )
-
-                if _gen[0] != my_gen:
-                    return
-
+                # Render detail panes immediately — indices are available now,
+                # before the (slower) table fetch begins.
                 try:
                     _page_state["page"] = 0
                     _page_state["indices"] = list(sel.index)
                     _render_page()
                 except Exception:
                     pass  # never let detail-pane errors break status cleanup
+
+                if _gen[0] != my_gen:
+                    return
+
+                _update_table(
+                    sel,
+                    progress_callback=lambda pct: setattr(_progress_bar, "value", pct),
+                    should_abort=lambda: _gen[0] != my_gen,
+                )
 
                 export_btn.name = "Export table to selected_points"
                 export_btn.disabled = False
@@ -742,11 +830,8 @@ class VisualizeV2(Verb):
             if sel.empty:
                 return
             exported = _table_df[0] if not _table_df[0].empty else sel
-            try:
-                _ipy = get_ipython()  # noqa: F821
+            if (_ipy := get_ipython()) is not None:
                 _ipy.user_ns["selected_points"] = exported
-            except NameError:
-                pass
             export_btn.icon = "check-lg"
             export_btn.name = f"Exported {len(exported):,} rows to selected_points"
 
@@ -764,32 +849,20 @@ class VisualizeV2(Verb):
         def _do_export_all(sel: "pd.DataFrame") -> None:
             active_cols: list[str] = col_selector.value
             if not active_cols:
-                try:
-                    _ipy = get_ipython()  # noqa: F821
+                if (_ipy := get_ipython()) is not None:
                     _ipy.user_ns["selected_points"] = pd.DataFrame({"row_index": list(sel.index)})
-                except NameError:
-                    pass
                 export_all_btn.icon = "check-lg"
                 export_all_btn.name = f"Exported {len(sel):,} rows to selected_points"
                 export_all_btn.disabled = False
                 _progress_bar.value = 0
                 return
 
-            _top_level = [c for c in active_cols if c == "object_id"]
-            _nested = [(c.split(".", 1)[0], c.split(".", 1)[1]) for c in active_cols if "." in c]
-
-            def _fetch_row_all(idx):
-                row: dict = {"row_index": idx}
-                if _top_level:
-                    row["object_id"] = self.datasets["visualize"][idx].get("object_id")
-                for fn, field in _nested:
-                    row[f"{fn}.{field}"] = _dataset_getters[fn][field](idx)
-                return row
+            _fetch_row = _make_fetcher(active_cols)
 
             all_indices = list(sel.index)
             total = len(all_indices)
             _progress_step = max(1, total // 100)
-            futures = {_pool.submit(_fetch_row_all, idx): i for i, idx in enumerate(all_indices)}
+            futures = {_pool.submit(_fetch_row, idx): i for i, idx in enumerate(all_indices)}
             rows: list = [None] * total
             for done, future in enumerate(as_completed(futures)):
                 rows[futures[future]] = future.result()
@@ -797,11 +870,8 @@ class VisualizeV2(Verb):
                     _progress_bar.value = int((done + 1) / total * 100)
 
             full_df = pd.DataFrame(rows).reset_index(drop=True)
-            try:
-                _ipy = get_ipython()  # noqa: F821
+            if (_ipy := get_ipython()) is not None:
                 _ipy.user_ns["selected_points"] = full_df
-            except NameError:
-                pass
             export_all_btn.icon = "check-lg"
             export_all_btn.name = f"Exported {len(full_df):,} rows to selected_points"
             export_all_btn.disabled = False
@@ -864,6 +934,7 @@ class VisualizeV2(Verb):
             display(pane)
         except ImportError:
             logger.warning("Couldn't find IPython display environment. Skipping display step.")
+        return pane
 
     def get_selected_df(self) -> "pd.DataFrame":
         """Return the current selection as a DataFrame."""
