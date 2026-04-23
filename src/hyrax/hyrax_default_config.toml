@@ -371,7 +371,7 @@ invalid_value_type = "nan"
 
 [data_set.LanceDBDataset]
 # Table name to open inside the LanceDB database.
-table_name = "main"
+table_name = false
 
 # Extra keyword arguments passed directly to lancedb.connect.
 [data_set.LanceDBDataset.connect_kwargs]
