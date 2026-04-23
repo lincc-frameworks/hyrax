@@ -55,12 +55,16 @@ dependencies = [
     "psutil", # Used for memory monitoring
     "tqdm", # Used to show progress bars
     "datasets", # Used by MultimodalUniverseDataset
+    "nested-pandas", # Used by NestedPandasDataset
     "qdrant-client", # Vector database for similarity search
     "colorama", # Used to color terminal output
     # Pin to before 0.30.0 because version 0.30.0 does not support NaN values anymore
     # This issue is NOT noted in release notes (https://github.com/lancedb/lancedb/releases/tag/python-v0.30.0)
     # We have filed this bug: https://github.com/lancedb/lancedb/issues/3153
     "lancedb < 0.30.0", # Used for columnar storage of inference results
+    # lance-namespace 0.7 removed CreateEmptyTableRequest and breaks lancedb<0.30 imports.
+    # Track upstream compatibility in lancedb before removing this cap.
+    "lance-namespace < 0.7.0",
     "pyarrow", # Used by lancedb for data interchange
     "pylance", # Used by lancedb for Lance dataset access
 ]
