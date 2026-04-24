@@ -76,7 +76,7 @@ def test_umap_load(loopback_inferred_hyrax, tmp_path):
 
     # Create a fake UMAP model file
     fake_model_path = tmp_path / "umap.pickle"
-    # fake_model_path.write_bytes(b"fake_model_data")
+    fake_model_path.write_bytes(b"fake_model_data")
 
     # Mock pickle.load to return a FakeUmap with correct dimensions
     fake_umap_instance = FakeUmap()
@@ -96,7 +96,7 @@ def test_umap_load(loopback_inferred_hyrax, tmp_path):
 
     # Test loading a non-UMAP object raises ValueError
     fake_file_path = tmp_path / "fake_umap.pickle"
-    # fake_file_path.write_bytes(b"fake")
+    fake_file_path.write_bytes(b"fake")
     with mock.patch("pickle.load", return_value=object()):
         with pytest.raises(ValueError):
             h.umap(model_path=str(fake_file_path))
