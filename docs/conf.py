@@ -50,6 +50,9 @@ exclude_patterns = [
     # This notebook requires a running Hyrax pipeline and cannot be executed
     # in the CI/ReadTheDocs build environment.
     "notebooks/nested_pandas_time_series_with_hyrax.ipynb",
+    # This notebook requires lsdb which is an optional dependency not available
+    # in the CI/ReadTheDocs build environment.
+    "notebooks/hats_dataset.ipynb",
 ]
 
 # This assumes that sphinx-build is called from the root directory

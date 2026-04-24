@@ -51,7 +51,10 @@ def test_hats_dataset_initialization(test_hyrax_hats_dataset):
 
 
 def test_hats_dataset_dynamic_getters(test_hyrax_hats_dataset):
-    """Check that get_<column> methods are generated for every column, including non-identifier names like 'mag-r'."""
+    """Check that get_<column> accessors are created for all columns, including non-identifier names.
+
+    Non-identifier column names (e.g. 'mag-r') must be accessed via getattr.
+    """
     dataset = test_hyrax_hats_dataset.prepare()
     hats_dataset = dataset["train"]._primary_or_first_dataset()
 
@@ -78,7 +81,10 @@ def test_hats_dataset_sample_data(test_hyrax_hats_dataset):
 
 
 def test_hats_dataset_with_data_request_fields_only_builds_requested_getters(hats_catalog_path: Path):
-    """Check that only getters for requested fields (plus primary_id_field) are created when fields are specified."""
+    """Check that specifying fields limits getter creation to only the requested fields plus primary_id_field.
+
+    Columns not listed in fields (e.g. coord_dec, mag-r) must not have getters.
+    """
     h = hyrax.Hyrax()
     h.config["data_request"] = {
         "train": {
