@@ -28,9 +28,13 @@ if [ ! -f "$SENTINEL" ]; then
   touch "$SENTINEL"
 fi
 
-# Activate the venv. CONDA_PREFIX may be unset; guard against set -u.
+# Activate the venv. PS1 and CONDA_PREFIX may be unset in non-interactive shells;
+# temporarily disable -u so the conda activate script doesn't abort on them.
 export CONDA_PREFIX="${CONDA_PREFIX:-}"
+export PS1="${PS1:-}"
+set +u
 source "$VENV_PATH/bin/activate"
+set -u
 
 # Ensure hyrax is editable-installed from the current checkout. Editable installs
 # are path-specific and must not be cached in the container image, so this runs
