@@ -230,9 +230,9 @@ migration — do not bump it manually.
    and helpers (`rename_table`, `move_key`) from
    `hyrax.config_migrations.migration_utils`. The module is auto-discovered
    via `pkgutil` — no import line needed elsewhere. `CURRENT_CONFIG_VERSION`
-   auto-derives — do **not** bump it manually.
-2. Update `config_version = N+1` in `src/hyrax/hyrax_default_config.toml`.
-3. Add a unit test to `tests/hyrax/test_config_migrations.py` covering both
+   and `config_version` in `hyrax_default_config.toml` are both stamped
+   automatically at runtime — do **not** bump either manually.
+2. Add a unit test to `tests/hyrax/test_config_migrations.py` covering both
    the "legacy config triggers migration" and "clean current-version config
    is a no-op" cases.
 

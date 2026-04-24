@@ -60,7 +60,7 @@ See `HYRAX_GUIDE.md` for the full list. Key points:
 - **Manifest files** — ask the user before extending this pattern.
 - **Pydantic validation** — do not add to new config sections.
 - **Renaming config keys** — create `src/hyrax/config_migrations/migrations/vN_description.py`
-  using `@migration_step(from_version=N, key_renames={...})`, and update `config_version`
-  in `hyrax_default_config.toml`. The migration is auto-discovered — no import line
-  needed. `CURRENT_CONFIG_VERSION` auto-derives — do not bump it manually. See
-  "Schema versioning" in `HYRAX_GUIDE.md`.
+  (e.g. `v3_move_learning_rate.py`) using `@migration_step(from_version=N, key_renames={...})`.
+  The migration is auto-discovered and `CURRENT_CONFIG_VERSION` auto-derives — the
+  developer only creates the file and adds a test. See "Schema versioning" in
+  `HYRAX_GUIDE.md`.

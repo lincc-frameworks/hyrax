@@ -1,5 +1,5 @@
-# DO NOT MODIFY config_version MANUALLY!!!
-# Hyrax will migrate older configs forward on load — do not edit this by hand.
+# config_version is stamped at runtime from CURRENT_CONFIG_VERSION (auto-derived
+# from registered migrations). This value is advisory — editing it has no effect.
 config_version = 2
 
 [general]

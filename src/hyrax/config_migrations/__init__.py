@@ -19,8 +19,9 @@ Adding a new migration:
    ``@migration_step(from_version=N, key_renames={...})``. Import the
    decorator and helpers from ``hyrax.config_migrations.migration_utils``.
    The module is auto-discovered — no import line needed elsewhere.
-2. Update ``config_version`` in ``hyrax_default_config.toml`` to ``N+1``.
-3. Add a unit test in ``tests/hyrax/test_config_migrations.py``.
+   ``CURRENT_CONFIG_VERSION`` and ``config_version`` in the default TOML are
+   both stamped automatically at runtime.
+2. Add a unit test in ``tests/hyrax/test_config_migrations.py``.
 """
 
 # ruff: noqa: I001  — import order matters: machinery before migration modules
