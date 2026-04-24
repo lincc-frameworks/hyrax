@@ -4,6 +4,8 @@ It is expected that each module in this directory map to a migration from versio
 to version N+1.
 
 The name of the modules isn't important aside from making it easier for a human to read.
+We should use the convention ``<zero-padded-from-version>_<description>.py`` for naming
+the modules.
 
 The most important aspect is to correctly tag the migration function with the appropriate
 `from_version`.
@@ -20,7 +22,7 @@ from hyrax.config_migrations.migration_utils import migration_step, move_key, re
         "nested_1.sub_1": "nested_2.sub_1"
     }
 )
-def _migrate_vN_to_vN1(cfg: TOMLDocument) -> TOMLDocument:
+def <description>(cfg: TOMLDocument) -> TOMLDocument:  # <--- function name ~matches module name
     """Rename the legacy ``[table_foo]`` table to ``[table_bar]``,
     and move `sub_1` from `nested_1` to `nested_2`.
     """

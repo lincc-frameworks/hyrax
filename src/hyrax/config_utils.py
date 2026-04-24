@@ -200,7 +200,7 @@ class ConfigManager:
 
         # Stamp the auto-derived schema version into the default config so it
         # propagates to runtime_config.toml on write.  This is the single source
-        # of truth — the value in hyrax_default_config.toml is advisory only.
+        # of truth.
         self.hyrax_default_config["config_version"] = CURRENT_CONFIG_VERSION
 
         # Upgrade older user configs forward through the registered schema

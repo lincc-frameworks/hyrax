@@ -7,15 +7,15 @@ migrations registered here run before the merge step in
 forward one version at a time until it matches :data:`CURRENT_CONFIG_VERSION`.
 
 Each migration step lives in its own descriptively-named module (e.g.
-``v1_rename_model_inputs.py``) and self-registers via the
+``001_rename_model_inputs_to_data_request.py``) and self-registers via the
 :func:`migration_step` decorator, which populates the :data:`MIGRATIONS` dict.
 :data:`CURRENT_CONFIG_VERSION` is auto-derived from the highest registered
 migration — developers do not bump it manually.
 
 Adding a new migration:
 
-1. Create ``src/hyrax/config_migrations/migrations/vN_description.py`` (e.g.
-   ``v3_move_learning_rate.py``). Decorate the migration function with
+1. Create ``src/hyrax/config_migrations/migrations/00N_description.py`` (e.g.
+   ``002_move_learning_rate.py``). Decorate the migration function with
    ``@migration_step(from_version=N, key_renames={...})``. Import the
    decorator and helpers from ``hyrax.config_migrations.migration_utils``.
    The module is auto-discovered — no import line needed elsewhere.

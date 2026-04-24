@@ -17,6 +17,9 @@ Config variables are inherited from a hierarchy of sources, similar to ``python`
 
 A core design principle of ``hyrax`` is "code by config", meaning that all runtime parameters should be set through configuration files rather than hard-coded values. This approach enhances flexibility, reproducibility, and ease of experimentation, as users can modify configurations without altering the underlying codebase. This also facilitates sharing and collaboration, as configurations can be easily shared and adapted for different use cases while keeping fundamental models and datasets consistent.
 
+After running any ``hyrax`` command, a ``runtime_config.toml`` file will be written to the timestamped results directory, which contains the final configuration used for that run.
+This file is a combination of all the various source configs (``hyrax`` default, package defaults, and user config) and can be used to see what variables were actually used in one place.
+
 Typed configuration schemas
 ---------------------------
 
@@ -41,16 +44,14 @@ the legacy ``[model_inputs]`` table is automatically renamed to
 Schema versioning
 -----------------
 
-The packaged default config declares a top-level ``config_version = N`` scalar.
-When Hyrax loads a user config whose ``config_version`` is lower than the
-current schema (or missing, in which case it is assumed to be version 1), the
+When Hyrax loads a user config it will check the ``config_version``.
+If the version is lower than the current schema the
 document is passed through the migrations registered in
 ``src/hyrax/config_migrations.py`` before being merged against the defaults.
-This lets old user configs keep working across schema changes, with clear
-deprecation warnings guiding users to update their files.
+If ``config_version`` is missing, it is assumed to be the current version and no
+schema migrations are applied.
 
 Configs declaring a ``config_version`` higher than the installed Hyrax
 understands are refused with a ``RuntimeError`` pointing at
 ``pip install -U hyrax``.
 
-After training is completed, ``hyrax`` will write out all of the variables (combined from all the various source configs) used at runtime in the runtime directory as a ``runtime_config.toml`` file, so that the user can see what variables were actually used in one place.
