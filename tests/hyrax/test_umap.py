@@ -68,53 +68,64 @@ def test_umap_order(loopback_inferred_hyrax):
 
 
 @mock.patch("umap.UMAP", FakeUmap)
-@mock.patch("builtins.open", mock.mock_open())
-def test_umap_load(loopback_inferred_hyrax, tmp_path):
+def test_umap_load(loopback_inferred_hyrax):
     """Test that umap loads a pre-existing model from a path and handles all error cases"""
     h, dataset, _ = loopback_inferred_hyrax
     dataset = dataset["infer"]
 
-    # Create a fake UMAP model file
-    fake_model_path = tmp_path / "umap.pickle"
-    fake_model_path.write_bytes(b"fake_model_data")
-
-    # Mock pickle.load to return a FakeUmap with correct dimensions
-    fake_umap_instance = FakeUmap()
+    # Calculate expected input dimensions
     infer_shape = np.array(h.config["data_set"]["HyraxRandomDataset"]["shape"])
     input_dim = int(np.prod(infer_shape))
-    fake_umap_instance._raw_data = np.zeros((100, input_dim))
-    fake_umap_instance.n_components = 2  # Output dims from config
 
-    with mock.patch("pickle.load", return_value=fake_umap_instance):
-        umap_result = h.umap(model_path=str(fake_model_path))
+    # Test successful loading
+    fake_umap_instance = FakeUmap()
+    fake_umap_instance._raw_data = np.zeros((100, input_dim))
+    fake_umap_instance.n_components = 2
+
+    with (
+        mock.patch("builtins.open", mock.mock_open(read_data=b"fake_data")),
+        mock.patch("pickle.load", return_value=fake_umap_instance),
+        mock.patch("pathlib.Path.is_file", return_value=True),
+    ):
+        umap_result = h.umap(model_path="pretend_it_exists.pickle")
         assert umap_result is not None
 
     # Test missing UMAP model path raises FileNotFoundError
-    no_model_path = tmp_path / "does_not_exist.pickle"
-    with pytest.raises(FileNotFoundError):
-        h.umap(model_path=str(no_model_path))
+    with mock.patch("pathlib.Path.is_file", return_value=False):
+        with pytest.raises(FileNotFoundError, match="UMAP model file not found"):
+            h.umap(model_path="/nonexistent/path.pickle")
 
     # Test loading a non-UMAP object raises ValueError
-    fake_file_path = tmp_path / "fake_umap.pickle"
-    fake_file_path.write_bytes(b"fake")
-    with mock.patch("pickle.load", return_value=object()):
-        with pytest.raises(ValueError):
-            h.umap(model_path=str(fake_file_path))
+    with (
+        mock.patch("builtins.open", mock.mock_open(read_data=b"fake_data")),
+        mock.patch("pickle.load", return_value=object()),
+        mock.patch("pathlib.Path.is_file", return_value=True),
+    ):
+        with pytest.raises(ValueError, match="loaded model is not a UMAP instance"):
+            h.umap(model_path="/fake/path/umap.pickle")
 
     # Test loaded UMAP model with wrong input dimension raises ValueError
     fake_umap_wrong_input = FakeUmap()
     fake_umap_wrong_input._raw_data = np.zeros((100, input_dim + 1))
     fake_umap_wrong_input.n_components = 2
 
-    with mock.patch("pickle.load", return_value=fake_umap_wrong_input):
-        with pytest.raises(ValueError):
-            h.umap(model_path=str(fake_file_path))
+    with (
+        mock.patch("builtins.open", mock.mock_open(read_data=b"fake_data")),
+        mock.patch("pickle.load", return_value=fake_umap_wrong_input),
+        mock.patch("pathlib.Path.is_file", return_value=True),
+    ):
+        with pytest.raises(ValueError, match="input dimension of the loaded UMAP model"):
+            h.umap(model_path="/fake/path/umap.pickle")
 
     # Test loaded UMAP model with wrong output dimension raises ValueError
     fake_umap_wrong_output = FakeUmap()
     fake_umap_wrong_output._raw_data = np.zeros((100, input_dim))
-    fake_umap_wrong_output.n_components = 3  # Different from config default
+    fake_umap_wrong_output.n_components = 3
 
-    with mock.patch("pickle.load", return_value=fake_umap_wrong_output):
-        with pytest.raises(ValueError):
-            h.umap(model_path=str(fake_file_path))
+    with (
+        mock.patch("builtins.open", mock.mock_open(read_data=b"fake_data")),
+        mock.patch("pickle.load", return_value=fake_umap_wrong_output),
+        mock.patch("pathlib.Path.is_file", return_value=True),
+    ):
+        with pytest.raises(ValueError, match="output dimension of the loaded UMAP model"):
+            h.umap(model_path="/fake/path/umap.pickle")
