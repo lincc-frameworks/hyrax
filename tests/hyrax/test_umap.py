@@ -1,6 +1,8 @@
+import os
 import unittest.mock as mock
 
 import numpy as np
+import psutil
 import pytest
 
 
@@ -81,6 +83,9 @@ def test_umap_load(loopback_inferred_hyrax):
     fake_umap_instance = FakeUmap()
     fake_umap_instance._raw_data = np.zeros((100, input_dim))
     fake_umap_instance.n_components = 2
+
+    data = psutil._common.bcat(f"/proc/{os.getpid()}/stat")
+    print(data)
 
     with (
         mock.patch("builtins.open", mock.mock_open(read_data=b"fake_data")),
