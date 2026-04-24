@@ -242,9 +242,6 @@ input_model_directory = false
 # Top-level table that defines the dataset(s) used for training, validation, and inference.
 # Configure with [data_request.train], [data_request.validate], or [data_request.infer] sections.
 
-# [model_inputs]
-# DEPRECATED: Use [data_request] instead. This will be removed in the next major release.
-
 
 [data_set]
 # Crop pixel dimensions for images, e.g., [100, 100]. If false, scans for the
