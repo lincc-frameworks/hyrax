@@ -66,7 +66,7 @@ class HyraxHATSDataset(HyraxDataset):
                 # no matter what any other request group says, so just early-return requesting everything.
                 if not dataset_definition.get("fields", None):
                     return None
-                
+
                 requested_columns.update(dataset_definition.get("fields", []))
 
                 primary_id_field = dataset_definition.get("primary_id_field")
