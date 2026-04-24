@@ -585,3 +585,28 @@ class HSCDataset(FitsImageDataset):
         for filter, filename in self._filter_filename(object_id):
             if filter in self.filters_ref:
                 yield self._file_to_path(filename)
+
+    def display(self, index):
+        import matplotlib.figure as mpl_figure
+        from astropy.visualization import make_lupton_rgb
+
+        image = self.get_image(index)
+        # get_image returns a [C, H, W] array; index by channel, not by spatial axis
+        r_band = image[0]
+        g_band = image[1]
+        b_band = image[2]
+
+        # make_lupton_rgb applies an asinh stretch and returns values in [0, 1] range
+        # Use configurable options for make_lupton_rgb
+        arr = make_lupton_rgb(r_band, g_band, b_band, stretch=5, Q=8)
+
+        # create a scatter plot using matplotlib
+        fig = mpl_figure.Figure(figsize=(3, 3))
+        ax = fig.add_subplot(111)
+        ax.imshow(arr)
+        # turn off the x and y axis
+        ax.set_xticks([])
+        ax.set_yticks([])
+        ax.set_title(f"Index: {index}" if index is not None else "No selection")
+        fig.tight_layout()
+        return fig

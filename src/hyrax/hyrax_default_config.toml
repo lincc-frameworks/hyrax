@@ -477,6 +477,29 @@ torch_tensor_bands = [3]
 rasterize_plot = false
 
 
+[visualize_v2]
+
+# Number of hexagonal bins across the x-axis at any zoom level
+target_bins = 50
+
+# Extra padding around the viewport as a fraction of viewport width/height
+buffer_factor = 0.2
+
+# Plot dimensions in pixels
+plot_width = 1000
+plot_height = 1000
+
+# Colormap for hexbin density
+cmap = "Viridis"
+
+# Maximum rows rendered in the selection table
+max_table_rows = 1000
+
+# Number of detail plots per tab row
+num_detail_plots = 6
+
+
+
 [engine]
 
 # The directory containing the ONNX model used for inference in production
