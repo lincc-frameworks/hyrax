@@ -1,0 +1,15 @@
+"""Config migration: version 1 → version 2.
+
+Renames the legacy ``[model_inputs]`` table to ``[data_request]``.
+"""
+
+from tomlkit.toml_document import TOMLDocument
+
+from hyrax.config_migrations.migration_utils import migration_step, rename_table
+
+
+@migration_step(from_version=1, key_renames={"model_inputs": "data_request"})
+def rename_model_inputs_to_data_request(cfg: TOMLDocument) -> TOMLDocument:
+    """Rename the legacy ``[model_inputs]`` table to ``[data_request]``."""
+    rename_table(cfg, "model_inputs", "data_request")
+    return cfg
