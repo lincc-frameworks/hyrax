@@ -86,9 +86,8 @@ def test_verb_without_data_groups_skips_validation():
 def test_verb_without_data_request_config_skips_validation():
     """A verb with DATA_GROUPS but no data_request in config skips validation."""
     cm = ConfigManager()
-    # Ensure neither data_request nor model_inputs is present
+    # Ensure data_request is not present
     cm.config.pop("data_request", None)
-    cm.config.pop("model_inputs", None)
     assert "data_request" not in cm.config
     Train(cm.config)  # should not raise
 

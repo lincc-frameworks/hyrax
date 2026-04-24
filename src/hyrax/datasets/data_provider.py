@@ -5,7 +5,6 @@ import logging
 import os
 import pickle
 import time
-import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -204,13 +203,9 @@ def _save_join_cache(
 
 
 def generate_data_request_from_config(config):
-    """This function handles the backward compatibility issue of defining the requested
-    dataset using the deprecated `[model_inputs]` configuration key.
+    """This function extracts the data request from the configuration.
 
-    If neither `[data_request]` nor `[model_inputs]` is defined, an error will be raised.
-
-    NOTE: The `[model_inputs]` key is deprecated and will be removed in a future version.
-    Users should migrate to using `[data_request]` instead.
+    If `[data_request]` is not defined, an error will be raised.
 
     Parameters
     ----------
@@ -225,30 +220,12 @@ def generate_data_request_from_config(config):
     Raises
     ------
     RuntimeError
-        If neither `data_request` nor `model_inputs` is provided in the configuration.
+        If `data_request` is not provided in the configuration.
     """
 
-    # Support both 'data_request' (new) and 'model_inputs' (deprecated)
-    # Priority: use data_request if it has content, otherwise check model_inputs
-    has_data_request = "data_request" in config and config["data_request"]
-    has_model_inputs = "model_inputs" in config and config["model_inputs"]
-
-    if has_data_request:
+    data_request = {}
+    if "data_request" in config and config["data_request"]:
         data_request = copy.deepcopy(config["data_request"])
-    elif has_model_inputs:
-        warnings.warn(
-            "The [model_inputs] configuration key is deprecated and will be removed in a future version. "
-            "Please use [data_request] instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        data_request = copy.deepcopy(config["model_inputs"])
-    elif "data_request" in config or "model_inputs" in config:
-        # One of the keys exists but is empty - use the empty dict to trigger error below
-        data_request = config.get("data_request") or config.get("model_inputs")
-    else:
-        # Neither key exists, set empty to trigger error message
-        data_request = {}
 
     # Check if data_request is empty and provide helpful error message
     if not data_request:
