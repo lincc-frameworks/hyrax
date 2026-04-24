@@ -19,21 +19,29 @@ if [ ! -d "$VENV_PATH" ]; then
   exit 0
 fi
 
-# Complete setup if the init script was interrupted before finishing.
-# conda-unpack fixes hardcoded paths baked in at CI build time, and
-# pip install -e . ensures hyrax resolves to the local working tree.
+# Run conda-unpack if the container setup script was interrupted before it could.
+# On a normal cache hit this sentinel is already present and this block is skipped.
 if [ ! -f "$SENTINEL" ]; then
-  echo "Completing venv setup (this runs once)..."
+  echo "Running conda-unpack (container setup was interrupted)..."
   export PATH="$VENV_PATH/bin:$PATH"
   conda-unpack
-  python -m pip install -e "$REPO_ROOT[dev]"
   touch "$SENTINEL"
-  echo "Venv setup complete."
 fi
 
 # Activate the venv. CONDA_PREFIX may be unset; guard against set -u.
 export CONDA_PREFIX="${CONDA_PREFIX:-}"
 source "$VENV_PATH/bin/activate"
+
+# Ensure hyrax is editable-installed from the current checkout. Editable installs
+# are path-specific and must not be cached in the container image, so this runs
+# every fresh container start. The path check makes it a no-op on resumed
+# containers where the install is already correct (~0.5s vs ~15s).
+EXPECTED_INIT="$REPO_ROOT/src/hyrax/__init__.py"
+INSTALLED_INIT="$(python -c "import hyrax; print(hyrax.__file__)" 2>/dev/null || true)"
+if [ "$INSTALLED_INIT" != "$EXPECTED_INIT" ]; then
+  echo "Installing hyrax in editable mode from $REPO_ROOT..."
+  python -m pip install -e "$REPO_ROOT[dev]" --quiet
+fi
 
 # Persist environment variables to the Claude Code session so they are
 # visible in every subsequent Bash tool call this session.
