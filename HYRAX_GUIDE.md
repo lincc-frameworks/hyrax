@@ -217,22 +217,22 @@ current version into `hyrax_default_config.toml` and uses
 load, before the merge step. Legacy configs without a `config_version` field
 are assumed to be version 1.
 
-Each migration step lives in its own versioned module (e.g. `v1_to_v2.py`)
-and self-registers via the `@migration_step` decorator. `CURRENT_CONFIG_VERSION`
-is auto-derived from the highest registered migration — do not bump it manually.
+Each migration step lives in its own descriptively-named module (e.g.
+`v1_rename_model_inputs.py`) and self-registers via the `@migration_step`
+decorator. `CURRENT_CONFIG_VERSION` is auto-derived from the highest registered
+migration — do not bump it manually.
 
 **When you rename or restructure a config key, you must:**
 
-1. Create `src/hyrax/config_migrations/vN_to_vN_plus_1.py`. Decorate the
-   migration function with `@migration_step(from_version=N, key_renames={...})`.
-   Import the decorator and helpers (`rename_table`, `move_key`) from
-   `hyrax.config_migrations._machinery`.
-2. Add `from hyrax.config_migrations import vN_to_vN_plus_1  # noqa: F401` to
-   `src/hyrax/config_migrations/__init__.py`, in version order after existing
-   migration imports. `CURRENT_CONFIG_VERSION` auto-derives — do **not** bump
-   it manually.
-3. Update `config_version = N+1` in `src/hyrax/hyrax_default_config.toml`.
-4. Add a unit test to `tests/hyrax/test_config_migrations.py` covering both
+1. Create `src/hyrax/config_migrations/migrations/vN_description.py` (e.g.
+   `v3_move_learning_rate.py`). Decorate the migration function with
+   `@migration_step(from_version=N, key_renames={...})`. Import the decorator
+   and helpers (`rename_table`, `move_key`) from
+   `hyrax.config_migrations.migration_utils`. The module is auto-discovered
+   via `pkgutil` — no import line needed elsewhere. `CURRENT_CONFIG_VERSION`
+   auto-derives — do **not** bump it manually.
+2. Update `config_version = N+1` in `src/hyrax/hyrax_default_config.toml`.
+3. Add a unit test to `tests/hyrax/test_config_migrations.py` covering both
    the "legacy config triggers migration" and "clean current-version config
    is a no-op" cases.
 
