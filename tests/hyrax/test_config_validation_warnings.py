@@ -224,6 +224,7 @@ def test_init_migrates_legacy_model_inputs_to_data_request(caplog, tmp_path):
     config_file = tmp_path / "test_config.toml"
     config_file.write_text(
         """
+config_version = 1
 [general]
 dev_mode = true
 
@@ -238,8 +239,6 @@ data_location = "/dev/null"
     default_config_file = tmp_path / "default_config.toml"
     default_config_file.write_text(
         """
-config_version = 2
-
 [general]
 dev_mode = false
 """

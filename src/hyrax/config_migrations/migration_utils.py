@@ -210,7 +210,9 @@ def migrate_config(
     if not user_config:
         return user_config
 
-    user_version = user_config.pop("config_version", 1)
+    # If user_config doesn't have config_version, assume it's the latest version
+    user_version = user_config.pop("config_version", current_config_version)
+
     # Reject booleans (int subclass in Python — True/False would otherwise
     # sneak through as 1/0) and any non-int type (floats, strings, ...).
     # tomlkit parses TOML integers into a subclass of int, so tomlkit-parsed

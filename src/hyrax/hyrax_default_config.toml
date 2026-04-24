@@ -1,7 +1,3 @@
-# DO NOT MODIFY config_version MANUALLY!!!
-# Hyrax will migrate older configs forward on load — do not edit this by hand.
-config_version = 2
-
 [general]
 # Set to `true` during development to skip checking for default config values
 # in external libraries. Use `false` otherwise.

@@ -80,7 +80,7 @@ def test_move_key_missing_source_is_noop():
 
 def test_migrate_config_legacy_model_inputs_warns_and_renames(caplog):
     """A v1-era config (no config_version, uses [model_inputs]) is upgraded."""
-    cfg = tomlkit.parse("[model_inputs]\ntrain = 1\n")
+    cfg = tomlkit.parse("config_version = 1\n[model_inputs]\ntrain = 1\n")
 
     with warnings.catch_warnings(record=True) as caught, caplog.at_level(logging.WARNING):
         warnings.simplefilter("always")
@@ -159,7 +159,7 @@ def test_migrate_config_empty_document_is_passthrough():
 
 def test_migrate_config_is_idempotent():
     """Running migrate_config twice is safe and does not re-warn."""
-    cfg = tomlkit.parse("[model_inputs]\ntrain = 1\n")
+    cfg = tomlkit.parse("config_version=1\n[model_inputs]\ntrain = 1\n")
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
         first = migrate_config(cfg)
@@ -194,6 +194,7 @@ def test_config_manager_runs_migration_on_load(tmp_path):
     user_config = tmp_path / "legacy.toml"
     user_config.write_text(
         """
+config_version = 1
 [general]
 dev_mode = true
 
@@ -205,8 +206,6 @@ data = {dataset_class = "HyraxRandomDataset", data_location = "/tmp/data", prima
     default_config = tmp_path / "default.toml"
     default_config.write_text(
         """
-config_version = 2
-
 [general]
 dev_mode = false
 """
