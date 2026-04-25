@@ -27,7 +27,9 @@ jobs:
         shell: bash -l {0}
         run: |
           conda install -y conda-pack pip "setuptools<82"
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install '.[dev]'
+          pip uninstall -y hyrax
           conda list
           conda list setuptools
           pip check
