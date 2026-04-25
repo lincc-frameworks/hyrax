@@ -84,11 +84,3 @@ class HyraxHATSDataset(HyraxDataset):
 
     def __len__(self) -> int:
         return len(self.dataframe)
-
-    def __getitem__(self, idx):
-        """Currently required by Hyrax machinery, but likely to be phased out."""
-        return {"data": {col: self.dataframe.iloc[idx][col] for col in self.column_names}}
-
-    def sample_data(self):
-        """Return the first record in dictionary form as a sample."""
-        return {"data": {col: self.dataframe.iloc[0][col] for col in self.column_names}}

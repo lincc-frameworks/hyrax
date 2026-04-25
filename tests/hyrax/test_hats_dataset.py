@@ -71,8 +71,7 @@ def test_hats_dataset_dynamic_getters(test_hyrax_hats_dataset):
 def test_hats_dataset_sample_data(test_hyrax_hats_dataset):
     """Check that sample_data returns the first catalog row wrapped in a 'data' dict."""
     dataset = test_hyrax_hats_dataset.prepare()
-    hats_dataset = dataset["train"]._primary_or_first_dataset()
-    sample = hats_dataset.sample_data()
+    sample = dataset["train"][0]
 
     assert "data" in sample
     assert sample["data"]["object_id"] == 1001

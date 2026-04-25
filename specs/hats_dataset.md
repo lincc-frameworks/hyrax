@@ -67,7 +67,7 @@ Responsibilities:
 1. Read HATS catalog via LSDB (`lsdb.read_hats`).
 2. Materialize a pandas DataFrame (MVP implementation).
 3. Dynamically add `get_<column>(idx)` methods for each column, preserving raw column names.
-4. Expose `__len__`, `__getitem__`, and `sample_data` helpers consistent with existing built-in datasets.
+4. Expose `__len__` helper consistent with hyrax requirements for dataset.
 
 ### Column naming
 
@@ -125,8 +125,7 @@ Tests:
 
 1. Initialization and length with synthetic HATS catalog.
 2. Dynamic getter generation and retrieval correctness.
-3. `sample_data` shape and values.
-4. Behavior when `fields` is set in data_request (dataset still exposes all column getters; DataProvider requests selected fields).
+3. Behavior when `fields` is set in data_request (dataset still exposes all column getters; DataProvider requests selected fields).
 
 Use `lsdb.from_dataframe(...).write_catalog(tmp_path)` to create fixture data.
 
