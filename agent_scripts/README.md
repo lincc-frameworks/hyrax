@@ -51,7 +51,12 @@ In your Codex Cloud web [environment](https://chatgpt.com/codex/cloud/settings/e
 ```bash
 /workspace/hyrax/agent_scripts/codex_setup_container.sh
 ```
-5. Turn on agent internet access, with the "All (unrestricted)" allowlist and all HTTP methods
+5. Set maintenance script to:
+
+```bash
+/workspace/hyrax/agent_scripts/codex_maintain_container.sh
+```
+6. Turn on agent internet access, with the "All (unrestricted)" allowlist and all HTTP methods
 
 What happens:
 - Installs `pandoc`
