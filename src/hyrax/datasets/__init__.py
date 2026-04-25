@@ -73,6 +73,7 @@ from .hyrax_csv_dataset import HyraxCSVDataset
 from .hats_dataset import HyraxHATSDataset
 from .mmu_dataset import MultimodalUniverseDataset
 from .nested_pandas_dataset import NestedPandasDataset
+from .lancedb_dataset import LanceDBDataset
 from .data_cache import DataCache
 
 __all__ = [
@@ -93,5 +94,6 @@ __all__ = [
     "HyraxHATSDataset",
     "MultimodalUniverseDataset",
     "NestedPandasDataset",
+    "LanceDBDataset",
     "DataCache",
 ]
