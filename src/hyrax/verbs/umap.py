@@ -121,29 +121,27 @@ class Umap(Verb):
                 raise FileNotFoundError(f"UMAP model file not found: {model_path}")
 
             logger.info(f"Loading pre-existing UMAP model from {model_path}")
-            # Load the pre-fitted reducer from the provided path.
-            with open(model_path, "rb") as f:
-                reducer = pickle.load(f)
+            reducer = self._load_pickle(model_path)
 
-                # UMAP type check
-                if not isinstance(reducer, umap.UMAP):
-                    raise ValueError(f"The loaded model is not a UMAP instance: {type(reducer)}")
+            # UMAP type check
+            if not isinstance(reducer, self.reducer.__class__):
+                raise ValueError(f"The loaded model is not a UMAP instance: {type(reducer)}")
 
-                # input feature dim check
-                if reducer._raw_data.shape[1] != data_sample.shape[1]:
-                    raise ValueError(
-                        f"The input dimension of the loaded UMAP model ({reducer._raw_data.shape[1]})"
-                        f" does not match the dimension of the inference data ({data_sample.shape[1]})."
-                    )
+            # input feature dim check
+            if reducer._raw_data.shape[1] != data_sample.shape[1]:
+                raise ValueError(
+                    f"The input dimension of the loaded UMAP model ({reducer._raw_data.shape[1]})"
+                    f" does not match the dimension of the inference data ({data_sample.shape[1]})."
+                )
 
-                # output dim check
-                if reducer.n_components != self.reducer.n_components:
-                    raise ValueError(
-                        f"The output dimension of the loaded UMAP model ({reducer.n_components})"
-                        f" does not match the dimension of the inference data ({self.reducer.n_components})."
-                    )
+            # output dim check
+            if reducer.n_components != self.reducer.n_components:
+                raise ValueError(
+                    f"The output dimension of the loaded UMAP model ({reducer.n_components})"
+                    f" does not match the dimension of the inference data ({self.reducer.n_components})."
+                )
 
-                self.reducer = reducer
+            self.reducer = reducer
 
         else:
             self._log_memory_usage("Before fitting umap")
@@ -214,6 +212,27 @@ class Umap(Verb):
         logger.info("Finished transforming all data through UMAP")
 
         return load_results_dataset(self.config, results_dir)
+
+    def _load_pickle(self, model_path: Union[Path, str]):
+        """
+        Helper function to wrap loading a pickle file from a given path for easier testing.
+
+        Parameters
+        ----------
+        model_path : str or Path
+            The file path to the pickle file.
+
+        Returns
+        -------
+        object
+            The object loaded from the pickle file.
+        """
+        model_path = Path(model_path)
+
+        with open(model_path, "rb") as f:
+            object = pickle.load(f)
+
+            return object
 
     def _transform_batch(self, batch_tuple: tuple):
         """Private helper to transform a single batch
