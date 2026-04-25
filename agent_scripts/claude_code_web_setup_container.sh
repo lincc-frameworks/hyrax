@@ -11,7 +11,7 @@ set -euo pipefail
 # This works together with a session start hook to place
 # claude code in the created conda env
 
-apt -y -v install pandoc
+apt -y install pandoc
 
 echo "INSTALLED PANDOC"
 
