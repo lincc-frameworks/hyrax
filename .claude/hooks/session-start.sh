@@ -28,6 +28,12 @@ if [ ! -f "$SENTINEL" ]; then
   touch "$SENTINEL"
 fi
 
+# Install pandoc if not present — the conda environment does not include it.
+if ! command -v pandoc &>/dev/null; then
+  echo "Installing pandoc..."
+  apt -y -q install pandoc
+fi
+
 # Activate the venv. PS1 and CONDA_PREFIX may be unset in non-interactive shells;
 # temporarily disable -u so the conda activate script doesn't abort on them.
 export CONDA_PREFIX="${CONDA_PREFIX:-}"
