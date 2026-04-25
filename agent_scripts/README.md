@@ -51,7 +51,7 @@ In your Codex Cloud web [environment](https://chatgpt.com/codex/cloud/settings/e
 ```bash
 /workspace/hyrax/agent_scripts/codex_setup_container.sh
 ```
-5. Turn on agent internet access, with the "All (unrestrected)" allowlist and all HTTP methods
+5. Turn on agent internet access, with the "All (unrestricted)" allowlist and all HTTP methods
 
 What happens:
 - Installs `pandoc`
@@ -75,13 +75,15 @@ export GITHUB_TOKEN=<your token>
 ./hyrax/agent_scripts/claude_code_web_setup_container.sh
 ```
 
-This script performs the same environment restoration and editable install as Codex Cloud.
+This setup script restores the prebuilt environment artifact in the container, similar to Codex Cloud.
+The editable install is not performed during container setup; it runs later from
+`.claude/hooks/session-start.sh` when the Claude Code Web session starts.
 Claude code has no cache switch, so changing the cache buster comment line can force re-runs of the setup 
 script if your claude code environment shows signs of being stale.
 
 ## Custom allow-lists
 
-The list outlined below is known to be insufficent; however, it is provided in the hope that 
+The list outlined below is known to be insufficient; however, it is provided in the hope that 
 this can be made to work in the future.
 
 Use the provider defaults for package managers to allow package installs:
