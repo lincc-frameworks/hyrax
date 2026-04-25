@@ -9,19 +9,9 @@ The artifact is built by `.github/workflows/build-agent-env-artifact.yml` on pus
 
 ## Network access requirements
 
-These setup scripts require outbound internet access. They will not work in a fully offline or no-egress container.
-
-### If you use restricted egress / custom allow-lists
-
-Use the provider defaults for package managers, then add only the GitHub artifact domains.
-
-- **Codex Cloud**: enable **Common Dependencies** domain allow-list.
-- **Claude Code Web**: choose **Custom** domains and check **also include default list of package managers**.
-
-Then add these custom domains:
-
-- `api.github.com`
-- `*.blob.core.windows.net`
+These setup scripts require outbound internet access. They will not work in a fully offline or no-egress 
+container. Right now you need to set full internet access to use this. See the end of the file for known
+information about custom allow-lists.
 
 ## 1) Create a GitHub token for artifact download
 
@@ -50,15 +40,18 @@ Before provisioning a web environment, make sure the artifact has been built at 
 
 ## 3) Provision on Codex Cloud
 
-In your Codex Cloud web environment configuration:
+In your Codex Cloud web [environment](https://chatgpt.com/codex/cloud/settings/environments) configuration:
 
-1. Add environment variable:
+1. Set Python version to 3.11-3.13 in preinstalled packages.
+2. Add environment variable:
    - `GITHUB_TOKEN=<your token>`
-2. Set setup script to:
+3. Enable container caching
+4. Set setup script to:
 
 ```bash
-./agent_scripts/codex_setup_container.sh
+/workspace/hyrax/agent_scripts/codex_setup_container.sh
 ```
+5. Turn on agent internet access, with the "All (unrestrected)" allowlist and all HTTP methods
 
 What happens:
 - Installs `pandoc`
@@ -69,21 +62,40 @@ What happens:
 
 ## 4) Provision on Claude Code Web
 
-In your Claude Code Web environment:
+From the new session start page in claude code on the web, click the environment name and then the
+gear icon next to the environment you would like to enable.
 
-1. Add environment variable:
-   - `GITHUB_TOKEN=<your token>`
+1. Enable Full internet access
 2. Use this setup script:
 
 ```bash
 #!/bin/bash
+# Cache bust v1
+export GITHUB_TOKEN=<your token>
 ./hyrax/agent_scripts/claude_code_web_setup_container.sh
 ```
 
 This script performs the same environment restoration and editable install as Codex Cloud.
+Claude code has no cache switch, so changing the cache buster comment line can force re-runs of the setup 
+script if your claude code environment shows signs of being stale.
+
+## Custom allow-lists
+
+The list outlined below is known to be insufficent; however, it is provided in the hope that 
+this can be made to work in the future.
+
+Use the provider defaults for package managers to allow package installs:
+
+- **Codex Cloud**: enable **Common Dependencies** domain allow-list.
+- **Claude Code Web**: choose **Custom** domains and check **also include default list of package managers**.
+
+Then add these custom domains (incomplete list):
+
+- `api.github.com`
+- `*.blob.core.windows.net`
 
 ## Troubleshooting
 
-- **401/403 from GitHub API**: token is missing/invalid, expired, or lacks `Actions: Read`.
+- **401/403 from GitHub API**: token is missing/invalid, expired, or lacks `Actions: Read`, or you forgot to enable internet access.
 - **No artifact found**: workflow has not run successfully on `main` yet.
 - **`conda-unpack` not found**: artifact may be stale/corrupt; re-run workflow on `main`.
