@@ -362,12 +362,6 @@ invalid_value_type = "nan"
 # Extra keyword arguments passed directly to lsdb.open_catalog
 [data_set.HyraxHATSDataset.open_catalog_kwargs]
 
-[data_set.NestedPandasDataset]
-# Extra keyword arguments passed directly to the selected nested_pandas reader.
-[data_set.NestedPandasDataset.read_kwargs]
-# engine = "auto" # pandas default, but can be "pyarrow", "fastparquet"
-# See pandas.read_parquet API reference for all possible arguments.
-
 [data_set.LanceDBDataset]
 # Table name to open inside the LanceDB database.
 table_name = false
