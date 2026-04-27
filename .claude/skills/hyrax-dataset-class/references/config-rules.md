@@ -28,3 +28,24 @@ resource = library.open(data_location, **open_kwargs)
 Avoid defensive branches around config keys that Hyrax owns. Use clear branches only for meaningful user choices, such as a `false` default meaning "disabled" or "infer automatically."
 
 Do not redefine optional keyword argument keys owned by an underlying library in Hyrax config. Keep those inside the pass-through dictionary unless Hyrax itself needs to interpret the option.
+
+## Complete TOML Example
+
+This is a real example from `hyrax_default_config.toml`. Use this as a template for new dataset defaults:
+
+```toml
+[data_set.LanceDBDataset]
+# Table name to open inside the LanceDB database.
+table_name = false
+
+# Extra keyword arguments passed directly to lancedb.connect.
+[data_set.LanceDBDataset.connect_kwargs]
+
+# Extra keyword arguments passed directly to db.open_table.
+[data_set.LanceDBDataset.open_table_kwargs]
+```
+
+Key formatting rules:
+- `false` is used as a sentinel meaning "not set" (TOML has no null).
+- Empty sub-tables (like `connect_kwargs` above) define pass-through dictionaries that start as `{}`.
+- Comments above keys explain the option. Commented-out key examples show valid values.
