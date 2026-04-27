@@ -59,3 +59,8 @@ See `HYRAX_GUIDE.md` for the full list. Key points:
 - **Verbs are internal only** — external plugins register models and datasets, not verbs.
 - **Manifest files** — ask the user before extending this pattern.
 - **Pydantic validation** — do not add to new config sections.
+- **Renaming config keys** — create `src/hyrax/config_migrations/migrations/00N_description.py`
+  (e.g. `003_move_learning_rate.py`) using `@migration_step(from_version=N, key_renames={...})`.
+  The migration is auto-discovered and `CURRENT_CONFIG_VERSION` auto-derives — the
+  developer only creates the file and adds a test. See "Schema versioning" in
+  `HYRAX_GUIDE.md`.

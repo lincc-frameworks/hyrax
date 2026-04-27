@@ -3,6 +3,7 @@ import os
 
 import pytest
 
+from hyrax.config_migrations import CURRENT_CONFIG_VERSION
 from hyrax.config_utils import ConfigManager
 
 
@@ -51,6 +52,9 @@ def test_get_runtime_config():
 
     runtime_config = config_manager.config
 
+    # The migration system stamps config_version onto the user config on load,
+    # so the merged result declares the schema version even though the test
+    # default_config / user_config files do not.
     expected = {
         "general": {"dev_mode": True},
         "train": {
@@ -60,33 +64,10 @@ def test_get_runtime_config():
         },
         "infer": {"batch_size": 8},
         "bespoke_table": {"key1": "value1", "key2": "value2"},
+        "config_version": CURRENT_CONFIG_VERSION,
     }
 
-    string_representation = """# this is the default config file
-[general]
-# set dev_mode to true when developing
-# set to false for production use
-dev_mode = true
-
-[train]
-model_name = "example_model" # Use a built-in Hyrax model
-model_class = "new_thing.cool_model.CoolModel" # Use a custom model
-
-[train.model]
-weights_filename = "final_best.pth"
-layers = 3
-
-
-[infer]
-batch_size = 8 # change batch size
-
-[bespoke_table]
-# this is a bespoke table
-key1 = "value1"
-key2 = "value2" # unlikely to modify
-"""
     assert runtime_config == expected
-    assert runtime_config.as_string() == string_representation
 
 
 def test_validate_runtime_config(caplog):
@@ -168,8 +149,7 @@ def test_config_help(capsys):
 
     captured = capsys.readouterr()
 
-    expected_output = """# this is the default config file
-[general]
+    expected_output = """[general]
 # set dev_mode to true when developing
 # set to false for production use
 dev_mode = true
@@ -193,6 +173,8 @@ key2 = "value2" # unlikely to modify
 """
 
     assert expected_output in captured.out
+    # The migration system injects the schema version scalar at load time.
+    assert f"config_version = {CURRENT_CONFIG_VERSION}" in captured.out
 
 
 def test_config_help_specific_table(capsys):

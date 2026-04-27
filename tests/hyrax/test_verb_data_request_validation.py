@@ -86,9 +86,8 @@ def test_verb_without_data_groups_skips_validation():
 def test_verb_without_data_request_config_skips_validation():
     """A verb with DATA_GROUPS but no data_request in config skips validation."""
     cm = ConfigManager()
-    # Ensure neither data_request nor model_inputs is present
+    # Ensure data_request is not present
     cm.config.pop("data_request", None)
-    cm.config.pop("model_inputs", None)
     assert "data_request" not in cm.config
     Train(cm.config)  # should not raise
 
@@ -236,27 +235,8 @@ def test_structurally_invalid_data_request_raises():
 
 
 # ---------------------------------------------------------------------------
-# model_inputs backward compat
+# data_request required-group enforcement
 # ---------------------------------------------------------------------------
-
-
-def test_model_inputs_fallback_validated():
-    """validate_data_request falls back to 'model_inputs' when 'data_request' absent."""
-    cm = ConfigManager()
-    cm.config.pop("data_request", None)
-    cm.set_config(
-        "model_inputs",
-        {
-            "train": {
-                "data": {
-                    "dataset_class": "HyraxRandomDataset",
-                    "data_location": "/tmp/data",
-                    "primary_id_field": "id",
-                }
-            }
-        },
-    )
-    Train(cm.config)  # should not raise — 'train' group is present
 
 
 def test_data_request_missing_required_group_raises():

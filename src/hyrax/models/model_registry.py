@@ -62,7 +62,7 @@ def _torch_load(self: nn.Module, load_path: Path):
     device = idist.device()
     state = torch.load(load_path, weights_only=True, map_location=device)
 
-    self.load_state_dict(state)
+    self.load_state_dict(state, assign=True)
 
     # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
     prepare_inputs_fn = load_prepare_inputs(load_path.parent)

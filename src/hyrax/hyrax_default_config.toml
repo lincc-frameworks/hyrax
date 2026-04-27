@@ -242,9 +242,6 @@ input_model_directory = false
 # Top-level table that defines the dataset(s) used for training, validation, and inference.
 # Configure with [data_request.train], [data_request.validate], or [data_request.infer] sections.
 
-# [model_inputs]
-# DEPRECATED: Use [data_request] instead. This will be removed in the next major release.
-
 
 [data_set]
 # Crop pixel dimensions for images, e.g., [100, 100]. If false, scans for the
@@ -360,6 +357,26 @@ number_invalid_values = 0
 # The value to use for invalid values in the data. Must be one of the following:
 # "nan", "inf", "-inf", "none" or a float value.
 invalid_value_type = "nan"
+
+[data_set.HyraxHATSDataset]
+# Extra keyword arguments passed directly to lsdb.open_catalog
+[data_set.HyraxHATSDataset.open_catalog_kwargs]
+
+[data_set.NestedPandasDataset]
+# Extra keyword arguments passed directly to the selected nested_pandas reader.
+[data_set.NestedPandasDataset.read_kwargs]
+# engine = "auto" # pandas default, but can be "pyarrow", "fastparquet"
+# See pandas.read_parquet API reference for all possible arguments.
+
+[data_set.LanceDBDataset]
+# Table name to open inside the LanceDB database.
+table_name = false
+
+# Extra keyword arguments passed directly to lancedb.connect.
+[data_set.LanceDBDataset.connect_kwargs]
+
+# Extra keyword arguments passed directly to db.open_table.
+[data_set.LanceDBDataset.open_table_kwargs]
 
 [data_set.MultimodalUniverseDataset]
 # Hugging Face split name to load (for example: "train", "validation", or "test").
