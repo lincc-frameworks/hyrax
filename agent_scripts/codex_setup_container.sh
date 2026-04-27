@@ -34,4 +34,6 @@ conda-unpack
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO_ROOT"
-python -m pip install -e '.[dev]'
+
+# Reuse maintenance script for editable install + profile activation plumbing.
+"$REPO_ROOT/agent_scripts/codex_maintain_container.sh"
