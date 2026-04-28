@@ -90,7 +90,7 @@ If the user is still exploring, stay at their level of generality: sketch the cl
 8. Return stable, unique IDs from the primary ID getter. Prefer an existing unique object ID; otherwise use a stable index or deterministic hash from identifying values.
 9. Add a one-line class docstring describing what the dataset wraps.
 10. Add focused tests under `tests/hyrax/` that create minimal sample data and assert length, primary IDs, requested fields, and config/pass-through behavior.
-11. Add a notebook or docs example when the request asks for a user-facing workflow or the dataset format needs demonstration.
+11. Always add a runnable notebook example except if directed otherwise specifically.
 
 Keep heavy per-object work inside getters. Keep constructor work limited to setup that should happen once.
 
