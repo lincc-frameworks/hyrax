@@ -190,6 +190,13 @@ class VisualizeV2(Verb):
 
     def _build_ui(self, **kwargs):
         """Build and display the Panel UI using data already loaded by ``_load_data()``."""
+        if getattr(self, "_keep_alive_cb", None) is not None:
+            import contextlib
+
+            with contextlib.suppress(Exception):
+                self._keep_alive_cb.stop()
+            self._keep_alive_cb = None
+
         import math
         import os
         import threading
@@ -233,6 +240,9 @@ class VisualizeV2(Verb):
         # comm machinery before the Bokeh backend registers its own callbacks.
         pn.extension("tabulator")
         extension("bokeh")
+
+        # Hidden widget used solely for server-side keep-alive pings (see below).
+        _heartbeat = pn.widgets.IntInput(value=0, width=0, height=0, visible=False)
 
         # ── Colormap selector ─────────────────────────────────────────────────
         # Keys are display names, values are matplotlib colormap identifiers.
@@ -391,6 +401,18 @@ class VisualizeV2(Verb):
         _table_df: list[pd.DataFrame] = [pd.DataFrame()]  # authoritative copy unaffected by user edits
         _pool = ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
 
+        def _safe_execute(fn):
+            """Schedule a UI-mutating callable on the Panel IOLoop (thread-safe).
+
+            Mirrors the pattern used in ``_update_detail_panes``. Call this whenever
+            a widget attribute is set from a background thread so the mutation goes
+            through Bokeh's document lock instead of racing against it.
+            """
+            if pn.state.curdoc is not None:
+                pn.state.execute(fn)
+            else:
+                fn()
+
         def _make_fetcher(active_cols: list[str]):
             """Return a row-fetching callable for the given active columns."""
             top_level = [c for c in active_cols if c == "object_id"]
@@ -415,8 +437,12 @@ class VisualizeV2(Verb):
             if sel.empty:
                 computed = pd.DataFrame(columns=["row_index"] + [c for c in active_cols])
                 _table_df[0] = computed.copy()
-                selection_table.value = computed
-                table_title.object = "### Selected Points"
+
+                def _apply_empty(df=computed):
+                    selection_table.value = df
+                    table_title.object = "### Selected Points"
+
+                _safe_execute(_apply_empty)
                 return
 
             capped_indices = list(sel.index[:max_table_rows])
@@ -424,13 +450,18 @@ class VisualizeV2(Verb):
             if not active_cols:
                 computed = pd.DataFrame({"row_index": capped_indices})
                 _table_df[0] = computed.copy()
-                selection_table.value = computed
                 _truncated = len(sel) > max_table_rows
-                table_title.object = (
+                _title = (
                     f"### Selected Points — {len(sel):,} (showing first {max_table_rows:,} — export to see all)"  # noqa: E501
                     if _truncated
                     else f"### Selected Points — {len(sel):,}"
                 )
+
+                def _apply_no_cols(df=computed, t=_title):
+                    selection_table.value = df
+                    table_title.object = t
+
+                _safe_execute(_apply_no_cols)
                 return
 
             _fetch_row = _make_fetcher(active_cols)
@@ -456,13 +487,18 @@ class VisualizeV2(Verb):
 
             display_df = pd.DataFrame(rows).reset_index(drop=True)
             _table_df[0] = display_df.copy()
-            selection_table.value = display_df
             _truncated = len(sel) > max_table_rows
-            table_title.object = (
+            _title = (
                 f"### Selected Points — {len(sel):,} (showing first {max_table_rows:,} — export to see all)"  # noqa: E501
                 if _truncated
                 else f"### Selected Points — {len(sel):,}"
             )
+
+            def _apply_table(df=display_df, t=_title):
+                selection_table.value = df
+                table_title.object = t
+
+            _safe_execute(_apply_table)
 
         # Re-fetch columns whenever the selector changes
         def _on_col_selector_change(_e):
@@ -474,13 +510,15 @@ class VisualizeV2(Verb):
             my_gen = _gen[0]
 
             def _run():
-                _progress_bar.value = 0
+                _safe_execute(lambda: setattr(_progress_bar, "value", 0))
                 _update_table(
                     sel,
-                    progress_callback=lambda pct: setattr(_progress_bar, "value", pct),
+                    progress_callback=lambda pct: _safe_execute(
+                        lambda p=pct: setattr(_progress_bar, "value", p)
+                    ),
                     should_abort=lambda: _gen[0] != my_gen,
                 )
-                _progress_bar.value = 0
+                _safe_execute(lambda: setattr(_progress_bar, "value", 0))
 
             threading.Thread(target=_run, daemon=True).start()
 
@@ -789,8 +827,12 @@ class VisualizeV2(Verb):
 
         def _do_selection_work(sel: "pd.DataFrame", my_gen: int) -> None:
             try:
-                _progress_bar.value = 0
-                export_btn.name = "Loading selected data..."
+
+                def _start_loading():
+                    _progress_bar.value = 0
+                    export_btn.name = "Loading selected data..."
+
+                _safe_execute(_start_loading)
 
                 if _gen[0] != my_gen:
                     return
@@ -809,15 +851,20 @@ class VisualizeV2(Verb):
 
                 _update_table(
                     sel,
-                    progress_callback=lambda pct: setattr(_progress_bar, "value", pct),
+                    progress_callback=lambda pct: _safe_execute(
+                        lambda p=pct: setattr(_progress_bar, "value", p)
+                    ),
                     should_abort=lambda: _gen[0] != my_gen,
                 )
 
-                export_btn.name = "Export table to selected_points"
-                export_btn.disabled = False
-                export_all_btn.disabled = False
+                def _finish_loading():
+                    export_btn.name = "Export table to selected_points"
+                    export_btn.disabled = False
+                    export_all_btn.disabled = False
+
+                _safe_execute(_finish_loading)
             finally:
-                _progress_bar.value = 0
+                _safe_execute(lambda: setattr(_progress_bar, "value", 0))
 
         selection_dmap = DynamicMap(selection_overlay, streams=[bounds_stream, lasso_stream])
 
@@ -855,10 +902,15 @@ class VisualizeV2(Verb):
             if not active_cols:
                 if (_ipy := get_ipython()) is not None:
                     _ipy.user_ns["selected_points"] = pd.DataFrame({"row_index": list(sel.index)})
-                export_all_btn.icon = "check-lg"
-                export_all_btn.name = f"Exported {len(sel):,} rows to selected_points"
-                export_all_btn.disabled = False
-                _progress_bar.value = 0
+                n = len(sel)
+
+                def _done_early(count=n):
+                    export_all_btn.icon = "check-lg"
+                    export_all_btn.name = f"Exported {count:,} rows to selected_points"
+                    export_all_btn.disabled = False
+                    _progress_bar.value = 0
+
+                _safe_execute(_done_early)
                 return
 
             _fetch_row = _make_fetcher(active_cols)
@@ -871,15 +923,21 @@ class VisualizeV2(Verb):
             for done, future in enumerate(as_completed(futures)):
                 rows[futures[future]] = future.result()
                 if done % _progress_step == 0 or done == total - 1:
-                    _progress_bar.value = int((done + 1) / total * 100)
+                    pct = int((done + 1) / total * 100)
+                    _safe_execute(lambda p=pct: setattr(_progress_bar, "value", p))
 
             full_df = pd.DataFrame(rows).reset_index(drop=True)
             if (_ipy := get_ipython()) is not None:
                 _ipy.user_ns["selected_points"] = full_df
-            export_all_btn.icon = "check-lg"
-            export_all_btn.name = f"Exported {len(full_df):,} rows to selected_points"
-            export_all_btn.disabled = False
-            _progress_bar.value = 0
+            n = len(full_df)
+
+            def _done(count=n):
+                export_all_btn.icon = "check-lg"
+                export_all_btn.name = f"Exported {count:,} rows to selected_points"
+                export_all_btn.disabled = False
+                _progress_bar.value = 0
+
+            _safe_execute(_done)
 
         def _on_export_all(event):
             sel = self.selected_box if not self.selected_box.empty else self.selected_lasso
@@ -930,12 +988,26 @@ class VisualizeV2(Verb):
             pn.Spacer(height=10),
             detail_tabs,
             pagination_row,
+            _heartbeat,  # invisible; kept in document so keep-alive pings reach the client
         )
+
+        # ── Server-side keep-alive ────────────────────────────────────────────
+        # Browsers throttle JS timers in background tabs, which can suppress
+        # Bokeh's client-side heartbeat and kill the WebSocket. Driving the ping
+        # from the Tornado IOLoop (server side) is immune to that throttling:
+        # each tick mutates a Param in the served document, pushing a tiny
+        # WebSocket message and resetting the connection's idle clock.
+        def _keep_alive():
+            _heartbeat.value = (_heartbeat.value + 1) % 1_000_000
+
+        self._keep_alive_cb = pn.state.add_periodic_callback(_keep_alive, period=20_000)
 
         try:
             from IPython.display import display
 
             display(pane)
+            print("Tip: if the UI stops responding, call viz.restart_ui() in a new cell to reconnect.")
+            print("viz = h.visualize_v2()\nviz.restart_ui()")
         except ImportError:
             logger.warning("Couldn't find IPython display environment. Skipping display step.")
 
