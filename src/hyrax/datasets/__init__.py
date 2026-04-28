@@ -69,6 +69,7 @@ from .inference_dataset import InferenceDataset
 from .result_dataset import ResultDataset, ResultDatasetWriter
 from .result_factories import create_results_writer, load_results_dataset
 from .dataset_registry import HyraxDataset
+from .nested_pandas_dataset import NestedPandasDataset
 from .hyrax_csv_dataset import HyraxCSVDataset
 from .hats_dataset import HyraxHATSDataset
 from .mmu_dataset import MultimodalUniverseDataset
@@ -89,6 +90,7 @@ __all__ = [
     "DownloadedLSSTDataset",
     "HyraxRandomDataset",
     "HyraxRandomDatasetBase",
+    "NestedPandasDataset",
     "HyraxCSVDataset",
     "HyraxHATSDataset",
     "MultimodalUniverseDataset",
