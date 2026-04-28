@@ -74,6 +74,7 @@ from .hats_dataset import HyraxHATSDataset
 from .mmu_dataset import MultimodalUniverseDataset
 from .lancedb_dataset import LanceDBDataset
 from .data_cache import DataCache
+from .nested_pandas_dataset import HyraxNestedPandasDataset
 
 __all__ = [
     "HyraxCifarDataset",
@@ -93,5 +94,6 @@ __all__ = [
     "HyraxHATSDataset",
     "MultimodalUniverseDataset",
     "LanceDBDataset",
+    "HyraxNestedPandasDataset",
     "DataCache",
 ]

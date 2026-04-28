@@ -384,6 +384,11 @@ max_samples = 100
 streaming = true
 
 
+[data_set.HyraxNestedPandasDataset]
+# Extra keyword arguments passed directly to nested_pandas.read_parquet.
+[data_set.HyraxNestedPandasDataset.read_kwargs]
+
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
