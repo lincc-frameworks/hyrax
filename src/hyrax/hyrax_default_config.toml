@@ -372,6 +372,10 @@ table_name = false
 # Extra keyword arguments passed directly to db.open_table.
 [data_set.LanceDBDataset.open_table_kwargs]
 
+[data_set.NestedPandasDataset]
+# Extra keyword arguments passed directly to nested_pandas.read_parquet.
+[data_set.NestedPandasDataset.read_parquet_kwargs]
+
 [data_set.MultimodalUniverseDataset]
 # Hugging Face split name to load (for example: "train", "validation", or "test").
 split = "train"

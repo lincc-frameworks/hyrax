@@ -66,6 +66,7 @@ dependencies = [
     "lance-namespace < 0.7.0",
     "pyarrow", # Used by lancedb for data interchange
     "pylance", # Used by lancedb for Lance dataset access
+    "nested-pandas", # Used by NestedPandasDataset for nested parquet files
 ]
 
 [project.scripts]

@@ -56,6 +56,7 @@ functionality to make custom datasets easier to write. See the
 # Remove import sorting, these are imported in the order written so that
 # autoapi docs are generated with ordering controlled below.
 # ruff: noqa: I001
+from .dataset_registry import HyraxDataset
 from .fits_image_dataset import FitsImageDataset
 from .lsst_dataset import LSSTDataset
 from .downloaded_lsst_dataset import DownloadedLSSTDataset
@@ -68,11 +69,11 @@ from .random.hyrax_random_dataset import (
 from .inference_dataset import InferenceDataset
 from .result_dataset import ResultDataset, ResultDatasetWriter
 from .result_factories import create_results_writer, load_results_dataset
-from .dataset_registry import HyraxDataset
 from .hyrax_csv_dataset import HyraxCSVDataset
 from .hats_dataset import HyraxHATSDataset
 from .mmu_dataset import MultimodalUniverseDataset
 from .lancedb_dataset import LanceDBDataset
+from .nested_pandas_dataset import NestedPandasDataset
 from .data_cache import DataCache
 
 __all__ = [
@@ -93,5 +94,6 @@ __all__ = [
     "HyraxHATSDataset",
     "MultimodalUniverseDataset",
     "LanceDBDataset",
+    "NestedPandasDataset",
     "DataCache",
 ]
