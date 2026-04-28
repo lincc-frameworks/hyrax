@@ -150,17 +150,22 @@ class VisualizeV2(Verb):
                 "Set 'primary_id_field' on the dataset that contains the UMAP 2D coordinates."
             )
         reduced_dim_dataset = self.datasets["visualize"].prepped_datasets[_primary_ds_name]
-        reduced_dim_results = reduced_dim_dataset.__get_all__()
+
+        if hasattr(reduced_dim_dataset, "__get_all__"):
+            points_array = reduced_dim_dataset.__get_all__()
+        else:
+            logger.warning(
+                "Primary dataset does not implement `__get_all__`. "
+                "Falling back to sequential access, which may be slow."
+            )  # noqa: E501
+            reduced_dim_results = [reduced_dim_dataset[i] for i in range(len(reduced_dim_dataset))]
+            points_array = np.array([np.asarray(pt) for pt in reduced_dim_results])
 
         # ── Build DataFrame from UMAP 2D results ─────────────────────────────
-        points_array = np.array([np.asarray(pt) for pt in reduced_dim_results])
-        df = pd.DataFrame(
-            {"x": points_array[:, 0].astype(np.float32), "y": points_array[:, 1].astype(np.float32)}
-        )
+        df = pd.DataFrame({"x": points_array[:, 0], "y": points_array[:, 1]})
 
         # Store references on self for downstream use
         self.df = df
-        self.reduced_dim_results = reduced_dim_results
         self._n_points = len(df)
 
         # ── Probe available scalar fields ─────────────────────────────────────

@@ -600,7 +600,7 @@ class HSCDataset(FitsImageDataset):
         # Use configurable options for make_lupton_rgb
         arr = make_lupton_rgb(r_band, g_band, b_band, stretch=5, Q=8)
 
-        # create a scatter plot using matplotlib
+        # Display the image with matplotlib, removing axes and adding a title with the index
         fig = mpl_figure.Figure(figsize=(3, 3))
         ax = fig.add_subplot(111)
         ax.imshow(arr)
@@ -608,5 +608,4 @@ class HSCDataset(FitsImageDataset):
         ax.set_xticks([])
         ax.set_yticks([])
         ax.set_title(f"Index: {index}" if index is not None else "No selection")
-        fig.tight_layout()
         return fig
