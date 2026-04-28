@@ -34,7 +34,7 @@ def sample_data(tmp_path):
 def test_dataset_length_and_getters(sample_data):
     dataset = YourDataset(
         config={
-            "data_set": {
+            "dataset": {
                 "YourDataset": {
                     # Mirror the keys from hyrax_default_config.toml
                     "some_option": "value",

@@ -11,7 +11,7 @@ metadata:
 
 Read `docs/dataset_class_reference.rst` before implementing. Treat it as the interface contract.
 
-Read `src/hyrax/hyrax_default_config.toml` before adding config keys. Match the existing TOML style and put dataset-specific defaults under `[data_set.<ClassName>]`.
+Read `src/hyrax/hyrax_default_config.toml` before adding config keys. Match the existing TOML style and put dataset-specific defaults under `[dataset.<ClassName>]`.
 
 Use existing dataset modules, tests, and notebook examples only as local patterns. Do not blindly copy an implementation; adapt the shape to the user's data format and requested fields.
 
@@ -35,7 +35,7 @@ class ExampleTabularDataset(HyraxDataset):
             raise ValueError("A `data_location` must be provided.")
 
         self.data_location = str(data_location)
-        settings = config["data_set"]["ExampleTabularDataset"]
+        settings = config["dataset"]["ExampleTabularDataset"]
         self.read_kwargs = settings["read_kwargs"]
 
         self.table = self._load_table()
@@ -61,7 +61,7 @@ Key points this example demonstrates:
 - One-line class docstring.
 - Config access with `[]`, never `.get()`.
 - Pass-through kwargs via a config sub-table.
-- `super().__init__(config)` called last.
+- `super().__init__(config)` should be called.
 - Optional dependency imported inside the method that uses it.
 - Explicit getter methods for known fields.
 
