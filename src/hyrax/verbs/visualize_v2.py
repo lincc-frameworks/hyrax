@@ -271,7 +271,8 @@ class VisualizeV2(Verb):
         }
         _cmap_display_names = list(_cmap_entries.keys())
         _cmap_initial = next(
-            (k for k, v in _cmap_entries.items() if v == cmap.lower()), _cmap_display_names[0]
+            (k for k, v in _cmap_entries.items() if v.lower() == cmap.lower()),
+            _cmap_display_names[0],
         )
         _cmap_slider = pn.widgets.IntSlider(
             name=f"Colormap: {_cmap_initial}",
