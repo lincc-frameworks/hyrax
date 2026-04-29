@@ -87,7 +87,7 @@ If the user is still exploring, stay at their level of generality: sketch the cl
 5. Call `super().__init__(config)` after dataset-specific setup unless the surrounding local pattern requires otherwise.
 6. Implement `__len__(self)`.
 7. Implement `get_<field_name>(self, idx)` for every field Hyrax may request, including `get_<primary_id_field>`.
-8. Return stable, unique IDs from the primary ID getter. Prefer an existing unique object ID; otherwise use a stable index or deterministic hash from identifying values.
+8. Return stable, unique IDs from the primary ID getter. Prefer an existing unique object ID; otherwise use a stable index or deterministic hash from identifying values. Unique IDs must be strings.
 9. Add a one-line class docstring describing what the dataset wraps.
 10. Add focused tests under `tests/hyrax/` that create minimal sample data and assert length, primary IDs, requested fields, and config/pass-through behavior.
 11. Always add a runnable notebook example except if directed otherwise specifically.
@@ -104,4 +104,4 @@ Default to explicit getters. Use dynamic getter registration (the `_register_get
 
 Keep optional dependency imports close to where they are needed when the dependency is dataset-specific.
 
-Preserve underlying library return types when they are already useful to Hyrax. Convert only when Hyrax or tests need a stable representation, such as `float`, `int`, `str`, NumPy arrays, or tensors.
+Preserve underlying library return types when they are already useful to Hyrax. Ensure types passed to hyrax are `float`, `int`, `str`, or NumPy arrays.
