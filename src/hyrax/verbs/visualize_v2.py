@@ -405,7 +405,11 @@ class VisualizeV2(Verb):
         self.selected_box = pd.DataFrame()
         self.selected_lasso = pd.DataFrame()
         _table_df: list[pd.DataFrame] = [pd.DataFrame()]  # authoritative copy unaffected by user edits
-        _pool = ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
+        _existing_pool = getattr(self, "_selection_table_pool", None)
+        if _existing_pool is not None:
+            _existing_pool.shutdown(wait=False, cancel_futures=True)
+        self._selection_table_pool = ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
+        _pool = self._selection_table_pool
 
         def _safe_execute(fn):
             """Schedule a UI-mutating callable on the Panel IOLoop (thread-safe).

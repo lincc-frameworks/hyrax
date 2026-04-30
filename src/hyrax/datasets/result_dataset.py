@@ -226,8 +226,8 @@ class ResultDataset(HyraxDataset):
         if is_single:
             idx = np.array([int(idx)])
         else:
-            idx = np.asarray(idx)
-            idx = np.array([int(idx)]) if len(idx.shape) == 0 else idx  # scalar array
+            idx = np.asarray(idx, dtype=np.int64)
+            idx = np.array([idx]) if len(idx.shape) == 0 else idx  # scalar array
 
         # Validate indices
         table_len = len(self)
