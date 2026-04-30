@@ -231,6 +231,7 @@ class ConfigManager:
     def _render_config(
         user_specific_config: TOMLDocument = None,
         hyrax_default_config: TOMLDocument = None,
+        over_write: bool = False,
     ):
         user_specific_config = user_specific_config if user_specific_config is not None else TOMLDocument()
         hyrax_default_config = hyrax_default_config if hyrax_default_config is not None else TOMLDocument()
@@ -249,7 +250,9 @@ class ConfigManager:
         )
 
         # 3) merge the user config on top of the overall defaults
-        config = ConfigManager.merge_configs(overall_default_config, user_specific_config)
+        config = ConfigManager.merge_configs(
+            overall_default_config, user_specific_config, over_write=over_write
+        )
 
         ConfigManager._resolve_config_paths(config)
         if not config["general"]["dev_mode"]:
@@ -257,7 +260,7 @@ class ConfigManager:
 
         return config
 
-    def set_config(self, key: str, value: Any):
+    def set_config(self, key: str, value: Any, over_write: bool = False):
         """Set a config value at runtime. This modifies the in-memory config object.
         Once the configuration is updated, the entire config is re-rendered to
         ensure that any requested external library default configs are incorporated.
@@ -271,6 +274,12 @@ class ConfigManager:
 
         value : Any
             The value to set the key to.
+
+        over_write : bool, optional
+            Whether to allow overwriting existing keys in the config.
+            If True, this method will overwrite the highest level existing values in the config.
+            If False, this method will merge the new setting into the existing ones.
+            By default False.
         """
         keys = parse_dotted_key(key)
 
@@ -303,7 +312,7 @@ class ConfigManager:
             d = d[k]
         d[keys[-1]] = value
 
-        self.config = self._render_config(self.config, self.original_config)
+        self.config = self._render_config(self.config, self.original_config, over_write=over_write)
         self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
@@ -455,7 +464,7 @@ class ConfigManager:
         return ConfigManager.merge_configs(hyrax_defaults, external_defaults)
 
     @staticmethod
-    def merge_configs(base_config: dict, overriding_config: dict) -> dict:
+    def merge_configs(base_config: dict, overriding_config: dict, over_write: bool = False) -> dict:
         """Merge two config dictionaries with the overriding_config values overriding
         the base_config values.
 
@@ -467,6 +476,11 @@ class ConfigManager:
         overriding_config : dict
             The new configuration values that will override the values in base_config.
 
+        over_write : bool, optional
+            If True, the overriding_config values will overwrite the base_config values.
+            If False, the overriding_config values will be merged with the base_config values.
+            By default False.
+
         Returns
         -------
         dict
@@ -475,7 +489,12 @@ class ConfigManager:
 
         final_config = base_config.copy()
         for k, v in overriding_config.items():
-            if k in final_config and isinstance(final_config[k], dict) and isinstance(v, dict):
+            if (
+                not over_write
+                and k in final_config
+                and isinstance(final_config[k], dict)
+                and isinstance(v, dict)
+            ):
                 final_config[k] = ConfigManager.merge_configs(base_config[k], v)
             else:
                 final_config[k] = v

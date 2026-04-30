@@ -97,7 +97,7 @@ class Hyrax:
 
         self.logger.debug(f"Runtime Config read from: {ConfigManager.resolve_runtime_config(config_file)}")
 
-    def set_config(self, key: str, value):
+    def set_config(self, key: str, value, over_write: bool = False):
         """
         Set a config value at runtime. This modifies the in-memory config object.
         Once the configuration is updated, the entire config is re-rendered to
@@ -114,8 +114,14 @@ class Hyrax:
 
         value : Any
             The value to set the key to.
+
+        over_write : bool, optional
+            Whether to allow overwriting existing keys in the config.
+            If True, this method overwrites the entire matching top-level config section with the new value.
+            If False, this method will merge the new setting into the existing ones.
+            By default False.
         """
-        self.config_manager.set_config(key, value)  # type: ignore[arg-type]
+        self.config_manager.set_config(key, value, over_write=over_write)  # type: ignore[arg-type]
         self.config = self.config_manager.config
 
     def _initialize_log_handlers(self):
