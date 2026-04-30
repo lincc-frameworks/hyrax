@@ -454,3 +454,24 @@ def test_set_config_quoted_key():
     # Test setting a new key in a quoted table
     config_manager.set_config("'my.custom.optimizer.Adam'.beta2", 0.999)
     assert config_manager.config["my.custom.optimizer.Adam"]["beta2"] == 0.999
+
+
+def test_set_config_overwrite():
+    """Test that set_config works with the over_write parameter."""
+    this_file_dir = os.path.dirname(os.path.abspath(__file__))
+    config_manager = ConfigManager(
+        runtime_config_filepath=os.path.abspath(
+            os.path.join(this_file_dir, "./test_data/test_user_config.toml")
+        ),
+        default_config_filepath=os.path.abspath(
+            os.path.join(this_file_dir, "./test_data/test_default_config.toml")
+        ),
+    )
+
+    data_request = {"train": {"data": "some_data"}}
+    config_manager.set_config("general.data_request", data_request)
+    assert config_manager.config["general"]["data_request"] == data_request
+
+    new_data_request = {"test": {"data": "new_data"}}
+    config_manager.set_config("general.data_request", new_data_request, over_write=True)
+    assert config_manager.config["general"]["data_request"] == new_data_request
