@@ -119,6 +119,7 @@ class Hyrax:
             Whether to allow overwriting existing keys in the config.
             If True, this method overwrites the entire matching top-level config section with the new value.
             If False, this method will merge the new setting into the existing ones.
+            Cannot be used with a value of True if the key does not already exist in the config.
             By default False.
         """
         self.config_manager._set_config(key, value, over_write=over_write)  # type: ignore[arg-type]
