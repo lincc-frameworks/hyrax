@@ -48,7 +48,7 @@ jobs:
           retention-days: 90
 
       - name: Delete older artifacts with same name
-        uses: actions/github-script@v8
+        uses: actions/github-script@v9
         env:
           CURRENT_ARTIFACT_ID: ${{ steps.upload.outputs.artifact-id }}
         with:
