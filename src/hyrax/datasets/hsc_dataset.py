@@ -592,9 +592,9 @@ class HSCDataset(FitsImageDataset):
 
         image = self.get_image(index)
         # get_image returns a [C, H, W] array; index by channel, not by spatial axis
-        r_band = image[0]
-        g_band = image[1]
-        b_band = image[2]
+        r_band = image[1]
+        g_band = image[2]
+        b_band = image[0]
 
         # make_lupton_rgb applies an asinh stretch and returns values in [0, 1] range
         # Use configurable options for make_lupton_rgb
