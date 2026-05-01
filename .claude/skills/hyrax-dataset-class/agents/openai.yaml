@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hyrax Dataset Class"
+  short_description: "Create Hyrax dataset classes"
+  default_prompt: "Use $hyrax-dataset-class to create a Hyrax dataset class for my data."
