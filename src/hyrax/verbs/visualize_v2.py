@@ -927,14 +927,20 @@ class VisualizeV2(Verb):
 
             all_indices = list(sel.index)
             total = len(all_indices)
-            _progress_step = max(1, total // 100)
-            futures = {_pool.submit(_fetch_row, idx): i for i, idx in enumerate(all_indices)}
+            # Submit futures in chunks to avoid allocating millions of Future objects at once,
+            # which would exhaust RAM for large selections.
+            _chunk_size = 1000
             rows: list = [None] * total
-            for done, future in enumerate(as_completed(futures)):
-                rows[futures[future]] = future.result()
-                if done % _progress_step == 0 or done == total - 1:
-                    pct = int((done + 1) / total * 100)
-                    _safe_execute(lambda p=pct: setattr(_progress_bar, "value", p))
+            for chunk_start in range(0, total, _chunk_size):
+                chunk_end = min(chunk_start + _chunk_size, total)
+                chunk_indices = all_indices[chunk_start:chunk_end]
+                chunk_futures = {
+                    _pool.submit(_fetch_row, idx): chunk_start + i for i, idx in enumerate(chunk_indices)
+                }
+                for future in as_completed(chunk_futures):
+                    rows[chunk_futures[future]] = future.result()
+                pct = int(chunk_end / total * 100)
+                _safe_execute(lambda p=pct: setattr(_progress_bar, "value", p))
 
             full_df = pd.DataFrame(rows).reset_index(drop=True)
             if (_ipy := get_ipython()) is not None:
