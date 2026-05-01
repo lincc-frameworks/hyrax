@@ -260,7 +260,7 @@ class ConfigManager:
 
         return config
 
-    def set_config(self, key: str, value: Any, over_write: bool = False):
+    def _set_config(self, key: str, value: Any, over_write: bool = False):
         """Set a config value at runtime. This modifies the in-memory config object.
         Once the configuration is updated, the entire config is re-rendered to
         ensure that any requested external library default configs are incorporated.

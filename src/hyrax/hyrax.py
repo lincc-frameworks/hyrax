@@ -121,7 +121,7 @@ class Hyrax:
             If False, this method will merge the new setting into the existing ones.
             By default False.
         """
-        self.config_manager.set_config(key, value, over_write=over_write)  # type: ignore[arg-type]
+        self.config_manager._set_config(key, value, over_write=over_write)  # type: ignore[arg-type]
         self.config = self.config_manager.config
 
     def _initialize_log_handlers(self):
