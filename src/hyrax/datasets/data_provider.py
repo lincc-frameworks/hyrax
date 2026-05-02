@@ -1071,16 +1071,19 @@ class DataProvider:
                 # If we find that `friendly_name` is in self.custom_collate_functions
                 # we accumulate the samples from that dataset and hand off to
                 # the appropriate custom collate function after the for loop.
+                # Alternatively, if we find that `friendly_name` has a non-empty list
+                # of field-level collate functions, we accumulate the samples and
+                # construct the dataset-level custom collate function.
                 if friendly_name in self.custom_collate_functions:
                     custom_collate.setdefault(friendly_name, []).append(fields)
                     continue
                 elif self.field_collate_functions[friendly_name]:
                     custom_collate.setdefault(friendly_name, []).append(fields)
                     # construct the dataset collate function and set it in self.custom_collate_functions
-                    def make_dataset_collate(field_collate_function):
+                    def make_dataset_collate(field_collate_functions):
                         def dataset_collate(samples: list[dict]) -> dict:
                             retval = {}
-                            for field_collate_fcn in field_collate_function:
+                            for field_collate_fcn in field_collate_functions:
                                 retval.update(field_collate_fcn(samples))
                             return retval
                         return dataset_collate
