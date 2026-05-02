@@ -511,9 +511,9 @@ class DataProvider:
                             f"and field-dependent collate function"
                         )
                     self.field_collate_functions[friendly_name][field] = field_collate_fn
-                elif not self.field_collate_functions[friendly_name]:
+                elif self.field_collate_functions[friendly_name]:
                     raise RuntimeError(
-                        f"Dataset '{friendly_name}' declares field collate funcitions "
+                        f"Dataset '{friendly_name}' declares field collate functions "
                         f"for some fields but not others"
                     )
 
