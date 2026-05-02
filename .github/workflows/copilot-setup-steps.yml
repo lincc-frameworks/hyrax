@@ -1,0 +1,101 @@
+name: "Copilot Setup Steps"
+
+# Automatically run the setup steps when they are changed to allow for easy validation,
+# and allow manual testing through the repository's "Actions" tab.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+  pull_request:
+    paths:
+      - .github/workflows/copilot-setup-steps.yml
+
+jobs:
+  # The job MUST be called `copilot-setup-steps` or it will not be picked up by Copilot.
+  copilot-setup-steps:
+    runs-on: ubuntu-latest
+
+    # Minimum permissions needed for checkout and artifact download.
+    # Copilot will be given its own token for its operations.
+    permissions:
+      contents: read  # for actions/checkout
+      actions: read   # for artifact download via GitHub API
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Install system dependencies
+        run: sudo apt-get install -y pandoc
+
+      - name: Download and unpack pre-built conda environment
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ARTIFACT_REPO="lincc-frameworks/hyrax"
+          ARTIFACT_NAME="hyrax-agent-conda-env-main"
+          ENV_DIR="$HOME/hyrax-venv"
+
+          # Filter by name server-side (per_page=1 is sufficient once filtered).
+          ARTIFACT_ID=$(curl -fsSL \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${ARTIFACT_REPO}/actions/artifacts?name=${ARTIFACT_NAME}&per_page=1" \
+            | jq -r ".artifacts[0].id // empty")
+
+          if [ -z "$ARTIFACT_ID" ]; then
+            echo "ERROR: artifact '${ARTIFACT_NAME}' not found. Run the 'Build agent conda environment artifact' workflow on main first." >&2
+            exit 1
+          fi
+
+          # GitHub redirects artifact downloads to a signed Azure Blob URL.
+          # Follow the redirect manually so the Bearer token is not forwarded to
+          # Azure (Azure rejects it with HTTP 503).
+          DOWNLOAD_URL=$(curl -s -o /dev/null -w '%{redirect_url}' \
+            -H "Authorization: Bearer ${GITHUB_TOKEN}" \
+            "https://api.github.com/repos/${ARTIFACT_REPO}/actions/artifacts/${ARTIFACT_ID}/zip")
+          curl -fsSL "$DOWNLOAD_URL" -o /tmp/hyrax-agent-conda-env.zip
+
+          mkdir -p "$ENV_DIR"
+          unzip -q /tmp/hyrax-agent-conda-env.zip -d /tmp/hyrax-agent-conda-env
+          TARBALL_PATH=$(find /tmp/hyrax-agent-conda-env -name '*.tar.gz' | head -n1)
+          tar -xzf "$TARBALL_PATH" -C "$ENV_DIR"
+
+          # Fix hardcoded paths baked in at conda-pack build time.
+          export PATH="$ENV_DIR/bin:$PATH"
+          conda-unpack
+
+          # Sentinel used by session-start hooks to skip conda-unpack on cache hits.
+          touch "$ENV_DIR/.setup-complete"
+
+      - name: Install hyrax in editable mode
+        run: |
+          source "$HOME/hyrax-venv/bin/activate"
+          pip install -e '.[dev]'
+
+      - name: Persist hyrax environment activation in shell profiles
+        run: |
+          ENV_DIR="$HOME/hyrax-venv"
+          BEGIN_MARKER="# >>> hyrax copilot venv >>>"
+          END_MARKER="# <<< hyrax copilot venv <<<"
+
+          # Add activation block to both .bashrc and .profile so Copilot's bash
+          # tool calls automatically see the hyrax environment (same pattern as
+          # codex_maintain_container.sh for Codex Cloud).
+          for SHELL_RC in "$HOME/.bashrc" "$HOME/.profile"; do
+            if ! grep -Fq "$BEGIN_MARKER" "$SHELL_RC" 2>/dev/null; then
+              printf '\n%s\nif [ -f "%s/bin/activate" ]; then\n  source "%s/bin/activate"\nfi\n%s\n' \
+                "$BEGIN_MARKER" "$ENV_DIR" "$ENV_DIR" "$END_MARKER" >> "$SHELL_RC"
+            fi
+          done
+
+          # Expose the venv bin directory for the remaining steps in this job.
+          echo "$ENV_DIR/bin" >> "$GITHUB_PATH"
+
+      - name: Verify environment
+        run: |
+          python --version
+          python -c "import hyrax; print('hyrax imported from:', hyrax.__file__)"
+
+      - name: Run tests
+        run: python -m pytest -m "not slow"

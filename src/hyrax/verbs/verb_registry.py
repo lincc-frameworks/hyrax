@@ -55,8 +55,7 @@ class Verb(ABC):  # noqa: B024
     def validate_data_request(self) -> None:
         """Validate the data_request configuration for this verb's known groups.
 
-        Reads ``data_request`` (or the deprecated ``model_inputs``) from the
-        verb's config and checks:
+        Reads ``data_request`` from the verb's config and checks:
 
         1. All groups listed in ``REQUIRED_DATA_GROUPS`` are present.
         2. Cross-group split_fraction constraints (sum ≤ 1.0, consistency) hold
@@ -76,7 +75,7 @@ class Verb(ABC):  # noqa: B024
         if not self.REQUIRED_DATA_GROUPS and not self.OPTIONAL_DATA_GROUPS:
             return
 
-        data_request = self.config.get("data_request") or self.config.get("model_inputs")
+        data_request = self.config.get("data_request")
         if not data_request:
             return
 

@@ -5,6 +5,7 @@ import importlib
 import logging
 import random
 import re
+import warnings
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any, Union
@@ -178,7 +179,7 @@ class ConfigManager:
         ["general", "data_dir"],
     ]
 
-    PYDANTIC_VALIDATED_KEYS = ("data_request", "model_inputs")
+    PYDANTIC_VALIDATED_KEYS = ("data_request",)
 
     def __init__(
         self,
@@ -193,9 +194,23 @@ class ConfigManager:
         else:
             self.user_specific_config = ConfigManager.read_runtime_config(self.runtime_config_filepath)
 
+        # Local import to avoid a circular dependency with config_migrations,
+        # which imports from this module.
+        from hyrax.config_migrations import CURRENT_CONFIG_VERSION, migrate_config
+
+        # Stamp the auto-derived schema version into the default config so it
+        # propagates to runtime_config.toml on write.  This is the single source
+        # of truth.
+        self.hyrax_default_config["config_version"] = CURRENT_CONFIG_VERSION
+
+        # Upgrade older user configs forward through the registered schema
+        # migrations before merging with defaults and validating.
+        self.user_specific_config = migrate_config(self.user_specific_config)
+
+        # Fully resolve user defined, external library and hyrax default configs
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
 
-        # Validate data_request/model_inputs if present in loaded config
+        # Validate data_request if present in loaded config
         for key in ConfigManager.PYDANTIC_VALIDATED_KEYS:
             if key in self.config:
                 value = self.config[key]
@@ -258,6 +273,19 @@ class ConfigManager:
             The value to set the key to.
         """
         keys = parse_dotted_key(key)
+
+        from hyrax.config_migrations import DEPRECATED_KEY_NAMES
+
+        for old_path, new_path in DEPRECATED_KEY_NAMES.items():
+            if key == old_path or key.startswith(old_path + "."):
+                msg = (
+                    f"Config key '{old_path}' has been renamed to '{new_path}'. "
+                    f"Please update your code to use '{new_path}' instead."
+                )
+                warnings.warn(msg, DeprecationWarning, stacklevel=2)
+                logger.warning(msg)
+                break
+
         if key in ConfigManager.PYDANTIC_VALIDATED_KEYS:
             try:
                 value = self._validate_data_request(value)
