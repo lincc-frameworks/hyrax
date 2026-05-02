@@ -324,6 +324,11 @@ class DataProvider:
         # This dictionary maintains a mapping of friendly name to callable collate
         # functions defined on the requested dataset class.
         self.custom_collate_functions = {}
+        
+        # This dictionary maintains a mapping of friendly name to
+        # another mapping of fields in that dataset to
+        # callable functions on those fields.
+        self.field_collate_functions = {}
 
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
@@ -494,8 +499,12 @@ class DataProvider:
 
             # If the dataset instance has a `collate` method, store it for use in
             # the DataLoader.collate function.
+            # Note whether or not a dataset `collate` exists to detect error
+            # if field-specific `collate` functions are also defined down the line
+            dataset_collate = False
             if hasattr(dataset_instance, "collate") and callable(dataset_instance.collate):
                 self.custom_collate_functions[friendly_name] = dataset_instance.collate
+                dataset_collate = True
 
             # Store the prepared dataset instance in the `self.prepped_datasets`
             self.prepped_datasets[friendly_name] = dataset_instance
@@ -507,13 +516,31 @@ class DataProvider:
                     method[4:] for method in dir(dataset_instance) if method.startswith("get_")
                 ]
 
+            self.field_collate_functions[friendly_name] = {}
             for field in dataset_definition.get("fields", []):
                 if not hasattr(dataset_instance, f"get_{field}"):
                     logger.error(
                         f"No `get_{field}` method for requested field, '{field}' "
                         f"was found in dataset {dataset_class}."
                     )
-
+                field_collate_fn = getattr(dataset_instance, f"collate_{field}", None)
+                
+                # error if dataset collate is defined along with field dependent collate
+                # or if field dependent collate is defined for some fields and not others
+                if callable(field_collate_fn):
+                    if dataset_collate:
+                        raise RuntimeError(
+                          f"Dataset '{friendly_name}' declares both global collate function "
+                          f"and field-dependent collate function"
+                        )
+                    self.field_collate_functions[friendly_name][field] = field_collate_fn
+                elif not self.field_collate_functions[friendly_name]:
+                    raise RuntimeError(
+                        f"Dataset '{friendly_name}' declares field collate funcitions "
+                        f"for some fields but not others"
+                      )
+                        
+                        
             # Cache all of the `get_<field_name>` methods in the dataset instance
             # so that we don't have to look them up each time we call `resolve_data`.
             self.dataset_getters[friendly_name] = {}
@@ -1069,6 +1096,18 @@ class DataProvider:
                 # the appropriate custom collate function after the for loop.
                 if friendly_name in self.custom_collate_functions:
                     custom_collate.setdefault(friendly_name, []).append(fields)
+                    continue
+                elif self.field_collate_functions[friendly_name]:
+                    custom_collate.setdefault(friendly_name, []).append(fields)
+                    # construct the dataset collate function and set it in self.custom_collate_functions
+                    def make_dataset_collate(field_collate_function):
+                        def dataset_collate(samples: list[dict]) -> dict:
+                            retval = {}
+                            for field_collate_fcn in field_collate_function:
+                                retval.update(field_collate_fcn(samples))
+                            return retval
+                        return dataset_collate
+                    self.custom_collate_functions[friendly_name] = make_dataset_collate(self.field_collate_functions[friendly_name].values())
                     continue
 
                 if friendly_name not in batch_dict:
