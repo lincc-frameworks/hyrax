@@ -11,6 +11,7 @@ class ToOnnx(Verb):
 
     cli_name = "to_onnx"
     add_parser_kwargs = {}
+    description = "Export model to ONNX format."
 
     @staticmethod
     def setup_parser(parser):

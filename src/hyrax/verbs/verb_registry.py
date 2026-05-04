@@ -19,6 +19,8 @@ class Verb(ABC):  # noqa: B024
     # Verbs that leave both empty skip data_request validation entirely.
     REQUIRED_DATA_GROUPS: tuple[str, ...] = ()
     OPTIONAL_DATA_GROUPS: tuple[str, ...] = ()
+    cli_name = "VERB"
+    description = ""
 
     def __init__(self, config):
         """
@@ -29,11 +31,31 @@ class Verb(ABC):  # noqa: B024
         self.config = config
         self.validate_data_request()
 
+    @classmethod
+    def information(cls):
+        """Returns a string describing this verb. Includes the following:
+        - Name of the verb
+        - Required Data Groups
+        - Optional Data Groups
+        - One line description of what this verb does
+
+        If a data group is empty then it will be printed as an empty tuple.
+
+        Returns
+        -------
+        str
+            <name>: Data Groups: Req. (<req1>, <req2>, ...), Opt. (<opt1>, <opt2>, ...). <Description>
+        """
+        info = cls.cli_name + ": "
+        required = "Req. " + str(cls.REQUIRED_DATA_GROUPS)
+        optional = "Opt. " + str(cls.OPTIONAL_DATA_GROUPS)
+        info = info + "Data groups: " + required + ", " + optional + ". " + cls.description
+        return info
+
     def validate_data_request(self) -> None:
         """Validate the data_request configuration for this verb's known groups.
 
-        Reads ``data_request`` (or the deprecated ``model_inputs``) from the
-        verb's config and checks:
+        Reads ``data_request`` from the verb's config and checks:
 
         1. All groups listed in ``REQUIRED_DATA_GROUPS`` are present.
         2. Cross-group split_fraction constraints (sum ≤ 1.0, consistency) hold
@@ -53,7 +75,7 @@ class Verb(ABC):  # noqa: B024
         if not self.REQUIRED_DATA_GROUPS and not self.OPTIONAL_DATA_GROUPS:
             return
 
-        data_request = self.config.get("data_request") or self.config.get("model_inputs")
+        data_request = self.config.get("data_request")
         if not data_request:
             return
 

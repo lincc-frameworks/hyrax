@@ -5,7 +5,6 @@ import logging
 import os
 import pickle
 import time
-import warnings
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
@@ -204,13 +203,9 @@ def _save_join_cache(
 
 
 def generate_data_request_from_config(config):
-    """This function handles the backward compatibility issue of defining the requested
-    dataset using the deprecated `[model_inputs]` configuration key.
+    """This function extracts the data request from the configuration.
 
-    If neither `[data_request]` nor `[model_inputs]` is defined, an error will be raised.
-
-    NOTE: The `[model_inputs]` key is deprecated and will be removed in a future version.
-    Users should migrate to using `[data_request]` instead.
+    If `[data_request]` is not defined, an error will be raised.
 
     Parameters
     ----------
@@ -225,30 +220,12 @@ def generate_data_request_from_config(config):
     Raises
     ------
     RuntimeError
-        If neither `data_request` nor `model_inputs` is provided in the configuration.
+        If `data_request` is not provided in the configuration.
     """
 
-    # Support both 'data_request' (new) and 'model_inputs' (deprecated)
-    # Priority: use data_request if it has content, otherwise check model_inputs
-    has_data_request = "data_request" in config and config["data_request"]
-    has_model_inputs = "model_inputs" in config and config["model_inputs"]
-
-    if has_data_request:
+    data_request = {}
+    if "data_request" in config and config["data_request"]:
         data_request = copy.deepcopy(config["data_request"])
-    elif has_model_inputs:
-        warnings.warn(
-            "The [model_inputs] configuration key is deprecated and will be removed in a future version. "
-            "Please use [data_request] instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        data_request = copy.deepcopy(config["model_inputs"])
-    elif "data_request" in config or "model_inputs" in config:
-        # One of the keys exists but is empty - use the empty dict to trigger error below
-        data_request = config.get("data_request") or config.get("model_inputs")
-    else:
-        # Neither key exists, set empty to trigger error message
-        data_request = {}
 
     # Check if data_request is empty and provide helpful error message
     if not data_request:
@@ -418,8 +395,9 @@ class DataProvider:
                     repr_str += f"  Data location: {data['data_location']}\n"
                 if "split_fraction" in data:
                     repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
-                if self.primary_dataset_id_field_name:
-                    repr_str += f"  Primary ID field: {self.primary_dataset_id_field_name}\n"
+                primary_id_field = data.get("primary_id_field")
+                if primary_id_field not in (None, False):
+                    repr_str += f"  Primary ID field: {primary_id_field}\n"
                 if friendly_name in self._join_fields:
                     repr_str += f"  Join field: {self._join_fields[friendly_name]}\n"
                 if "fields" in data:
@@ -538,9 +516,10 @@ class DataProvider:
 
             # If this dataset is marked as the primary dataset, store that
             # information for later use.
-            if "primary_id_field" in dataset_definition:
+            primary_id_field = dataset_definition.get("primary_id_field")
+            if primary_id_field not in (None, False):
                 self.primary_dataset = friendly_name
-                self.primary_dataset_id_field_name = dataset_definition["primary_id_field"]
+                self.primary_dataset_id_field_name = primary_id_field
 
                 # Store the split_fraction and data_location from the primary
                 # dataset's definition.  The Pydantic validator on

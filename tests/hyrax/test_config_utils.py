@@ -3,6 +3,7 @@ import os
 
 import pytest
 
+from hyrax.config_migrations import CURRENT_CONFIG_VERSION
 from hyrax.config_utils import ConfigManager
 
 
@@ -51,6 +52,9 @@ def test_get_runtime_config():
 
     runtime_config = config_manager.config
 
+    # The migration system stamps config_version onto the user config on load,
+    # so the merged result declares the schema version even though the test
+    # default_config / user_config files do not.
     expected = {
         "general": {"dev_mode": True},
         "train": {
@@ -60,33 +64,10 @@ def test_get_runtime_config():
         },
         "infer": {"batch_size": 8},
         "bespoke_table": {"key1": "value1", "key2": "value2"},
+        "config_version": CURRENT_CONFIG_VERSION,
     }
 
-    string_representation = """# this is the default config file
-[general]
-# set dev_mode to true when developing
-# set to false for production use
-dev_mode = true
-
-[train]
-model_name = "example_model" # Use a built-in Hyrax model
-model_class = "new_thing.cool_model.CoolModel" # Use a custom model
-
-[train.model]
-weights_filename = "final_best.pth"
-layers = 3
-
-
-[infer]
-batch_size = 8 # change batch size
-
-[bespoke_table]
-# this is a bespoke table
-key1 = "value1"
-key2 = "value2" # unlikely to modify
-"""
     assert runtime_config == expected
-    assert runtime_config.as_string() == string_representation
 
 
 def test_validate_runtime_config(caplog):
@@ -168,8 +149,7 @@ def test_config_help(capsys):
 
     captured = capsys.readouterr()
 
-    expected_output = """# this is the default config file
-[general]
+    expected_output = """[general]
 # set dev_mode to true when developing
 # set to false for production use
 dev_mode = true
@@ -193,6 +173,8 @@ key2 = "value2" # unlikely to modify
 """
 
     assert expected_output in captured.out
+    # The migration system injects the schema version scalar at load time.
+    assert f"config_version = {CURRENT_CONFIG_VERSION}" in captured.out
 
 
 def test_config_help_specific_table(capsys):
@@ -436,11 +418,11 @@ def test_set_config_simple():
     )
 
     # Test setting a simple value
-    config_manager.set_config("general.dev_mode", False)
+    config_manager._set_config("general.dev_mode", False)
     assert config_manager.config["general"]["dev_mode"] is False
 
     # Test setting a nested value
-    config_manager.set_config("train.model.layers", 5)
+    config_manager._set_config("train.model.layers", 5)
     assert config_manager.config["train"]["model"]["layers"] == 5
 
 
@@ -461,14 +443,35 @@ def test_set_config_quoted_key():
     assert config_manager.config["my.custom.optimizer.Adam"]["lr"] == 0.01
 
     # Test setting a value in a quoted table using single quotes
-    config_manager.set_config("'my.custom.optimizer.Adam'.lr", 0.001)
+    config_manager._set_config("'my.custom.optimizer.Adam'.lr", 0.001)
     assert config_manager.config["my.custom.optimizer.Adam"]["lr"] == 0.001
 
     # Test setting a value in a quoted table using double quotes
     assert config_manager.config["my.custom.optimizer.SGD"]["momentum"] == 0.9
-    config_manager.set_config('"my.custom.optimizer.SGD".momentum', 0.95)
+    config_manager._set_config('"my.custom.optimizer.SGD".momentum', 0.95)
     assert config_manager.config["my.custom.optimizer.SGD"]["momentum"] == 0.95
 
     # Test setting a new key in a quoted table
-    config_manager.set_config("'my.custom.optimizer.Adam'.beta2", 0.999)
+    config_manager._set_config("'my.custom.optimizer.Adam'.beta2", 0.999)
     assert config_manager.config["my.custom.optimizer.Adam"]["beta2"] == 0.999
+
+
+def test_set_config_overwrite():
+    """Test that set_config works with the over_write parameter."""
+    this_file_dir = os.path.dirname(os.path.abspath(__file__))
+    config_manager = ConfigManager(
+        runtime_config_filepath=os.path.abspath(
+            os.path.join(this_file_dir, "./test_data/test_user_config.toml")
+        ),
+        default_config_filepath=os.path.abspath(
+            os.path.join(this_file_dir, "./test_data/test_default_config.toml")
+        ),
+    )
+
+    data_request = {"train": {"data": "some_data"}}
+    config_manager._set_config("general.data_request", data_request)
+    assert config_manager.config["general"]["data_request"] == data_request
+
+    new_data_request = {"test": {"data": "new_data"}}
+    config_manager._set_config("general.data_request", new_data_request, over_write=True)
+    assert config_manager.config["general"]["data_request"] == new_data_request

@@ -10,11 +10,11 @@ logger = logging.getLogger(__name__)
 
 @hyrax_verb
 class DatabaseConnection(Verb):
-    """Verb to insert inference results into a vector database index for fast
-    similarity search."""
+    """Verb to create a connection to a vector database with inference results."""
 
     cli_name = "database_connection"
     add_parser_kwargs = {}
+    description = "Create a connection to the vector database for interactive queries."
 
     @staticmethod
     def setup_parser(parser: ArgumentParser):
