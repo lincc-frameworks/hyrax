@@ -27,7 +27,7 @@ def test_set_config_warns_on_invalid_data_request(caplog):
     }
 
     with caplog.at_level(logging.WARNING):
-        cm.set_config("data_request", invalid_dict)
+        cm._set_config("data_request", invalid_dict)
 
     # Should log a warning
     assert "Configuration for 'data_request' failed Pydantic validation" in caplog.text
@@ -56,7 +56,7 @@ def test_set_config_no_warning_on_valid_data_request(caplog):
     }
 
     with caplog.at_level(logging.WARNING):
-        cm.set_config("data_request", valid_dict)
+        cm._set_config("data_request", valid_dict)
 
     # Should not log a warning about validation failure
     assert "failed Pydantic validation" not in caplog.text
@@ -200,7 +200,7 @@ def test_completely_invalid_structure_still_warns(caplog):
     invalid_data = {"random_key": "random_value", "nested": {"deeply": {"invalid": 123}}}
 
     with caplog.at_level(logging.WARNING):
-        cm.set_config("data_request", invalid_data)
+        cm._set_config("data_request", invalid_data)
 
     # Should log a warning
     assert "Configuration for 'data_request' failed Pydantic validation" in caplog.text

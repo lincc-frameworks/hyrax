@@ -265,7 +265,7 @@ def test_set_config_deprecated_key_warns(tmp_path):
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        cm.set_config("model_inputs", {"train": {"data": "test"}})
+        cm._set_config("model_inputs", {"train": {"data": "test"}})
 
     assert any(
         issubclass(w.category, DeprecationWarning)
@@ -292,6 +292,6 @@ def test_set_config_current_key_no_warn(tmp_path):
 
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
-        cm.set_config("data_request", {"train": {"data": "test"}})
+        cm._set_config("data_request", {"train": {"data": "test"}})
 
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
