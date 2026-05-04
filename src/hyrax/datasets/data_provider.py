@@ -514,12 +514,6 @@ class DataProvider:
                 elif not dataset_collate:
                     self.field_collate_functions[friendly_name][field] = None
 
-                # elif self.field_collate_functions[friendly_name]:
-                #     raise RuntimeError(
-                #         f"Dataset '{friendly_name}' declares field collate functions "
-                #         f"for some fields but not others"
-                #     )
-
             # Cache all of the `get_<field_name>` methods in the dataset instance
             # so that we don't have to look them up each time we call `resolve_data`.
             self.dataset_getters[friendly_name] = {}
