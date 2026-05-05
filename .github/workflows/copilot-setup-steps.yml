@@ -96,6 +96,3 @@ jobs:
         run: |
           python --version
           python -c "import hyrax; print('hyrax imported from:', hyrax.__file__)"
-
-      - name: Run tests
-        run: python -m pytest -m "not slow"
