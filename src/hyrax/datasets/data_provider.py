@@ -1096,13 +1096,13 @@ class DataProvider:
                 # If we find that `friendly_name` is in self.custom_collate_functions
                 # we accumulate the samples from that dataset and hand off to
                 # the appropriate custom collate function after the for loop.
-                # Alternatively, if we find that `friendly_name` has a non-empty list
-                # of field-level collate functions, we accumulate the samples and
-                # construct the dataset-level custom collate function.
+                # Alternatively, we construct a custom collate function using
+                # field-level collate functions if provided, using the
+                # defauly field collate function otherwise
                 if friendly_name in self.custom_collate_functions:
                     custom_collate.setdefault(friendly_name, []).append(fields)
                     continue
-                elif self.field_collate_functions[friendly_name]:
+                else:
                     custom_collate.setdefault(friendly_name, []).append(fields)
 
                     # construct the dataset collate function and set it in self.custom_collate_functions
@@ -1122,12 +1122,6 @@ class DataProvider:
                         self.field_collate_functions[friendly_name], friendly_name
                     )
                     continue
-
-                if friendly_name not in batch_dict:
-                    batch_dict[friendly_name] = {}
-
-                for field, value in fields.items():
-                    batch_dict[friendly_name].setdefault(field, []).append(value)
 
         # Pad any none_masks that are shorter than the batch (trailing matches).
         batch_size = len(batch)
@@ -1158,43 +1152,6 @@ class DataProvider:
                 ) from err
 
             batch_dict[friendly_name] = custom_collated_data
-
-        # Try to convert lists of values into numpy arrays. We skip the "object_id"
-        # key since it's already been handled, as well as any keys that are in the
-        # self.custom_collate_function dictionary because those should have been
-        # handled by the corresponding dataset class custom collate function.
-        for friendly_name, fields in batch_dict.items():
-            if friendly_name == "object_id":
-                continue
-
-            # ! Assuming what is returned from custom_collate is already correctly
-            # ! numpy formatted. This is a big assumption. We should provide some
-            # ! pre-packaged tests for users developing custom collate functions.
-            if friendly_name in self.custom_collate_functions:
-                continue
-
-            for field, values in list(fields.items()):
-                # If all values are numpy arrays and have identical shapes -> stack
-                if all(isinstance(v, np.ndarray) for v in values):
-                    shapes = [v.shape for v in values]
-                    if all(s == shapes[0] for s in shapes):
-                        try:
-                            batch_dict[friendly_name][field] = np.stack(values, axis=0)
-                            continue
-                        except Exception as err:
-                            logger.warning(
-                                f"Could not stack numpy arrays for field '{field}' "
-                                f"in dataset '{friendly_name}'. Consider implementing "
-                                "a custom collation function for this dataset."
-                            )
-                            raise RuntimeError(
-                                f"Could not stack numpy arrays for field '{field}' "
-                                f"in dataset '{friendly_name}'. Consider implementing "
-                                "a custom collation function for this dataset."
-                            ) from err
-                # if values is a list of numpy scalars convert to numpy array
-                if isinstance(values, list):
-                    batch_dict[friendly_name][field] = np.array(values)
 
         # Add __matched masks for joined datasets that had any None entries.
         for friendly_name, mask in none_masks.items():
