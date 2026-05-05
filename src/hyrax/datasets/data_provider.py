@@ -1093,18 +1093,12 @@ class DataProvider:
                 if friendly_name in none_masks:
                     none_masks[friendly_name].append(True)
 
-                # If we find that `friendly_name` is in self.custom_collate_functions
-                # we accumulate the samples from that dataset and hand off to
-                # the appropriate custom collate function after the for loop.
-                # Alternatively, we construct a custom collate function using
+                # If we find that `friendly_name` is not in self.custom_collate_functions
+                # we construct a collate function using
                 # field-level collate functions if provided, using the
                 # defauly field collate function otherwise
-                if friendly_name in self.custom_collate_functions:
-                    custom_collate.setdefault(friendly_name, []).append(fields)
-                    continue
-                else:
-                    custom_collate.setdefault(friendly_name, []).append(fields)
-
+                custom_collate.setdefault(friendly_name, []).append(fields)
+                if friendly_name not in self.custom_collate_functions:
                     # construct the dataset collate function and set it in self.custom_collate_functions
                     def make_dataset_collate(field_collate_functions: dict, friendly_name: str):
                         def dataset_collate(samples: list[dict]) -> dict:
@@ -1121,7 +1115,6 @@ class DataProvider:
                     self.custom_collate_functions[friendly_name] = make_dataset_collate(
                         self.field_collate_functions[friendly_name], friendly_name
                     )
-                    continue
 
         # Pad any none_masks that are shorter than the batch (trailing matches).
         batch_size = len(batch)
