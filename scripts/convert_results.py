@@ -8,6 +8,7 @@ Usage
     python scripts/convert_results.py \\
         --input-dir  ./results/infer_20250201_120000 \\
         --output-dir ./results/infer_20250201_120000_lance
+        [--skip-verify]
 
 ``--input-dir`` and ``--output-dir`` may be the same path for an in-place
 conversion.  When they differ the original ``.npy`` files are left untouched;
@@ -15,6 +16,24 @@ delete them manually after verifying the output.
 
 The script will refuse to overwrite an existing ``lance_db/`` directory inside
 ``--output-dir``.  Delete it first if you need to re-run the conversion.
+
+Using ``--skip-verify`` is not recommended, but can be used to skip the verification
+step after conversion if you are confident in the conversion process and want to
+save time.  Note that verification is a crucial step to ensure data integrity,
+so use this option with caution.
+
+Notes:
+- Using the same --input-dir and --output-dir is fine. The original data WILL NOT
+be overwritten or deleted.
+- The script processes batch files incrementally to avoid high memory usage, so
+it can handle large datasets that do not fit in memory.
+- After conversion, by default, the script verifies that every record in the Lance
+output matches the original .npy source by checking both object IDs and tensor values.
+This behavior can be skipped with the --skip-verify flag, but verification is
+recommended to ensure the conversion was successful and data integrity is maintained.
+- The original .npy files (batch_*.npy, batch_index.npy, and batch_index_insertion_order.npy)
+WILL NOT be deleted after conversion. You must delete them manually if you no
+longer need them.
 """
 
 from __future__ import annotations
@@ -39,6 +58,17 @@ def convert(input_dir: Path, output_dir: Path) -> None:
         Directory where the Lance database will be written.  The Lance files
         are placed under ``output_dir/lance_db/``.  ``output_dir`` is created
         if it does not exist.
+
+    Notes
+    -----
+    - The conversion is done batch-by-batch to avoid loading all tensors into
+      memory at once. Each batch file is read, converted to Arrow format, and
+      appended to the Lance dataset before moving on to the next batch file.
+    - The script will print progress messages indicating how many records were
+      found in each batch file and the total number of records written to Lance.
+    - The original .npy files (batch_*.npy, batch_index.npy, and
+      batch_index_insertion_order.npy) WILL NOT be deleted after conversion.
+      You must delete them manually if you no longer need them.
 
     Raises
     ------
@@ -191,6 +221,11 @@ def main() -> None:
         metavar="DIR",
         help="Directory where the Lance database will be written.",
     )
+    parser.add_argument(
+        "--skip-verify",
+        action="store_true",
+        help="Skip the verification step after conversion (not recommended).",
+    )
     args = parser.parse_args()
 
     input_dir = Path(args.input_dir)
@@ -198,7 +233,8 @@ def main() -> None:
 
     try:
         convert(input_dir, output_dir)
-        verify(input_dir, output_dir)
+        if not args.skip_verify:
+            verify(input_dir, output_dir)
     except RuntimeError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         sys.exit(1)

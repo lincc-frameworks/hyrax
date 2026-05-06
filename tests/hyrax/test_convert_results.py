@@ -4,6 +4,8 @@
 """Tests for scripts/convert_results.py."""
 
 import importlib.util
+import sys
+import unittest.mock
 from pathlib import Path
 
 import numpy as np
@@ -190,3 +192,26 @@ def test_full_bitwise_verification(tmp_path):
 
     # verify() checks every single row for bitwise equality
     verify(input_dir, output_dir)
+
+
+def test_skip_verify_flag(simple_npy_dir, tmp_path):
+    """--skip-verify causes main() to skip the verify step."""
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    argv = [
+        "convert_results.py",
+        "--input-dir",
+        str(simple_npy_dir),
+        "--output-dir",
+        str(output_dir),
+        "--skip-verify",
+    ]
+    with (
+        unittest.mock.patch.object(_mod, "verify", wraps=_mod.verify) as mock_verify,
+        unittest.mock.patch.object(sys, "argv", argv),
+    ):
+        _mod.main()
+
+    mock_verify.assert_not_called()
+    assert (output_dir / "lance_db").exists()
