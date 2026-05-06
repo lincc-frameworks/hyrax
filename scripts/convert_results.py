@@ -44,6 +44,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+from tqdm import tqdm
 
 
 def convert(input_dir: Path, output_dir: Path) -> None:
@@ -76,7 +77,7 @@ def convert(input_dir: Path, output_dir: Path) -> None:
         If ``batch_index.npy`` is missing from *input_dir*, or if
         ``output_dir/lance_db/`` already exists.
     """
-    from hyrax.datasets.result_dataset import ResultDatasetWriter
+    from hyrax.datasets.result_dataset import LANCE_DB_DIR, ResultDatasetWriter
 
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
@@ -89,7 +90,7 @@ def convert(input_dir: Path, output_dir: Path) -> None:
         )
 
     # Guard against overwriting existing Lance data
-    lance_dir = output_dir / "lance_db"
+    lance_dir = output_dir / LANCE_DB_DIR
     if lance_dir.exists():
         raise RuntimeError(
             f"{lance_dir} already exists. Delete it first if you want to re-run the conversion."
@@ -118,24 +119,37 @@ def convert(input_dir: Path, output_dir: Path) -> None:
     writer = ResultDatasetWriter(output_dir)
     total_written = 0
 
-    for batch_path in batch_files:
+    for batch_path in tqdm(batch_files, desc="Converting", unit="batch"):
         batch_data = np.load(batch_path)
         ids = batch_data["id"].astype(str)
         tensors = list(batch_data["tensor"])
         writer.write_batch(ids, tensors)
         total_written += len(ids)
-        print(f"  {batch_path.name}: {len(ids)} records")
 
     writer.commit()
-    print(f"Conversion complete — {total_written} records written to {output_dir / 'lance_db'}")
+
+    if total_written != total_expected:
+        raise RuntimeError(
+            f"Row count mismatch after conversion: wrote {total_written} records "
+            f"but expected {total_expected} from batch_index.npy. "
+            f"One or more batch files may be missing or corrupt."
+        )
+
+    print(f"Conversion complete — {total_written} records written to {output_dir / LANCE_DB_DIR}")
 
 
 def verify(input_dir: Path, output_dir: Path) -> None:
     """Verify every record in the Lance output matches the original .npy source.
 
-    Reads all batch files from *input_dir* into an in-memory lookup table, then
-    iterates every row of the Lance dataset and asserts bitwise equality for
-    both the object ID and the tensor.
+    Processes one numpy batch file at a time, holding only that batch's data in
+    memory.  This keeps peak memory proportional to the largest single batch
+    rather than the full dataset, making verification feasible on large result
+    directories.
+
+    The converter writes Lance rows in the same order as the numpy batches
+    (``batch_0``, ``batch_1``, …), so verification can advance a positional
+    offset through the Lance table as it steps through each batch file —
+    no full in-memory ID lookup table is required.
 
     Parameters
     ----------
@@ -147,15 +161,15 @@ def verify(input_dir: Path, output_dir: Path) -> None:
     Raises
     ------
     RuntimeError
-        If row counts differ, if an ID is missing from the numpy source, or if
-        any tensor value does not match exactly.
+        If row counts differ, if an ID at a given position does not match
+        between the numpy source and Lance, or if any tensor value does not
+        match exactly.
     """
     from hyrax.datasets.result_dataset import ResultDataset
 
     input_dir = Path(input_dir)
     output_dir = Path(output_dir)
 
-    # Build id -> tensor lookup from all batch files
     def _batch_num(p: Path) -> int:
         m = re.fullmatch(r"batch_(\d+)\.npy", p.name)
         return int(m.group(1)) if m else -1
@@ -164,12 +178,6 @@ def verify(input_dir: Path, output_dir: Path) -> None:
         [p for p in input_dir.glob("batch_*.npy") if re.fullmatch(r"batch_\d+\.npy", p.name)],
         key=_batch_num,
     )
-
-    id_to_tensor: dict[str, np.ndarray] = {}
-    for batch_path in batch_files:
-        batch_data = np.load(batch_path)
-        for row in batch_data:
-            id_to_tensor[str(row["id"])] = row["tensor"]
 
     # Row-count check against batch_index.npy
     batch_index = np.load(input_dir / "batch_index.npy")
@@ -184,20 +192,41 @@ def verify(input_dir: Path, output_dir: Path) -> None:
             f"but batch_index.npy has {expected_count} rows."
         )
 
-    # Verify every row bitwise
-    print(f"Verifying {actual_count} records …")
-    for i in range(actual_count):
-        obj_id = dataset.get_object_id(i)
-        if obj_id not in id_to_tensor:
-            raise RuntimeError(f"Row {i}: object_id {obj_id!r} found in Lance but not in any batch file.")
-        lance_tensor = np.asarray(dataset[i])
-        numpy_tensor = id_to_tensor[obj_id]
-        if not np.array_equal(lance_tensor, numpy_tensor):
-            raise RuntimeError(
-                f"Row {i} (id={obj_id!r}): tensor mismatch.\n"
-                f"  Lance : {lance_tensor}\n"
-                f"  NumPy : {numpy_tensor}"
-            )
+    # Stream through numpy batches one at a time, verifying the corresponding
+    # Lance rows by position.  Memory usage is bounded by the largest batch file.
+    lance_offset = 0
+    with tqdm(total=actual_count, desc="Verifying", unit="records") as pbar:
+        for batch_path in batch_files:
+            batch_data = np.load(batch_path)
+            batch_size = len(batch_data)
+
+            # Small per-batch lookup — freed when the loop advances to the next batch
+            id_to_tensor: dict[str, np.ndarray] = {str(row["id"]): row["tensor"] for row in batch_data}
+
+            for j in range(batch_size):
+                lance_idx = lance_offset + j
+                obj_id = dataset.get_object_id(lance_idx)
+                if obj_id not in id_to_tensor:
+                    raise RuntimeError(
+                        f"Row {lance_idx}: object_id {obj_id!r} found in Lance but not in {batch_path.name}."
+                    )
+                lance_tensor = np.asarray(dataset[lance_idx])
+                numpy_tensor = np.asarray(id_to_tensor[obj_id])
+                tensors_match_bitwise = (
+                    lance_tensor.shape == numpy_tensor.shape
+                    and lance_tensor.dtype == numpy_tensor.dtype
+                    and np.ascontiguousarray(lance_tensor).tobytes()
+                    == np.ascontiguousarray(numpy_tensor).tobytes()
+                )
+                if not tensors_match_bitwise:
+                    raise RuntimeError(
+                        f"Row {lance_idx} (id={obj_id!r}): tensor mismatch.\n"
+                        f"  Lance : {lance_tensor}\n"
+                        f"  NumPy : {numpy_tensor}"
+                    )
+                pbar.update(1)
+
+            lance_offset += batch_size
 
     print(f"Verification passed — all {actual_count} records match.")
 

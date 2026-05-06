@@ -169,6 +169,21 @@ def test_missing_batch_index_raises(tmp_path):
         convert(empty_dir, tmp_path / "output")
 
 
+def test_missing_batch_file_raises(tmp_path):
+    """convert() raises RuntimeError when a batch file is missing, leaving row count short."""
+    batches = [
+        (["a", "b"], [np.array([1.0, 2.0], dtype=np.float32)] * 2),
+        (["c", "d"], [np.array([3.0, 4.0], dtype=np.float32)] * 2),
+    ]
+    write_npy_fixture(tmp_path, batches)
+
+    # Remove one batch file so total_written < total_expected
+    (tmp_path / "batch_1.npy").unlink()
+
+    with pytest.raises(RuntimeError, match="Row count mismatch after conversion"):
+        convert(tmp_path, tmp_path / "output")
+
+
 def test_full_bitwise_verification(tmp_path):
     """Every row's ID and tensor matches exactly between numpy source and Lance output."""
     rng = np.random.default_rng(42)
@@ -215,3 +230,29 @@ def test_skip_verify_flag(simple_npy_dir, tmp_path):
 
     mock_verify.assert_not_called()
     assert (output_dir / "lance_db").exists()
+
+
+def test_streaming_verify_many_batches(tmp_path):
+    """verify() processes one batch at a time; correct results across many batches."""
+    rng = np.random.default_rng(7)
+    n_batches = 6
+    batch_size = 5
+
+    batches = [
+        (
+            [f"id_{b * batch_size + i:03d}" for i in range(batch_size)],
+            [rng.random((3,)).astype(np.float32) for _ in range(batch_size)],
+        )
+        for b in range(n_batches)
+    ]
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    write_npy_fixture(input_dir, batches)
+    convert(input_dir, output_dir)
+
+    # Should not raise; exercises streaming path with multiple batch transitions
+    verify(input_dir, output_dir)
