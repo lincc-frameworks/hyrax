@@ -205,3 +205,33 @@ def custom_collate_data_provider(multimodal_config):
 
     yield dp
     delattr(HyraxRandomDataset, "collate")
+
+
+@pytest.fixture(scope="function")
+def custom_field_collate_data_provider(multimodal_config):
+    """Use the multimodal_config fixture to create a DataProvider instance
+    with a custom collate function for the image field only."""
+
+    from hyrax.datasets.random.hyrax_random_dataset import HyraxRandomDataset
+
+    @staticmethod
+    def collate_image(batch):
+        """Contrived custom collate function that will return collated image
+        data as well as a boolean 'mask' of the same shape.
+        """
+        returned_data = {}
+        if "image" in batch[0]:
+            batch_array = np.stack([item["image"] for item in batch], axis=0)
+            returned_data["image"] = batch_array
+            returned_data["image_mask"] = np.ones_like(batch_array, dtype=bool)
+
+        return returned_data
+
+    HyraxRandomDataset.collate_image = collate_image
+
+    h = hyrax.Hyrax()
+    h.config["data_request"] = multimodal_config
+    dp = DataProvider(h.config, multimodal_config["train"])
+
+    yield dp
+    delattr(HyraxRandomDataset, "collate_image")

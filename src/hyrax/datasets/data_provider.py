@@ -302,6 +302,11 @@ class DataProvider:
         # functions defined on the requested dataset class.
         self.custom_collate_functions = {}
 
+        # This dictionary maintains a mapping of friendly name to
+        # another mapping of fields in that dataset to
+        # callable functions on those fields.
+        self.field_collate_functions = {}
+
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
         self.split_fraction = None
@@ -484,12 +489,30 @@ class DataProvider:
                     method[4:] for method in dir(dataset_instance) if method.startswith("get_")
                 ]
 
+            self.field_collate_functions[friendly_name] = {}
             for field in dataset_definition.get("fields", []):
                 if not hasattr(dataset_instance, f"get_{field}"):
                     logger.error(
                         f"No `get_{field}` method for requested field, '{field}' "
                         f"was found in dataset {dataset_class}."
                     )
+                field_collate_fn = getattr(dataset_instance, f"collate_{field}", None)
+
+                # error if dataset collate is defined along with field dependent collate
+                if callable(field_collate_fn):
+                    if friendly_name in self.custom_collate_functions:
+                        raise RuntimeError(
+                            f"Dataset '{friendly_name}' declares both global collate function "
+                            f"and field-dependent collate function for field '{field}'."
+                            "Hyrax expects either a dataset collate function which handles all"
+                            "desired fields OR custom collate functions on each field, resorting"
+                            "to default collation behavior on fields for which a collate"
+                            "function is not defined. For more information see documentation at"
+                            "https://hyrax.readthedocs.io/en/stable/notebooks/custom_dataset_collation.html"
+                        )
+                    self.field_collate_functions[friendly_name][field] = field_collate_fn
+                else:
+                    self.field_collate_functions[friendly_name][field] = None
 
             # Cache all of the `get_<field_name>` methods in the dataset instance
             # so that we don't have to look them up each time we call `resolve_data`.
@@ -1009,6 +1032,35 @@ class DataProvider:
             a list of values for that field across the batch.
         """
 
+        def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
+            retval = {}
+            if field not in samples[0]:
+                raise RuntimeError(f"Requested field '{field}' not in dataset '{friendly_name}'")
+
+            values = [s[field] for s in samples]
+
+            if all(isinstance(v, np.ndarray) for v in values):
+                shapes = [v.shape for v in values]
+                if all(s == shapes[0] for s in shapes):
+                    try:
+                        retval[field] = np.stack(values, axis=0)
+                        return retval
+                    except Exception as err:
+                        logger.warning(
+                            f"Could not stack numpy arrays for field '{field}' "
+                            f"in dataset '{friendly_name}'. Consider implementing "
+                            "a custom collation function for this field."
+                        )
+                        raise RuntimeError(
+                            f"Could not stack numpy arrays for field '{field}' "
+                            f"in dataset '{friendly_name}'. Consider implementing "
+                            "a custom collation function for this field."
+                        ) from err
+
+            # if values is a list of numpy scalars convert to numpy array
+            retval[field] = np.array(values)
+            return retval
+
         batch_dict: dict[str, dict[str, list] | list] = {}
         custom_collate: dict[str, list] = {}
 
@@ -1041,18 +1093,28 @@ class DataProvider:
                 if friendly_name in none_masks:
                     none_masks[friendly_name].append(True)
 
-                # If we find that `friendly_name` is in self.custom_collate_functions
-                # we accumulate the samples from that dataset and hand off to
-                # the appropriate custom collate function after the for loop.
-                if friendly_name in self.custom_collate_functions:
-                    custom_collate.setdefault(friendly_name, []).append(fields)
-                    continue
+                # If we find that `friendly_name` is not in self.custom_collate_functions
+                # we construct a collate function using
+                # field-level collate functions if provided, using the
+                # defauly field collate function otherwise
+                custom_collate.setdefault(friendly_name, []).append(fields)
+                if friendly_name not in self.custom_collate_functions:
+                    # construct the dataset collate function and set it in self.custom_collate_functions
+                    def make_dataset_collate(field_collate_functions: dict, friendly_name: str):
+                        def dataset_collate(samples: list[dict]) -> dict:
+                            retval = {}
+                            for field, field_collate_fcn in field_collate_functions.items():
+                                if field_collate_fcn is not None:
+                                    retval.update(field_collate_fcn(samples))
+                                else:
+                                    retval.update(default_field_collate(samples, field, friendly_name))
+                            return retval
 
-                if friendly_name not in batch_dict:
-                    batch_dict[friendly_name] = {}
+                        return dataset_collate
 
-                for field, value in fields.items():
-                    batch_dict[friendly_name].setdefault(field, []).append(value)
+                    self.custom_collate_functions[friendly_name] = make_dataset_collate(
+                        self.field_collate_functions[friendly_name], friendly_name
+                    )
 
         # Pad any none_masks that are shorter than the batch (trailing matches).
         batch_size = len(batch)
@@ -1083,43 +1145,6 @@ class DataProvider:
                 ) from err
 
             batch_dict[friendly_name] = custom_collated_data
-
-        # Try to convert lists of values into numpy arrays. We skip the "object_id"
-        # key since it's already been handled, as well as any keys that are in the
-        # self.custom_collate_function dictionary because those should have been
-        # handled by the corresponding dataset class custom collate function.
-        for friendly_name, fields in batch_dict.items():
-            if friendly_name == "object_id":
-                continue
-
-            # ! Assuming what is returned from custom_collate is already correctly
-            # ! numpy formatted. This is a big assumption. We should provide some
-            # ! pre-packaged tests for users developing custom collate functions.
-            if friendly_name in self.custom_collate_functions:
-                continue
-
-            for field, values in list(fields.items()):
-                # If all values are numpy arrays and have identical shapes -> stack
-                if all(isinstance(v, np.ndarray) for v in values):
-                    shapes = [v.shape for v in values]
-                    if all(s == shapes[0] for s in shapes):
-                        try:
-                            batch_dict[friendly_name][field] = np.stack(values, axis=0)
-                            continue
-                        except Exception as err:
-                            logger.warning(
-                                f"Could not stack numpy arrays for field '{field}' "
-                                f"in dataset '{friendly_name}'. Consider implementing "
-                                "a custom collation function for this dataset."
-                            )
-                            raise RuntimeError(
-                                f"Could not stack numpy arrays for field '{field}' "
-                                f"in dataset '{friendly_name}'. Consider implementing "
-                                "a custom collation function for this dataset."
-                            ) from err
-                # if values is a list of numpy scalars convert to numpy array
-                if isinstance(values, list):
-                    batch_dict[friendly_name][field] = np.array(values)
 
         # Add __matched masks for joined datasets that had any None entries.
         for friendly_name, mask in none_masks.items():
