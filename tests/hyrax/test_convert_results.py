@@ -39,29 +39,20 @@ def write_npy_fixture(result_dir: Path, batches: list[tuple[list[str], list[np.n
         ``ids`` is a list of string IDs; ``tensors`` is a list of uniformly-shaped
         numpy arrays.
     """
-    id_dtype = np.array([id_ for batch_ids, _ in batches for id_ in batch_ids]).dtype
+    from hyrax.datasets.inference_dataset import InferenceDatasetWriter
 
-    all_ids: list[str] = []
-    all_batch_nums: list[int] = []
+    all_ids = [id_ for batch_ids, _ in batches for id_ in batch_ids]
 
-    for batch_num, (ids, tensors) in enumerate(batches):
-        first = tensors[0]
-        structured_type = np.dtype([("id", id_dtype), ("tensor", first.dtype, first.shape)])
-        batch_arr = np.zeros(len(ids), structured_type)
-        batch_arr["id"] = ids
-        batch_arr["tensor"] = tensors
-        np.save(result_dir / f"batch_{batch_num}.npy", batch_arr, allow_pickle=False)
+    class _MinimalDataset:
+        config: dict = {}
 
-        all_ids.extend(ids)
-        all_batch_nums.extend([batch_num] * len(ids))
+        def ids(self):
+            return all_ids
 
-    # Write batch_index.npy sorted by id (matches InferenceDatasetWriter behaviour)
-    index_dtype = np.dtype([("id", id_dtype), ("batch_num", np.int64)])
-    batch_index = np.zeros(len(all_ids), index_dtype)
-    batch_index["id"] = all_ids
-    batch_index["batch_num"] = all_batch_nums
-    batch_index.sort(order="id")
-    np.save(result_dir / "batch_index.npy", batch_index, allow_pickle=False)
+    writer = InferenceDatasetWriter(_MinimalDataset(), result_dir)
+    for ids, tensors in batches:
+        writer.write_batch(ids, tensors)
+    writer.write_index()
 
 
 # ---------------------------------------------------------------------------
@@ -256,3 +247,49 @@ def test_streaming_verify_many_batches(tmp_path):
 
     # Should not raise; exercises streaming path with multiple batch transitions
     verify(input_dir, output_dir)
+
+
+def test_index_positions_match(tmp_path):
+    """Each object_id occupies the same positional index in Lance as in the .npy batch files.
+
+    The converter writes Lance rows in batch-file order (batch_0, batch_1, …), so
+    Lance row i must hold the same object_id as position i in the flattened
+    sequence of batch files (not the sorted batch_index.npy).
+
+    Uses 12 batches to verify that batch files are sorted numerically
+    (batch_9 before batch_10) rather than lexicographically (batch_10 before batch_9).
+    """
+    import re
+
+    from hyrax.datasets.result_dataset import ResultDataset
+
+    n_batches = 12
+    # Deliberately unsorted IDs within each batch so batch-order != alphabetical order.
+    batches = [
+        ([f"z{b:02d}", f"a{b:02d}", f"m{b:02d}"], [np.array([float(b)], dtype=np.float32)] * 3)
+        for b in range(n_batches)
+    ]
+
+    input_dir = tmp_path / "input"
+    input_dir.mkdir()
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    write_npy_fixture(input_dir, batches)
+    convert(input_dir, output_dir)
+
+    # Build expected insertion-order ID list from the batch files sorted numerically.
+    def _batch_num(p):
+        m = re.fullmatch(r"batch_(\d+)\.npy", p.name)
+        return int(m.group(1)) if m else -1
+
+    batch_files = sorted(
+        [p for p in input_dir.glob("batch_*.npy") if re.fullmatch(r"batch_\d+\.npy", p.name)],
+        key=_batch_num,
+    )
+    expected_ids = [str(row["id"]) for bf in batch_files for row in np.load(bf)]
+
+    dataset = ResultDataset({}, output_dir)
+    actual_ids = [dataset.get_object_id(i) for i in range(len(dataset))]
+
+    assert actual_ids == expected_ids
