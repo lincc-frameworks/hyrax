@@ -78,7 +78,6 @@ class DummyModelDictReturn(DummyModel):
         return {"loss": loss.item()}
 
 
-# TODO: create dummy test that returns a tensor of results instead of a dictionary of results
 # (the current operational implementation)
 def test_return_tensor():
     """Test that a model that returns a tensor can be used in the forward pass."""
@@ -101,7 +100,6 @@ def test_return_tensor():
     assert len(infda) == 100
     assert infda[0].shape == (1,)
 
-# TODO: create dummy tests that return a dictionary of results instead of a tensor
 def test_return_dict():
     """Test that a model that returns a dictionary can be used in the forward pass."""
     h = hyrax.Hyrax()
