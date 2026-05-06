@@ -210,7 +210,7 @@ def custom_collate_data_provider(multimodal_config):
 @pytest.fixture(scope="function")
 def custom_field_collate_data_provider(multimodal_config):
     """Use the multimodal_config fixture to create a DataProvider instance
-    with custom collate functions for each dataset."""
+    with a custom collate function for the image field only."""
 
     from hyrax.datasets.random.hyrax_random_dataset import HyraxRandomDataset
 
