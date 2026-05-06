@@ -255,6 +255,10 @@ class ResultDataset(HyraxDataset):
     def __get_all__(self):
         """Get all data tensors in the dataset.
 
+        This is a specialized method that is meant for internal use (e.g. visualize_v2).
+        It retrieves all tensors efficiently by assuming column names and accessing
+        the array buffer directly, without creating Python objects for each row.
+
         Returns
         -------
         np.ndarray
