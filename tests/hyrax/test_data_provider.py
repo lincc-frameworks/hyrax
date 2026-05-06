@@ -718,7 +718,7 @@ def test_collate_function(data_provider):
     import numpy as np
 
     dp = data_provider
-    
+
     # Collate functions should not be constructed yet
     assert "random_0" not in dp.custom_collate_functions
     assert "random_1" not in dp.custom_collate_functions
@@ -729,7 +729,7 @@ def test_collate_function(data_provider):
 
     # Collate the batch
     collated_batch = dp.collate(batch)
-    
+
     # Ensure that the collate functions have actually been saved
     assert "random_0" in dp.custom_collate_functions
     assert callable(dp.custom_collate_functions["random_0"])
