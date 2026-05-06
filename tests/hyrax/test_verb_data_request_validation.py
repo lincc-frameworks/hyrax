@@ -19,7 +19,7 @@ from hyrax.verbs.verb_registry import Verb
 def _make_config(data_request: dict) -> dict:
     """Return a minimal config dict with the given data_request."""
     cm = ConfigManager()
-    cm.set_config("data_request", data_request)
+    cm._set_config("data_request", data_request)
     return cm.config
 
 
@@ -243,7 +243,7 @@ def test_data_request_missing_required_group_raises():
     """Missing required group in data_request also raises RuntimeError."""
     cm = ConfigManager()
     cm.config.pop("data_request", None)
-    cm.set_config(
+    cm._set_config(
         "data_request",
         {
             "infer": {
