@@ -18,6 +18,7 @@ class SaveToDatabase(Verb):
 
     cli_name = "save_to_database"
     add_parser_kwargs = {}
+    description = "Insert inference results into vector database."
 
     @staticmethod
     def setup_parser(parser: ArgumentParser):

@@ -4,6 +4,8 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Union
 
+from hyrax.verbs.verb_registry import Verb
+
 
 class Hyrax:
     """
@@ -95,7 +97,7 @@ class Hyrax:
 
         self.logger.debug(f"Runtime Config read from: {ConfigManager.resolve_runtime_config(config_file)}")
 
-    def set_config(self, key: str, value):
+    def set_config(self, key: str, value, over_write: bool = False):
         """
         Set a config value at runtime. This modifies the in-memory config object.
         Once the configuration is updated, the entire config is re-rendered to
@@ -112,8 +114,15 @@ class Hyrax:
 
         value : Any
             The value to set the key to.
+
+        over_write : bool, optional
+            Whether to allow overwriting existing keys in the config.
+            If True, this method overwrites the entire matching top-level config section with the new value.
+            If False, this method will merge the new setting into the existing ones.
+            Cannot be used with a value of True if the key does not already exist in the config.
+            By default False.
         """
-        self.config_manager.set_config(key, value)  # type: ignore[arg-type]
+        self.config_manager._set_config(key, value, over_write=over_write)  # type: ignore[arg-type]
         self.config = self.config_manager.config
 
     def _initialize_log_handlers(self):
@@ -228,6 +237,24 @@ class Hyrax:
         from .datasets.dataset_registry import DATASET_REGISTRY
 
         return sorted(DATASET_REGISTRY.keys())
+
+    def list_verbs(self):
+        """Return the alphabetically sorted list of available verbs.
+
+        The list shows all classes in the verbs directory which extend the Verb class.
+        Each element is simply the string given by the `information`
+        method for that verb.
+
+        Returns
+        -------
+        list[str]
+            Alphabetically sorted list of each verb along with
+            required arguments, optional arguments, and short description.
+            See `information()` method in verb_registry.py for more details.
+        """
+        verbs = [obj.information() for obj in Verb.__subclasses__()]
+        verbs.sort()
+        return verbs
 
     # Python notebook interface to class verbs
     # we need both __dir__ and __getattr__ so that the

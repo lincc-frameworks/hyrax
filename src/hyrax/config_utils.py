@@ -5,6 +5,7 @@ import importlib
 import logging
 import random
 import re
+import warnings
 from importlib import util as importlib_util
 from pathlib import Path
 from typing import Any, Union
@@ -178,6 +179,8 @@ class ConfigManager:
         ["general", "data_dir"],
     ]
 
+    PYDANTIC_VALIDATED_KEYS = ("data_request",)
+
     def __init__(
         self,
         runtime_config_filepath: Union[Path, str] | None = None,
@@ -191,10 +194,24 @@ class ConfigManager:
         else:
             self.user_specific_config = ConfigManager.read_runtime_config(self.runtime_config_filepath)
 
+        # Local import to avoid a circular dependency with config_migrations,
+        # which imports from this module.
+        from hyrax.config_migrations import CURRENT_CONFIG_VERSION, migrate_config
+
+        # Stamp the auto-derived schema version into the default config so it
+        # propagates to runtime_config.toml on write.  This is the single source
+        # of truth.
+        self.hyrax_default_config["config_version"] = CURRENT_CONFIG_VERSION
+
+        # Upgrade older user configs forward through the registered schema
+        # migrations before merging with defaults and validating.
+        self.user_specific_config = migrate_config(self.user_specific_config)
+
+        # Fully resolve user defined, external library and hyrax default configs
         self.config = self._render_config(self.user_specific_config, self.hyrax_default_config)
 
-        # Validate data_request/model_inputs if present in loaded config
-        for key in ("data_request", "model_inputs"):
+        # Validate data_request if present in loaded config
+        for key in ConfigManager.PYDANTIC_VALIDATED_KEYS:
             if key in self.config:
                 value = self.config[key]
                 try:
@@ -214,6 +231,7 @@ class ConfigManager:
     def _render_config(
         user_specific_config: TOMLDocument = None,
         hyrax_default_config: TOMLDocument = None,
+        over_write: bool = False,
     ):
         user_specific_config = user_specific_config if user_specific_config is not None else TOMLDocument()
         hyrax_default_config = hyrax_default_config if hyrax_default_config is not None else TOMLDocument()
@@ -232,7 +250,9 @@ class ConfigManager:
         )
 
         # 3) merge the user config on top of the overall defaults
-        config = ConfigManager.merge_configs(overall_default_config, user_specific_config)
+        config = ConfigManager.merge_configs(
+            overall_default_config, user_specific_config, over_write=over_write
+        )
 
         ConfigManager._resolve_config_paths(config)
         if not config["general"]["dev_mode"]:
@@ -240,7 +260,7 @@ class ConfigManager:
 
         return config
 
-    def set_config(self, key: str, value: Any):
+    def _set_config(self, key: str, value: Any, over_write: bool = False):
         """Set a config value at runtime. This modifies the in-memory config object.
         Once the configuration is updated, the entire config is re-rendered to
         ensure that any requested external library default configs are incorporated.
@@ -254,9 +274,28 @@ class ConfigManager:
 
         value : Any
             The value to set the key to.
+
+        over_write : bool, optional
+            Whether to allow overwriting existing keys in the config.
+            If True, this method will overwrite the highest level existing values in the config.
+            If False, this method will merge the new setting into the existing ones.
+            By default False.
         """
         keys = parse_dotted_key(key)
-        if key in ("data_request", "model_inputs"):
+
+        from hyrax.config_migrations import DEPRECATED_KEY_NAMES
+
+        for old_path, new_path in DEPRECATED_KEY_NAMES.items():
+            if key == old_path or key.startswith(old_path + "."):
+                msg = (
+                    f"Config key '{old_path}' has been renamed to '{new_path}'. "
+                    f"Please update your code to use '{new_path}' instead."
+                )
+                warnings.warn(msg, DeprecationWarning, stacklevel=2)
+                logger.warning(msg)
+                break
+
+        if key in ConfigManager.PYDANTIC_VALIDATED_KEYS:
             try:
                 value = self._validate_data_request(value)
             except ValidationError as e:
@@ -273,7 +312,7 @@ class ConfigManager:
             d = d[k]
         d[keys[-1]] = value
 
-        self.config = self._render_config(self.config, self.original_config)
+        self.config = self._render_config(self.config, self.original_config, over_write=over_write)
         self.original_config = copy.deepcopy(self.config)
 
     @staticmethod
@@ -425,7 +464,7 @@ class ConfigManager:
         return ConfigManager.merge_configs(hyrax_defaults, external_defaults)
 
     @staticmethod
-    def merge_configs(base_config: dict, overriding_config: dict) -> dict:
+    def merge_configs(base_config: dict, overriding_config: dict, over_write: bool = False) -> dict:
         """Merge two config dictionaries with the overriding_config values overriding
         the base_config values.
 
@@ -437,6 +476,11 @@ class ConfigManager:
         overriding_config : dict
             The new configuration values that will override the values in base_config.
 
+        over_write : bool, optional
+            If True, the overriding_config values will overwrite the base_config values.
+            If False, the overriding_config values will be merged with the base_config values.
+            By default False.
+
         Returns
         -------
         dict
@@ -445,7 +489,12 @@ class ConfigManager:
 
         final_config = base_config.copy()
         for k, v in overriding_config.items():
-            if k in final_config and isinstance(final_config[k], dict) and isinstance(v, dict):
+            if (
+                not over_write
+                and k in final_config
+                and isinstance(final_config[k], dict)
+                and isinstance(v, dict)
+            ):
                 final_config[k] = ConfigManager.merge_configs(base_config[k], v)
             else:
                 final_config[k] = v
@@ -475,9 +524,10 @@ class ConfigManager:
         """
         for key in runtime_config:
             if key not in default_config:
-                msg = f"Runtime config contains key or section '{key}' which has no default defined. "
-                msg += f"All configuration keys and sections must be defined in {DEFAULT_CONFIG_FILEPATH}"
-                logger.warning(msg)
+                if key not in ConfigManager.PYDANTIC_VALIDATED_KEYS:
+                    msg = f"Runtime config contains key or section '{key}' which has no default defined. "
+                    msg += f"All configuration keys and sections must be defined in {DEFAULT_CONFIG_FILEPATH}"
+                    logger.warning(msg)
                 continue
 
             if isinstance(runtime_config[key], dict):
