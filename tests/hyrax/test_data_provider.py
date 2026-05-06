@@ -718,12 +718,10 @@ def test_collate_function(data_provider):
     import numpy as np
 
     dp = data_provider
-
-    # Ensure that the collate functions have actually been constructed
-    assert "random_0" in dp.custom_collate_functions
-    assert callable(dp.custom_collate_functions["random_0"])
-    assert "random_1" in dp.custom_collate_functions
-    assert callable(dp.custom_collate_functions["random_1"])
+    
+    # Collate functions should not be constructed yet
+    assert "random_0" not in dp.custom_collate_functions
+    assert "random_1" not in dp.custom_collate_functions
 
     # Create a batch of samples
     batch_size = len(dp)
@@ -731,6 +729,12 @@ def test_collate_function(data_provider):
 
     # Collate the batch
     collated_batch = dp.collate(batch)
+    
+    # Ensure that the collate functions have actually been saved
+    assert "random_0" in dp.custom_collate_functions
+    assert callable(dp.custom_collate_functions["random_0"])
+    assert "random_1" in dp.custom_collate_functions
+    assert callable(dp.custom_collate_functions["random_1"])
 
     # Verify the structure of the collated batch
     assert isinstance(collated_batch, dict)
