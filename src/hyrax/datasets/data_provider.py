@@ -476,12 +476,8 @@ class DataProvider:
 
             # If the dataset instance has a `collate` method, store it for use in
             # the DataLoader.collate function.
-            # Note whether or not a dataset `collate` exists to detect error
-            # if field-specific `collate` functions are also defined down the line
-            dataset_collate = False
             if hasattr(dataset_instance, "collate") and callable(dataset_instance.collate):
                 self.custom_collate_functions[friendly_name] = dataset_instance.collate
-                dataset_collate = True
 
             # Store the prepared dataset instance in the `self.prepped_datasets`
             self.prepped_datasets[friendly_name] = dataset_instance
@@ -503,15 +499,19 @@ class DataProvider:
                 field_collate_fn = getattr(dataset_instance, f"collate_{field}", None)
 
                 # error if dataset collate is defined along with field dependent collate
-                # or if field dependent collate is defined for some fields and not others
                 if callable(field_collate_fn):
-                    if dataset_collate:
+                    if friendly_name in self.custom_collate_functions:
                         raise RuntimeError(
                             f"Dataset '{friendly_name}' declares both global collate function "
-                            f"and field-dependent collate function for field '{field}'"
+                            f"and field-dependent collate function for field '{field}'."
+                            "Hyrax expects either a dataset collate function which handles all"
+                            "desired fields OR custom collate functions on each field, resorting"
+                            "to default collation behavior on fields for which a collate"
+                            "function is not defined. For more information see documentation at"
+                            "https://hyrax.readthedocs.io/en/stable/notebooks/custom_dataset_collation.html"
                         )
                     self.field_collate_functions[friendly_name][field] = field_collate_fn
-                elif not dataset_collate:
+                else:
                     self.field_collate_functions[friendly_name][field] = None
 
             # Cache all of the `get_<field_name>` methods in the dataset instance
