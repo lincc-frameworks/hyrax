@@ -958,12 +958,20 @@ def create_save_batch_callback(results_dir):
 
     data_writer = create_results_writer(results_dir)
 
-    def _save_batch(batch: dict, batch_results: torch.Tensor):
+    def _save_batch(batch: dict, batch_results):
         """Receive and write batch results to results_dir immediately."""
         nonlocal data_writer
 
         # Ensure the batch results are on CPU and detached from the computation graph
-        batch_results = batch_results.detach().to("cpu")
+        if isinstance(batch_results, dict):
+            batch_results = {k: v.detach().to("cpu") for k, v in batch_results.items()}
+        elif isinstance(batch_results, torch.Tensor):
+            batch_results = batch_results.detach().to("cpu")
+        else:
+            print(batch_results)
+            msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {type(batch_results)}"
+            logger.error(msg)
+            raise RuntimeError(msg)
 
         # Verify that batch contains object_id
         if "object_id" not in batch:
@@ -975,7 +983,7 @@ def create_save_batch_callback(results_dir):
         batch_object_ids = batch["object_id"]
 
         # Ensure that everything to be written is in numpy format, and write it out
-        data_writer.write_batch(np.array(batch_object_ids), [t.numpy() for t in batch_results])
+        data_writer.write_batch(np.array(batch_object_ids), batch_results)
 
     # Attach the data_writer to the callback so it can be accessed later
     _save_batch.data_writer = data_writer  # type: ignore[attr-defined]
