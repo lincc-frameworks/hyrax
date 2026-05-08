@@ -17,6 +17,7 @@ if "LANCE_LOG" not in os.environ:
 import lancedb
 import numpy as np
 import pyarrow as pa
+import torch
 
 from .dataset_registry import HyraxDataset
 
@@ -63,7 +64,7 @@ class ResultDatasetWriter:
             List of numpy arrays (tensors) to write
         """
         # Normalize data to dict format for uniform handling
-        if isinstance(data, list):
+        if isinstance(data, torch.Tensor) or isinstance(data, np.ndarray):
             data_dict = {"data": np.array(data)}
         else:
             # data_dict = data
@@ -239,10 +240,14 @@ class ResultDataset(HyraxDataset):
         schema_metadata = self.table.schema.metadata
         if schema_metadata is None:
             raise RuntimeError("Lance table schema is missing metadata")
+        
+        loaded_metadata = {k.decode("utf-8"): json.loads(v.decode("utf-8")) for k, v in schema_metadata.items()}
+        self.tensor_shape = {key: loaded_metadata[key]["tensor_shape"] for key in loaded_metadata}
+        self.tensor_dtype = {key: np.dtype(loaded_metadata[key]["tensor_dtype"]) for key in loaded_metadata}
 
         # Decode tensor shape and dtype from metadata
-        self.tensor_shape = json.loads(schema_metadata[b"tensor_shape"].decode("utf-8"))
-        self.tensor_dtype = np.dtype(schema_metadata[b"tensor_dtype"].decode("utf-8"))
+        # self.tensor_shape = json.loads(schema_metadata[b"tensor_shape"].decode("utf-8"))
+        # self.tensor_dtype = np.dtype(schema_metadata[b"tensor_dtype"].decode("utf-8"))
 
         logger.debug(f"Opened Lance table with shape {self.tensor_shape} and dtype {self.tensor_dtype}")
 
