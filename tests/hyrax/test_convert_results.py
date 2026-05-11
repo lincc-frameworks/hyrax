@@ -175,7 +175,8 @@ def test_missing_batch_file_raises(tmp_path):
         convert(tmp_path, tmp_path / "output")
 
 
-def test_full_bitwise_verification(tmp_path):
+@pytest.mark.parametrize("float_dtype", [np.float32, np.float64])
+def test_full_bitwise_verification(tmp_path, float_dtype):
     """Every row's ID and tensor matches exactly between numpy source and Lance output."""
     rng = np.random.default_rng(42)
     n_batches = 4
@@ -185,7 +186,7 @@ def test_full_bitwise_verification(tmp_path):
     batches = []
     for b in range(n_batches):
         ids = [f"obj_{b * batch_size + i:04d}" for i in range(batch_size)]
-        tensors = [rng.random(tensor_shape).astype(np.float32) for _ in range(batch_size)]
+        tensors = [rng.random(tensor_shape).astype(float_dtype) for _ in range(batch_size)]
         batches.append((ids, tensors))
 
     input_dir = tmp_path / "input"
