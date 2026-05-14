@@ -23,7 +23,8 @@ dictionaries from the ``DataProvider`` and combining them into a single
 batch dictionary. By default, ``collate`` stacks each field's values into
 a numpy array (using ``np.stack`` when shapes are uniform), producing a
 dictionary of numpy arrays. The function is customizable and has options to
-handle ragged data with padding. For a hands-on example of writing a custom
+handle ragged data with padding. Collation can be defined on a per-field basis
+or on a dataset-level basis. For a hands-on example of writing a custom
 ``collate``, see the :doc:`custom collation notebook </notebooks/custom_dataset_collation>`.
 
 The ``prepare_inputs`` Function
