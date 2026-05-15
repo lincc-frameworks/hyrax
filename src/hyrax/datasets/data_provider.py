@@ -502,12 +502,12 @@ class DataProvider:
                 if callable(field_collate_fn):
                     if friendly_name in self.custom_collate_functions:
                         raise RuntimeError(
-                            f"Dataset '{friendly_name}' declares both global collate function "
-                            f"and field-dependent collate function for field '{field}'."
-                            "Hyrax expects either a dataset collate function which handles all"
-                            "desired fields OR custom collate functions on each field, resorting"
-                            "to default collation behavior on fields for which a collate"
-                            "function is not defined. For more information see documentation at"
+                            f"Dataset '{friendly_name}' declares both global collate function\n"
+                            f"and field-dependent collate function for field '{field}'.\n"
+                            "Hyrax expects either a dataset collate function which handles all\n"
+                            "desired fields OR custom collate functions on each field, resorting\n"
+                            "to default collation behavior on fields for which a collate\n"
+                            "function is not defined. For more information see documentation at\n"
                             "https://hyrax.readthedocs.io/en/stable/notebooks/custom_dataset_collation.html"
                         )
                     self.field_collate_functions[friendly_name][field] = field_collate_fn
