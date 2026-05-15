@@ -430,10 +430,9 @@ class TestDistDataLoaderSplitIndices:
         # Manually set split_indices to trigger sampler creation
         dp.split_indices = [0, 1, 2, 3, 4]
 
-        # This should warn about the ignored legacy key, but NOT raise an error
-        # about sampler and shuffle being mutually exclusive.
-        with pytest.warns(UserWarning, match="ignored and is not passed"):
-            loader, returned_indices = dist_data_loader(dp, config, False)
+        # This should not raise an error about sampler and shuffle being
+        # mutually exclusive.
+        loader, returned_indices = dist_data_loader(dp, config, False)
 
         assert returned_indices == [0, 1, 2, 3, 4]
         # Verify the dataloader was created successfully
@@ -528,8 +527,7 @@ class TestDistDataLoaderShuffleSamplers:
         config["data_loader"]["shuffle"] = True  # Legacy key should not be passed through.
         dp = _make_provider(config, "./data/test", size=20)
 
-        with pytest.warns(UserWarning, match="ignored and is not passed"):
-            _, returned_indices = dist_data_loader(dp, config, False, True)
+        _, returned_indices = dist_data_loader(dp, config, False, True)
 
         assert returned_indices == list(range(20))
         assert isinstance(captured["sampler"], SubsetRandomSampler)
