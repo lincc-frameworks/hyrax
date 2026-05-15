@@ -198,9 +198,8 @@ def dist_data_loader(
         msg = (
             "config['data_loader']['shuffle'] is ignored and is not passed to PyTorch DataLoader. "
             "Hyrax controls dataloader ordering with explicit samplers; use config['train']['shuffle'] "
-            "to control training sample shuffling."
+            "to control training sample shuffling to support reproducibility."
         )
-        warnings.warn(msg, UserWarning, stacklevel=2)
         logger.warning(msg)
         data_loader_kwargs.pop("shuffle")
 
