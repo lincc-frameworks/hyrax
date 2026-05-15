@@ -106,7 +106,7 @@ class Train(Verb):
                 "Training will start from epoch 1 with a fresh optimizer."
             )
 
-        train_shuffle = config["train"].get("shuffle", True)
+        train_shuffle = config["train"]["shuffle"]
 
         # We know that `dataset` will always be returned as a dictionary with at least
         # a `train` key. There may be `validate` or `test` keys as well.

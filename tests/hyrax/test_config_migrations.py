@@ -107,8 +107,6 @@ def test_migrate_config_current_version_is_noop():
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
 
 
-
-
 def test_migrate_config_moves_data_loader_shuffle_to_train():
     """A v2 config moves global data_loader.shuffle to train.shuffle."""
     cfg = tomlkit.parse("config_version = 2\n[data_loader]\nshuffle = false\nbatch_size = 8\n")
