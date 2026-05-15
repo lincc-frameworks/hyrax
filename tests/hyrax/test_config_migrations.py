@@ -97,14 +97,39 @@ def test_migrate_config_legacy_model_inputs_warns_and_renames(caplog):
 
 
 def test_migrate_config_current_version_is_noop():
-    """A clean v2 config is stamped through migrate_config unchanged."""
-    cfg = tomlkit.parse("config_version = 2\n[data_request]\ntrain = 1\n")
+    """A clean current-version config is stamped through migrate_config unchanged."""
+    cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION}\n[data_request]\ntrain = 1\n")
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         migrated = migrate_config(cfg)
     assert migrated["config_version"] == CURRENT_CONFIG_VERSION
     assert migrated["data_request"]["train"] == 1
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
+
+
+
+
+def test_migrate_config_moves_data_loader_shuffle_to_train():
+    """A v2 config moves global data_loader.shuffle to train.shuffle."""
+    cfg = tomlkit.parse("config_version = 2\n[data_loader]\nshuffle = false\nbatch_size = 8\n")
+
+    migrated = migrate_config(cfg)
+
+    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
+    assert "shuffle" not in migrated["data_loader"]
+    assert migrated["data_loader"]["batch_size"] == 8
+    assert migrated["train"]["shuffle"] is False
+
+
+def test_migrate_config_without_data_loader_shuffle_keeps_existing_train_shuffle():
+    """The shuffle migration is a no-op when the legacy key is absent."""
+    cfg = tomlkit.parse("config_version = 2\n[train]\nshuffle = true\n[data_loader]\nbatch_size = 8\n")
+
+    migrated = migrate_config(cfg)
+
+    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
+    assert migrated["train"]["shuffle"] is True
+    assert "shuffle" not in migrated["data_loader"]
 
 
 def test_migrate_config_future_version_raises():
@@ -235,6 +260,8 @@ def test_deprecated_key_names_derived_from_migrations():
     """DEPRECATED_KEY_NAMES is automatically built from MigrationStep.key_renames."""
     assert "model_inputs" in DEPRECATED_KEY_NAMES
     assert DEPRECATED_KEY_NAMES["model_inputs"] == "data_request"
+    assert "data_loader.shuffle" in DEPRECATED_KEY_NAMES
+    assert DEPRECATED_KEY_NAMES["data_loader.shuffle"] == "train.shuffle"
 
 
 def test_migration_step_without_key_renames():
@@ -271,6 +298,36 @@ def test_set_config_deprecated_key_warns(tmp_path):
         issubclass(w.category, DeprecationWarning)
         and "model_inputs" in str(w.message)
         and "data_request" in str(w.message)
+        for w in caught
+    )
+
+
+def test_set_config_deprecated_nested_key_warns(tmp_path):
+    """set_config with a deprecated nested key emits a DeprecationWarning."""
+    user_config = tmp_path / "user.toml"
+    user_config.write_text("[general]\ndev_mode = true\n")
+
+    default_config = tmp_path / "default.toml"
+    default_config.write_text(
+        "config_version = 3\n\n"
+        "[general]\ndev_mode = false\n\n"
+        "[data_loader]\nbatch_size = 4\n\n"
+        "[train]\nshuffle = true\n"
+    )
+
+    cm = ConfigManager(
+        runtime_config_filepath=str(user_config),
+        default_config_filepath=str(default_config),
+    )
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        cm._set_config("data_loader.shuffle", False)
+
+    assert any(
+        issubclass(w.category, DeprecationWarning)
+        and "data_loader.shuffle" in str(w.message)
+        and "train.shuffle" in str(w.message)
         for w in caught
     )
 

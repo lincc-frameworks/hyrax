@@ -475,3 +475,13 @@ def test_set_config_overwrite():
     new_data_request = {"test": {"data": "new_data"}}
     config_manager._set_config("general.data_request", new_data_request, over_write=True)
     assert config_manager.config["general"]["data_request"] == new_data_request
+
+
+def test_default_shuffle_config_is_train_only():
+    """Default shuffle config lives under train and is absent from data_loader."""
+    import hyrax
+
+    config = hyrax.Hyrax().config
+
+    assert config["train"]["shuffle"] is True
+    assert "shuffle" not in config["data_loader"]
