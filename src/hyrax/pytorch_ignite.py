@@ -251,7 +251,9 @@ def dist_data_loader(
     # Create samplers and dataloaders for each split we are interested in.
     # In the legacy multi-split path, the train split is the only split that
     # honors the shuffle option; validation/test remain deterministic.
-    samplers = {s: make_sampler(indexes[s], shuffle and s == "train") for s in split}
+    samplers = {
+        s: make_sampler(indexes[s], shuffle and s == "train") if indexes.get(s) else None for s in split
+    }
 
     dataloaders = {
         split: (idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes[split])
