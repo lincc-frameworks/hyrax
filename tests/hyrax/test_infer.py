@@ -49,13 +49,13 @@ def test_infer_trace(loopback_hyrax):
     assert index_by_name == index_by_number
 
 
-@pytest.mark.parametrize("shuffle", [True, False])
-def test_infer_order(loopback_hyrax, shuffle):
+@pytest.mark.parametrize("train_shuffle", [True, False])
+def test_infer_order(loopback_hyrax, train_shuffle):
     """Test that the order of data run through infer
     is correct in the presence of several splits
     """
     h, dataset = loopback_hyrax
-    h.config["data_loader"]["shuffle"] = shuffle
+    h.config["train"]["shuffle"] = train_shuffle
 
     dataset = dataset["infer"]
     inference_results = h.infer()

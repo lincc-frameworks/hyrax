@@ -80,18 +80,11 @@ class Infer(Verb):
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}\n{dataset}"
         )
 
-        # Inference doesnt work at all with the dataloader doing additional shuffling:
-        if config["data_loader"]["shuffle"]:
-            msg = "Data loader shuffling not supported in inference mode. "
-            msg += "Setting config['data_loader']['shuffle'] = False"
-            logger.warning(msg)
-            config["data_loader"]["shuffle"] = False
-
         # setup_dataset returns a dataset dictionary keyed by split name.
         # When split_fraction is defined on the "infer" group, setup_dataset
         # will have already computed split_indices on the DataProvider.
         # dist_data_loader with split=False will automatically apply a
-        # SubsetSequentialSampler to restrict the dataloader to those indices.
+        # deterministic sampler to restrict the dataloader to those indices.
         if isinstance(dataset, dict) and "infer" in dataset:
             dataset = dataset["infer"]
             logger.debug(f"Inference dataset has length: {len(dataset)}")  # type: ignore[arg-type]

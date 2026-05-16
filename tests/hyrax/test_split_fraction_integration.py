@@ -417,16 +417,12 @@ class TestDistDataLoaderSplitIndices:
         assert len(validate_indices) == 40
         assert set(train_indices).isdisjoint(set(validate_indices))
 
-    def test_shuffle_true_with_split_indices_does_not_error(self):
-        """When split_indices is set and shuffle=True is in config, no error occurs.
-
-        PyTorch DataLoader raises an error if both sampler and shuffle=True are provided.
-        dist_data_loader should automatically force shuffle=False when a sampler is used.
-        """
+    def test_legacy_data_loader_shuffle_with_split_indices_does_not_error(self):
+        """A legacy data_loader.shuffle key is ignored when a sampler is used."""
         from hyrax.pytorch_ignite import dist_data_loader
 
         config = _make_config()
-        # Explicitly set shuffle=True in the config
+        # Explicitly set the legacy shuffle key in the config.
         config["data_loader"]["shuffle"] = True
         size = 20
 
@@ -434,7 +430,8 @@ class TestDistDataLoaderSplitIndices:
         # Manually set split_indices to trigger sampler creation
         dp.split_indices = [0, 1, 2, 3, 4]
 
-        # This should NOT raise an error about sampler and shuffle being mutually exclusive
+        # This should not raise an error about sampler and shuffle being
+        # mutually exclusive.
         loader, returned_indices = dist_data_loader(dp, config, False)
 
         assert returned_indices == [0, 1, 2, 3, 4]
@@ -505,3 +502,83 @@ class TestEngineSplitIndices:
         # Verify that we're processing all indices
         assert indices_to_process == list(range(100))
         assert len(indices_to_process) == size
+
+
+class TestDistDataLoaderShuffleSamplers:
+    """Verify dist_data_loader maps shuffle to explicit subset samplers."""
+
+    def test_shuffle_true_uses_subset_random_sampler(self, monkeypatch):
+        """shuffle=True selects SubsetRandomSampler and drops legacy loader shuffle."""
+        from torch.utils.data import SubsetRandomSampler
+
+        from hyrax import pytorch_ignite
+        from hyrax.pytorch_ignite import dist_data_loader
+
+        captured = {}
+
+        def fake_auto_dataloader(dataset, sampler=None, **kwargs):
+            captured["sampler"] = sampler
+            captured["kwargs"] = kwargs
+            return object()
+
+        monkeypatch.setattr(pytorch_ignite.idist, "auto_dataloader", fake_auto_dataloader)
+
+        config = _make_config()
+        config["data_loader"]["shuffle"] = True  # Legacy key should not be passed through.
+        dp = _make_provider(config, "./data/test", size=20)
+
+        _, returned_indices = dist_data_loader(dp, config, False, True)
+
+        assert returned_indices == list(range(20))
+        assert isinstance(captured["sampler"], SubsetRandomSampler)
+        assert "shuffle" not in captured["kwargs"]
+
+    def test_shuffle_false_uses_subset_sequential_sampler(self, monkeypatch):
+        """shuffle=False selects SubsetSequentialSampler."""
+        from hyrax import pytorch_ignite
+        from hyrax.pytorch_ignite import SubsetSequentialSampler, dist_data_loader
+
+        captured = {}
+
+        def fake_auto_dataloader(dataset, sampler=None, **kwargs):
+            captured["sampler"] = sampler
+            captured["kwargs"] = kwargs
+            return object()
+
+        monkeypatch.setattr(pytorch_ignite.idist, "auto_dataloader", fake_auto_dataloader)
+
+        config = _make_config()
+        dp = _make_provider(config, "./data/test", size=20)
+
+        _, returned_indices = dist_data_loader(dp, config, False, False)
+
+        assert returned_indices == list(range(20))
+        assert isinstance(captured["sampler"], SubsetSequentialSampler)
+        assert "shuffle" not in captured["kwargs"]
+
+    def test_legacy_multi_split_only_shuffles_train(self, monkeypatch):
+        """Legacy multi-split calls shuffle only the train split."""
+        from torch.utils.data import SubsetRandomSampler
+
+        from hyrax import pytorch_ignite
+        from hyrax.pytorch_ignite import SubsetSequentialSampler, dist_data_loader
+
+        captured = {}
+
+        def fake_auto_dataloader(dataset, sampler=None, **kwargs):
+            captured[len(captured)] = sampler
+            return object()
+
+        monkeypatch.setattr(pytorch_ignite.idist, "auto_dataloader", fake_auto_dataloader)
+
+        config = _make_config()
+        config["data_set"]["train_size"] = 0.6
+        config["data_set"]["validate_size"] = 0.2
+        config["data_set"]["test_size"] = 0.2
+        dp = _make_provider(config, "./data/test", size=20)
+
+        loaders = dist_data_loader(dp, config, ["train", "validate"], True)
+
+        assert set(loaders) == {"train", "validate"}
+        assert isinstance(captured[0], SubsetRandomSampler)
+        assert isinstance(captured[1], SubsetSequentialSampler)
