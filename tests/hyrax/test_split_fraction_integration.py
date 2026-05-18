@@ -582,3 +582,45 @@ class TestDistDataLoaderShuffleSamplers:
         assert set(loaders) == {"train", "validate"}
         assert isinstance(captured[0], SubsetRandomSampler)
         assert isinstance(captured[1], SubsetSequentialSampler)
+
+    def test_shuffle_true_builds_generator_on_idist_device(self, monkeypatch):
+        """Random sampler generator should be created on the Ignite-selected device."""
+        import torch
+
+        from hyrax import pytorch_ignite
+        from hyrax.pytorch_ignite import dist_data_loader
+
+        captured = {}
+
+        class FakeGenerator:
+            def __init__(self, *, device):
+                captured["generator_device"] = device
+
+            def manual_seed(self, seed):
+                captured["seed"] = seed
+                return self
+
+        class FakeSubsetRandomSampler:
+            def __init__(self, indexes, generator=None):
+                captured["sampler_generator"] = generator
+                captured["indexes"] = list(indexes)
+
+        def fake_auto_dataloader(dataset, sampler=None, **kwargs):
+            captured["sampler"] = sampler
+            return object()
+
+        monkeypatch.setattr(pytorch_ignite.idist, "auto_dataloader", fake_auto_dataloader)
+        monkeypatch.setattr(pytorch_ignite.idist, "device", lambda: torch.device("mps"))
+        monkeypatch.setattr(pytorch_ignite.torch, "Generator", FakeGenerator)
+        monkeypatch.setattr(pytorch_ignite, "SubsetRandomSampler", FakeSubsetRandomSampler)
+
+        config = _make_config()
+        config["data_set"]["seed"] = 123
+        dp = _make_provider(config, "./data/test", size=20)
+
+        _, returned_indices = dist_data_loader(dp, config, False, True)
+
+        assert returned_indices == list(range(20))
+        assert captured["generator_device"] == torch.device("mps")
+        assert captured["seed"] == 123
+        assert captured["sampler_generator"] is not None
