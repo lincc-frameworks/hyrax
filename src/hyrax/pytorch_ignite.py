@@ -206,7 +206,7 @@ def dist_data_loader(
     # TODO: Actually DataProvider.collate. Callsites and parameter signature above have not been updated.
     data_loader_kwargs["collate_fn"] = dataset.collate
 
-    torch_rng = torch.Generator()
+    torch_rng = torch.Generator(device=idist.device())
     seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
     if seed is not None:
         torch_rng.manual_seed(seed)
