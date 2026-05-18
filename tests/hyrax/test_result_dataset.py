@@ -302,7 +302,7 @@ def test_iteration(tmp_path, sample_data):
     # Test iteration
     count = 0
     for i, item in enumerate(dataset):
-        np.testing.assert_array_equal(item, data[i])
+        np.testing.assert_array_equal(item["data"], data[i])
         count += 1
 
     assert count == len(data)

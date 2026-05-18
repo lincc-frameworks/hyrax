@@ -64,7 +64,7 @@ class ResultDatasetWriter:
             List of numpy arrays (tensors) to write
         """
         # Normalize data to dict format for uniform handling
-        if isinstance(data, torch.Tensor) or isinstance(data, np.ndarray):
+        if isinstance(data, torch.Tensor) or isinstance(data, np.ndarray) or isinstance(data, list):
             data_dict = {"data": np.array(data)}
         else:
             # data_dict = data
@@ -82,7 +82,6 @@ class ResultDatasetWriter:
             self._create_schema(data_dict)
             self.db = lancedb.connect(str(self.lance_dir))
             # Create empty table with schema
-            print(self.schema)
             empty_data = pa.table(
                 {
                     "object_id": pa.array([], type=pa.string()),
@@ -291,15 +290,18 @@ class ResultDataset(HyraxDataset):
         result = self.lance_dataset.take(idx)
 
         # Extract data column and reshape
-        data_column = result["data"].to_pylist()
         tensors = []
-        for flat_data in data_column:
-            tensor = np.array(flat_data, dtype=self.tensor_dtype)
-            tensor = tensor.reshape(self.tensor_shape)
-            tensors.append(tensor)
+        for i in range(len(idx)):
+            row_data = {}
+            for key in self.tensor_dtype.keys():
+                flat_data = result[key][i].as_py()
+                tensor = np.array(flat_data, dtype=self.tensor_dtype[key])
+                tensor = tensor.reshape(self.tensor_shape[key])
+                row_data[key] = tensor
+            tensors.append(row_data)
 
         # Return single tensor or array of tensors
-        return tensors[0] if is_single else np.array(tensors)
+        return tensors[0] if is_single else tensors
 
     def get_data(self, idx: int):
         """Get data tensor at index (HyraxQL getter).
