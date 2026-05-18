@@ -19,7 +19,7 @@ from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler
+from torch.utils.data import DataLoader, Dataset, Sampler, SubsetRandomSampler
 
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
@@ -158,6 +158,7 @@ def dist_data_loader(
     dataset: Dataset,
     config: dict,
     split: Union[str, list[str], bool] = False,
+    shuffle: bool = False,
 ):
     """Create Pytorch Ignite distributed data loaders
 
@@ -173,6 +174,11 @@ def dist_data_loader(
         The name(s) of the split we want to use from the data set.
         If this is false or not passed, then a single data loader is returned
         that corresponds to the entire dataset.
+    shuffle : bool, optional
+        If ``True``, selected training indices are sampled with
+        ``SubsetRandomSampler``. If ``False``, selected indices are sampled with
+        ``SubsetSequentialSampler``. Defaults to ``False`` so non-training verbs
+        preserve deterministic order.
 
     Returns
     -------
@@ -184,11 +190,33 @@ def dist_data_loader(
     was not configured.
     """
 
-    # Extract the config dictionary that will be provided as kwargs to the DataLoader
+    # Extract the config dictionary that will be provided as kwargs to the DataLoader.
+    # Hyrax controls ordering through explicit samplers; warn and ignore legacy
+    # ``data_loader.shuffle`` if an old/unversioned config still contains it.
     data_loader_kwargs = dict(config["data_loader"])
+    if "shuffle" in data_loader_kwargs:
+        msg = (
+            "config['data_loader']['shuffle'] is ignored and is not passed to PyTorch DataLoader. "
+            "Hyrax controls dataloader ordering with explicit samplers; use config['train']['shuffle'] "
+            "to control training sample shuffling to support reproducibility."
+        )
+        logger.warning(msg)
+        data_loader_kwargs.pop("shuffle")
 
     # TODO: Actually DataProvider.collate. Callsites and parameter signature above have not been updated.
     data_loader_kwargs["collate_fn"] = dataset.collate
+
+    torch_rng = torch.Generator(device=idist.device())
+    seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
+    if seed is not None:
+        torch_rng.manual_seed(seed)
+
+    def make_sampler(indexes: Sequence[int], sampler_shuffle: bool):
+        if not indexes:
+            return None
+        if sampler_shuffle:
+            return SubsetRandomSampler(indexes, generator=torch_rng)
+        return SubsetSequentialSampler(indexes)
 
     # Handle case where no split is needed.
     if isinstance(split, bool):
@@ -196,23 +224,15 @@ def dist_data_loader(
         # but here, it will simply be the indexes for the entire dataset.
         indexes = list(range(len(dataset)))
         # If the dataset is a DataProvider with pre-computed split_indices
-        # (set by setup_dataset from split_fraction), use a sampler to
-        # restrict the dataloader to only those indices.
-        sampler = None
+        # (set by setup_dataset from split_fraction), restrict the dataloader
+        # to only those indices. Otherwise, sample the full dataset in the
+        # requested order.
         if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
             indexes = dataset.split_indices
-            sampler = SubsetSequentialSampler(indexes)
 
-        # PyTorch DataLoader does not allow both sampler and shuffle=True.
-        # When a sampler is present, we must force shuffle=False in the kwargs.
-        loader_kwargs = data_loader_kwargs.copy()
-        if sampler is not None:
-            loader_kwargs["shuffle"] = False
+        sampler = make_sampler(indexes, shuffle)
 
-        # Note that when sampler=None, a default sampler is used. The default config
-        # defines shuffle=False, which should prevent any shuffling of of the data.
-        # We expect that this will be the primary use case when running inference.
-        return idist.auto_dataloader(dataset, sampler=sampler, **loader_kwargs), indexes
+        return idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes
 
     # NOTE: The logic below is deprecated. It is kept for backward compatibility
     # with older configuration that define data splits with ["data_set"]["train_size"],
@@ -224,17 +244,15 @@ def dist_data_loader(
     if isinstance(split, str):
         split = [split]
 
-    # Configure the torch rng
-    torch_rng = torch.Generator()
-    seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
-    if seed is not None:
-        torch_rng.manual_seed(seed)
-
     # Create the indexes for all splits based on config.
     indexes = create_splits(dataset, config)
 
-    # Create samplers and dataloaders for each split we are interested in
-    samplers = {s: SubsetSequentialSampler(indexes[s]) if indexes.get(s) else None for s in split}
+    # Create samplers and dataloaders for each split we are interested in.
+    # In the legacy multi-split path, the train split is the only split that
+    # honors the shuffle option; validation/test remain deterministic.
+    samplers = {
+        s: make_sampler(indexes[s], shuffle and s == "train") if indexes.get(s) else None for s in split
+    }
 
     dataloaders = {
         split: (idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes[split])
