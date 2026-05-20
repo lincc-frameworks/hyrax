@@ -106,8 +106,10 @@ class Train(Verb):
                 "Training will start from epoch 1 with a fresh optimizer."
             )
 
+        train_shuffle = config["train"]["shuffle"]
+
         # We know that `dataset` will always be returned as a dictionary with at least
-        # a `train` and `infer` key. There may be a `validate` key as well.
+        # a `train` key. There may be `validate` or `test` keys as well.
         #
         # There are three ways splits can be defined:
         #
@@ -120,8 +122,8 @@ class Train(Verb):
         #    "validate" groups pointing to the *same* data_location with
         #    split_fraction values.  setup_dataset has already computed
         #    non-overlapping split_indices on each DataProvider, so
-        #    dist_data_loader with split=False will automatically apply a
-        #    SubsetSequentialSampler.  This path is handled identically to (1).
+        #    dist_data_loader with split=False will automatically apply a sampler.
+        #    The train split sampler honors train.shuffle; other splits are sequential.
         #
         # 3) Legacy percentage-based splits: only a "train" group exists and
         #    no split_fraction is set.  We fall back to the old behaviour of
@@ -154,13 +156,23 @@ class Train(Verb):
             # NOTE: Paths 1 and 3 will be completely deprecated in a future release,
             # and this will be the only path for training.
             for split_name in dataset_splits:
-                data_loaders[split_name] = dist_data_loader(dataset[split_name], config, False)
+                data_loaders[split_name] = dist_data_loader(
+                    dataset[split_name],
+                    config,
+                    False,
+                    split_name == "train" and train_shuffle,
+                )
         elif len(dataset) > 1:
             # Path 1: separate dataset groups defined in data_request without split_fraction.
             # Each group is an independent DataProvider pointing to different data_locations.
-            # Create a dataloader per group.
+            # Create a dataloader per group, shuffling only the train group when requested.
             for split_name in dataset_splits:
-                data_loaders[split_name] = dist_data_loader(dataset[split_name], config, split_name)
+                data_loaders[split_name] = dist_data_loader(
+                    dataset[split_name],
+                    config,
+                    False,
+                    split_name == "train" and train_shuffle,
+                )
         else:
             # Path 3 (legacy): only "train" exists — use percentage-based
             # splitting from config["data_set"].
@@ -173,7 +185,7 @@ class Train(Verb):
                 DeprecationWarning,
                 stacklevel=1,
             )
-            raw = dist_data_loader(dataset["train"], config, all_splits)
+            raw = dist_data_loader(dataset["train"], config, all_splits, train_shuffle)
             # dist_data_loader returns a bare (DataLoader, indices) tuple
             # when given a single split name, or a dict when given multiple.
             if isinstance(raw, dict):

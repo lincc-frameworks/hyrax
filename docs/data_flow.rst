@@ -15,16 +15,24 @@ methods. The ``DataProvider`` wraps one or more datasets, handles batching and
 collation, and passes data onward toward training or inference. This separation
 of concerns allows great flexibility in how data is handled and processed.
 
-The ``collate`` Function
-------------------------
+Dataset and Field-Level ``collate`` Functions
+---------------------------------------------
 
-The ``collate`` function is responsible for taking a batch of per-item
-dictionaries from the ``DataProvider`` and combining them into a single
-batch dictionary. By default, ``collate`` stacks each field's values into
-a numpy array (using ``np.stack`` when shapes are uniform), producing a
-dictionary of numpy arrays. The function is customizable and has options to
-handle ragged data with padding. For a hands-on example of writing a custom
-``collate``, see the :doc:`custom collation notebook </notebooks/custom_dataset_collation>`.
+The ``collate`` function combines a batch of individual data items into a
+single batch, producing a dictionary of numpy arrays.
+
+By default, Hyrax builds this function automatically by stacking each
+field's values into a numpy array using ``np.stack``. If your data has
+non-uniform shapes (e.g. variable-length arrays), you can override the
+default behavior for specific fields by defining a ``collate_<field_name>``
+function — Hyrax will use it for that field and handle the rest automatically.
+
+You can also define a custom ``collate`` function to replace the entire
+default behavior, though field-level overrides are usually simpler. Note
+that defining both at once will cause an error.
+
+For a hands-on example, see the
+:doc:`custom collation notebook </notebooks/custom_dataset_collation>`.
 
 The ``prepare_inputs`` Function
 --------------------------------

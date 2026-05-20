@@ -220,7 +220,7 @@ def test_train_split_fraction(tmp_path):
     Test training with split_fraction on groups sharing the same data_location.
     This should exercise Path 2 where setup_dataset assigns split_indices to
     each DataProvider, and the train verb creates dataloaders with those
-    split_indices applied via SubsetSequentialSampler.
+    split_indices applied through the configured sampler.
     """
     import hyrax
 

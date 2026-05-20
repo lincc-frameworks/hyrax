@@ -719,12 +719,22 @@ def test_collate_function(data_provider):
 
     dp = data_provider
 
+    # Collate functions should not be constructed yet
+    assert "random_0" not in dp.custom_collate_functions
+    assert "random_1" not in dp.custom_collate_functions
+
     # Create a batch of samples
     batch_size = len(dp)
     batch = [dp[i] for i in range(batch_size)]
 
     # Collate the batch
     collated_batch = dp.collate(batch)
+
+    # Ensure that the collate functions have actually been saved
+    assert "random_0" in dp.custom_collate_functions
+    assert callable(dp.custom_collate_functions["random_0"])
+    assert "random_1" in dp.custom_collate_functions
+    assert callable(dp.custom_collate_functions["random_1"])
 
     # Verify the structure of the collated batch
     assert isinstance(collated_batch, dict)
@@ -787,6 +797,45 @@ def test_custom_collate_function_applied(custom_collate_data_provider):
 
     # Verify the structure of the collated batch for random_1. Note that "image_mask"
     # is also added by the custom collate function.
+    expected_fields = ["image", "image_mask"]
+    for field in expected_fields:
+        assert field in collated_batch["random_1"]
+        assert len(collated_batch["random_1"][field]) == batch_size
+
+    # assert that the object_id key is a numpy array
+    assert isinstance(collated_batch["object_id"], np.ndarray)
+
+
+def test_custom_collate_field_function_applied(custom_field_collate_data_provider):
+    """Test that DataProvider correctly applies both custom field-level collate functions
+    (for datasets that define them) and default field collation in the DataProvider.collate method.
+    This test is identical to the previous one but uses a data provider
+    with a custom collate function defined only for the "image" field.
+    """
+
+    import numpy as np
+
+    dp = custom_field_collate_data_provider
+
+    # Create a batch of samples
+    batch_size = len(dp)
+    batch = [dp[i] for i in range(batch_size)]
+
+    # Collate the batch
+    collated_batch = dp.collate(batch)
+
+    # Verify the structure of the collated batch for random_0
+    assert isinstance(collated_batch, dict)
+
+    # Note: expected fields includes "image_mask" which is added by the custom
+    # collate_image function.
+    expected_fields = ["object_id", "image", "label", "image_mask"]
+    for field in expected_fields:
+        assert field in collated_batch["random_0"]
+        assert len(collated_batch["random_0"][field]) == batch_size
+
+    # Verify the structure of the collated batch for random_1. Note that "image_mask"
+    # is also added by the custom collate_field function.
     expected_fields = ["image", "image_mask"]
     for field in expected_fields:
         assert field in collated_batch["random_1"]

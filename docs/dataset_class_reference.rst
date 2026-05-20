@@ -218,6 +218,10 @@ Example:
 
        return {"data": {"light_curve": padded, "light_curve_mask": mask}}
 
+When multiple fields need to be collated, it may be preferred to give each field
+its own collate function. The :doc:`custom collation notebook </notebooks/custom_dataset_collation>`
+contains information on both dataset-level collation and field-level collation.
+
 
 Metadata table support (legacy path)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

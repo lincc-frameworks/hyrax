@@ -101,13 +101,6 @@ class Test(Verb):
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Test dataset:{Style.RESET_ALL}\n{dataset['test']}"
         )
 
-        # Disable shuffling for test (like inference)
-        if config["data_loader"]["shuffle"]:
-            msg = "Data loader shuffling not supported in test mode. "
-            msg += "Setting config['data_loader']['shuffle'] = False"
-            logger.warning(msg)
-            config["data_loader"]["shuffle"] = False
-
         # Determine which dataset to use for testing
         test_data_loader, _ = dist_data_loader(dataset["test"], config, False)
 
