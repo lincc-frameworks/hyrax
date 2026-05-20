@@ -167,8 +167,7 @@ Citing Hyrax
 
 If you use Hyrax in your research, please cite the following paper:
 
-   Ghosh, Oldag & Tauraso et al. 2026, `Hyrax: An Extensible Framework for Rapid ML Experimentation
-   and Unsupervised Discovery in the Era of Rubin, Roman, and Euclid <https://arxiv.org/abs/2605.18959>`_
+Ghosh, Oldag & Tauraso et al. 2026, `Hyrax: An Extensible Framework for Rapid ML Experimentation and Unsupervised Discovery in the Era of Rubin, Roman, and Euclid <https://arxiv.org/abs/2605.18959>`_
 
 .. code-block:: tex
 
