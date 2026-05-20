@@ -115,9 +115,9 @@ Below is an *incomplete* list of Hyrax science efforts being led by different PI
       An AppleCiDEr-based workflow to classify transients using a 
       combination of light curves, spectra, cutout images, and metadata.
 
-   .. grid-item-card:: Semi-Resolved Dwarf Detection
+   .. grid-item-card:: Asteroid Search Filtering
 
-      :bdg-primary:`HSC | Rubin` :bdg-secondary:`Supervised` :bdg-success:`Near Field Cosmology`
+      :bdg-primary:`DECam` :bdg-secondary:`Supervised` :bdg-success:`Solar System`
 
       A deep-learning based algorithm to filter out false-positives in moving-object searches performed by 
       KBMOD.
