@@ -82,6 +82,13 @@ tensorboardx_logger = get_tensorboard_logger()
 files_dict = dict[str, dict[str, str]]
 
 
+def _normalize_filter_name(filter_name) -> str:
+    """Normalize catalog filter names for case-insensitive lookup."""
+    if isinstance(filter_name, bytes):
+        filter_name = filter_name.decode("utf-8")
+    return str(filter_name).strip().upper()
+
+
 class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
     """
     Dataset for Fits Images, typically cutouts.
@@ -496,6 +503,57 @@ class FitsImageDataSet(HyraxDataset, HyraxImageDataset, Dataset):
             A full path that is openable.
         """
         return Path(self.path) / Path(filename)
+
+    def object_file_paths(self, object_id: str, filters: list[str] | tuple[str, ...] | None = None):
+        """Return FITS file paths for one object, optionally filtered by band name.
+
+        Parameters
+        ----------
+        object_id : str
+            Object ID to look up.
+        filters : list[str] or tuple[str, ...], optional
+            Filter names to return. Matching is case-insensitive, but the returned
+            dictionary uses the requested filter names as keys.
+
+        Returns
+        -------
+        dict[str, Path]
+            Mapping of filter name to full image path.
+        """
+        object_id = str(object_id)
+        if object_id not in self.files:
+            raise KeyError(f"Object ID {object_id} is not present in {self.__class__.__name__}.")
+
+        object_files = self.files[object_id]
+
+        if filters is None:
+            return {
+                str(filter_name): self._file_to_path(filename)
+                for filter_name, filename in object_files.items()
+            }
+
+        available = {
+            _normalize_filter_name(filter_name): filename
+            for filter_name, filename in object_files.items()
+        }
+        selected = {}
+        missing = []
+        for filter_name in filters:
+            normalized = _normalize_filter_name(filter_name)
+            if normalized not in available:
+                missing.append(str(filter_name))
+                continue
+            selected[str(filter_name)] = self._file_to_path(available[normalized])
+
+        if missing:
+            available_filters = ", ".join(str(filter_name) for filter_name in object_files)
+            missing_filters = ", ".join(missing)
+            raise KeyError(
+                f"Object ID {object_id} is missing requested filter(s): {missing_filters}. "
+                f"Available filters: {available_filters}"
+            )
+
+        return selected
 
     def _read_object_id(self, object_id: str):
         from astropy.io import fits
