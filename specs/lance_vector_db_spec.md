@@ -34,7 +34,7 @@ table.create_index(
 ```
 
 **Key Properties:**
-- **Idempotent Behavior:** Calling `create_index()` on an already-indexed table raises `ValueError` with message like `"Index already exists"`. Caller must handle gracefully.
+- **Idempotent Behavior:** Lance defaults to `replace=True` when calling `create_index()`, so calling it on an already-indexed table silently replaces the existing index — no error is raised and no custom guard is needed.
 - **No Data Rewrite:** Index is created as a separate structure within the table; data is not rewritten.
 - **In-place Index:** Index metadata stored in the same Lance table file, making the table self-contained.
 - **Schema Integration:** Index details stored in PyArrow table metadata, enabling transparent index discovery.
@@ -167,25 +167,17 @@ def connect(self):
 def create(self):
     """Create HNSW index on Lance table."""
     self.connect()
-    
-    # Check if index already exists
-    if not self._index_exists():
-        try:
-            self.table.create_index(
-                metric=self.config["vector_db"]["lance"]["metric"],
-                num_partitions=self.config["vector_db"]["lance"]["num_partitions"],
-                num_sub_vectors=self.config["vector_db"]["lance"]["num_sub_vectors"],
-            )
-            logger.info("Lance HNSW index created")
-        except Exception as e:
-            logger.error(f"Failed to create Lance index: {e}")
-            raise
+    self.table.create_index(
+        metric=self.config["vector_db"]["lance"]["metric"].lower(),
+        num_partitions=self.config["vector_db"]["lance"]["num_partitions"] or None,
+        num_sub_vectors=self.config["vector_db"]["lance"]["num_sub_vectors"] or None,
+        vector_column_name="data",
+    )
+    logger.info("Lance HNSW index created")
 ```
 
 **Idempotent Index Creation:**
-- Add helper `_index_exists()` to check metadata for existing index
-- If index exists, skip creation (don't re-index)
-- Log a warning if index already exists
+- `create_index()` defaults to `replace=True`, so calling it twice silently replaces the index — no custom `_index_exists()` guard is needed.
 
 #### Method: `insert(ids, vectors)`
 ```python
@@ -246,7 +238,7 @@ def get_by_id(self, ids: list[Union[str, int]]) -> dict:
 | **Index Location** | Same table | Multiple collections | Separate server |
 | **Multi-Vector Support** | 1D/2D arrays | Fixed dims | Fixed dims |
 | **Incremental Indexing** | Yes | Yes | Yes |
-| **Idempotent Index** | Raises error (must handle) | Auto-idempotent | Auto-idempotent |
+| **Idempotent Index** | Auto-idempotent (`replace=True` default) | Auto-idempotent | Auto-idempotent |
 | **Disk Footprint** | Smallest | Medium | Largest |
 | **Setup Complexity** | Minimal | Minimal | Requires server |
 | **Sharding** | Automatic (partition-based) | Manual (collections) | Server-side |
@@ -346,10 +338,9 @@ config["vector_db"]["vector_db_dir"] = "/path/to/vector/db"
 ### Decision 2: Idempotent Index Creation
 **Question:** What if `create()` is called twice?
 
-**Answer:** Custom guard to prevent error
-- **Implementation:** Check table metadata for existing index
-- **Behavior:** Log warning, skip index creation if already indexed
-- **Fallback:** If metadata check fails, catch `ValueError` and continue
+**Answer:** No custom guard needed — Lance's `create_index()` defaults to `replace=True`
+- **Implementation:** Call `create_index()` directly; the existing index is silently replaced
+- **Behavior:** Safe to call multiple times; no error is raised
 
 ### Decision 3: No Auto-Indexing at Inference
 **Question:** Should inference results auto-create index?
@@ -416,15 +407,14 @@ def test_save_to_database_lance():
 
 ## 9. Appendix: Implementation Checklist
 
-- [ ] Create `src/hyrax/vector_dbs/lance_impl.py` with `Lance` class
-- [ ] Implement all 5 abstract methods from `VectorDB` interface
-- [ ] Add idempotent index creation guard via metadata check
-- [ ] Update `vector_db_factory.py` to support "lance" backend
-- [ ] Add `[vector_db.lance]` configuration section to `hyrax_default_config.toml`
-- [ ] Write unit tests for Lance VectorDB in `tests/hyrax/test_save_to_database.py`
+- [x] Create `src/hyrax/vector_dbs/lance_impl.py` with `LanceDB` class
+- [x] Implement all 6 abstract methods from `VectorDB` interface
+- [x] Update `vector_db_factory.py` to support "lance" backend
+- [x] Add `[vector_db.lance]` configuration section to `hyrax_default_config.toml`
+- [x] Write unit tests for Lance VectorDB in `tests/hyrax/test_lance_impl.py`
 - [ ] Write integration test for `save_to_database` with Lance backend
-- [ ] Verify no changes needed to `infer`, `ResultDataset`, or `ResultDatasetWriter`
-- [ ] Update documentation with Lance as recommended backend option
+- [x] Verify no changes needed to `infer`, `ResultDataset`, or `ResultDatasetWriter`
+- [x] Update documentation with Lance as recommended backend option
 - [ ] Benchmark Lance vs. ChromaDB on realistic datasets
 
 ---
@@ -440,7 +430,7 @@ def test_save_to_database_lance():
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** 2026-04-14  
+**Document Version:** 1.1  
+**Last Updated:** 2026-05-20  
 **Prepared By:** Claude Code  
-**Status:** Ready for Review & Phase 2 Implementation
+**Status:** Phase 2 Complete — Integration test and benchmarks pending
