@@ -1,0 +1,151 @@
+cff-version: 1.2.0
+message: "If you use Hyrax in your research, please cite the following paper."
+type: software
+title: "Hyrax: An Extensible Framework for Rapid ML Experimentation and Unsupervised Discovery in the Era of Rubin, Roman, and Euclid"
+authors:
+  - family-names: Ghosh
+    given-names: Aritra
+  - family-names: Oldag
+    given-names: Drew
+  - family-names: Tauraso
+    given-names: Michael
+  - family-names: Connolly
+    given-names: Andrew J.
+  - family-names: Ferguson
+    given-names: Peter
+  - family-names: Jones
+    given-names: Derek
+  - family-names: Khullar
+    given-names: Gourav
+  - family-names: Sasli
+    given-names: Argyro
+  - family-names: Venkatesh
+    given-names: Samarth
+  - family-names: Wang
+    given-names: Gracia
+  - family-names: West
+    given-names: Maxine
+  - family-names: Berry
+    given-names: Dylan
+  - family-names: Caplar
+    given-names: Neven
+  - family-names: Chandler
+    given-names: Colin Orion
+  - family-names: Chatchadanoraset
+    given-names: Tanawan
+  - family-names: Coughlin
+    given-names: Michael W.
+  - family-names: DeLucchi
+    given-names: Melissa
+  - family-names: Junell
+    given-names: Alexandra
+  - family-names: Miura
+    given-names: Diego
+  - family-names: Fontinele Nunes
+    given-names: Felipe
+  - family-names: Beebe
+    given-names: Wilson
+  - family-names: Branton
+    given-names: Doug
+  - family-names: Campos
+    given-names: Sandro
+  - family-names: Cunningham
+    given-names: Liam
+  - family-names: Dai
+    given-names: Mi
+  - family-names: Kubica
+    given-names: Jeremy
+  - family-names: Malanchev
+    given-names: Konstantin
+  - family-names: Mandelbaum
+    given-names: Rachel
+  - family-names: McGuire
+    given-names: Sean
+  - family-names: Pasha
+    given-names: Imad
+  - family-names: Taranu
+    given-names: Dan S.
+  - family-names: Zhang
+    given-names: Tianqing
+date-released: 2026-05-18
+identifiers:
+  - type: other
+    value: "arXiv:2605.18959"
+    description: arXiv preprint
+url: "https://github.com/lincc-frameworks/hyrax"
+repository-code: "https://github.com/lincc-frameworks/hyrax"
+license: MIT
+preferred-citation:
+  type: article
+  title: "Hyrax: An Extensible Framework for Rapid ML Experimentation and Unsupervised Discovery in the Era of Rubin, Roman, and Euclid"
+  authors:
+    - family-names: Ghosh
+      given-names: Aritra
+    - family-names: Oldag
+      given-names: Drew
+    - family-names: Tauraso
+      given-names: Michael
+    - family-names: Connolly
+      given-names: Andrew J.
+    - family-names: Ferguson
+      given-names: Peter
+    - family-names: Jones
+      given-names: Derek
+    - family-names: Khullar
+      given-names: Gourav
+    - family-names: Sasli
+      given-names: Argyro
+    - family-names: Venkatesh
+      given-names: Samarth
+    - family-names: Wang
+      given-names: Gracia
+    - family-names: West
+      given-names: Maxine
+    - family-names: Berry
+      given-names: Dylan
+    - family-names: Caplar
+      given-names: Neven
+    - family-names: Chandler
+      given-names: Colin Orion
+    - family-names: Chatchadanoraset
+      given-names: Tanawan
+    - family-names: Coughlin
+      given-names: Michael W.
+    - family-names: DeLucchi
+      given-names: Melissa
+    - family-names: Junell
+      given-names: Alexandra
+    - family-names: Miura
+      given-names: Diego
+    - family-names: Fontinele Nunes
+      given-names: Felipe
+    - family-names: Beebe
+      given-names: Wilson
+    - family-names: Branton
+      given-names: Doug
+    - family-names: Campos
+      given-names: Sandro
+    - family-names: Cunningham
+      given-names: Liam
+    - family-names: Dai
+      given-names: Mi
+    - family-names: Kubica
+      given-names: Jeremy
+    - family-names: Malanchev
+      given-names: Konstantin
+    - family-names: Mandelbaum
+      given-names: Rachel
+    - family-names: McGuire
+      given-names: Sean
+    - family-names: Pasha
+      given-names: Imad
+    - family-names: Taranu
+      given-names: Dan S.
+    - family-names: Zhang
+      given-names: Tianqing
+  year: 2026
+  url: "https://arxiv.org/abs/2605.18959"
+  journal: "arXiv e-prints"
+  identifiers:
+    - type: other
+      value: "arXiv:2605.18959"
