@@ -127,6 +127,11 @@ def _normalize_dataset_group(value: Any) -> DatasetGroupValue:
         # Dict of named configs — parse each value.
         parsed_dict: DatasetGroupValue = {}
         for key, val in value.items():
+            if key in parsed_dict:
+                raise ValueError(
+                    f"Duplicate friendly name '{key}' found in dataset group. "
+                    "Each dataset source must have a unique friendly name within a group."
+                )
             if isinstance(val, DataRequestConfig):
                 parsed_dict[key] = val
             elif isinstance(val, dict):
@@ -201,6 +206,25 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
         """Ensure at least one dataset group is provided."""
         if not self.root:
             raise ValueError("At least one dataset group must be provided.")
+        return self
+
+    @model_validator(mode="after")
+    def validate_no_duplicate_friendly_names(self) -> DataRequestDefinition:
+        """Ensure no duplicate friendly names exist within a dataset group.
+
+        Python dicts already guarantee unique keys, so this validator is a
+        defensive guard against non-standard dict subclasses or future code
+        paths that could bypass Python's native key-uniqueness enforcement.
+        """
+        for group_name, group_value in self.root.items():
+            seen: set[str] = set()
+            for name in group_value:
+                if name in seen:
+                    raise ValueError(
+                        f"Duplicate friendly name '{name}' found in group '{group_name}'. "
+                        "Each dataset source must have a unique friendly name within a group."
+                    )
+                seen.add(name)
         return self
 
     @model_validator(mode="after")

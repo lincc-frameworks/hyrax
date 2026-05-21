@@ -1013,3 +1013,118 @@ def test_issue_817_single_named_source_no_extra_data_nesting():
     # The dataset fields must be directly accessible under the friendly name.
     assert train_cfg["friendly_name"]["dataset_class"] == "HyraxCifarDataset"
     assert train_cfg["friendly_name"]["primary_id_field"] == "object_id"
+
+
+class _DuplicateItemsDict(dict):
+    """A dict subclass that returns duplicate (key, value) pairs from ``items()``.
+
+    This is used in tests to simulate a scenario where the same friendly name
+    appears more than once within a dataset group — something that Python's
+    built-in ``dict`` prevents at the language level by silently dropping the
+    earlier entry.  The subclass bypasses that behaviour so that the explicit
+    duplicate-detection validation in ``_normalize_dataset_group`` can be
+    exercised.
+    """
+
+    def __init__(self, pairs: list[tuple]):
+        # Build a regular dict from the pairs (last value wins, as Python would do)
+        super().__init__(pairs)
+        # Store the original pairs so items() can return them with duplicates intact
+        self._pairs = pairs
+
+    def items(self):  # type: ignore[override]
+        return iter(self._pairs)
+
+
+def test_duplicate_friendly_names_in_group_raises():
+    """Duplicate friendly names within a group should raise a ValidationError.
+
+    Python dict literals cannot carry duplicate keys — Python silently drops
+    all but the last occurrence before Pydantic ever sees the value.  The
+    ``_DuplicateItemsDict`` helper bypasses that limitation so we can verify
+    that the explicit duplicate-detection guard in ``_normalize_dataset_group``
+    (and the ``validate_no_duplicate_friendly_names`` model validator) fires
+    correctly for any input that manages to carry duplicate friendly names.
+    """
+    duplicate_group = _DuplicateItemsDict(
+        [
+            (
+                "data",
+                {"dataset_class": "HyraxCifarDataset", "data_location": "x", "primary_id_field": "oid"},
+            ),
+            (
+                "data",  # duplicate friendly name
+                {"dataset_class": "HyraxCifarDataset", "data_location": "y", "primary_id_field": "oid"},
+            ),
+        ]
+    )
+
+    with pytest.raises(ValidationError, match="[Dd]uplicate friendly name"):
+        DataRequestDefinition({"train": duplicate_group})
+
+
+def test_duplicate_friendly_names_error_message_includes_name_and_group():
+    """The duplicate-friendly-name error message identifies the offending name."""
+    duplicate_group = _DuplicateItemsDict(
+        [
+            (
+                "my_dataset",
+                {"dataset_class": "HyraxCifarDataset", "data_location": "x", "primary_id_field": "oid"},
+            ),
+            (
+                "my_dataset",  # duplicate
+                {"dataset_class": "HyraxCifarDataset", "data_location": "y", "primary_id_field": "oid"},
+            ),
+        ]
+    )
+
+    with pytest.raises(ValidationError) as exc_info:
+        DataRequestDefinition({"train": duplicate_group})
+
+    error_text = str(exc_info.value)
+    assert "my_dataset" in error_text
+
+
+def test_unique_friendly_names_in_group_passes():
+    """Unique friendly names within a group pass validation without errors."""
+    definition = DataRequestDefinition(
+        {
+            "train": {
+                "source_a": {
+                    "dataset_class": "HyraxCifarDataset",
+                    "data_location": "/dev/null",
+                    "primary_id_field": "oid",
+                },
+                "source_b": {
+                    "dataset_class": "HyraxCifarDataset",
+                    "data_location": "/dev/null",
+                },
+            }
+        }
+    )
+    assert "source_a" in definition["train"]
+    assert "source_b" in definition["train"]
+
+
+def test_duplicate_friendly_names_across_different_groups_passes():
+    """The same friendly name may appear in different groups without error."""
+    definition = DataRequestDefinition(
+        {
+            "train": {
+                "data": {
+                    "dataset_class": "HyraxCifarDataset",
+                    "data_location": "/dev/null",
+                    "primary_id_field": "oid",
+                }
+            },
+            "infer": {
+                "data": {  # same friendly name "data" but in a different group — allowed
+                    "dataset_class": "HyraxCifarDataset",
+                    "data_location": "/dev/null",
+                    "primary_id_field": "oid",
+                }
+            },
+        }
+    )
+    assert definition["train"]["data"].dataset_class == "HyraxCifarDataset"
+    assert definition["infer"]["data"].dataset_class == "HyraxCifarDataset"
