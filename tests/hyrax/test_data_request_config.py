@@ -1032,7 +1032,8 @@ class _DuplicateItemsDict(dict):
         # Store the original pairs so items() can return them with duplicates intact
         self._pairs = pairs
 
-    def items(self):  # type: ignore[override]  # Returns all pairs including duplicates, unlike dict.items()
+    def items(self):  # type: ignore[override]
+        # Return all original pairs, including duplicates, unlike dict.items().
         return iter(self._pairs)
 
 
