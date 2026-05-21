@@ -151,7 +151,7 @@ First Steps
        :link: core_concepts
        :link-type: doc
 
-       Deep dives to get the most our of Hyrax
+       Deep dives to get the most out of Hyrax
 
    .. grid-item-card:: Common Workflows
        :link: common_workflows
@@ -159,6 +159,28 @@ First Steps
 
        Reusable recipes for common Hyrax tasks
 
+
+-------
+
+Citing Hyrax
+------------
+
+If you use Hyrax in your research, please cite the following paper:
+
+Ghosh, Oldag & Tauraso et al. 2026, `Hyrax: An Extensible Framework for Rapid ML Experimentation and Unsupervised Discovery in the Era of Rubin, Roman, and Euclid <https://arxiv.org/abs/2605.18959>`_
+
+.. code-block:: tex
+
+   @article{Ghosh_Oldag_Tauraso_2026,
+   author = {Aritra Ghosh and Drew Oldag and Michael Tauraso and Andrew J. Connolly and Peter Ferguson and Derek Jones and Gourav Khullar and Argyro Sasli and Samarth Venkatesh and Gracia Wang and Maxine West and Dylan Berry and Neven Caplar and Colin Orion Chandler and Tanawan Chatchadanoraset and Michael W. Coughlin and Melissa DeLucchi and Alexandra Junell and Diego Miura and Felipe Fontinele Nunes and Wilson Beebe and Doug Branton and Sandro Campos and Liam Cunningham and Mi Dai and Jeremy Kubica and Konstantin Malanchev and Rachel Mandelbaum and Sean McGuire and Imad Pasha and Dan S. Taranu and Tianqing Zhang},
+   journal = {arXiv e-prints},
+   title = {Hyrax: An Extensible Framework for Rapid ML Experimentation and Unsupervised Discovery in the Era of Rubin, Roman, and Euclid},
+   eprint = {2605.18959},
+   archivePrefix = {arXiv},
+   year = {2026},
+   }
+
+-------
 
 .. toctree::
    :hidden:
