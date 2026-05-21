@@ -1032,7 +1032,7 @@ class _DuplicateItemsDict(dict):
         # Store the original pairs so items() can return them with duplicates intact
         self._pairs = pairs
 
-    def items(self):  # type: ignore[override]
+    def items(self):  # type: ignore[override]  # Returns all pairs including duplicates, unlike dict.items()
         return iter(self._pairs)
 
 
@@ -1059,7 +1059,7 @@ def test_duplicate_friendly_names_in_group_raises():
         ]
     )
 
-    with pytest.raises(ValidationError, match="[Dd]uplicate friendly name"):
+    with pytest.raises(ValidationError, match="Duplicate friendly name"):
         DataRequestDefinition({"train": duplicate_group})
 
 

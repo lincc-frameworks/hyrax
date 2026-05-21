@@ -88,12 +88,20 @@ class DataRequestConfig(BaseConfigModel):
 DatasetGroupValue = dict[str, DataRequestConfig]
 
 
-def _normalize_dataset_group(value: Any) -> DatasetGroupValue:
+def _normalize_dataset_group(value: Any, group_name: str = "") -> DatasetGroupValue:
     """Normalize a single dataset group value into a ``dict[str, DataRequestConfig]``.
 
     Every dataset source within a group must be identified by a user-supplied
     *friendly name*.  The friendly name is the key in the returned dict and is
     used by ``DataProvider`` to reference the dataset at runtime.
+
+    Parameters
+    ----------
+    value : Any
+        The raw group value to normalise.
+    group_name : str, optional
+        The name of the group being processed (e.g. ``"train"``).  Used only
+        to produce more informative error messages.
 
     Accepted inputs
     ---------------
@@ -128,8 +136,9 @@ def _normalize_dataset_group(value: Any) -> DatasetGroupValue:
         parsed_dict: DatasetGroupValue = {}
         for key, val in value.items():
             if key in parsed_dict:
+                group_context = f" in group '{group_name}'" if group_name else " in dataset group"
                 raise ValueError(
-                    f"Duplicate friendly name '{key}' found in dataset group. "
+                    f"Duplicate friendly name '{key}' found{group_context}. "
                     "Each dataset source must have a unique friendly name within a group."
                 )
             if isinstance(val, DataRequestConfig):
@@ -197,7 +206,7 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
         for group_name, group_value in value.items():
             if group_value is None:
                 continue
-            normalized[group_name] = _normalize_dataset_group(group_value)
+            normalized[group_name] = _normalize_dataset_group(group_value, group_name=group_name)
 
         return normalized
 
