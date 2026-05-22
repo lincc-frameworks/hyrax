@@ -51,8 +51,8 @@ avoid import cycles and give a clean test surface):
 - `compute_class_counts(labels, train_indices) -> list[int]` — per-sample class counts
   **positionally aligned to `train_indices`** (count class frequency over train only; each sample
   gets the count of its class in the train split). Returns `int`s to save space; runtime converts
-  to inverse frequencies as `weight = 1.0 / count` when loading the split. Be clear in the 
-  docstring that the returne value needs to be inverted to be used with WeightedRandomSampler.
+  to inverse frequencies as `weight = 1.0 / count` when loading the split. Be clear in the
+  docstring that the returned value needs to be inverted to be used with WeightedRandomSampler.
 - `compute_split_fingerprint(*, dataset_len, dataset_class, data_location, seed, fractions,
   stratify_field, id_getter, n_probes=8) -> str` — sha256, modeled on `_join_cache_fingerprint`
   (`data_provider.py:111`): version + scalars + sorted fractions + spread-out object-ID probes.
