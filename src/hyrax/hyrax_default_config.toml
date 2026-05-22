@@ -442,6 +442,44 @@ vector_size = 64
 inference_dir = false
 
 
+[reduce]
+# Save the fitted reducer model as a pickle file 
+save_fit_model = true
+
+# Path to a pre-existing reducer model
+model_path = false
+
+# Name of the reduction algorithm to use
+algorithm = "umap"
+
+
+[reduce.umap]
+# Number of data points used to fit the umap transform.
+fit_sample_size = 1024
+
+# Use multiprocessing during transforming to umap space (More memory intensive)
+parallel = false
+
+
+[reduce.umap.kwargs]
+# Specify any parameter accepted by https://umap-learn.readthedocs.io/en/latest/api.html#umap
+# Dimension of the embedded space
+n_components = 2
+
+# Controls how UMAP balances local versus global structure in the data.
+# See official documentation for details.
+n_neighbors = 15
+
+
+[reduce.tsne]
+
+[reduce.tsne.kwargs]
+
+[reduce.pca]
+
+[reduce.pca.kwargs]
+
+
 [umap]
 # Number of data points used to fit the umap transform.
 fit_sample_size = 1024

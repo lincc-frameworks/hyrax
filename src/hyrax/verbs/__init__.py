@@ -13,6 +13,7 @@ from hyrax.verbs.model import Model
 from hyrax.verbs.to_onnx import ToOnnx
 from hyrax.verbs.engine import Engine
 from hyrax.verbs.prepare import Prepare
+from hyrax.verbs.reduce_dimensions import ReduceDimensions
 from hyrax.verbs.verb_registry import Verb
 from hyrax.verbs.verb_registry import all_class_verbs, all_verbs, fetch_verb_class, is_verb_class
 
@@ -29,6 +30,7 @@ __all__ = [
     "Train",
     "Test",
     "SaveToDatabase",
+    "ReduceDimensions",
     "Verb",
     "DatabaseConnection",
     "Model",
