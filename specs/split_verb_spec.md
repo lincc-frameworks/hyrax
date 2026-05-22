@@ -105,7 +105,7 @@ calls `run()` and prints the artifact path. `run()`:
    At runtime, when loading a split with counts, they are converted to inverse frequencies as
    `weight = 1.0 / count` for use with `WeightedRandomSampler`.
 8. Build `meta` (fingerprint via `provider.get_object_id` as `id_getter`, plus a `split_set_id`)
-   → `save_split(results_dir, split_indices, train_class_counts, meta)` → return `results_dir` (the
+   → `save_split(results_dir, split_indices, class_counts, meta)` → return `results_dir` (the
    per-split files live inside it).
 
 **Registration:** decorator auto-registers; also add `from hyrax.verbs.split import Split` and
@@ -170,7 +170,7 @@ data_request fields default to None and need no TOML default.
 - `src/hyrax/verbs/split.py` (new) — the verb; register in `src/hyrax/verbs/__init__.py`
 - `src/hyrax/pytorch_ignite.py` — `setup_dataset` premade-split load (~`:95`); `dist_data_loader` weighted sampler (`:222`)
 - `src/hyrax/config_schemas/data_request.py` — new fields + validators (`:53`, `:269`)
-- `src/hyrax/datasets/data_provider.py` — `self.sample_weights = None` (`:318`)
+- `src/hyrax/datasets/data_provider.py` — `self.class_counts = None` (`:318`)
 - `src/hyrax/hyrax_default_config.toml` — `[split]` section
 
 ## Tests (`tests/hyrax/test_split_verb.py` — distinct from existing `test_splits.py`)
