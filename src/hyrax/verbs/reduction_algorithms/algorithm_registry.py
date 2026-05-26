@@ -2,6 +2,8 @@ import logging
 from pathlib import Path
 from typing import Union
 
+import numpy as np
+
 from hyrax.plugin_utils import update_registry
 
 logger = logging.getLogger(__name__)
@@ -44,34 +46,39 @@ class ReductionAlgorithm:
         # Ensure the class is in the registry so the config system can find it
         update_registry(ALGORITHM_REGISTRY, cls.__name__.lower(), cls)
 
-    def fit(self, sample_data):
-        """Fit the reduction algorithm to the data.
+    def fit(self, data_sample: np.ndarray):
+        """
+        Fit the reduction algorithm to the data.
+        Set the internal state of the reducer based on the provided data sample.
 
         Parameters
         ----------
-        sample_data : numpy.ndarray
-            The sample data to fit the model to.
+        data_sample : numpy.ndarray
+            The data sample used to fit the model.
         """
         logger.info("Independent fit method not applicable for this reducer")
         pass
 
-    def transform(self, dataset):
-        """Transform the data with a fitted reducer.
+    def transform(self, args: dict, num_batches: int, reduction_results: ResultDatasetWriter):
+        """
+        Transform the data with a fitted reducer.
 
         Parameters
         ----------
-        dataset : numpy.ndarray
-            The entire dataset to transform.
+        args : dict
+            A dictionary containing the data to be transformed.
 
-        Returns
-        -------
-        numpy.ndarray
-            The transformed data.
+        num_batches : int
+            The total number of batches that the data is split into for transformation.
+
+        reduction_results : ResultDatasetWriter
+            An instance of ResultDatasetWriter where the transformed results should be written.
         """
         raise NotImplementedError("Subclasses must implement the transform method.")
 
-    def save_model(self, model_path: Union[Path, str]):
-        """Save the reducer model to a file.
+    def save_model(self, model_path: Union[Path, str] | None = None):
+        """
+        Save the reducer model to a picklefile.
 
         Parameters
         ----------
@@ -81,23 +88,29 @@ class ReductionAlgorithm:
         logger.info("Model saving not applicable for this reducer")
         pass
 
-    # TODO: don't know about how to store the expected_imput_dim, how to check input dimension??
-    def load_model(self, model_path: Union[Path, str] | None = None, expected_input_dim: int | None = None):
-        """Load the reducer model from a file.
+    def load_model(self, expected_input_dim: int, model_path: Union[Path, str] | None = None):
+        """
+        Load the reducer model from a file.
 
         Parameters
         ----------
+        expected_input_dim : int
+            The expected number of input features for the loaded model.
         model_path : Path or str, optional
             The path to the file to load the model from.
-        expected_input_dim : int, optional
-            The expected number of input features for the loaded model.
+
+        Returns
+        -------
+        ReductionAlgorithm
+            The reduction algorithm instance with the loaded model.
         """
         logger.info("Model loading not applicable for this reducer")
         pass
 
 
 def is_reducer_class(cli_name: str) -> bool:
-    """Returns true if the reducer algorithm has a class based implementation
+    """
+    Returns true if the reducer algorithm has a class based implementation
 
     Parameters
     ----------
@@ -114,7 +127,18 @@ def is_reducer_class(cli_name: str) -> bool:
 
 def fetch_reducer_class(cli_name: str) -> type[ReductionAlgorithm]:
     """
-    TODO: writ the docstring
+    Fetch the class implementing the reducer algorithm specified.
+    The class must be a subclass of ReductionAlgorithm and must be registered in the ALGORITHM_REGISTRY.
+
+    Parameters
+    ----------
+    cli_name : str
+        The name of the reducer algorithm on the command line interface
+
+    Returns
+    -------
+    type[ReductionAlgorithm]
+        The class implementing the reducer algorithm.
     """
     reducer_cls = ALGORITHM_REGISTRY.get(cli_name.lower())
     if not reducer_cls:
@@ -124,5 +148,3 @@ def fetch_reducer_class(cli_name: str) -> type[ReductionAlgorithm]:
         )
 
     return reducer_cls
-
-    # return get_or_load_class(cli_name, ALGORITHM_REGISTRY)

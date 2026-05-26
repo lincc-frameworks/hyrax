@@ -1,3 +1,4 @@
+import gc
 import logging
 import warnings
 from argparse import ArgumentParser, Namespace
@@ -60,18 +61,31 @@ class ReduceDimensions(Verb):
         input_dir: Union[Path, str] | None = None,
         model_path: Union[Path, str] | None = None,
     ):
-        """Run dimensionality reduction on a dataset
+        """
+        Run dimensionality reduction on a dataset
 
-        This method
+        This method loads the latent space representations from an inference run,
+        samples a subset of data points, flattens them if necessary,
+        and fits a dimensionality reduction model. If a model path is provided,
+        it loads the model instead of fitting a new one. Then the reducer will
+        be used to transform the entire dataset into a lower-dimensional space,
+        and the results will be saved.
 
         Parameters
         ----------
         algorithm : str, Optional
             The dimensionality reduction algorithm to use.
+
         input_dir : str or Path, Optional
             Directory containing the dataset to reduce dimensions for.
+
         model_path : str or Path, Optional
             Path to a pre-existing reducer model.
+
+        Returns
+        -------
+        None
+            The method does not return anything but saves the algorithm reducer representations to disk.
         """
         with warnings.catch_warnings():
             warnings.simplefilter(action="ignore", category=FutureWarning)
@@ -85,7 +99,7 @@ class ReduceDimensions(Verb):
         from hyrax.datasets.result_factories import create_results_writer, load_results_dataset
         from hyrax.verbs.reduction_algorithms.algorithm_registry import fetch_reducer_class
 
-        # GET REDUCER CLASS
+        # Get reducer class
         algorithm_name = algorithm or self.config["reduce"]["algorithm"]
         reducer_cls = fetch_reducer_class(algorithm_name)
 
@@ -93,7 +107,6 @@ class ReduceDimensions(Verb):
         logger.info(f"Saving reduction results using {algorithm_name} to {results_dir}")
         reduction_results = create_results_writer(results_dir)
 
-        # algo_reducer = ALGORITHM_REGISTRY[algorithm](self.config, reduction_results)
         algo_reducer = reducer_cls(self.config, reduction_results)
 
         inference_results = load_results_dataset(self.config, results_dir=input_dir, verb="infer")
@@ -103,31 +116,27 @@ class ReduceDimensions(Verb):
         sample_size = int(np.min([config_sample_size if config_sample_size else np.inf, total_length]))
         rng = np.random.default_rng()
         sample_indexes = rng.choice(np.arange(total_length), size=sample_size, replace=False)
-        sample_data = np.asarray(inference_results[sample_indexes]).reshape((sample_size, -1))
+        data_sample = np.asarray(inference_results[sample_indexes]).reshape((sample_size, -1))
 
-        # LOAD MODEL IF SPECIFIED
+        # Load model if path provided, otherwise fit new model
         if model_path is None:
-            # model_path = self.config["reduce"].get("model_path", None)
             model_path = self.config["reduce"]["model_path"]
 
         if model_path:
             logger.info(f"Loading pre-existing reducer model from {model_path}")
-            # algo_reducer.load_model(model_path, expected_input_dim=sample_data.shape[1])
-            algo_reducer.load_model(model_path)
-
-        # FIT IF NO MODEL LOADED
-        # if getattr(algo_reducer, "reducer", None) is None:
-        #     logger.info("No pre-existing reducer model found. A new model will be fitted.")
-        reducer_obj = getattr(algo_reducer, "reducer", None)
-        if reducer_obj is None or not hasattr(reducer_obj, "_raw_data"):
-            logger.info("No pre-existing fitted reducer found. A new model will be fitted.")
-            algo_reducer.fit(sample_data)
+            algo_reducer.load_model(data_sample.shape[1], model_path)
+        else:
+            logger.info("No model_path specified. A new model will be fitted.")
+            algo_reducer.fit(data_sample)
 
             if self.config["reduce"].get("save_fit_model", False):
                 logger.info(f"Saving fitted {algorithm_name} reducer to result directory")
                 algo_reducer.save_model(results_dir)
 
-        # TRANSFORM DATA
+        del data_sample
+        gc.collect()
+
+        # Transform dataset
         batch_size = self.config["data_loader"]["batch_size"]
         num_batches = int(np.ceil(total_length / batch_size))
 
@@ -141,11 +150,8 @@ class ReduceDimensions(Verb):
             )
             for batch_indexes in np.array_split(all_indexes, num_batches)
         )
-
         algo_reducer.transform(args, num_batches, reduction_results)
 
-        # reduction_results.commit()
         logger.info(f"Finished transforming all data with {algorithm_name}")
 
-        # RETURN RESULTS
         return load_results_dataset(self.config, results_dir)

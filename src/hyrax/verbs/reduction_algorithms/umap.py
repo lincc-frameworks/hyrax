@@ -1,4 +1,3 @@
-import gc
 import logging
 import os
 import pickle
@@ -25,16 +24,36 @@ class UMAP(ReductionAlgorithm):
         self.reducer = umap.UMAP(**self.config["reduce"]["umap"]["kwargs"])
 
     def save_model(self, results_dir: Path):
-        """Save the fitted UMAP model to a pickle file."""
-        # if self.reducer is None:
-        #     raise RuntimeError("Nothing to save.")
+        """
+        Save the fitted UMAP model to a pickle file.
+
+        Parameters
+        ----------
+        results_dir : Path
+            The directory where the model should be saved.
+            The model will be saved as 'umap.pickle' in this directory.
+        """
         with open(results_dir / "umap.pickle", "wb") as f:
             pickle.dump(self.reducer, f)
 
-    def load_model(self, model_path: Union[Path, str] | None = None, expected_input_dim: int | None = None):
-        """Load a pre-existing UMAP model from disk."""
+    def load_model(self, expected_input_dim: int, model_path: Union[Path, str] | None = None):
+        """
+        Load a pre-existing UMAP model from disk.
+
+        Parameters
+        ----------
+        expected_input_dim : int
+            The expected number of input features for the loaded model.
+        model_path : Path or str, optional
+            The path to the file to load the model from.
+            If not specified, method will look in the config for a default model path.
+
+        Returns
+        -------
+        UMAP
+            The UMAP instance with the loaded model.
+        """
         if model_path is None:
-            # model_path = self.config["reduce"].get("model_path", None)
             model_path = self.config["reduce"]["model_path"]
 
         if not model_path:
@@ -53,17 +72,14 @@ class UMAP(ReductionAlgorithm):
         if not isinstance(reducer, umap.UMAP):
             raise ValueError(f"The loaded model is not a UMAP instance: {type(reducer)}")
 
-        # TODO: don't know how to get the sample data shape
         # Input feature dim check
-        # if expected_input_dim is not None and reducer._raw_data.shape[1] != expected_input_dim:
-        #     raise ValueError(
-        #         f"The input dimension of the loaded UMAP model ({reducer._raw_data.shape[1]})"
-        #         f" does not match the expected inference data dimension ({expected_input_dim})."
-        #     )
+        if reducer._raw_data.shape[1] != expected_input_dim:
+            raise ValueError(
+                f"The input dimension of the loaded UMAP model ({reducer._raw_data.shape[1]})"
+                f" does not match the dimension of the inference data ({expected_input_dim})."
+            )
 
         # Output dim check
-        # config_n_components = self.config["reduce"]["umap"]["kwargs"].get("n_components", None)
-        # if config_n_components is not None and reducer.n_components != config_n_components:
         if reducer.n_components != self.reducer.n_components:
             raise ValueError(
                 f"The output dimension of the loaded UMAP model ({reducer.n_components})"
@@ -72,20 +88,36 @@ class UMAP(ReductionAlgorithm):
 
         self.reducer = reducer
 
-    def fit(self, sample_data: np.ndarray):
-        """Fit the UMAP model to a sample of inference data."""
+    def fit(self, data_sample: np.ndarray):
+        """
+        Fit the UMAP model to a sample of inference data. The fitted model is stored in
+        the instance variable `self.reducer` and can be used for transforming data.
 
+        Parameters
+        ----------
+        data_sample : numpy.ndarray
+            The data sample used to fit the model.
+        """
         self._log_memory_usage("Before fitting umap")
         logger.info("Fitting the UMAP")
-        self.reducer.fit(sample_data)
+        self.reducer.fit(data_sample)
         self._log_memory_usage("After fitting umap")
 
-        del sample_data
-        gc.collect()
-        self._log_memory_usage("After Garbage Collection")
-
     def transform(self, args: dict, num_batches: int, reduction_results: ResultDatasetWriter):
-        """Transform data with a fitted UMAP model."""
+        """
+        Transform data with a fitted UMAP model. Use parallel processing if specified in the config.
+
+        Parameters
+        ----------
+        args : dict
+            A dictionary containing the data to be transformed.
+
+        num_batches : int
+            The total number of batches that the data is split into for transformation.
+
+        reduction_results : ResultDatasetWriter
+            An instance of ResultDatasetWriter where the transformed results should be written.
+        """
         if self.reducer is None:
             raise RuntimeError("Cannot transform data before loading or fitting a UMAP model.")
 
