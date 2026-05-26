@@ -59,7 +59,7 @@ class ReductionAlgorithm:
         logger.info("Independent fit method not applicable for this reducer")
         pass
 
-    def transform(self, args: dict, num_batches: int, reduction_results: ResultDatasetWriter):
+    def transform(self, args: dict, num_batches: int):
         """
         Transform the data with a fitted reducer.
 
@@ -70,9 +70,6 @@ class ReductionAlgorithm:
 
         num_batches : int
             The total number of batches that the data is split into for transformation.
-
-        reduction_results : ResultDatasetWriter
-            An instance of ResultDatasetWriter where the transformed results should be written.
         """
         raise NotImplementedError("Subclasses must implement the transform method.")
 

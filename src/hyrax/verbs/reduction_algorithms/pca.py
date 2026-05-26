@@ -1,8 +1,6 @@
 from pathlib import Path
 from typing import Union
 
-from hyrax.datasets.result_dataset import ResultDatasetWriter
-
 from .algorithm_registry import ReductionAlgorithm
 
 
@@ -25,6 +23,6 @@ class PCA(ReductionAlgorithm):
         """Fit the PCA model to the data."""
         raise NotImplementedError("PCA reduction is not implemented yet.")
 
-    def transform(self, args: dict, num_batches: int, reduction_results: ResultDatasetWriter):
+    def transform(self, args: dict, num_batches: int):
         """Transform the data with the fitted PCA model."""
         raise NotImplementedError("PCA reduction is not implemented yet.")

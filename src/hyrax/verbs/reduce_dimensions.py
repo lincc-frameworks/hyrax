@@ -150,7 +150,7 @@ class ReduceDimensions(Verb):
             )
             for batch_indexes in np.array_split(all_indexes, num_batches)
         )
-        algo_reducer.transform(args, num_batches, reduction_results)
+        algo_reducer.transform(args, num_batches)
 
         logger.info(f"Finished transforming all data with {algorithm_name}")
 

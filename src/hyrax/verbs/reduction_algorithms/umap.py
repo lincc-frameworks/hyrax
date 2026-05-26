@@ -9,8 +9,6 @@ import numpy as np
 import psutil
 import umap
 
-from hyrax.datasets.result_dataset import ResultDatasetWriter
-
 from .algorithm_registry import ReductionAlgorithm
 
 logger = logging.getLogger(__name__)
@@ -103,7 +101,7 @@ class UMAP(ReductionAlgorithm):
         self.reducer.fit(data_sample)
         self._log_memory_usage("After fitting umap")
 
-    def transform(self, args: dict, num_batches: int, reduction_results: ResultDatasetWriter):
+    def transform(self, args: dict, num_batches: int):
         """
         Transform data with a fitted UMAP model. Use parallel processing if specified in the config.
 
@@ -141,7 +139,7 @@ class UMAP(ReductionAlgorithm):
                     desc="Creating lower dimensional representation using UMAP:",
                     total=num_batches,
                 ):
-                    reduction_results.write_batch(batch_ids, transformed_batch)
+                    self.reduction_results.write_batch(batch_ids, transformed_batch)
         else:
             # Sequential loop
             for batch_ids, batch in tqdm(
@@ -151,9 +149,9 @@ class UMAP(ReductionAlgorithm):
             ):
                 transformed_batch = self.reducer.transform(batch)
                 self._log_memory_usage(f"During transformation of batch of shape {batch.shape}")
-                reduction_results.write_batch(batch_ids, transformed_batch)
+                self.reduction_results.write_batch(batch_ids, transformed_batch)
 
-        reduction_results.commit()  # Ensure all data is written and finalized
+        self.reduction_results.commit()  # Ensure all data is written and finalized
 
     def _load_pickle(self, model_path: Union[Path, str]):
         """

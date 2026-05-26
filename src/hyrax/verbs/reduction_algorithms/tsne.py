@@ -1,5 +1,3 @@
-from hyrax.datasets.result_dataset import ResultDatasetWriter
-
 from .algorithm_registry import ReductionAlgorithm
 
 
@@ -10,6 +8,6 @@ class TSNE(ReductionAlgorithm):
         super().__init__(config, reduction_results)
         self.reducer = None  # Placeholder for the actual TSNE model
 
-    def transform(self, args: dict, num_batches: int, reduction_results: ResultDatasetWriter):
+    def transform(self, args: dict, num_batches: int):
         """Transform the data with the fitted TSNE model."""
         raise NotImplementedError("TSNE reduction is not implemented yet.")
