@@ -315,6 +315,7 @@ class TraceResult(TracePrintable):
         self.stages = {
             "dataset_getter": TraceStage(),
             "resolve_data": TraceStage(),
+            "field_level_collation": TraceStage(),
             "collate": TraceStage(),
             "prepare_inputs": TraceStage(),
             "evaluation": TraceStage(),
@@ -378,6 +379,8 @@ class TraceResult(TracePrintable):
         logger.debug(f"Received Trace {trace_def.stage_name} {trace_def.func_name}")
 
         captured_params = {}
+        # print(trace_def.stage_name, trace_def.func_name, "ARGS:", args)
+        # print("types:", [type(elem) for elem in args])
         if len(trace_def.params_to_capture) == 0:
             for index, arg in enumerate(args):
                 name = f"{index:0>3}_call"
@@ -451,7 +454,7 @@ class TraceResult(TracePrintable):
     def instrument_dataset_getter(self, dataset, getter, friendly_name, field_name):
         """
         Instrument a dataset get_* function. Called by DataProvider to insert shims before
-        any betters are called
+        any getters are called
         """
         trace_def = TraceDef(
             disp_name=f"{friendly_name}__get_{field_name}",
@@ -462,6 +465,20 @@ class TraceResult(TracePrintable):
         )
         return self.instrument_instance_data_handler(dataset, getter, trace_def)
 
+    def instrument_field_collate(self, dataset, field_collate_fn, friendly_name, field_name):
+        """
+        Instrument a collate_* function. Also called by DataProvider to insert shims
+        into all the collate_* functions it finds during dataset preparation.
+        """
+        trace_def = TraceDef(
+            disp_name=f"{friendly_name}__collate_{field_name}",
+            func_name=f"collate_{field_name}",
+            params_to_capture={"samples": 0},
+            result_name="batch_dict",
+            stage_name="field_level_collation",
+        )
+        return self.instrument_instance_data_handler(dataset, field_collate_fn, trace_def)
+
     def instrument_dataset_collate(self, dataset, collate_fn, friendly_name):
         """
         Instrument a dataset collate function. Also called by DataProvider to insert shims
@@ -470,7 +487,7 @@ class TraceResult(TracePrintable):
         trace_def = TraceDef(
             disp_name=f"{friendly_name}__collate",
             func_name="collate",
-            params_to_capture={"samples": 0},
+            params_to_capture={"samples": 1},
             result_name="batch_dict",
             stage_name="collate",
         )
