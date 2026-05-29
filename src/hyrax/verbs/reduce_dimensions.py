@@ -103,7 +103,7 @@ class ReduceDimensions(Verb):
         algorithm_name = algorithm or self.config["reduce"]["algorithm"]
         reducer_cls = fetch_reducer_class(algorithm_name)
 
-        results_dir = create_results_dir(self.config, f"{algorithm_name}_reduce_dimensions")
+        results_dir = create_results_dir(self.config, f"reduce_dimensions_{algorithm_name}")
         logger.info(f"Saving reduction results using {algorithm_name} to {results_dir}")
         reduction_results = create_results_writer(results_dir)
 
@@ -112,6 +112,7 @@ class ReduceDimensions(Verb):
         inference_results = load_results_dataset(self.config, results_dir=input_dir, verb="infer")
         total_length = len(inference_results)
 
+        # Prepare data sample
         config_sample_size = self.config["reduce"][algorithm_name].get("fit_sample_size", None)
         sample_size = int(np.min([config_sample_size if config_sample_size else np.inf, total_length]))
         rng = np.random.default_rng()
@@ -119,8 +120,9 @@ class ReduceDimensions(Verb):
         data_sample = np.asarray(inference_results[sample_indexes]).reshape((sample_size, -1))
 
         # Load model if path provided, otherwise fit new model
+        # Getting the model of current algorithm specified.
         if model_path is None:
-            model_path = self.config["reduce"]["model_path"]
+            model_path = self.config["reduce"][algorithm_name]["model_path"]
 
         if model_path:
             logger.info(f"Loading pre-existing reducer model from {model_path}")

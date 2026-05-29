@@ -45,14 +45,9 @@ class UMAP(ReductionAlgorithm):
         model_path : Path or str, optional
             The path to the file to load the model from.
             If not specified, method will look in the config for a default model path.
-
-        Returns
-        -------
-        UMAP
-            The UMAP instance with the loaded model.
         """
         if model_path is None:
-            model_path = self.config["reduce"]["model_path"]
+            model_path = self.config["reduce"]["umap"]["model_path"]
 
         if not model_path:
             logger.info("No pre-existing UMAP model found. A new model will be fitted.")
@@ -112,18 +107,12 @@ class UMAP(ReductionAlgorithm):
 
         num_batches : int
             The total number of batches that the data is split into for transformation.
-
-        reduction_results : ResultDatasetWriter
-            An instance of ResultDatasetWriter where the transformed results should be written.
         """
         if self.reducer is None:
             raise RuntimeError("Cannot transform data before loading or fitting a UMAP model.")
 
         from tqdm.auto import tqdm
 
-        # logger.info("Transforming data with UMAP")
-        # return self.reducer.transform(data)
-        # if self.config["reduce"]["umap"].get("parallel", False):
         if self.config["reduce"]["umap"]["parallel"]:
             import multiprocessing as mp
 
