@@ -103,7 +103,7 @@ class ReduceDimensions(Verb):
         algorithm_name = algorithm or self.config["reduce"]["algorithm"]
         reducer_cls = fetch_reducer_class(algorithm_name)
 
-        results_dir = create_results_dir(self.config, f"reduce_dimensions_{algorithm_name}")
+        results_dir = create_results_dir(self.config, f"{algorithm_name}_reduce_dimensions")
         logger.info(f"Saving reduction results using {algorithm_name} to {results_dir}")
         reduction_results = create_results_writer(results_dir)
 
