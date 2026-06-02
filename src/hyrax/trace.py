@@ -473,7 +473,7 @@ class TraceResult(TracePrintable):
         trace_def = TraceDef(
             disp_name=f"{friendly_name}__collate_{field_name}",
             func_name=f"collate_{field_name}",
-            params_to_capture={"samples": 0},
+            params_to_capture={"samples": 1},
             result_name="batch_dict",
             stage_name="field_level_collation",
         )
