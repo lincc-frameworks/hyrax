@@ -446,10 +446,11 @@ class DataProvider:
             for friendly_name, field_to_fcn_map in self.field_collate_functions.items():
                 dataset = self.prepped_datasets[friendly_name]
                 for field_name, field_collate_fn in field_to_fcn_map.items():
-                    new_field_collate_fn = trace.instrument_field_collate(
-                        dataset, field_collate_fn, friendly_name, field_name
-                    )
-                    self.field_collate_functions[friendly_name][field_name] = new_field_collate_fn
+                    if field_collate_fn is not None:
+                        new_field_collate_fn = trace.instrument_field_collate(
+                            dataset, field_collate_fn, friendly_name, field_name
+                        )
+                        self.field_collate_functions[friendly_name][field_name] = new_field_collate_fn
 
             for friendly_name, collate_fn in self.custom_collate_functions.items():
                 dataset = self.prepped_datasets[friendly_name]
