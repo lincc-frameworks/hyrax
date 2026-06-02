@@ -66,16 +66,16 @@ class PCA(ReductionAlgorithm):
             raise ValueError(f"The loaded model is not a PCA instance: {type(reducer)}")
 
         # Input feature dim check
-        if reducer.n_features_ != expected_input_dim:
+        if reducer.n_features_in_ != expected_input_dim:
             raise ValueError(
-                f"The input dimension of the loaded PCA model ({reducer.n_features_})"
+                f"The input dimension of the loaded PCA model ({reducer.n_features_in_})"
                 f" does not match the dimension of the inference data ({expected_input_dim})."
             )
 
         # Output dim check
-        if reducer.n_components != self.reducer.n_components:
+        if reducer.n_components_ != self.reducer.n_components:
             raise ValueError(
-                f"The output dimension of the loaded PCA model ({reducer.n_components})"
+                f"The output dimension of the loaded PCA model ({reducer.n_components_})"
                 f" does not match the configured n_components ({self.reducer.n_components})."
             )
 

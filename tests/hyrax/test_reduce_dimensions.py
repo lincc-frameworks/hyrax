@@ -7,7 +7,7 @@ from hyrax.verbs.reduction_algorithms.pca import PCA
 from hyrax.verbs.reduction_algorithms.umap import UMAP
 
 
-class FakeReducer:
+class FakeUmap:
     """
     A Fake implementation of umap.UMAP which simply returns what is passed to it.
     This works with the loopback model and random dataset since they both output
@@ -15,32 +15,31 @@ class FakeReducer:
 
     Install on a test like
 
-    @mock.patch("umap.UMAP", FakeReducer)
+    @mock.patch("umap.UMAP", FakeUmap)
     def test_blah():
         pass
     """
 
     def __init__(self, *args, **kwargs):
-        print("Called FakeReducer init")
-        # Store n_components from kwargs to match real reducer behavior
+        print("Called FakeUmap init")
+        # Store n_components from kwargs to match real UMAP behavior
         self.n_components = kwargs.get("n_components", 2)
-        self.n_features_ = kwargs.get("n_features_", 2)
 
     def fit(self, data):
         """We do nothing when fit on data. Prints are purely to help debug tests"""
-        print("Called FakeReducer fit:")
+        print("Called FakeUmap fit:")
         print(f"shape: {data.shape}")
         print(f"dtype: {data.dtype}")
 
     def transform(self, data):
         """We return our input when called to transform. Prints are purely to help debug tests"""
-        print("Called FakeReducer transform:")
+        print("Called FakeUmap transform:")
         print(f"shape: {data.shape}")
         print(f"dtype: {data.dtype}")
         return data
 
 
-@mock.patch("umap.UMAP", FakeReducer)
+@mock.patch("umap.UMAP", FakeUmap)
 def test_umap_order(loopback_inferred_hyrax):
     """Test that the order of data run through infer
     is correct in the presence of several splits
@@ -71,7 +70,7 @@ def test_umap_order(loopback_inferred_hyrax):
         assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], umap_result))
 
 
-@mock.patch("umap.UMAP", FakeReducer)
+@mock.patch("umap.UMAP", FakeUmap)
 def test_umap_load(loopback_inferred_hyrax):
     """Test that umap loads a pre-existing model from a path and handles all error cases"""
     h, dataset, _ = loopback_inferred_hyrax
@@ -82,7 +81,7 @@ def test_umap_load(loopback_inferred_hyrax):
     input_dim = int(np.prod(infer_shape))
 
     # Test successful loading
-    fake_umap_instance = FakeReducer()
+    fake_umap_instance = FakeUmap()
     fake_umap_instance._raw_data = np.zeros((100, input_dim))
     fake_umap_instance.n_components = 2
 
@@ -107,7 +106,7 @@ def test_umap_load(loopback_inferred_hyrax):
             h.reduce_dimensions(algorithm="umap", model_path="not_a_umap.pickle")
 
     # Test loaded UMAP model with wrong input dimension raises ValueError
-    fake_umap_wrong_input = FakeReducer()
+    fake_umap_wrong_input = FakeUmap()
     fake_umap_wrong_input._raw_data = np.zeros((100, input_dim + 1))
     fake_umap_wrong_input.n_components = 2
 
@@ -119,7 +118,7 @@ def test_umap_load(loopback_inferred_hyrax):
             h.reduce_dimensions(algorithm="umap", model_path="wrong_input_dim.pickle")
 
     # Test loaded UMAP model with wrong output dimension raises ValueError
-    fake_umap_wrong_output = FakeReducer()
+    fake_umap_wrong_output = FakeUmap()
     fake_umap_wrong_output._raw_data = np.zeros((100, input_dim))
     fake_umap_wrong_output.n_components = 3
 
@@ -131,7 +130,38 @@ def test_umap_load(loopback_inferred_hyrax):
             h.reduce_dimensions(algorithm="umap", model_path="wrong_output_dim.pickle")
 
 
-@mock.patch("sklearn.decomposition.PCA", FakeReducer)
+class FakePCA:
+    """
+    A Fake implementation of sklearn.decomposition.PCA which simply returns what is passed to it.
+    This works with the loopback model and random dataset since they both output
+    pairs of points, so the pca output is also pairs of points
+
+    Install on a test like
+
+    @mock.patch("sklearn.decomposition.PCA", FakePCA)
+    def test_blah():
+        pass
+    """
+
+    def __init__(self, *args, **kwargs):
+        print("Called FakePCA init")
+        self.n_components = kwargs.get("n_components", 2)
+
+    def fit(self, data):
+        """We do nothing when fit on data. Prints are purely to help debug tests"""
+        print("Called FakePCA fit:")
+        print(f"shape: {data.shape}")
+        print(f"dtype: {data.dtype}")
+
+    def transform(self, data):
+        """We return our input when called to transform. Prints are purely to help debug tests"""
+        print("Called FakePCA transform:")
+        print(f"shape: {data.shape}")
+        print(f"dtype: {data.dtype}")
+        return data
+
+
+@mock.patch("sklearn.decomposition.PCA", FakePCA)
 def test_pca_order(loopback_inferred_hyrax):
     """Test that the order of data run through infer
     is correct in the presence of several splits
@@ -162,7 +192,7 @@ def test_pca_order(loopback_inferred_hyrax):
         assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], pca_result))
 
 
-@mock.patch("sklearn.decomposition.PCA", FakeReducer)
+@mock.patch("sklearn.decomposition.PCA", FakePCA)
 def test_pca_load(loopback_inferred_hyrax):
     """Test that pca loads a pre-existing model from a path and handles all error cases"""
     h, dataset, _ = loopback_inferred_hyrax
@@ -173,12 +203,12 @@ def test_pca_load(loopback_inferred_hyrax):
     input_dim = int(np.prod(infer_shape))
 
     # Test successful loading
-    fake_umap_instance = FakeReducer()
-    fake_umap_instance._raw_data = np.zeros((100, input_dim))
-    fake_umap_instance.n_components = 2
+    fake_pca_instance = FakePCA()
+    fake_pca_instance.n_features_in_ = input_dim
+    fake_pca_instance.n_components_ = 2
 
     with (
-        mock.patch.object(PCA, "_load_pickle", return_value=fake_umap_instance),
+        mock.patch.object(PCA, "_load_pickle", return_value=fake_pca_instance),
         mock.patch("pathlib.Path.is_file", return_value=True),
     ):
         pca_result = h.reduce_dimensions(algorithm="pca", model_path="pretend_model_exists.pickle")
@@ -198,9 +228,9 @@ def test_pca_load(loopback_inferred_hyrax):
             h.reduce_dimensions(algorithm="pca", model_path="not_a_pca.pickle")
 
     # Test loaded PCA model with wrong input dimension raises ValueError
-    fake_pca_wrong_input = FakeReducer()
-    fake_pca_wrong_input._raw_data = np.zeros((100, input_dim + 1))
-    fake_pca_wrong_input.n_components = 2
+    fake_pca_wrong_input = FakePCA()
+    fake_pca_wrong_input.n_features_in_ = input_dim + 1
+    fake_pca_wrong_input.n_components_ = 2
 
     with (
         mock.patch.object(PCA, "_load_pickle", return_value=fake_pca_wrong_input),
@@ -210,9 +240,9 @@ def test_pca_load(loopback_inferred_hyrax):
             h.reduce_dimensions(algorithm="pca", model_path="wrong_input_dim.pickle")
 
     # Test loaded PCA model with wrong output dimension raises ValueError
-    fake_pca_wrong_output = FakeReducer()
-    fake_pca_wrong_output._raw_data = np.zeros((100, input_dim))
-    fake_pca_wrong_output.n_components = 3
+    fake_pca_wrong_output = FakePCA()
+    fake_pca_wrong_output.n_features_in_ = input_dim
+    fake_pca_wrong_output.n_components_ = 3
 
     with (
         mock.patch.object(PCA, "_load_pickle", return_value=fake_pca_wrong_output),
