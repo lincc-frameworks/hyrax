@@ -157,7 +157,7 @@ class SaveToDatabase(Verb):
             vectors = []
             ids = []
             for idx in indices:
-                vector = np.asarray(inference_data_set[idx]).flatten()
+                vector = np.concatenate([inference_data_set[idx][key].flatten() for key in inference_data_set.keys()])
                 vectors.append(vector)
                 ids.append(inference_data_set.get_object_id(idx))
 

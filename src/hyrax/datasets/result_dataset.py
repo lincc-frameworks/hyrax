@@ -349,3 +349,7 @@ class ResultDataset(HyraxDataset):
         # Use scanner with projection to only read object_id column
         scanner = self.lance_dataset.scanner(columns=["object_id"])
         return [oid.as_py() for batch in scanner.to_batches() for oid in batch["object_id"]]
+
+    def keys(self) -> list[str]:
+        """Return the keys of the data tensors."""
+        return list(self.tensor_dtype.keys())

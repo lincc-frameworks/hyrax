@@ -109,7 +109,12 @@ class Umap(Verb):
         index_choices = rng.choice(np.arange(total_length), size=sample_size, replace=False)
 
         # If the input to umap is not of the shape [samples,input_dims] we reshape the input accordingly
-        data_sample = np.asarray(inference_results[index_choices]).reshape((sample_size, -1))
+        data_sample = np.vstack(
+            [
+                np.concatenate([row[key].flatten() for key in inference_results.keys()])
+                for row in inference_results[index_choices]
+            ]
+        )
 
         if model_path is None:
             model_path = self.config["umap"]["model_path"]
@@ -175,7 +180,13 @@ class Umap(Verb):
                 # We flatten all dimensions of the input array except the dimension
                 # corresponding to batch elements. This ensures that all inputs to
                 # the UMAP algorithm are flattend per input item in the batch
-                inference_results[batch_indexes].reshape(len(batch_indexes), -1),
+                # inference_results[batch_indexes].reshape(len(batch_indexes), -1),
+                np.vstack(
+                    [
+                        np.concatenate([row[key].flatten() for key in inference_results.keys()])
+                        for row in inference_results[batch_indexes]
+                    ]
+                ),
             )
             for batch_indexes in np.array_split(all_indexes, num_batches)
         )
