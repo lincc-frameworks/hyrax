@@ -122,7 +122,7 @@ class ReduceDimensions(Verb):
         # Load model if path provided, otherwise fit new model
         # Getting the model of current algorithm specified.
         if model_path is None:
-            model_path = self.config["reduce"][algorithm_name]["model_path"]
+            model_path = self.config["reduce"][algorithm_name].get("model_path", None)
 
         if model_path:
             logger.info(f"Loading pre-existing reducer model from {model_path}")

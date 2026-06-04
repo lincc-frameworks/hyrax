@@ -472,8 +472,17 @@ n_neighbors = 15
 
 
 [reduce.tsne]
+# Use multiprocessing during transforming to umap space (More memory intensive)
+parallel = false
+
 
 [reduce.tsne.kwargs]
+# Dimension of the embedded space
+n_components = 2
+
+# Number of nearest neighbors that is used in other manifold learning algorithms
+perplexity = 30.0
+
 
 [reduce.pca]
 # Number of data points used to fit the pca transform.
