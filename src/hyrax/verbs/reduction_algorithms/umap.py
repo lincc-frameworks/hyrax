@@ -57,7 +57,27 @@ class UMAP(ReductionAlgorithm):
 
         logger.info(f"Loading pre-existing UMAP model from {model_path}")
         reducer = self._load_pickle(model_path)
+        self._validate_umap_model(reducer, expected_input_dim)
+        self.reducer = reducer
 
+    def _validate_umap_model(self, reducer, expected_input_dim: int) -> None:
+        """
+        Validate the loaded UMAP model.
+        Checks that the loaded object is a UMAP instance and that its
+        input and output dimensions match the expected values.
+
+        Parameters
+        ----------
+        reducer : object
+            The loaded model object to validate.
+        expected_input_dim : int
+            The expected number of input features for the loaded model.
+
+        Raises
+        ------
+        ValueError
+            If the loaded model is not a UMAP instance or if its input/output dimensions are incompatible.
+        """
         # UMAP type check
         if not isinstance(reducer, umap.UMAP):
             raise ValueError(f"The loaded model is not a UMAP instance: {type(reducer)}")
@@ -75,8 +95,6 @@ class UMAP(ReductionAlgorithm):
                 f"The output dimension of the loaded UMAP model ({reducer.n_components})"
                 f" does not match the configured n_components ({self.reducer.n_components})."
             )
-
-        self.reducer = reducer
 
     def fit(self, data_sample: np.ndarray):
         """
