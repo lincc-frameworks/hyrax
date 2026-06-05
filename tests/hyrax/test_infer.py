@@ -73,7 +73,7 @@ def test_infer_order(loopback_hyrax, shuffle):
 
         print(f"orig idx: {dataset_idx}, infer idx: {idx}")
         print(f"orig data: {dataset[dataset_idx]}, infer data: {inference_results[idx]}")
-        assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]))
+        assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]["data"]))
 
 
 def test_load_model_weights_updates_config_when_auto_detected(tmp_path):
