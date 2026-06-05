@@ -1,4 +1,3 @@
-import pytest
 import torch.nn as nn
 
 import hyrax
@@ -14,6 +13,7 @@ RANDOM_DATASET_CONFIG = {
 
 @hyrax_model
 class DummyModel(nn.Module):
+    """Dummy model that returns a tensor from the forward pass."""
     def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config
@@ -21,6 +21,7 @@ class DummyModel(nn.Module):
         self.linear = nn.Linear(10, 1)
 
     def forward(self, x):
+        """Forward pass that returns a tensor."""
         return self.linear(x)
 
     @staticmethod
@@ -34,24 +35,29 @@ class DummyModel(nn.Module):
         return (image, label)
 
     def train_batch(self, batch):
+        """Train step that returns a loss value."""
         data, labels = batch
         outputs = self(data)
         loss = self.criterion(outputs, labels)
         return {"loss": loss.item()}
 
     def validate_batch(self, batch):
+        """Validation step that returns a loss value."""
         data, labels = batch
         outputs = self(data)
         loss = self.criterion(outputs, labels)
         return {"loss": loss.item()}
 
     def infer_batch(self, batch):
+        """Inference step that returns the model output."""
         data ,_ = batch
         return self(data)
 
 @hyrax_model
 class DummyModelDictReturn(DummyModel):
+    """Dummy model that returns a dictionary from the forward pass."""
     def forward(self, x):
+        """Forward pass that returns a dictionary."""
         output = super().forward(x)
         return {"output": output}
 
@@ -66,12 +72,14 @@ class DummyModelDictReturn(DummyModel):
         return (image, label)
 
     def train_batch(self, batch):
+        """Train step that returns a loss value."""
         data, labels = batch
         outputs = self(data)
         loss = self.criterion(outputs["output"], labels)
         return {"loss": loss.item()}
 
     def validate_batch(self, batch):
+        """Validation step that returns a loss value."""
         data, labels = batch
         outputs = self(data)
         loss = self.criterion(outputs["output"], labels)
