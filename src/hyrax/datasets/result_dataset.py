@@ -239,7 +239,7 @@ class ResultDataset(HyraxDataset):
         schema_metadata = self.table.schema.metadata
         if schema_metadata is None:
             raise RuntimeError("Lance table schema is missing metadata")
-        
+
         loaded_metadata = {k.decode("utf-8"): json.loads(v.decode("utf-8")) for k, v in schema_metadata.items()}
         self.tensor_shape = {key: loaded_metadata[key]["tensor_shape"] for key in loaded_metadata}
         self.tensor_dtype = {key: np.dtype(loaded_metadata[key]["tensor_dtype"]) for key in loaded_metadata}
