@@ -49,13 +49,13 @@ def test_infer_trace(loopback_hyrax):
     assert index_by_name == index_by_number
 
 
-@pytest.mark.parametrize("shuffle", [True, False])
-def test_infer_order(loopback_hyrax, shuffle):
+@pytest.mark.parametrize("train_shuffle", [True, False])
+def test_infer_order(loopback_hyrax, train_shuffle):
     """Test that the order of data run through infer
     is correct in the presence of several splits
     """
     h, dataset = loopback_hyrax
-    h.config["data_loader"]["shuffle"] = shuffle
+    h.config["train"]["shuffle"] = train_shuffle
 
     dataset = dataset["infer"]
     inference_results = h.infer()
@@ -74,6 +74,33 @@ def test_infer_order(loopback_hyrax, shuffle):
         print(f"orig idx: {dataset_idx}, infer idx: {idx}")
         print(f"orig data: {dataset[dataset_idx]}, infer data: {inference_results[idx]}")
         assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]["data"]))
+
+
+def test_infer_split_fraction_preserves_underlying_dataset_order(loopback_hyrax):
+    """Inference with split_fraction should process and write the selected subset
+    in the same order as the underlying dataset.
+    """
+    from hyrax.pytorch_ignite import setup_dataset
+
+    h, _ = loopback_hyrax
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 1000
+    h.config["data_loader"]["batch_size"] = 3
+    h.config["data_request"]["infer"]["data"]["split_fraction"] = 0.01
+
+    dataset = setup_dataset(h.config, splits=("infer",), shuffle=False)["infer"]
+    expected_indices = list(range(10))
+    assert dataset.split_indices == expected_indices
+
+    expected_ids = [dataset.get_object_id(idx) for idx in expected_indices]
+    expected_outputs = [dataset[idx]["data"]["image"] for idx in expected_indices]
+
+    inference_results = h.infer()
+
+    assert len(inference_results) == len(expected_indices)
+    assert inference_results.ids() == expected_ids
+
+    for idx, expected_output in enumerate(expected_outputs):
+        assert np.all(np.isclose(expected_output, inference_results[idx]["data"]))
 
 
 def test_load_model_weights_updates_config_when_auto_detected(tmp_path):

@@ -1,9 +1,10 @@
-# Agent environment artifact setup (Codex Cloud + Claude Code Web)
+# Agent environment artifact setup (Codex Cloud + Claude Code Web + GitHub Copilot)
 
 This repo ships setup scripts that download a prebuilt conda environment artifact from GitHub Actions and unpack it in the web agent container.
 
 - `agent_scripts/codex_setup_container.sh` → for **Codex Cloud**
 - `agent_scripts/claude_code_web_setup_container.sh` → for **Claude Code Web**
+- `.github/workflows/copilot-setup-steps.yml` → for **GitHub Copilot cloud agent**
 
 The artifact is built by `.github/workflows/build-agent-env-artifact.yml` on pushes to `main` (and can also be run manually with **workflow_dispatch**).
 
@@ -12,6 +13,10 @@ The artifact is built by `.github/workflows/build-agent-env-artifact.yml` on pus
 These setup scripts require outbound internet access. They will not work in a fully offline or no-egress 
 container. Right now you need to set full internet access to use this. See the end of the file for known
 information about custom allow-lists.
+
+> **Note for GitHub Copilot:** The `copilot-setup-steps.yml` workflow uses the automatic
+> `GITHUB_TOKEN` (no personal token required) and runs entirely within GitHub Actions,
+> so no manual internet-access configuration is needed.
 
 ## 1) Create a GitHub token for artifact download
 
@@ -85,6 +90,29 @@ The editable install is not performed during container setup; it runs later from
 `.claude/hooks/session-start.sh` when the Claude Code Web session starts.
 Claude code has no cache switch, so changing the cache buster comment line can force re-runs of the setup 
 script if your claude code environment shows signs of being stale.
+
+## 5) Provision on GitHub Copilot cloud agent
+
+GitHub Copilot cloud agent uses a dedicated GitHub Actions workflow file that runs
+automatically before every Copilot session.  **No personal token or manual
+configuration is required** — the workflow uses the repository's automatic
+`GITHUB_TOKEN`.
+
+The workflow is already committed at `.github/workflows/copilot-setup-steps.yml`.
+Once that file is present on `main`, Copilot will automatically use it.
+
+What happens:
+- Checks out the repository
+- Installs `pandoc`
+- Downloads `hyrax-agent-conda-env-main` using `GITHUB_TOKEN` (no PAT needed)
+- Unpacks to `$HOME/hyrax-venv` and runs `conda-unpack`
+- Runs `pip install -e '.[dev]'`
+- Adds a venv activation block to `~/.bashrc` and `~/.profile` so every shell
+  Copilot opens automatically activates the hyrax environment
+- Verifies the environment with a quick `import hyrax` check
+
+**To verify the setup manually:** go to **Actions → Copilot Setup Steps** and
+click **Run workflow**.
 
 ## Custom allow-lists
 

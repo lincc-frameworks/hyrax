@@ -115,7 +115,6 @@ class ResultDatasetWriter:
             flattened = [tensor.flatten() for tensor in arr]
             batch_data[key] = pa.array(flattened, type=self.schema.field(key).type)
 
-
         # Create PyArrow record batch
         # batch_data = {
         #     "object_id": pa.array([str(oid) for oid in object_ids], type=pa.string()),
@@ -199,9 +198,7 @@ class ResultDatasetWriter:
         # )
         logger.debug(f"Created schema with fields: {list(data_dict.keys())}")
         for key in data_dict:
-            logger.debug(
-                f"  {key}: shape {self.tensor_shape[key]}, dtype {self.tensor_dtype[key]}"
-            )
+            logger.debug(f"  {key}: shape {self.tensor_shape[key]}, dtype {self.tensor_dtype[key]}")
 
 
 class ResultDataset(HyraxDataset):
@@ -240,7 +237,9 @@ class ResultDataset(HyraxDataset):
         if schema_metadata is None:
             raise RuntimeError("Lance table schema is missing metadata")
 
-        loaded_metadata = {k.decode("utf-8"): json.loads(v.decode("utf-8")) for k, v in schema_metadata.items()}
+        loaded_metadata = {
+            k.decode("utf-8"): json.loads(v.decode("utf-8")) for k, v in schema_metadata.items()
+        }
         self.tensor_shape = {key: loaded_metadata[key]["tensor_shape"] for key in loaded_metadata}
         self.tensor_dtype = {key: np.dtype(loaded_metadata[key]["tensor_dtype"]) for key in loaded_metadata}
 
@@ -275,18 +274,19 @@ class ResultDataset(HyraxDataset):
         # Handle single index
         is_single = isinstance(idx, (int, np.integer))
         if is_single:
-            idx = [int(idx)]
+            idx = np.array([int(idx)])
         else:
-            idx = np.asarray(idx)
-            idx = [int(idx)] if len(idx.shape) == 0 else idx.tolist()  # scalar array
+            idx = np.asarray(idx, dtype=np.int64)
+            idx = np.array([idx]) if len(idx.shape) == 0 else idx  # scalar array
 
         # Validate indices
         table_len = len(self)
-        for i in idx:
-            if i < 0 or i >= table_len:
-                raise IndexError(f"Index {i} is out of range for dataset of length {table_len}")
+        # Using vectorized check for out-of-range indices instead of loop for better performance
+        if np.any((idx < 0) | (idx >= table_len)):
+            bad = idx[(idx < 0) | (idx >= table_len)]
+            raise IndexError(f"Indices {bad} are out of range for dataset of length {table_len}")
 
-        # Use take for O(1) random access
+        # Use take for O(k) random access, where k is the number of indices.
         result = self.lance_dataset.take(idx)
 
         # Extract data column and reshape
@@ -302,6 +302,42 @@ class ResultDataset(HyraxDataset):
 
         # Return single tensor or array of tensors
         return tensors[0] if is_single else tensors
+
+    def get_combined_tensor(self, idx: int):
+        """Get a combined tensor if multiple fields are present, by concatenating along the last axis."""
+        row_data = self.__getitem__(idx)
+        if len(row_data) == 1:
+            return np.concatenate([row_data[key] for key in self.keys()], axis=-1)
+        else:
+            tensors = []
+            for row in row_data:
+                tensors.append(np.concatenate([row[key] for key in self.keys()], axis=-1))
+            return np.vstack(tensors)
+
+    def __get_all__(self):
+        """Get all data tensors in the dataset.
+
+        This is a specialized method that is meant for internal use (e.g. visualize_v2).
+        It retrieves all tensors efficiently by assuming column names and accessing
+        the array buffer directly, without creating Python objects for each row.
+
+        Returns
+        -------
+        np.ndarray
+            All data tensors
+        """
+        arrow_col = self.lance_dataset.to_table(columns=["data"])["data"]
+
+        # If ChunkedArray (multiple fragments), combine first
+        if hasattr(arrow_col, "combine_chunks"):
+            arrow_col = arrow_col.combine_chunks()
+
+        # Access the flat buffer directly — no Python objects created
+        flat_np = arrow_col.values.to_numpy(zero_copy_only=False)
+
+        # Reshape is O(1) (a view, no data copy)
+        tensors = flat_np.reshape(-1, *self.tensor_shape).astype(self.tensor_dtype, copy=False)
+        return tensors
 
     def get_data(self, idx: int):
         """Get data tensor at index (HyraxQL getter).

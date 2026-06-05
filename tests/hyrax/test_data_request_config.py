@@ -159,7 +159,7 @@ def test_config_manager_set_config_accepts_data_request_definition():
         }
     )
 
-    cm.set_config("data_request", definition)
+    cm._set_config("data_request", definition)
 
     rendered = cm.config["data_request"]
     assert rendered["train"]["data"]["dataset_class"] == "HyraxRandomDataset"
@@ -183,7 +183,7 @@ def test_config_manager_set_config_with_valid_dict():
         }
     }
 
-    cm.set_config("data_request", valid_dict)
+    cm._set_config("data_request", valid_dict)
 
     rendered = cm.config["data_request"]
     assert rendered["train"]["data"]["dataset_class"] == "HyraxRandomDataset"
@@ -206,7 +206,7 @@ def test_config_manager_set_config_with_invalid_data_accepts_as_is():
     }
 
     # Should not raise - validation error is logged as warning but data is accepted
-    cm.set_config("data_request", invalid_dict)
+    cm._set_config("data_request", invalid_dict)
 
     # Invalid data is stored as-is without validation/coercion
     rendered = cm.config["data_request"]
@@ -230,7 +230,7 @@ def test_config_manager_set_config_coerces_typed_dataset_config():
         }
     }
 
-    cm.set_config("data_request", valid_dict)
+    cm._set_config("data_request", valid_dict)
 
     rendered = cm.config["data_request"]
     assert rendered["train"]["data"]["dataset_class"] == "HyraxCifarDataset"
@@ -255,7 +255,7 @@ def test_config_manager_set_config_with_partial_validity():
     }
 
     # Should not raise - validation error is logged as warning but data is accepted
-    cm.set_config("data_request", partially_valid)
+    cm._set_config("data_request", partially_valid)
 
     # Since validation fails, data is stored as-is
     rendered = cm.config["data_request"]
@@ -998,7 +998,7 @@ def test_issue_817_single_named_source_no_extra_data_nesting():
             }
         }
     }
-    cm.set_config("data_request", data_request)
+    cm._set_config("data_request", data_request)
 
     train_cfg = cm.config["data_request"]["train"]
 

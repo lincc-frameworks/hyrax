@@ -211,6 +211,9 @@ experiment_name = "notebook"
 # If false, uses result directory string, <timestamp>-train-<uid>, as run name.
 run_name = false
 
+# If true, shuffle training samples each epoch. Only the train verb uses this option.
+shuffle = true
+
 
 [test]
 # The path to the model weights file to use for testing. If `false`, the most recent
@@ -394,9 +397,6 @@ streaming = true
 # The number of data points to load at once.
 batch_size = 512
 
-# STRONG RECOMMENDATION: Leave this as `false`.
-# Ensure that the data loader does no secondary shuffling of the data.
-shuffle = false
 
 
 [infer]
@@ -490,6 +490,29 @@ torch_tensor_bands = [3]
 # Whether to rasterize plot. Will break coloring (Haloviews Bug)
 # Helpful to reduce lag in large datasets. 
 rasterize_plot = false
+
+
+[visualize_v2]
+
+# Number of hexagonal bins across the x-axis at any zoom level
+target_bins = 50
+
+# Extra padding around the viewport as a fraction of viewport width/height
+buffer_factor = 0.2
+
+# Plot dimensions in pixels
+plot_width = 1000
+plot_height = 1000
+
+# Colormap for hexbin density
+cmap = "Viridis"
+
+# Maximum rows rendered in the selection table
+max_table_rows = 1000
+
+# Number of detail plots per tab row
+num_detail_plots = 6
+
 
 
 [engine]
