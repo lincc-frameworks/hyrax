@@ -123,7 +123,7 @@ class PCA(ReductionAlgorithm):
         num_batches : int
             The total number of batches that the data is split into for transformation.
         """
-        if self.reducer is None:
+        if self.reducer is None or not isinstance(self.reducer, sklearn_decomposition.PCA):
             raise RuntimeError("Cannot transform data before loading or fitting a PCA model.")
 
         from tqdm.auto import tqdm

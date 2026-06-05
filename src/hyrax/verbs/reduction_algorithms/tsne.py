@@ -1,8 +1,6 @@
 import logging
-import os
 import warnings
 
-import psutil
 import sklearn.manifold as sklearn_manifold
 
 from .algorithm_registry import ReductionAlgorithm
@@ -21,7 +19,6 @@ class TSNE(ReductionAlgorithm):
         """Transform and fit the given data."""
         from tqdm.auto import tqdm
 
-        # check parallel
         if self.config["reduce"]["tsne"]["parallel"]:
             import multiprocessing as mp
 
@@ -52,7 +49,7 @@ class TSNE(ReductionAlgorithm):
         self.reduction_results.commit()
 
     def _fit_transform_batch(self, batch_tuple: tuple):
-        """Private helper to transform a single batch
+        """Private helper to fit_transform a single batch
 
         Parameters
         ----------
@@ -73,21 +70,3 @@ class TSNE(ReductionAlgorithm):
             warnings.simplefilter(action="ignore", category=FutureWarning)
             logger.debug("Transforming a batch ...")
             return (batch_ids, self.reducer.fit_transform(batch))
-
-    @staticmethod
-    def _log_memory_usage(message: str = ""):
-        """
-        Log the current resident set size (RSS) memory usage of the current process in gigabytes.
-
-        Parameters
-        ----------
-        message : str, optional
-            A descriptive message to include in the log output for context.
-
-        Notes
-        -----
-        This method is intended for debugging and performance monitoring.
-        """
-        process = psutil.Process(os.getpid())
-        mem_gb = process.memory_info().rss / 1024**3
-        logger.debug(f"{message} | Memory usage: {mem_gb:.2f} GB")

@@ -68,6 +68,7 @@ class ReduceDimensions(Verb):
         the selected dimensionality reduction algorithm.
 
         Algorithms that support reusable fitted models may either:
+
         - fit a new model using a sampled subset of the data, or
         - load an existing model if a model path is provided.
 

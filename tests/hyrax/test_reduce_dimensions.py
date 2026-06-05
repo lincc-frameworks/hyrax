@@ -41,8 +41,9 @@ class FakeUmap:
 
 @mock.patch("umap.UMAP", FakeUmap)
 def test_umap_order(loopback_inferred_hyrax):
-    """Test that the order of data run through infer
-    is correct in the presence of several splits
+    """
+    Test that the order of data run through infer
+    is correct in the presence of several splits when using UMAP
     """
     h, dataset, _ = loopback_inferred_hyrax
 
@@ -163,8 +164,9 @@ class FakePCA:
 
 @mock.patch("sklearn.decomposition.PCA", FakePCA)
 def test_pca_order(loopback_inferred_hyrax):
-    """Test that the order of data run through infer
-    is correct in the presence of several splits
+    """
+    Test that the order of data run through infer
+    is correct in the presence of several splits when using PCA
     """
     h, dataset, _ = loopback_inferred_hyrax
 
@@ -250,3 +252,60 @@ def test_pca_load(loopback_inferred_hyrax):
     ):
         with pytest.raises(ValueError, match="output dimension of the loaded PCA model"):
             h.reduce_dimensions(algorithm="pca", model_path="wrong_output_dim.pickle")
+
+
+class FakeTSNE:
+    """
+    A Fake implementation of sklearn.manifold.TSNE which simply returns what is passed to it.
+    This works with the loopback model and random dataset since they both output
+    pairs of points, so the tsne output is also pairs of points
+
+    Install on a test like
+
+    @mock.patch("sklearn.manifold.TSNE", FakeTSNE)
+    def test_blah():
+        pass
+    """
+
+    def __init__(self, *args, **kwargs):
+        print("Called FakeTSNE init")
+        self.n_components = kwargs.get("n_components", 2)
+
+    def fit_transform(self, data):
+        """We return our input when called to fit_transform. Prints are purely to help debug tests"""
+        print("Called FakeTSNE fit_transform:")
+        print(f"shape: {data.shape}")
+        print(f"dtype: {data.dtype}")
+        return data
+
+
+@mock.patch("sklearn.manifold.TSNE", FakeTSNE)
+def test_tsne_order(loopback_inferred_hyrax):
+    """
+    Test that the order of data run through infer
+    is correct in the presence of several splits when using t-SNE
+    """
+    h, dataset, _ = loopback_inferred_hyrax
+
+    dataset = dataset["infer"]
+
+    tsne_results = h.reduce_dimensions(algorithm="tsne")
+    tsne_result_ids = tsne_results.ids()
+    original_dataset_ids = dataset.ids()
+
+    data_shape = h.config["data_set"]["HyraxRandomDataset"]["shape"]
+
+    for idx, result_id in enumerate(tsne_result_ids):
+        dataset_idx = None
+        for i, orig_id in enumerate(original_dataset_ids):
+            if orig_id == result_id:
+                dataset_idx = i
+                break
+        else:
+            raise AssertionError("Failed to find a corresponding ID")
+
+        tsne_result = tsne_results[idx].reshape(data_shape)
+
+        print(f"orig idx: {dataset_idx}, tsne idx: {idx}")
+        print(f"orig data: {dataset[dataset_idx]}, tsne data: {tsne_result}")
+        assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], tsne_result))
