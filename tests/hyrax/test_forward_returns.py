@@ -99,6 +99,7 @@ def test_return_tensor():
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 100
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 24601
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [10]
+    h.config["data_set"]["HyraxRandomDataset"]["provided_labels"] = [0]
 
     h.config["train"]["epochs"] = 1
 
@@ -120,6 +121,7 @@ def test_return_dict():
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 100
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 24601
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [10]
+    h.config["data_set"]["HyraxRandomDataset"]["provided_labels"] = [0]
 
     h.config["train"]["epochs"] = 1
 
