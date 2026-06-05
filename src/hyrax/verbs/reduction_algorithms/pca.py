@@ -1,12 +1,9 @@
 import logging
-import os
 import pickle
-import warnings
 from pathlib import Path
 from typing import Union
 
 import numpy as np
-import psutil
 import sklearn.decomposition as sklearn_decomposition
 
 from .algorithm_registry import ReductionAlgorithm
@@ -135,64 +132,3 @@ class PCA(ReductionAlgorithm):
                 self.reduction_results.write_batch(batch_ids, transformed_batch)
 
         self.reduction_results.commit()  # Ensure all data is written and finalized
-
-    def _load_pickle(self, model_path: Union[Path, str]):
-        """
-        Helper function to wrap loading a pickle file from a given path for easier testing.
-
-        Parameters
-        ----------
-        model_path : str or Path
-            The file path to the pickle file.
-
-        Returns
-        -------
-        object
-            The object loaded from the pickle file.
-        """
-        model_path = Path(model_path)
-        with open(model_path, "rb") as f:
-            object = pickle.load(f)
-
-            return object
-
-    def _transform_batch(self, batch_tuple: tuple):
-        """Private helper to transform a single batch
-
-        Parameters
-        ----------
-        batch_tuple : tuple()
-            first element is the IDs of the batch as a numpy array
-            second element is the inference results to transform as a numpy array with shape (batch_len, N)
-            where N is the total number of dimensions in the inference result. Caller flattens all inference
-            result axes for us.
-
-        Returns
-        -------
-        tuple
-            first element is the ids of the batch as a numpy array
-            second element is the results of running the PCA transform on the input as a numpy array.
-        """
-        batch_ids, batch = batch_tuple
-        with warnings.catch_warnings():
-            warnings.simplefilter(action="ignore", category=FutureWarning)
-            logger.debug("Transforming a batch ...")
-            return (batch_ids, self.reducer.transform(batch))
-
-    @staticmethod
-    def _log_memory_usage(message: str = ""):
-        """
-        Log the current resident set size (RSS) memory usage of the current process in gigabytes.
-
-        Parameters
-        ----------
-        message : str, optional
-            A descriptive message to include in the log output for context.
-
-        Notes
-        -----
-        This method is intended for debugging and performance monitoring.
-        """
-        process = psutil.Process(os.getpid())
-        mem_gb = process.memory_info().rss / 1024**3
-        logger.debug(f"{message} | Memory usage: {mem_gb:.2f} GB")

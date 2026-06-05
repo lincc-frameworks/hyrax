@@ -443,11 +443,14 @@ inference_dir = false
 
 
 [reduce]
+# Name of the reduction algorithm to use
+algorithm = "umap"
+
 # Save the fitted reducer model as a pickle file 
 save_fit_model = true
 
-# Name of the reduction algorithm to use
-algorithm = "umap"
+# The number of data points to use in reduce_dimensions at once.
+batch_size = 1024
 
 
 [reduce.umap]

@@ -64,17 +64,24 @@ class ReduceDimensions(Verb):
         """
         Run dimensionality reduction on a dataset
 
-        This method loads the latent space representations from an inference run,
-        samples a subset of data points, flattens them if necessary,
-        and fits a dimensionality reduction model. If a model path is provided,
-        it loads the model instead of fitting a new one. Then the reducer will
-        be used to transform the entire dataset into a lower-dimensional space,
-        and the results will be saved.
+        This method loads the latent space representations from an inference run and applies
+        the selected dimensionality reduction algorithm.
+
+        Algorithms that support reusable fitted models may either:
+        - fit a new model using a sampled subset of the data, or
+        - load an existing model if a model path is provided.
+
+        Algorithms without a separate fitting stage do not support model loading and
+        directly transform the input data.
+
+        The full dataset is then transformed into the target lower-dimensional space,
+        and the resulting embeddings are saved.
 
         Parameters
         ----------
         algorithm : str, Optional
             The dimensionality reduction algorithm to use.
+            If not specified, the method will look in the config for a default algorithm.
 
         input_dir : str or Path, Optional
             Directory containing the dataset to reduce dimensions for.
@@ -103,7 +110,7 @@ class ReduceDimensions(Verb):
         algorithm_name = algorithm or self.config["reduce"]["algorithm"]
         reducer_cls = fetch_reducer_class(algorithm_name)
 
-        results_dir = create_results_dir(self.config, f"reduce_dimensions_{algorithm_name}")
+        results_dir = create_results_dir(self.config, f"{algorithm_name}")
         logger.info(f"Saving reduction results using {algorithm_name} to {results_dir}")
         reduction_results = create_results_writer(results_dir)
 
@@ -112,7 +119,7 @@ class ReduceDimensions(Verb):
         inference_results = load_results_dataset(self.config, results_dir=input_dir, verb="infer")
         total_length = len(inference_results)
 
-        # Prepare data sample
+        # Prepare data sample for either fitting a new model or validating a pre-trained model loaded.
         config_sample_size = self.config["reduce"][algorithm_name].get("fit_sample_size", None)
         sample_size = int(np.min([config_sample_size if config_sample_size else np.inf, total_length]))
         rng = np.random.default_rng()
@@ -139,7 +146,7 @@ class ReduceDimensions(Verb):
         gc.collect()
 
         # Transform dataset
-        batch_size = self.config["data_loader"]["batch_size"]
+        batch_size = self.config["reduce"]["batch_size"]
         num_batches = int(np.ceil(total_length / batch_size))
 
         all_indexes = np.arange(0, total_length)
