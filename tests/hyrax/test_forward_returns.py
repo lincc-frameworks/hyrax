@@ -107,7 +107,7 @@ def test_return_tensor():
     infda = h.infer()
 
     assert len(infda) == 100
-    # assert infda[0].shape == (1,)
+    assert infda[0]["data"].shape == (1,)
 
 def test_return_dict():
     """Test that a model that returns a dictionary can be used in the forward pass."""
@@ -129,3 +129,4 @@ def test_return_dict():
     infda = h.infer()
 
     assert infda
+    assert infda[0]["output"].shape == (1,)
