@@ -64,7 +64,7 @@ class ResultDatasetWriter:
             List of numpy arrays (tensors) to write
         """
         # Normalize data to dict format for uniform handling
-        if isinstance(data, torch.Tensor) or isinstance(data, np.ndarray) or isinstance(data, list):
+        if isinstance(data, (torch.Tensor, np.ndarray, list)):
             data_dict = {"data": np.array(data)}
         else:
             # data_dict = data
@@ -140,8 +140,8 @@ class ResultDatasetWriter:
 
         Parameters
         ----------
-        sample_tensor : np.ndarray
-            Sample tensor to determine dtype and shape
+        sample_data : np.ndarray
+            Sample tensor or dict to determine dtype and shape
         """
         # Normalize to dict format
         # TODO: double check if this is stricly necessary
@@ -293,7 +293,7 @@ class ResultDataset(HyraxDataset):
         tensors = []
         for i in range(len(idx)):
             row_data = {}
-            for key in self.tensor_dtype.keys():
+            for key in self.keys():
                 flat_data = result[key][i].as_py()
                 tensor = np.array(flat_data, dtype=self.tensor_dtype[key])
                 tensor = tensor.reshape(self.tensor_shape[key])
@@ -304,14 +304,16 @@ class ResultDataset(HyraxDataset):
         return tensors[0] if is_single else tensors
 
     def get_combined_tensor(self, idx: int):
-        """Get a combined tensor if multiple fields are present, by concatenating along the last axis."""
+        """Get a combined and flattened tensor if multiple fields are present,
+        by concatenating all the fields together.
+        """
         row_data = self.__getitem__(idx)
         if len(row_data) == 1:
-            return np.concatenate([row_data[key] for key in self.keys()], axis=-1)
+            return np.concatenate([row_data[key].flatten() for key in self.keys()], axis=-1)
         else:
             tensors = []
             for row in row_data:
-                tensors.append(np.concatenate([row[key] for key in self.keys()], axis=-1))
+                tensors.append(np.concatenate([row[key].flatten() for key in self.keys()], axis=-1))
             return np.vstack(tensors)
 
     def __get_all__(self):

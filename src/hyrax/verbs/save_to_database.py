@@ -157,7 +157,7 @@ class SaveToDatabase(Verb):
             vectors = []
             ids = []
             for idx in indices:
-                vector = np.concatenate([inference_data_set[idx][key].flatten() for key in inference_data_set.keys()])
+                vector = inference_data_set.get_combined_tensor(idx)
                 vectors.append(vector)
                 ids.append(inference_data_set.get_object_id(idx))
 
