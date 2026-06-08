@@ -238,14 +238,22 @@ class ResultDataset(HyraxDataset):
             raise RuntimeError("Lance table schema is missing metadata")
 
         loaded_metadata = {
-            k.decode("utf-8"): json.loads(v.decode("utf-8")) for k, v in schema_metadata.items()
+            k.decode("utf-8"): v.decode("utf-8") for k, v in schema_metadata.items()
         }
+        
+        if "tensor_shape" in loaded_metadata and "tensor_dtype" in loaded_metadata:
+            # Backwards compatibility for old schema format with single tensor
+            loaded_metadata = {
+                "data": {
+                    "tensor_shape": json.loads(loaded_metadata["tensor_shape"]),
+                    "tensor_dtype": loaded_metadata["tensor_dtype"],
+                }
+            }
+        else:
+            loaded_metadata = {key: json.loads(value) for key, value in loaded_metadata.items()}
+
         self.tensor_shape = {key: loaded_metadata[key]["tensor_shape"] for key in loaded_metadata}
         self.tensor_dtype = {key: np.dtype(loaded_metadata[key]["tensor_dtype"]) for key in loaded_metadata}
-
-        # Decode tensor shape and dtype from metadata
-        # self.tensor_shape = json.loads(schema_metadata[b"tensor_shape"].decode("utf-8"))
-        # self.tensor_dtype = np.dtype(schema_metadata[b"tensor_dtype"].decode("utf-8"))
 
         logger.debug(f"Opened Lance table with shape {self.tensor_shape} and dtype {self.tensor_dtype}")
 
