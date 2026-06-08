@@ -11,9 +11,11 @@ RANDOM_DATASET_CONFIG = {
     }
 }
 
+
 @hyrax_model
 class DummyModel(nn.Module):
     """Dummy model that returns a tensor from the forward pass."""
+
     def __init__(self, config, data_sample=None):
         super().__init__()
         self.config = config
@@ -28,6 +30,7 @@ class DummyModel(nn.Module):
     def prepare_inputs(data_dict):
         """Prepare the inputs for the forward pass."""
         import numpy as np
+
         data = data_dict["data"]
         image = np.asarray(data["image"], dtype=np.float32)
         label = np.asarray(data.get("label", []), dtype=np.int64)
@@ -50,12 +53,14 @@ class DummyModel(nn.Module):
 
     def infer_batch(self, batch):
         """Inference step that returns the model output."""
-        data ,_ = batch
+        data, _ = batch
         return self(data)
+
 
 @hyrax_model
 class DummyModelDictReturn(DummyModel):
     """Dummy model that returns a dictionary from the forward pass."""
+
     def forward(self, x):
         """Forward pass that returns a dictionary."""
         output = super().forward(x)
@@ -65,6 +70,7 @@ class DummyModelDictReturn(DummyModel):
     def prepare_inputs(data_dict):
         """Prepare the inputs for the forward pass."""
         import numpy as np
+
         data = data_dict["data"]
         image = np.asarray(data["image"], dtype=np.float32)
         label = np.asarray(data.get("label", []), dtype=np.int64)
@@ -108,6 +114,7 @@ def test_return_tensor():
 
     assert len(infda) == 100
     assert infda[0]["data"].shape == (1,)
+
 
 def test_return_dict():
     """Test that a model that returns a dictionary can be used in the forward pass."""
