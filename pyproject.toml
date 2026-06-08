@@ -64,7 +64,7 @@ dependencies = [
     "lancedb < 0.30.0", # Used for columnar storage of inference results
     # lance-namespace 0.7 removed CreateEmptyTableRequest and breaks lancedb<0.30 imports.
     # Track upstream compatibility in lancedb before removing this cap.
-    "lance-namespace < 0.9.0",
+    "lance-namespace < 0.7.0",
     "pyarrow", # Used by lancedb for data interchange
     "pylance", # Used by lancedb for Lance dataset access
 ]
