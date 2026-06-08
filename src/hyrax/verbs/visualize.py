@@ -116,12 +116,7 @@ class Visualize(Verb):
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = load_results_dataset(self.config, results_dir=input_dir, verb="umap")
-        self.umap_results = np.vstack(
-                [
-                    np.concatenate([row[key].flatten() for key in self.umap_results])
-                    for row in self.umap_results
-                ]
-        )
+        self.umap_results = self.umap_results.get_combined_tensor(np.arange(len(self.umap_results)))
 
         # Build a DataProvider from the live config for metadata access.
         # This avoids implicit coupling between result datasets and their original data sources.
