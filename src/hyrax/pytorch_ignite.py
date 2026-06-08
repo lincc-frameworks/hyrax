@@ -986,8 +986,8 @@ def create_save_batch_callback(results_dir):
         elif isinstance(batch_results, torch.Tensor):
             batch_results = batch_results.detach().to("cpu")
         else:
-            type = type(batch_results)
-            msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {type}"
+            btype = type(batch_results)
+            msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {btype}"
             logger.error(msg)
             raise RuntimeError(msg)
 
