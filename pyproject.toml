@@ -47,7 +47,7 @@ dependencies = [
     "mlflow >= 3.7", # Used to log training metrics and compare models
     "umap-learn", # Used to map latent spaces down to 2d
     "pooch", # Used to download data files
-    "pydantic>=2.13.3,<3.0", # Used for typed configuration schemas
+    "pydantic>=2.13.4,<3.0", # Used for typed configuration schemas
     "onnx", # Used to export models to ONNX format
     "onnxruntime", # Used to run ONNX models
     "onnxscript", # Used to convert PyTorch models to ONNX format
