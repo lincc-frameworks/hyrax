@@ -237,9 +237,7 @@ class ResultDataset(HyraxDataset):
         if schema_metadata is None:
             raise RuntimeError("Lance table schema is missing metadata")
 
-        loaded_metadata = {
-            k.decode("utf-8"): v.decode("utf-8") for k, v in schema_metadata.items()
-        }
+        loaded_metadata = {k.decode("utf-8"): v.decode("utf-8") for k, v in schema_metadata.items()}
 
         if "tensor_shape" in loaded_metadata and "tensor_dtype" in loaded_metadata:
             # Backwards compatibility for old schema format with single tensor
