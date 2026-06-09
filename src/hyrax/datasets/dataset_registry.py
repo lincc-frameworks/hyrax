@@ -131,6 +131,13 @@ class HyraxDataset:
         """
         return [] if self._metadata_table is None else list(self._metadata_table.colnames)
 
+    def on_epoch_start(self):
+        """Called at the beginning of each training epoch.
+
+        Override in subclasses for epoch-level state resets (e.g. augmentation bookkeeping).
+        """
+        pass
+
     def metadata(self, idxs: npt.ArrayLike, fields: list[str]) -> npt.ArrayLike:
         """Returns a table representing the metadata given an array of indexes and a list of fields.
 
