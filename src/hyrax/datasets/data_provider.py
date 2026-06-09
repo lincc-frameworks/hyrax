@@ -5,8 +5,10 @@ import logging
 import os
 import pickle
 import time
+from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from threading import Lock
 from typing import Any
 
 import numpy as np
@@ -327,6 +329,8 @@ class DataProvider:
         # Draw initial epoch seed so augmentations work before the first on_epoch_start.
         self._epoch_seed: int = int(self._augment_rng.integers(2**62))
         self._current_epoch = 0
+        self._augment_seed_lock = Lock()
+        self._augment_calls_by_idx = defaultdict(int)
 
         # Assigned externally by setup_dataset after construction when
         # split_fraction-based partitioning is in use.  When set, this
@@ -379,12 +383,17 @@ class DataProvider:
                     setattr(self, method_name, getattr(primary_dataset_instance, method_name))
 
     def _augment_rng_seed(self, idx: int) -> np.int64:
-        """Return a deterministic, epoch-varying seed for one (epoch, idx) pair.
+        """Return a deterministic, epoch-varying seed for one augmentation call.
 
-        A fresh RNG seeded with ``[self._epoch_seed, idx]`` gives independent seeds
-        per index within an epoch while remaining reproducible across runs.
+        Seeds are derived from ``(epoch_seed, idx, per_idx_call_count)`` so repeated
+        indices in one epoch get distinct seeds by construction while runs remain
+        reproducible for the same master seed and index sequence.
         """
-        return np.random.default_rng([self._epoch_seed, idx]).integers(
+        with self._augment_seed_lock:
+            per_idx_call_count = self._augment_calls_by_idx[idx]
+            self._augment_calls_by_idx[idx] = per_idx_call_count + 1
+
+        return np.random.default_rng([self._epoch_seed, idx, per_idx_call_count]).integers(
             np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64
         )
 
@@ -392,6 +401,8 @@ class DataProvider:
         """Advance the epoch seed and dispatch on_epoch_start to all dataset instances."""
         self._epoch_seed = int(self._augment_rng.integers(2**62))
         self._current_epoch += 1
+        with self._augment_seed_lock:
+            self._augment_calls_by_idx.clear()
         for dataset in self.prepped_datasets.values():
             dataset.on_epoch_start()
 

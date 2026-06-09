@@ -189,17 +189,75 @@ def test_augment_rng_seed_differs_between_indices(tmp_path):
     assert dataset_instance.seeds_by_idx[0]["image"] != dataset_instance.seeds_by_idx[1]["image"]
 
 
-def test_on_epoch_start_dispatches_to_all_datasets(tmp_path):
-    """DataProvider.on_epoch_start calls on_epoch_start on every dataset instance."""
+def test_augment_rng_seed_differs_for_repeated_index_within_epoch(tmp_path):
+    """Repeated indices in one epoch get distinct rng_seeds by construction."""
     config = _make_hyrax_config()
     dp = _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=True, fields=["image"])
     dataset_instance = dp.prepped_datasets["data"]
 
-    assert dataset_instance.epoch_start_count == 0
+    dp.resolve_data(0)
+    dp.resolve_data(0)
+    assert dataset_instance.augment_image_calls[0][1] != dataset_instance.augment_image_calls[1][1]
+
+
+def test_augment_rng_seed_reproducible_for_same_sequence_and_epochs(tmp_path):
+    """Same master seed + same index/epoch sequence yields identical seeds."""
+    config_a = _make_hyrax_config()
+    config_b = _make_hyrax_config()
+    config_a["data_set"]["seed"] = 1234
+    config_b["data_set"]["seed"] = 1234
+    dp_a = _make_dp(config_a, "AugmentedRandomDataset", tmp_path / "a", augment=True, fields=["image"])
+    dp_b = _make_dp(config_b, "AugmentedRandomDataset", tmp_path / "b", augment=True, fields=["image"])
+    ds_a = dp_a.prepped_datasets["data"]
+    ds_b = dp_b.prepped_datasets["data"]
+
+    for idx in (0, 1, 0):
+        dp_a.resolve_data(idx)
+        dp_b.resolve_data(idx)
+
+    dp_a.on_epoch_start()
+    dp_b.on_epoch_start()
+
+    for idx in (0, 0, 1):
+        dp_a.resolve_data(idx)
+        dp_b.resolve_data(idx)
+
+    seeds_a = [seed for _, seed in ds_a.augment_image_calls]
+    seeds_b = [seed for _, seed in ds_b.augment_image_calls]
+    assert seeds_a == seeds_b
+
+
+def test_on_epoch_start_dispatches_to_all_datasets(tmp_path):
+    """DataProvider.on_epoch_start calls on_epoch_start on every dataset instance."""
+    config = _make_hyrax_config()
+    dp = DataProvider(
+        config,
+        {
+            "primary": {
+                "dataset_class": "AugmentedRandomDataset",
+                "data_location": str(tmp_path / "primary"),
+                "primary_id_field": "object_id",
+                "augment": True,
+                "fields": ["image"],
+            },
+            "secondary": {
+                "dataset_class": "AugmentedRandomDataset",
+                "data_location": str(tmp_path / "secondary"),
+                "fields": ["image"],
+            },
+        },
+    )
+    primary_dataset = dp.prepped_datasets["primary"]
+    secondary_dataset = dp.prepped_datasets["secondary"]
+
+    assert primary_dataset.epoch_start_count == 0
+    assert secondary_dataset.epoch_start_count == 0
     dp.on_epoch_start()
-    assert dataset_instance.epoch_start_count == 1
+    assert primary_dataset.epoch_start_count == 1
+    assert secondary_dataset.epoch_start_count == 1
     dp.on_epoch_start()
-    assert dataset_instance.epoch_start_count == 2
+    assert primary_dataset.epoch_start_count == 2
+    assert secondary_dataset.epoch_start_count == 2
 
 
 def test_on_epoch_start_increments_epoch_counter(tmp_path):
