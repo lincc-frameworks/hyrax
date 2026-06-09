@@ -316,7 +316,13 @@ class DataProvider:
         self.augment_getters = {}  # friendly_name -> {field_name: augment_func}
         self.augment_enabled = {}  # friendly_name -> bool
         self._has_any_augmentation = False
-        self._augment_master_seed = config.get("seed") or config.get("data_set", {}).get("seed", None)
+        # Master RNG draws a new epoch_seed on each on_epoch_start call.  Per-idx seeds
+        # are derived from (epoch_seed, idx), giving independent variation across both
+        # epochs and indices without sequential state in resolve_data.
+        _master_seed = config.get("seed") or config.get("data_set", {}).get("seed", None)
+        self._augment_rng = np.random.default_rng(_master_seed)
+        # Draw initial epoch seed so augmentations work before the first on_epoch_start.
+        self._epoch_seed: int = int(self._augment_rng.integers(2**62))
         self._current_epoch = 0
 
         # Assigned externally by setup_dataset after construction when
@@ -370,14 +376,18 @@ class DataProvider:
                     setattr(self, method_name, getattr(primary_dataset_instance, method_name))
 
     def _augment_rng_seed(self, idx: int) -> np.int64:
-        """Generate a deterministic, epoch-varying rng_seed for augmentation."""
-        seed_bytes = hashlib.sha256(
-            f"{self._augment_master_seed}:{self._current_epoch}:{idx}".encode()
-        ).digest()[:8]
-        return np.frombuffer(seed_bytes, dtype=np.int64)[0]
+        """Return a deterministic, epoch-varying seed for one (epoch, idx) pair.
+
+        A fresh RNG seeded with ``[self._epoch_seed, idx]`` gives independent seeds
+        per index within an epoch while remaining reproducible across runs.
+        """
+        return np.random.default_rng([self._epoch_seed, idx]).integers(
+            np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64
+        )
 
     def on_epoch_start(self):
-        """Dispatch on_epoch_start to all active dataset instances and advance epoch counter."""
+        """Advance the epoch seed and dispatch on_epoch_start to all dataset instances."""
+        self._epoch_seed = int(self._augment_rng.integers(2**62))
         self._current_epoch += 1
         for dataset in self.prepped_datasets.values():
             dataset.on_epoch_start()
@@ -890,20 +900,26 @@ class DataProvider:
         if not self._has_any_augmentation:
             return base_data
 
-        # Augmentation pass: deepcopy so we don't mutate the cache, then apply augment_<field>.
+        # Augmentation pass: build a new output dict so the cache is never mutated.
+        # Array references are reused for non-augmented fields; augment_<field> returns
+        # a new array for augmented ones, so no copies are needed here.
         rng_seed = self._augment_rng_seed(idx)
-        augmented_data = copy.deepcopy(base_data)
-        for friendly_name, fields_data in augmented_data.items():
+        augmented_data: dict[str, dict[str, Any] | str | None] = {}
+        for friendly_name, fields_data in base_data.items():
             if friendly_name == "object_id":
+                augmented_data[friendly_name] = fields_data
                 continue
             if not self.augment_enabled.get(friendly_name, False):
+                augmented_data[friendly_name] = fields_data
                 continue
             if fields_data is None:  # left outer join miss
+                augmented_data[friendly_name] = None
                 continue
+            new_fields: dict[str, Any] = {}
             for field, value in fields_data.items():
                 augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
-                if augment_fn is not None:
-                    augmented_data[friendly_name][field] = augment_fn(value, idx, rng_seed)
+                new_fields[field] = augment_fn(value, idx, rng_seed) if augment_fn is not None else value
+            augmented_data[friendly_name] = new_fields
         return augmented_data
 
     # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
