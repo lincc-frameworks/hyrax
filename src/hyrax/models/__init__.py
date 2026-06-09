@@ -7,6 +7,7 @@ from .image_dcae import ImageDCAE
 from .hyrax_autoencoder import HyraxAutoencoder
 from .hyrax_autoencoderv2 import HyraxAutoencoderV2
 from .hyrax_autoencoderv2_apct import HyraxAutoencoderV2APCT
+from .hyrax_autoencoderv2_apct_2 import HyraxAutoencoderV2APCTV2
 from .hyrax_cnn import HyraxCNN
 from .hyrax_loopback import HyraxLoopback
 from .model_registry import hyrax_model
@@ -18,6 +19,7 @@ __all__ = [
     "HyraxAutoencoder",
     "HyraxAutoencoderV2",
     "HyraxAutoencoderV2APCT",
+    "HyraxAutoencoderV2APCTV2",
     "HyraxCNN",
     "HyraxLoopback",
     "HSCAutoencoder",
