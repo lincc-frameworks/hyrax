@@ -319,7 +319,10 @@ class DataProvider:
         # Master RNG draws a new epoch_seed on each on_epoch_start call.  Per-idx seeds
         # are derived from (epoch_seed, idx), giving independent variation across both
         # epochs and indices without sequential state in resolve_data.
-        _master_seed = config.get("seed") or config.get("data_set", {}).get("seed", None)
+        # config["data_set"]["seed"] uses false as the Hyrax sentinel for "not set";
+        # treat it as None so numpy seeds from OS entropy rather than silently using 0.
+        _raw_seed = config.get("data_set", {}).get("seed", None)
+        _master_seed = None if _raw_seed is False else _raw_seed
         self._augment_rng = np.random.default_rng(_master_seed)
         # Draw initial epoch seed so augmentations work before the first on_epoch_start.
         self._epoch_seed: int = int(self._augment_rng.integers(2**62))
