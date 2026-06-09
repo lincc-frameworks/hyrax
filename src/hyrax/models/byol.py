@@ -60,7 +60,7 @@ class HyraxBYOL(nn.Module):
         # Only perform forward pass using just the model (encoder), not the wrapper
         return self.backbone(x)
 
-    def train_step(self, x):
+    def train_batch(self, x):
         # The wrapper automatically performs loss computation
         loss = self.learner(x)
 
@@ -74,6 +74,17 @@ class HyraxBYOL(nn.Module):
             self.learner.update_moving_average()
 
         return {"loss": loss.item()}
+    
+    def validate_batch(self, x):
+        # The wrapper automatically performs loss computation
+        loss = self.learner(x)
+        return {"loss": loss.item()}
+    
+    def test_batch(self, x):
+        return self.validate_batch(x)
+
+    def infer_batch(self, x):
+        return self.validate_batch(x)
 
     def _optimizer(self):
         return torch.optim.Adam(self.learner.parameters(), lr=3e-4)
