@@ -192,14 +192,35 @@ def test_augment_rng_seed_differs_between_indices(tmp_path):
 def test_on_epoch_start_dispatches_to_all_datasets(tmp_path):
     """DataProvider.on_epoch_start calls on_epoch_start on every dataset instance."""
     config = _make_hyrax_config()
-    dp = _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=True, fields=["image"])
-    dataset_instance = dp.prepped_datasets["data"]
+    dp = DataProvider(
+        config,
+        {
+            "data": {
+                "dataset_class": "AugmentedRandomDataset",
+                "data_location": str(tmp_path),
+                "primary_id_field": "object_id",
+                "augment": True,
+                "fields": ["image"],
+            },
+            "data2": {
+                "dataset_class": "AugmentedRandomDataset",
+                "data_location": str(tmp_path),
+                "augment": True,
+                "fields": ["image"],
+            },
+        },
+    )
+    instance1 = dp.prepped_datasets["data"]
+    instance2 = dp.prepped_datasets["data2"]
 
-    assert dataset_instance.epoch_start_count == 0
+    assert instance1.epoch_start_count == 0
+    assert instance2.epoch_start_count == 0
     dp.on_epoch_start()
-    assert dataset_instance.epoch_start_count == 1
+    assert instance1.epoch_start_count == 1
+    assert instance2.epoch_start_count == 1
     dp.on_epoch_start()
-    assert dataset_instance.epoch_start_count == 2
+    assert instance1.epoch_start_count == 2
+    assert instance2.epoch_start_count == 2
 
 
 def test_on_epoch_start_increments_epoch_counter(tmp_path):

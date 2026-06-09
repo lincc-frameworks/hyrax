@@ -316,16 +316,17 @@ class DataProvider:
         self.augment_getters = {}  # friendly_name -> {field_name: augment_func}
         self.augment_enabled = {}  # friendly_name -> bool
         self._has_any_augmentation = False
-        # Master RNG draws a new epoch_seed on each on_epoch_start call.  Per-idx seeds
-        # are derived from (epoch_seed, idx), giving independent variation across both
-        # epochs and indices without sequential state in resolve_data.
+        # _augment_rng advances once per epoch (in on_epoch_start) to produce a fresh
+        # _epoch_rng for that epoch.  _epoch_rng is drawn from sequentially in
+        # resolve_data — one integer per call — so call order within an epoch determines
+        # the seed sequence.  Single-threaded access is reproducible; multi-threaded
+        # access is intentionally non-reproducible (no locks on this hot path).
         # config["data_set"]["seed"] uses false as the Hyrax sentinel for "not set";
         # treat it as None so numpy seeds from OS entropy rather than silently using 0.
         _raw_seed = config.get("data_set", {}).get("seed", None)
         _master_seed = None if _raw_seed is False else _raw_seed
         self._augment_rng = np.random.default_rng(_master_seed)
-        # Draw initial epoch seed so augmentations work before the first on_epoch_start.
-        self._epoch_seed: int = int(self._augment_rng.integers(2**62))
+        self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
         self._current_epoch = 0
 
         # Assigned externally by setup_dataset after construction when
@@ -378,19 +379,13 @@ class DataProvider:
                 if not hasattr(self, method_name):
                     setattr(self, method_name, getattr(primary_dataset_instance, method_name))
 
-    def _augment_rng_seed(self, idx: int) -> np.int64:
-        """Return a deterministic, epoch-varying seed for one (epoch, idx) pair.
-
-        A fresh RNG seeded with ``[self._epoch_seed, idx]`` gives independent seeds
-        per index within an epoch while remaining reproducible across runs.
-        """
-        return np.random.default_rng([self._epoch_seed, idx]).integers(
-            np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64
-        )
+    def _augment_rng_seed(self) -> np.int64:
+        """Draw the next seed from the epoch RNG for one resolve_data call."""
+        return self._epoch_rng.integers(np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64)
 
     def on_epoch_start(self):
-        """Advance the epoch seed and dispatch on_epoch_start to all dataset instances."""
-        self._epoch_seed = int(self._augment_rng.integers(2**62))
+        """Reset the epoch RNG and dispatch on_epoch_start to all dataset instances."""
+        self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
         self._current_epoch += 1
         for dataset in self.prepped_datasets.values():
             dataset.on_epoch_start()
@@ -906,7 +901,8 @@ class DataProvider:
         # Augmentation pass: build a new output dict so the cache is never mutated.
         # Array references are reused for non-augmented fields; augment_<field> returns
         # a new array for augmented ones, so no copies are needed here.
-        rng_seed = self._augment_rng_seed(idx)
+        augment_start = time.monotonic_ns()
+        rng_seed = self._augment_rng_seed()
         augmented_data: dict[str, dict[str, Any] | str | None] = {}
         for friendly_name, fields_data in base_data.items():
             if friendly_name == "object_id":
@@ -923,6 +919,7 @@ class DataProvider:
                 augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
                 new_fields[field] = augment_fn(value, idx, rng_seed) if augment_fn is not None else value
             augmented_data[friendly_name] = new_fields
+        tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
         return augmented_data
 
     # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
