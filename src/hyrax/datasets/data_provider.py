@@ -323,7 +323,7 @@ class DataProvider:
         # access is intentionally non-reproducible (no locks on this hot path).
         # config["data_set"]["seed"] uses false as the Hyrax sentinel for "not set";
         # treat it as None so numpy seeds from OS entropy rather than silently using 0.
-        _raw_seed = config.get("data_set", {}).get("seed", None)
+        _raw_seed = config["data_set"]["seed"]
         _master_seed = None if _raw_seed is False else _raw_seed
         self._augment_rng = np.random.default_rng(_master_seed)
         self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
