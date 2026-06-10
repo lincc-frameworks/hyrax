@@ -561,10 +561,14 @@ class DataProvider:
                 self.augment_enabled[friendly_name] = True
                 self._has_any_augmentation = True
                 self.augment_getters[friendly_name] = {}
-                for method in dir(dataset_instance):
-                    if method.startswith("augment_"):
-                        field_name = method[8:]  # Remove the "augment_" prefix
-                        self.augment_getters[friendly_name][field_name] = getattr(dataset_instance, method)
+                for name in dir(dataset_instance):
+                    if not name.startswith("augment_"):
+                        continue
+                    augment_fn = getattr(dataset_instance, name, None)
+                    if not callable(augment_fn):
+                        continue
+                    field_name = name.removeprefix("augment_")
+                    self.augment_getters[friendly_name][field_name] = augment_fn
 
             # Get all the dataset's metadata fields and store them in
             # `self.all_metadata_fields` dictionary. Modify the name to be
