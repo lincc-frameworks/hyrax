@@ -12,5 +12,6 @@ to apply these concepts in tutorial notebooks in the :doc:`Common workflows </co
 
    Required inputs <required_input>
    Configuration system <configuration_system>
+   Dataset splits <dataset_splits>
    Hyrax verbs <verbs>
    Data flow in Hyrax <data_flow>

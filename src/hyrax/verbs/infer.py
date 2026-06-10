@@ -89,7 +89,7 @@ class Infer(Verb):
             dataset = dataset["infer"]
             logger.debug(f"Inference dataset has length: {len(dataset)}")  # type: ignore[arg-type]
 
-        data_loader, _ = dist_data_loader(dataset, config, False)
+        data_loader, _ = dist_data_loader(dataset, config)
 
         load_model_weights(config, model, "infer")
         log_runtime_config(config, results_dir)
