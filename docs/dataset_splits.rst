@@ -62,51 +62,12 @@ For example, to use 80% of the data for training and 20% for validation:
             primary_id_field = "object_id"
             split_fraction = 0.2
 
-If you have separate data files for training and validation, simply omit ``split_fraction`` and
-point each group to its own ``data_location``:
-
-.. tab-set::
-
-    .. tab-item:: Notebook
-
-        .. code-block:: python
-
-            data_request = {
-                "train": {
-                    "my_data": {
-                        "dataset_class": "HyraxCifarDataset",
-                        "data_location": "./train_data",
-                        "primary_id_field": "object_id",
-                    }
-                },
-                "validate": {
-                    "my_data": {
-                        "dataset_class": "HyraxCifarDataset",
-                        "data_location": "./validate_data",
-                        "primary_id_field": "object_id",
-                    }
-                },
-            }
-            h.set_config("data_request", data_request)
-
-    .. tab-item:: CLI
-
-        .. code-block:: toml
-
-            [data_request.train.my_data]
-            dataset_class = "HyraxCifarDataset"
-            data_location = "./train_data"
-            primary_id_field = "object_id"
-
-            [data_request.validate.my_data]
-            dataset_class = "HyraxCifarDataset"
-            data_location = "./validate_data"
-            primary_id_field = "object_id"
-
 The ``train`` :doc:`verb </verbs>` trains on the ``train`` group and, when present, computes a
 validation loss each epoch using the ``validate`` group. Adding a ``test`` group is supported
 but the train verb does not use it during training — it is available for downstream evaluation.
 
+For more detail on data requests, including how to use separate directories for each split, see the
+:doc:`data requests notebook </notebooks/data_requests>`.
 
 Randomness in splits
 --------------------
@@ -127,8 +88,7 @@ key in ``[data_set]``:
 
     .. tab-item:: CLI
 
-        .. code-block:: bash
+        .. code-block:: toml
 
-            $ cat hyrax_config.toml
             [data_set]
             seed = 1
