@@ -101,7 +101,7 @@ def setup_dataset(
             "  data_location = '/path/to/data'\n"
             "  primary_id_field = 'id'\n"
             "  split_fraction = 0.2\n\n"
-            "For more information, see: https://hyrax.readthedocs.io/"
+            "For more information, see: https://hyrax.readthedocs.io/en/stable/dataset_splits.html"
         )
 
     dataset = {}

@@ -237,6 +237,63 @@ def test_train_split_fraction(tmp_path):
     assert train_set | validate_set == set(range(30))
 
 
+def test_train_split_fraction_dataloader_indices_are_disjoint(tmp_path):
+    """
+    Verify that after a real h.train() call, the indices actually consumed by
+    the train and validate dataloaders are non-overlapping.
+
+    This tests the full pipeline: setup_dataset assigns split_indices on each
+    DataProvider, then dist_data_loader uses those split_indices when building
+    the sampler, resulting in disjoint index sets across groups.
+    """
+    import hyrax
+    from hyrax.pytorch_ignite import dist_data_loader, setup_dataset
+
+    h = hyrax.Hyrax()
+    h.config["model"]["name"] = "HyraxLoopback"
+    h.config["train"]["epochs"] = 1
+    h.config["data_loader"]["batch_size"] = 4
+    h.config["general"]["results_dir"] = str(tmp_path)
+    h.config["general"]["dev_mode"] = True
+
+    shared_location = str(tmp_path / "shared_data")
+    h.config["data_request"] = {
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": shared_location,
+                "primary_id_field": "object_id",
+                "split_fraction": 0.7,
+            }
+        },
+        "validate": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": shared_location,
+                "primary_id_field": "object_id",
+                "split_fraction": 0.3,
+            }
+        },
+    }
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 30
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 42
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
+    h.config["data_set"]["seed"] = 42
+
+    h.train()
+
+    # Recreate datasets the same way train.py does, then ask dist_data_loader
+    # for the actual indices it would sample — these are what the dataloaders
+    # consumed during training.
+    dataset = setup_dataset(h.config, splits=("train", "validate"))
+    _, train_indices = dist_data_loader(dataset["train"], h.config, shuffle=False)
+    _, validate_indices = dist_data_loader(dataset["validate"], h.config, shuffle=False)
+
+    assert len(train_indices) == 21  # 70% of 30
+    assert len(validate_indices) == 9  # 30% of 30
+    assert set(train_indices).isdisjoint(set(validate_indices))
+
+
 def test_constant_scheduler(loopback_hyrax):
     """
     Ensure that setting a ConstantLR works properly
