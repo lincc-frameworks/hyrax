@@ -928,7 +928,8 @@ class DataProvider:
             for field, value in fields_data.items():
                 augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
                 if augment_fn is not None and isinstance(value, np.ndarray):
-                    value = value.copy()
+                    value = value.view()
+                    value.flags.writeable = False
                 new_fields[field] = augment_fn(value, dataset_idx, rng_seed) if augment_fn is not None else value
             augmented_data[friendly_name] = new_fields
         tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
