@@ -383,12 +383,12 @@ class DataProvider:
         """Draw the next seed from the epoch RNG for one resolve_data call."""
         return self._epoch_rng.integers(np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64)
 
-    def on_epoch_start(self):
+    def on_epoch_start(self, verb: str):
         """Reset the epoch RNG and dispatch on_epoch_start to all dataset instances."""
         self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
         self._current_epoch += 1
         for dataset in self.prepped_datasets.values():
-            dataset.on_epoch_start()
+            dataset.on_epoch_start(verb)
 
     def __getitem__(self, idx) -> dict:
         """This method returns data for a given index.
@@ -930,7 +930,9 @@ class DataProvider:
                 if augment_fn is not None and isinstance(value, np.ndarray):
                     value = value.view()
                     value.flags.writeable = False
-                new_fields[field] = augment_fn(value, dataset_idx, rng_seed) if augment_fn is not None else value
+                new_fields[field] = (
+                    augment_fn(value, dataset_idx, rng_seed) if augment_fn is not None else value
+                )
             augmented_data[friendly_name] = new_fields
         tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
         return augmented_data

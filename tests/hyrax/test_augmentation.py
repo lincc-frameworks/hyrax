@@ -28,9 +28,11 @@ class AugmentedRandomDataset(HyraxRandomDataset):
         self.get_image_call_count = 0
         self.augment_image_calls: list[tuple[int, int]] = []
         self.epoch_start_count = 0
+        self.last_verb: str | None = None
 
-    def on_epoch_start(self):
+    def on_epoch_start(self, verb):
         self.epoch_start_count += 1
+        self.last_verb = verb
 
     def get_image(self, idx):
         self.get_image_call_count += 1
@@ -65,10 +67,12 @@ class EpochCountingDataset(HyraxRandomDataset):
     def __init__(self, config, data_location):
         super().__init__(config, data_location)
         self.epoch_start_count = 0
+        self.last_verb: str | None = None
         EpochCountingDataset._all_instances.append(self)
 
-    def on_epoch_start(self):
+    def on_epoch_start(self, verb):
         self.epoch_start_count += 1
+        self.last_verb = verb
 
     def augment_image(self, data, idx, rng_seed):
         return -data
@@ -109,7 +113,7 @@ def _make_dp(config, dataset_class, data_location, *, augment=None, fields=None)
 def test_hyrax_dataset_on_epoch_start_noop():
     """on_epoch_start is callable on the base class and is a no-op."""
     d = MinimalHyraxDataset(config={})
-    d.on_epoch_start()  # must not raise
+    d.on_epoch_start("train")  # must not raise
 
 
 # ---------------------------------------------------------------------------
@@ -215,10 +219,10 @@ def test_on_epoch_start_dispatches_to_all_datasets(tmp_path):
 
     assert instance1.epoch_start_count == 0
     assert instance2.epoch_start_count == 0
-    dp.on_epoch_start()
+    dp.on_epoch_start("train")
     assert instance1.epoch_start_count == 1
     assert instance2.epoch_start_count == 1
-    dp.on_epoch_start()
+    dp.on_epoch_start("train")
     assert instance1.epoch_start_count == 2
     assert instance2.epoch_start_count == 2
 
@@ -228,9 +232,9 @@ def test_on_epoch_start_increments_epoch_counter(tmp_path):
     config = _make_hyrax_config()
     dp = _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=True)
     assert dp._current_epoch == 0
-    dp.on_epoch_start()
+    dp.on_epoch_start("train")
     assert dp._current_epoch == 1
-    dp.on_epoch_start()
+    dp.on_epoch_start("train")
     assert dp._current_epoch == 2
 
 
@@ -315,3 +319,128 @@ def test_on_epoch_start_called_during_training(tmp_path_factory):
     assert len(EpochCountingDataset._all_instances) >= 1
     # At least one DataProvider's dataset should have had on_epoch_start called 2 times
     assert any(inst.epoch_start_count == 2 for inst in EpochCountingDataset._all_instances)
+    assert all(inst.last_verb == "train" for inst in EpochCountingDataset._all_instances)
+
+
+# ---------------------------------------------------------------------------
+# Step 6: verb argument propagation and dispatch from infer/test verbs
+# ---------------------------------------------------------------------------
+
+
+def test_on_epoch_start_passes_verb_to_dataset(tmp_path):
+    """verb argument propagates from DataProvider.on_epoch_start down to each dataset instance."""
+    config = _make_hyrax_config()
+    dp = _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=True)
+    dataset_instance = dp.prepped_datasets["data"]
+
+    dp.on_epoch_start("train")
+    assert dataset_instance.last_verb == "train"
+
+    dp.on_epoch_start("infer")
+    assert dataset_instance.last_verb == "infer"
+
+
+def test_on_epoch_start_called_during_infer(tmp_path_factory):
+    """on_epoch_start is dispatched once during infer with verb='infer'."""
+    EpochCountingDataset._all_instances.clear()
+
+    results_dir = tmp_path_factory.mktemp("infer_epoch_results")
+    data_dir = tmp_path_factory.mktemp("infer_epoch_data")
+
+    h = hyrax.Hyrax()
+    h.config["model"]["name"] = "HyraxLoopback"
+    h.config["data_loader"]["batch_size"] = 5
+    h.config["general"]["results_dir"] = str(results_dir)
+    h.config["general"]["dev_mode"] = True
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 10
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+
+    weights_file = results_dir / "fakeweights"
+    weights_file.touch()
+    h.config["infer"]["model_weights_file"] = str(weights_file)
+
+    h.config["data_request"] = {
+        "infer": {
+            "data": {
+                "dataset_class": "EpochCountingDataset",
+                "data_location": str(data_dir),
+                "primary_id_field": "object_id",
+            }
+        }
+    }
+
+    h.infer()
+
+    assert len(EpochCountingDataset._all_instances) >= 1
+    assert any(inst.epoch_start_count == 1 for inst in EpochCountingDataset._all_instances)
+    assert all(inst.last_verb == "infer" for inst in EpochCountingDataset._all_instances)
+
+
+def test_on_epoch_start_called_during_test(tmp_path_factory):
+    """on_epoch_start is dispatched once during test with verb='test'."""
+    from hyrax.config_utils import find_most_recent_results_dir
+
+    EpochCountingDataset._all_instances.clear()
+
+    results_dir = tmp_path_factory.mktemp("test_epoch_results")
+    train_dir = tmp_path_factory.mktemp("test_epoch_train")
+    val_dir = tmp_path_factory.mktemp("test_epoch_val")
+    test_dir = tmp_path_factory.mktemp("test_epoch_test")
+    infer_dir = tmp_path_factory.mktemp("test_epoch_infer")
+
+    h = hyrax.Hyrax()
+    h.config["model"]["name"] = "HyraxLoopback"
+    h.config["train"]["epochs"] = 1
+    h.config["data_loader"]["batch_size"] = 5
+    h.config["general"]["results_dir"] = str(results_dir)
+    h.config["general"]["dev_mode"] = True
+    h.config["data_set"]["HyraxRandomDataset"]["size"] = 10
+    h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
+    h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
+
+    h.config["data_request"] = {
+        "train": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(train_dir),
+                "primary_id_field": "object_id",
+                "split_fraction": 0.8,
+            }
+        },
+        "validate": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(val_dir),
+                "primary_id_field": "object_id",
+                "split_fraction": 0.2,
+            }
+        },
+        "test": {
+            "data": {
+                "dataset_class": "EpochCountingDataset",
+                "data_location": str(test_dir),
+                "primary_id_field": "object_id",
+            }
+        },
+        "infer": {
+            "data": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(infer_dir),
+                "primary_id_field": "object_id",
+            }
+        },
+    }
+
+    h.train()
+
+    trained_weights = find_most_recent_results_dir(h.config, "train") / "example_model.pth"
+    h.config["test"]["model_weights_file"] = str(trained_weights)
+
+    # Reset so only instances created by h.test() are visible below.
+    EpochCountingDataset._all_instances.clear()
+    h.test()
+
+    assert len(EpochCountingDataset._all_instances) >= 1
+    assert any(inst.epoch_start_count == 1 for inst in EpochCountingDataset._all_instances)
+    assert all(inst.last_verb == "test" for inst in EpochCountingDataset._all_instances)

@@ -207,7 +207,7 @@ class Train(Verb):
         @trainer.on(Events.EPOCH_STARTED)
         def dispatch_epoch_start(engine):
             for provider in dataset.values():
-                provider.on_epoch_start()
+                provider.on_epoch_start("train")
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:

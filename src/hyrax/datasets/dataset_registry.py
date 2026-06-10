@@ -131,10 +131,16 @@ class HyraxDataset:
         """
         return [] if self._metadata_table is None else list(self._metadata_table.colnames)
 
-    def on_epoch_start(self):
-        """Called at the beginning of each training epoch.
+    def on_epoch_start(self, verb: str):
+        """Called at the beginning of each epoch (or once for single-pass verbs).
 
-        Override in subclasses for epoch-level state resets (e.g. augmentation bookkeeping).
+        Parameters
+        ----------
+        verb : str
+            Name of the verb that is running, e.g. ``"train"``, ``"infer"``,
+            ``"test"``, or ``"engine"``.
+
+        Override in subclasses to respond to epoch-level lifecycle events.
         """
         pass
 
