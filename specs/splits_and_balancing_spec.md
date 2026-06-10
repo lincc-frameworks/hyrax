@@ -51,9 +51,11 @@ current Hyrax behavior**.
 - Data augmentation (`augment_<field>` methods, TTA) — separate doc. We only
   reserve the warning/error hooks described in §13.
 - A dataset-content hash for equivalency (future; we compare config only).
-- Removing the legacy `[data_set].{train,validate,test}_size` path or the
-  deprecated `pytorch_ignite.create_splits(dataset, config)` function — they stay
-  deprecated as-is.
+- Removing the legacy `[data_set].{train,validate,test}_size` path and the
+  deprecated `pytorch_ignite.create_splits(dataset, config)` function — that
+  removal lands separately in **PR #944**. This spec assumes the **post-#944
+  codebase**: no `split` parameter on `dist_data_loader`, no legacy multi-split
+  path, legacy `[data_set]` size keys hard-error in `setup_dataset` (§11, §14).
 
 ---
 
@@ -71,7 +73,9 @@ following and these decisions are **normative**:
 | D5 | Results dir `…/<datetime>_splits_<unique_string>` | `create_results_dir(config, "splits")` ⇒ `YYYYMMDD-HHMMSS-splits-<uid>` | Reuse the existing helper and house naming convention (`config_utils.py:622`). |
 | D6 | `make_sampler` always returns `WeightedRandomSampler` when shuffling | WRS **only when balancing weights are present**; uniform case keeps `SubsetRandomSampler` (no replacement) | WRS uses `replacement=True`; with uniform weights that would silently change default training from a per-epoch permutation to a bootstrap sample. See §11. |
 | D7 | `make_sampler(...)` sequential branch returns `SubsetSequentialSampler(indexes)` while also wrapping in `Subset(dataset, indexes)` | Sampler operates in **subset-local** index space `range(len(subset))` | Once wrapped in `Subset`, indices are local; using original indices would double-index. |
-| D8 | `dist_data_loader` returns a 3-tuple `(loader, indexes, weights)` | Keep returning **`(loader, indexes)`**; weights ride on the provider | All current callsites unpack a 2-tuple (`x, _ = …`); weights are already on the DataProvider. |
+| D8 | `dist_data_loader` returns a 3-tuple `(loader, indexes, weights)` | Return **the `DataLoader` only** | Every callsite today discards the second element (`x, _ = …`); indexes and weights already ride on the DataProvider (`split_indices`/`split_weights`). Callsite updates listed in §12. |
+| D9 | Pseudocode sets `weights[label] ← len(class_inds[label]) / len(dataset)` (class frequency) and then `weights[label] ← balance.distribution[label]` (raw target) | **`w_i = target_{class(i)} / count_{class(i)}`** (§5) | The pseudocode's raw values do not produce the requested class distribution under `WeightedRandomSampler`; the design's own prose ("the weights … will be the inverse frequency of the class label") matches §5. |
+| D10 | "Design of create_splits" says paths *use* the equivalency check; "Defining equivalency" says **no** equivalence check for paths | Paths ⇒ **no search** for equivalent splits, but **do** compare the sibling `split_config.toml` to the current config and log a warning listing differences (§7.1 step 2) | Honors both passages: user-supplied files are always used (trusted), and the user is told when their current config would not have produced them. |
 
 ---
 
@@ -100,9 +104,22 @@ Semantics:
     subset of that group's own data.
   - `infer` is always treated independently (never partitioned against
     train/validate/test).
-- **`split.rng_seed`** — RNG seed for shuffling/partitioning. `""` ⇒ use
-  `config["data_set"]["seed"]` (which itself may be `false` ⇒ system entropy).
-  A non-empty value seeds a dedicated `numpy.random.Generator`.
+- **`split.rng_seed`** — RNG seed for shuffling/partitioning.
+  - `""` (default) ⇒ fall back to **exactly the RNG mechanism the current code
+    uses**: the global NumPy RNG seeded with `config["data_set"]["seed"]`
+    (`false` ⇒ `None` ⇒ system entropy):
+
+    ```python
+    seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
+    np.random.seed(seed)
+    np.random.shuffle(indices)
+    ```
+
+    This reproduces today's `create_splits_from_fractions` shuffle
+    (`pytorch_ignite.py:485–487`) bit-for-bit, so a default config yields
+    splits identical to current Hyrax.
+  - A non-empty `rng_seed` ⇒ shuffle with a dedicated
+    `np.random.default_rng(rng_seed)` instead (does not touch global RNG state).
 
 **Defaults & unknown group keys.** The four standard groups
 (`train`/`validate`/`test`/`infer`) plus `rng_seed` are shipped in
@@ -120,9 +137,11 @@ To suppress that warning for legitimately dynamic tables, add `split` and
   raises `RuntimeError`.
 - If paths: every path's **parent directory must be identical** (they should be
   the files of a single persisted split dir); otherwise raise.
-- When paths are supplied, no fresh split is computed and **no equivalency check**
-  is performed — the user is trusted (they can verify against the persisted
-  `split_config.toml`).
+- When paths are supplied, no fresh split is computed and no **search** for
+  equivalent splits is performed — the user is trusted. If a
+  `split_config.toml` sits next to the supplied files, it is compared against
+  the current config and any differences are **logged as a warning** (never an
+  error). See §3 D10 and §7.1 step 2.
 
 ### 4.2 `[balance]` table
 
@@ -149,11 +168,24 @@ Semantics:
   - If `groups` names a group **absent** from `data_request`: **warn** (extra
     group ignored).
   - Groups present in `data_request` but not in `groups` keep their **natural**
-    class distribution (weights `1.0`). This is expected.
+    class distribution (weights `None`, §5). This is expected.
   - Setting `groups` is independent of stratification: `field` set + `groups`
-    empty ⇒ stratified splits, weights all `1.0`.
+    empty + `distribution` empty ⇒ stratified splits only, no reweighting.
+  - **Which groups get rebalanced** (normative; encodes the design doc's "Use
+    of the keys in the balance table", requires `balance.field` to be set):
+
+    | `balance.groups` | `balance.distribution` | Groups rebalanced |
+    |---|---|---|
+    | empty | empty | none — stratified splits only |
+    | non-empty | empty | the listed groups, to a **uniform** target |
+    | empty | non-empty | **all** groups in `data_request` (except `infer`), to the given target |
+    | non-empty | non-empty | the listed groups, to the given target |
+
+    Call the resolved set `groups_to_balance`; §5 and §7.3 are written against
+    it. Compute it once, e.g.
+    `groups_to_balance = set(balance.groups) or (set(data_request) - {"infer"} if balance.distribution else set())`.
 - **`balance.distribution`** — maps class label → target fraction in
-  `(0.0, 1.0)`. Validation:
+  `(0.0, 1.0]`. Validation:
   - Values must sum to **exactly 1.0** (use `np.round(Σ, 5) == 1.0`); else raise.
   - A label not present in the dataset ⇒ raise `RuntimeError`.
   - A dataset class missing from `distribution` ⇒ assume weight 0 and **warn**.
@@ -172,21 +204,35 @@ split. Let a split contain indices `I`, with `class(i)` the label of item `i`,
 `count_c = |{i ∈ I : class(i) = c}|`, and `target_c` the target fraction for
 class `c`.
 
-- **No balancing** (group ∉ `balance.groups`, or `balance.field` falsy):
-  `weights = None`. (Internally `None` ⇒ uniform; see §11 for why we keep
-  `None` rather than an array of `1.0`.)
+- **No balancing** (`balance.field` falsy, or group ∉ `groups_to_balance`,
+  §4.2): `weights = None`.
 
-- **Balancing, no explicit distribution** (uniform target, `K` observed classes):
+  **Why `None` rather than an array of `1.0`** (normative):
+  1. `weights is None` keeps the uniform case on `SubsetRandomSampler` — a
+     per-epoch permutation **without replacement**, byte-for-byte today's
+     default training behavior. An all-`1.0` array would route through
+     `WeightedRandomSampler(replacement=True)` (§11), silently turning every
+     epoch into a bootstrap sample (duplicates and omissions within an epoch).
+  2. Avoids allocating an O(N) float array per unbalanced group (matters at
+     Rubin scale).
+  3. `None` is an unambiguous "not balanced" sentinel for `__repr__` (§8),
+     persistence (the `weights` array is omitted from the `.npz`, §7.4), and
+     equivalency reporting.
+
+- **Balancing (group ∈ `groups_to_balance`), no explicit distribution**
+  (uniform target, `K` observed classes):
   `target_c = 1/K`, so `w_i = (1/K) / count_{class(i)}  ∝  1 / count_{class(i)}`
   — the inverse class frequency. (Equal expected draws per class under
   replacement sampling.)
 
-- **Balancing with explicit `distribution`**:
+- **Balancing (group ∈ `groups_to_balance`) with explicit `distribution`**:
   `w_i = target_{class(i)} / count_{class(i)}`.
   Classes with `target_c = 0` (missing from distribution) get `w_i = 0`.
 
-Optionally normalize weights so their mean ≈ 1.0 (cosmetic; does not change WRS
-behavior since WRS normalizes internally). `num_samples` for WRS is `len(I)`.
+Store the **raw** `target_c / count_c` values — do **not** normalize (decided in
+review). WRS normalizes internally so there is no functional difference, and raw
+values keep the persisted weights directly interpretable against the configured
+distribution. `num_samples` for WRS is `len(I)`.
 
 `infer` always uses `weights = None` (no rebalancing ever).
 
@@ -299,20 +345,23 @@ def create_splits(
 Driver flow:
 
 1. `validate_split_config(config, datasets)` and
-   `validate_balance_config(config, datasets)` (§7.2).
-2. If `split.*` values are **paths** ⇒ `load_split_files(paths)`; attach to
-   providers; return (no equivalency check, no persistence).
-3. Else if not paths and `persist` reuse is desired ⇒
-   `find_equivalent_split(config)` (§9); if found, load those files, **log a
-   warning summarizing any differences** that are tolerated, and return.
+   `validate_balance_config(config, datasets)` (§7.2). These are **pre-scan**
+   checks only; the label-level distribution checks run later, inside §7.3,
+   because they need the observed class labels from the full dataset scan.
+2. If `split.*` values are **paths** ⇒ `load_split_files(paths)` (§7.4); attach
+   to providers; return (no persistence). Do **not** search for equivalent
+   splits — the user-supplied files are always used. But if a
+   `split_config.toml` sits in the same directory as the supplied files,
+   compare it to the current config with `configs_equivalent` and **log a
+   warning listing the differences**; never raise (§3 D10).
+3. Else ⇒ `find_equivalent_split(config)` (§7.5); if an equivalent persisted
+   split is found, load those files and return (skips the full data scan).
 4. Else compute splits (§7.3), assign to providers, persist if requested,
    return.
 
-> Naming: there is a legacy `pytorch_ignite.create_splits(data_set, config)`
-> (deprecated, different signature/module). The new public symbol is
-> `hyrax.splitting_utils.create_splits(config, datasets)`. No import collision;
-> the legacy function is slated for removal once the `[data_set]`-size path is
-> retired.
+> Naming: the legacy `pytorch_ignite.create_splits(data_set, config)` is
+> removed by PR #944, so `hyrax.splitting_utils.create_splits(config, datasets)`
+> is the only symbol with this name.
 
 ### 7.2 Validation helpers
 
@@ -327,15 +376,40 @@ def validate_balance_config(config, datasets) -> None
 - paths share a parent dir (else raise);
 - for groups sharing a `primary_data_location`, `Σ fractions <= 1.0` (else raise).
 
-`validate_balance_config` enforces the §4.2 rules: `field` getter exists on each
-relevant group's primary dataset; `groups ⊆ data_request` (warn on extras);
-`distribution` sums to 1.0; unknown labels raise; missing labels warn (weight 0).
+`validate_balance_config` enforces the **pre-scan** §4.2 rules — everything
+knowable from the config and dataset classes alone, before any data is read:
+`field` getter exists on each relevant group's primary dataset;
+`groups ⊆ data_request` (warn on extras); `distribution` values each in
+`(0.0, 1.0]` and summing to exactly 1.0.
+
+The **label-level** checks need the set of observed class labels and therefore
+can only run **after** the full dataset scan. They live in a separate helper,
+called from the stratified branch of §7.3 once `class_inds` has been built:
+
+```python
+def validate_distribution_labels(distribution: dict, observed_labels: set) -> None
+```
+
+- A `distribution` key not in `observed_labels` ⇒ raise `RuntimeError`.
+- An observed label missing from a non-empty `distribution` ⇒ **warn** and
+  treat its target as 0 — samples of that class get weight 0 (§5).
+- No-op when `distribution` is empty.
 
 ### 7.3 Core split computation
 
-Group the requested `datasets` by `provider.primary_data_location`. Build a
-seeded `rng = np.random.default_rng(seed)` where `seed` is `split.rng_seed` or
-`config["data_set"]["seed"]` (falsy ⇒ `None`).
+Group the requested `datasets` by `provider.primary_data_location`. Choose the
+RNG per §4.1 and wrap it in one helper so both branches below share it:
+
+```python
+def _shuffle(indices: list[int], config: dict) -> None:   # in-place
+    rng_seed = config["split"]["rng_seed"]
+    if rng_seed == "":   # fall back to the RNG the current code uses
+        seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
+        np.random.seed(seed)
+        np.random.shuffle(indices)
+    else:                # dedicated generator, global state untouched
+        np.random.default_rng(rng_seed).shuffle(indices)
+```
 
 For each **location group** `G` (set of `(group_name, provider)` sharing a
 source):
@@ -345,19 +419,41 @@ source):
   `weights = None`.
 
 - **Non-stratified** (`balance.field` falsy): reproduce
-  `create_splits_from_fractions` semantics — shuffle `range(N)` with `rng`, slice
-  contiguous non-overlapping blocks per group fraction (in deterministic
-  group order), assign any remainder to the last block iff `Σ ≈ 1.0`.
-  `weights = None` for all.
+  `create_splits_from_fractions` semantics — shuffle `range(N)` with
+  `_shuffle`, slice contiguous non-overlapping blocks per group fraction (in
+  deterministic group order), assign any remainder to the last block iff
+  `Σ ≈ 1.0`. `weights = None` for all.
 
 - **Stratified** (`balance.field` set): build `class_inds: {label: list[int]}`
-  by scanning the primary dataset's `get_<field>` (full scan, O(N)). For each
-  class, shuffle its indices with `rng` and distribute **non-overlapping** across
+  by scanning the primary dataset's `get_<field>` (full scan, O(N)), then call
+  `validate_distribution_labels(balance.distribution, set(class_inds))` (§7.2).
+  For each class, shuffle its indices and distribute **non-overlapping** across
   the groups in `G` by their fractions (same slicing logic, per class). This
   yields per-group indices that preserve class proportions. Then per group:
-  - if `group_name ∈ balance.groups`: compute `weights` per §5
-    (using `count_c` measured **within that split**);
+  - if `group_name ∈ groups_to_balance` (§4.2 — note this includes the
+    `distribution` non-empty + `groups` empty case, where **every** non-infer
+    group is balanced): compute `weights` per §5, with `count_c` measured
+    **within that split**;
   - else: `weights = None`.
+
+  Pseudocode for the per-class partitioning. Deterministic ordering: classes
+  in sorted-label order, groups in `data_request` insertion order (matching
+  the non-stratified branch):
+
+  ```text
+  per_group_indices = {g: [] for g in G}
+  total = sum(fractions.values())
+  for label in sorted(class_inds):
+      inds = class_inds[label]
+      _shuffle(inds, config)
+      offset = 0
+      for g, frac in fractions.items():            # data_request order
+          count = min(round(len(inds) * frac), len(inds) - offset)
+          per_group_indices[g] += inds[offset : offset + count]
+          offset += count
+      if offset < len(inds) and total >= 1.0 - 1e-5:
+          per_group_indices[last group] += inds[offset:]   # remainder
+  ```
 
 Return `{group: {"indexes": ndarray, "weights": ndarray|None}}`.
 
@@ -369,12 +465,24 @@ def load_split_files(paths: dict[str, Path]) -> dict[str, dict[str, np.ndarray]]
 def assign_splits_to_providers(datasets, splits) -> None
 ```
 
-- `persist_splits` writes one `np.savez_compressed(results_dir/f"{group}_split.npz",
-  indexes=…, weights=…)` per group (store an explicit empty/sentinel for `None`
-  weights, e.g. omit the `weights` key or write an empty array and treat absence
-  as `None` on load), plus `split_config.toml` containing `data_request`,
-  `split`, and `balance` (via tomlkit / `log_runtime_config`-style dump).
-  `.npz` gives compression and lazy/mmap-friendly loading at Rubin scale.
+- `persist_splits` writes one `<group>_split.npz` per group via
+  `np.savez_compressed`: always an `indexes` array (`int64`); a `weights` array
+  (`float64`) **only when the group's weights are not `None`**. When a group is
+  unbalanced the `weights` key is **omitted entirely** (decided in review:
+  saves space, and a by-hand file needs only `indexes`). Also writes
+  `split_config.toml` containing `data_request`, `split`, and `balance` (via
+  tomlkit / `log_runtime_config`-style dump). `.npz` gives compression at
+  Rubin scale.
+- `load_split_files(paths)` — `paths` is `{group: Path}`, built from the
+  `split.<group>` config values. For each group:
+  1. Raise `RuntimeError` if the file does not exist.
+  2. `npz = np.load(path)`; raise `RuntimeError` if `"indexes"` is not in
+     `npz.files`.
+  3. `weights = npz["weights"] if "weights" in npz.files else None` —
+     mirroring the `persist_splits` convention above.
+
+  Returns `{group: {"indexes": ndarray, "weights": ndarray | None}}` — the
+  same shape the compute path (§7.3) produces.
 - `assign_splits_to_providers` sets `provider.split_indices = indexes.tolist()`
   (keep list type for existing samplers) and `provider.split_weights =
   weights` (`ndarray` or `None`).
@@ -405,7 +513,7 @@ Per data group present in the **current** `data_request`:
 - membership parity: group ∈ `balance.groups` in prev **iff** group ∈
   `balance.groups` in cur.
 
-`diffs` is a human-readable list used for the §7.1-step-3 warning when paths are
+`diffs` is a human-readable list used for the §7.1-step-2 warning when paths are
 explicitly requested but the producing config differs. (We **cannot** compare an
 in-memory loaded split against the current config beyond the persisted TOML —
 the user is trusted.) Dataset-length / content hashing is explicitly deferred.
@@ -485,8 +593,11 @@ class CreateSplits(Verb):
 
 ## 11. `dist_data_loader` changes (`pytorch_ignite.py`)
 
-Replace the `split=False` / `isinstance(split, bool)` branch to use `Subset` +
-weight-aware sampler. Keep returning `(loader, indexes)`.
+PR #944 already removed the `split` parameter and the legacy multi-split path;
+the post-#944 signature is `dist_data_loader(dataset, config, shuffle=False)`
+with a single code path. This spec reworks that body to use `Subset` + a
+weight-aware sampler, and **drops the `indexes` element from the return** —
+the function returns just the `DataLoader` (§3 D8).
 
 ```python
 from torch.utils.data import Subset, WeightedRandomSampler
@@ -502,15 +613,14 @@ def make_sampler(n: int, weights, sampler_shuffle: bool):
         return SubsetRandomSampler(range(n), generator=torch_rng)
     return None                                  # sequential order over the Subset
 
-if isinstance(split, bool):
-    indexes = list(range(len(dataset)))
-    weights = None
-    if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
-        indexes = dataset.split_indices
-        weights = dataset.split_weights          # ndarray or None
-    sub_dataset = Subset(dataset, indexes)
-    sampler = make_sampler(len(indexes), weights, shuffle)
-    return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs), indexes
+indexes = list(range(len(dataset)))
+weights = None
+if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
+    indexes = dataset.split_indices
+    weights = dataset.split_weights              # ndarray or None
+sub_dataset = Subset(dataset, indexes)
+sampler = make_sampler(len(indexes), weights, shuffle)
+return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 ```
 
 Key points (see §3 D6/D7/D8):
@@ -529,8 +639,13 @@ Key points (see §3 D6/D7/D8):
   `SubsetSequentialSampler(indexes)`).
 - `object_id` and collate flow are unaffected: `Subset.__getitem__` delegates to
   `DataProvider.__getitem__`, and `collate_fn` remains `dataset.collate`.
-- The legacy `str`/`list[str]` split path (lines ~237–269, `[data_set]`-sizes)
-  is untouched/deprecated.
+- **Return value is the bare `DataLoader`.** No caller uses the old second
+  element (every callsite unpacks `loader, _ = …`), and the indexes/weights are
+  available on the provider. Update all callsites to `loader = dist_data_loader(…)`:
+  `verbs/train.py`, `verbs/test.py:105`, `verbs/infer.py:92`,
+  `verbs/to_onnx.py:101`.
+- The legacy `str`/`list[str]` split path and `[data_set]`-size handling are
+  already gone (PR #944); nothing to preserve here.
 
 ---
 
@@ -538,29 +653,31 @@ Key points (see §3 D6/D7/D8):
 
 Each verb that consumes splits follows the same pattern: `setup_dataset` →
 `splitting_utils.create_splits` (attaches `split_indices`/`split_weights`) →
-`dist_data_loader(provider, config, False, shuffle)`.
+`dist_data_loader(provider, config, shuffle=…)`.
 
 - **`train`** (`verbs/train.py`):
   - After `setup_dataset(...)`, call
     `create_splits(config, dataset, results_dir=results_dir, persist=True)` so the
-    split files + `split_config.toml` land in the **train results directory** (the
-    design's "copy the split files into the train results directory" — here we
-    write them there directly; if an equivalent split was reused from another dir,
-    also copy those `.npz`/TOML into the train dir for a complete record).
-  - The three legacy branches (Paths 1/2/3) collapse: with splits attached, all
-    standard groups go through `dist_data_loader(provider, config, False,
-    shuffle = (group=="train" and train_shuffle))`. Path 3 (`[data_set]`-sizes)
-    remains as the deprecated fallback only when no `[split]`/groups are usable.
+    split files + `split_config.toml` land in the **train results directory**.
+    When an equivalent split is reused from another results dir (§7.1 step 3),
+    **copy** its `.npz` files and `split_config.toml` into the train results
+    dir — decided in review: a training run's directory must be a complete,
+    self-contained record of the splits used.
+  - Post-#944, train has a single loader loop over its data groups; it becomes
+    `dist_data_loader(dataset[group], config,
+    shuffle=(group == "train" and train_shuffle))`, storing the bare loader.
 - **`infer`** (`verbs/infer.py`): `setup_dataset(splits=("infer",))` →
   `create_splits(...)` (infer branch ⇒ first-N, no shuffle, weights None) →
-  `dist_data_loader(dataset, config, False)` (sequential). Persisting is optional
-  for infer; default `persist=False` unless we want a record.
+  `dist_data_loader(dataset, config)` (sequential). Persisting is optional
+  for infer; default `persist=False` unless we want a record (§17).
 - **`test`** (`verbs/test.py`): like infer but group `test`; sequential loader.
 - **`engine`** (`verbs/engine.py`): already reads `infer_dataset.split_indices`
   (line ~131); switch its split computation to the driver and keep reading
   `split_indices`.
+- **`to_onnx`** (`verbs/to_onnx.py:101`): unpack change only.
 
-All verbs continue to unpack `loader, _ = dist_data_loader(...)`.
+All callsites change from `loader, _ = dist_data_loader(...)` to
+`loader = dist_data_loader(...)` (§3 D8).
 
 ---
 
@@ -569,7 +686,7 @@ All verbs continue to unpack `loader, _ = dist_data_loader(...)`.
 - **`infer`**: defining any augmentation is a **hard error** (augmentation doc);
   `create_splits` for `infer` never rebalances and never shuffles.
 - **`validate`/`test`**: if resampling is active for these groups (i.e. they are
-  in `balance.groups` or a non-empty `distribution` applies), **warn** that
+  in `groups_to_balance`, §4.2), **warn** that
   validation/test metrics will diverge from real inference performance, but
   proceed. (Test-Time Augmentation is a legitimate reason to allow it.)
 
@@ -583,7 +700,8 @@ All verbs continue to unpack `loader, _ = dist_data_loader(...)`.
 - Old configs with `data_request.*.split_fraction` are auto-migrated to `[split]`
   (migration 003) with the standard deprecation log.
 - Legacy `[data_set].{train,validate,test}_size` + `pytorch_ignite.create_splits`
-  remain deprecated and functional; no behavior change.
+  are **removed in PR #944** (the legacy keys hard-error in `setup_dataset`).
+  This spec builds on the post-#944 codebase and adds nothing for them.
 - `[train].split` / `[infer].split` legacy string keys are untouched and out of
   scope (candidate for later removal; the default config already flags the infer
   one).
@@ -606,9 +724,11 @@ New `tests/hyrax/test_splitting_utils.py` (fast, using `HyraxRandomDataset` whos
    class ratios; weights `None`.
 5. **Equal rebalance** (`groups=["train"]`, empty distribution): train
    `split_weights` ∝ inverse class frequency; validate weights `None`.
-6. **Custom distribution** (`{label_0:0.25, label_1:0.75}`): weights match
-   `target_c / count_c`; sum-to-1.0 violation ⇒ raise; unknown label ⇒ raise;
-   missing label ⇒ warn + weight 0.
+6. **Custom distribution** (`{label_0:0.25, label_1:0.75}`): weights match the
+   raw `target_c / count_c`; with `groups=[]`, the distribution applies to
+   **all** non-infer groups (§4.2 table); sum-to-1.0 violation ⇒ raise
+   (pre-scan); unknown label ⇒ raise (post-scan, §7.2); missing label ⇒ warn +
+   weight 0.
 7. **Paths input** — generate a split dir, then point `split.*` at the `.npz`
    files: loads without recompute; mixed float+path ⇒ raise; differing parent
    dirs ⇒ raise.
@@ -619,7 +739,8 @@ New `tests/hyrax/test_splitting_utils.py` (fast, using `HyraxRandomDataset` whos
 9. **`dist_data_loader`** — `Subset` length == `len(indexes)`; with weights,
    sampler is `WeightedRandomSampler(replacement=True)` and over-samples the
    minority class in expectation; without weights + shuffle, no duplicates.
-10. **Persisted artifacts** — `<group>_split.npz` (indexes+weights) and
+10. **Persisted artifacts** — `<group>_split.npz` (always `indexes`; `weights`
+    present only for balanced groups, absent ⇒ `None` on load) and
     `split_config.toml` (data_request/split/balance) exist and round-trip.
 
 Plus `tests/hyrax/test_config_migrations.py`: migration 003 legacy-trigger and
@@ -643,13 +764,15 @@ Run: `python -m pytest -m "not slow"`, then `ruff check/format` and
 - `src/hyrax/hyrax_default_config.toml` — add `[split]` and `[balance]`
   (+`[balance.distribution]`) tables with defaults.
 - `src/hyrax/pytorch_ignite.py` — simplify `setup_dataset`; remove
-  `create_splits_from_fractions`; rework `dist_data_loader` (`Subset` + WRS).
+  `create_splits_from_fractions`; rework `dist_data_loader` (`Subset` + WRS,
+  return the bare loader).
 - `src/hyrax/datasets/data_provider.py` — add `split_weights`; remove
   `split_fraction`; update `__repr__`.
 - `src/hyrax/config_schemas/data_request.py` — drop `split_fraction` field,
   its validator, and `validate_cross_group` split logic.
 - `src/hyrax/verbs/{train,infer,test,engine}.py` — call the split driver; update
   loader wiring; train persists/copies split files to its results dir.
+- `src/hyrax/verbs/to_onnx.py` — loader unpack change only (§3 D8).
 - `src/hyrax/verbs/verb_registry.py` — `validate_data_request` no longer calls
   the removed `validate_cross_group` split path.
 - `src/hyrax/config_utils.py` — `DYNAMIC_KEY_TABLES` (optional warning
@@ -659,18 +782,22 @@ Run: `python -m pytest -m "not slow"`, then `ruff check/format` and
 
 ---
 
-## 17. Open questions
+## 17. Resolved decisions & open questions
 
-1. **Train results copy vs. write-in-place.** When `train` reuses an equivalent
-   pre-existing split dir, do we copy the `.npz`+TOML into the train results dir
-   (full self-contained record, per "take your data to go") or just record a
-   pointer? This spec assumes **copy**.
-2. **Infer persistence.** Should `create_splits` persist for `infer`/`test` by
+Resolved during review (now normative in the body of this spec):
+
+1. **Train results copy vs. write-in-place** — **copy**. When `train` reuses an
+   equivalent pre-existing split dir, copy the `.npz` files + `split_config.toml`
+   into the train results dir for a self-contained record (§12).
+2. **Weight normalization** — store the **raw** `target_c / count_c` values; no
+   normalization (§5).
+3. **`.npz` "no weights" sentinel** — **omit the `weights` array** entirely for
+   unbalanced groups; `load_split_files` treats its absence as `None` (§7.4).
+4. **Legacy splitting code** — removed separately in **PR #944**; this spec
+   assumes the post-#944 codebase (§2, §11, §14).
+
+Still open:
+
+1. **Infer persistence.** Should `create_splits` persist for `infer`/`test` by
    default, or only for `train`/explicit `h.create_splits()`? This spec defaults
    `persist=False` for infer/test.
-3. **Weight normalization.** Normalize `split_weights` to mean 1.0 for
-   readability, or store raw `target_c/count_c`? No functional difference for WRS;
-   spec leaves it optional.
-4. **`np.savez` weight sentinel for `None`.** Confirm the on-disk convention for
-   "no weights" (omit the `weights` array vs. write empty) and mirror it in
-   `load_split_files`.
