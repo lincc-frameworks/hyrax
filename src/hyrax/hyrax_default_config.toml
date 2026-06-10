@@ -519,3 +519,34 @@ num_detail_plots = 6
 
 # The directory containing the ONNX model used for inference in production
 model_directory = false
+
+
+[split]
+# Fraction of each group's primary dataset to use, or a path to a previously
+# generated <group>_split.npz file.  Float domain: (0.0, 1.0].
+train    = 1.0
+validate = 1.0
+test     = 1.0
+infer    = 1.0
+
+# RNG seed for shuffling/partitioning.  Empty string falls back to
+# config["data_set"]["seed"] (reproducing current behavior exactly).
+# A non-empty value uses a dedicated generator and does not touch global RNG state.
+rng_seed = ""
+
+
+[balance]
+# Name of the field identifying each item's class.  Must resolve to a
+# get_<field> getter on the primary dataset.  Empty string disables stratification.
+field = ""
+
+# Data groups whose sampling weights are adjusted to the target distribution.
+# Empty list disables rebalancing.  See [balance.distribution] for the target.
+groups = []
+
+[balance.distribution]
+# Maps class label → target fraction in (0.0, 1.0].  Empty table means equal
+# target across all observed classes (uniform).  Values must sum to exactly 1.0.
+# Example:
+# label_0 = 0.25
+# label_1 = 0.75

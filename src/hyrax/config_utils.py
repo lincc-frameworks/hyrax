@@ -181,6 +181,11 @@ class ConfigManager:
 
     PYDANTIC_VALIDATED_KEYS = ("data_request",)
 
+    # Tables whose child keys are user-defined (group names, class labels) and
+    # legitimately have no entry in the default config.  Children of these tables
+    # are skipped by _validate_runtime_config.
+    DYNAMIC_KEY_TABLES = ("distribution",)
+
     def __init__(
         self,
         runtime_config_filepath: Union[Path, str] | None = None,
@@ -535,6 +540,8 @@ class ConfigManager:
                     msg = f"Runtime config contains a section named '{key}' which is the name of a "
                     msg += "value in the default config. Please choose another name for this section."
                     logger.warning(msg)
+                    continue
+                if key in ConfigManager.DYNAMIC_KEY_TABLES:
                     continue
                 ConfigManager._validate_runtime_config(runtime_config[key], default_config[key])
 
