@@ -918,10 +918,18 @@ class DataProvider:
             if fields_data is None:  # left outer join miss
                 augmented_data[friendly_name] = None
                 continue
+
+            # Use dataset-local indices for join-map secondaries.
+            dataset_idx = idx
+            if friendly_name in self._join_maps:
+                dataset_idx = self._join_maps[friendly_name].get(base_data["object_id"])
+
             new_fields: dict[str, Any] = {}
             for field, value in fields_data.items():
                 augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
-                new_fields[field] = augment_fn(value, idx, rng_seed) if augment_fn is not None else value
+                if augment_fn is not None and isinstance(value, np.ndarray):
+                    value = value.copy()
+                new_fields[field] = augment_fn(value, dataset_idx, rng_seed) if augment_fn is not None else value
             augmented_data[friendly_name] = new_fields
         tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
         return augmented_data
