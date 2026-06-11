@@ -557,18 +557,36 @@ class DataProvider:
                 )
 
             # Discover augment_<field> methods if augmentation is enabled for this dataset.
-            if dataset_definition.get("augment"):
-                self.augment_enabled[friendly_name] = True
+            augment_cfg = dataset_definition.get("augment")
+            if augment_cfg:
+                self.augment_enabled[friendly_name] = augment_cfg
                 self._has_any_augmentation = True
                 self.augment_getters[friendly_name] = {}
-                for name in dir(dataset_instance):
-                    if not name.startswith("augment_"):
-                        continue
-                    augment_fn = getattr(dataset_instance, name, None)
-                    if not callable(augment_fn):
-                        continue
-                    field_name = name.removeprefix("augment_")
-                    self.augment_getters[friendly_name][field_name] = augment_fn
+
+                if isinstance(augment_cfg, dict):
+                    # Dict mode: only wire up fields marked True; hard error if method missing.
+                    for field_name, enabled in augment_cfg.items():
+                        if not enabled:
+                            continue
+                        method_name = f"augment_{field_name}"
+                        augment_fn = getattr(dataset_instance, method_name, None)
+                        if augment_fn is None or not callable(augment_fn):
+                            raise RuntimeError(
+                                f"augment dict requests augmentation for field '{field_name}' "
+                                f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                                f"but no callable '{method_name}' method was found."
+                            )
+                        self.augment_getters[friendly_name][field_name] = augment_fn
+                else:
+                    # Boolean True mode: discover all augment_<field> methods permissively.
+                    for name in dir(dataset_instance):
+                        if not name.startswith("augment_"):
+                            continue
+                        augment_fn = getattr(dataset_instance, name, None)
+                        if not callable(augment_fn):
+                            continue
+                        field_name = name.removeprefix("augment_")
+                        self.augment_getters[friendly_name][field_name] = augment_fn
 
             # Get all the dataset's metadata fields and store them in
             # `self.all_metadata_fields` dictionary. Modify the name to be

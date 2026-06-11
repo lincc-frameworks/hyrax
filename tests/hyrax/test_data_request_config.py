@@ -1028,6 +1028,120 @@ def test_augment_field_preserved_in_as_dict():
     assert cfg.as_dict()["augment"] is True
 
 
+def test_augment_dict_on_train_group_passes_validation():
+    """augment as a dict on a train group passes DataRequestDefinition validation."""
+    definition = DataRequestDefinition(
+        {
+            "train": {
+                "data": {
+                    "dataset_class": "DS",
+                    "data_location": "/tmp",
+                    "primary_id_field": "id",
+                    "fields": ["image", "label"],
+                    "augment": {"image": True, "label": False},
+                }
+            }
+        }
+    )
+    assert definition["train"]["data"].augment == {"image": True, "label": False}
+
+
+def test_augment_dict_preserved_in_as_dict():
+    """augment dict round-trips through as_dict."""
+    cfg = DataRequestConfig(
+        dataset_class="DS",
+        data_location="/tmp",
+        primary_id_field="id",
+        fields=["image", "label"],
+        augment={"image": True, "label": False},
+    )
+    assert cfg.as_dict()["augment"] == {"image": True, "label": False}
+
+
+def test_augment_dict_rejects_primary_id_field_true():
+    """augment dict with primary_id_field=True raises ValidationError."""
+    with pytest.raises(ValidationError, match="primary_id_field"):
+        DataRequestConfig(
+            dataset_class="DS",
+            data_location="/tmp",
+            primary_id_field="id",
+            fields=["image"],
+            augment={"image": True, "id": True},
+        )
+
+
+def test_augment_dict_allows_primary_id_field_false():
+    """augment dict with primary_id_field=False is allowed (redundant but valid)."""
+    cfg = DataRequestConfig(
+        dataset_class="DS",
+        data_location="/tmp",
+        primary_id_field="id",
+        fields=["image"],
+        augment={"image": True, "id": False},
+    )
+    assert cfg.augment == {"image": True, "id": False}
+
+
+def test_augment_dict_rejects_missing_fields():
+    """augment dict missing a field from 'fields' raises ValidationError."""
+    with pytest.raises(ValidationError, match="missing fields"):
+        DataRequestConfig(
+            dataset_class="DS",
+            data_location="/tmp",
+            primary_id_field="id",
+            fields=["image", "label"],
+            augment={"image": True},
+        )
+
+
+def test_augment_dict_rejects_extra_fields():
+    """augment dict with fields not in 'fields' raises ValidationError."""
+    with pytest.raises(ValidationError, match="extra fields"):
+        DataRequestConfig(
+            dataset_class="DS",
+            data_location="/tmp",
+            primary_id_field="id",
+            fields=["image"],
+            augment={"image": True, "mask": True},
+        )
+
+
+def test_augment_dict_on_infer_group_raises_validation_error():
+    """augment dict with any True values on infer group raises ValidationError."""
+    with pytest.raises(ValidationError, match="Augmentation cannot be enabled on 'infer'"):
+        DataRequestDefinition(
+            {
+                "infer": {
+                    "data": {
+                        "dataset_class": "DS",
+                        "data_location": "/tmp",
+                        "primary_id_field": "id",
+                        "fields": ["image"],
+                        "augment": {"image": True},
+                    }
+                }
+            }
+        )
+
+
+def test_augment_dict_all_false_on_infer_allowed():
+    """augment dict with all False values on infer is allowed (no actual augmentation)."""
+    definition = DataRequestDefinition(
+        {
+            "infer": {
+                "data": {
+                    "dataset_class": "DS",
+                    "data_location": "/tmp",
+                    "primary_id_field": "id",
+                    "fields": ["image"],
+                    "augment": {"image": False},
+                }
+            }
+        }
+    )
+    assert definition["infer"]["data"].augment == {"image": False}
+
+
 def test_issue_817_single_named_source_no_extra_data_nesting():
     """Regression test for issue #817.
 
