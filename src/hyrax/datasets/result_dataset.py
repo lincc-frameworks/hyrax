@@ -14,6 +14,7 @@ from typing import Union
 if "LANCE_LOG" not in os.environ:
     os.environ["LANCE_LOG"] = "error"
 
+import lance
 import lancedb
 import numpy as np
 import pyarrow as pa
@@ -29,8 +30,8 @@ LANCE_DB_DIR = "lance_db"
 class ResultDatasetWriter:
     """Writer for Lance-based inference results.
 
-    Writes inference results incrementally to Lance format using table.add()
-    for each batch, avoiding memory accumulation.
+    Writes inference results incrementally to Lance format through pylance,
+    avoiding memory accumulation while preserving the existing fixed-size-list schema.
     """
 
     def __init__(self, result_dir: Union[str, Path]):
@@ -47,6 +48,8 @@ class ResultDatasetWriter:
         self.lance_dir = self.result_dir / LANCE_DB_DIR
         self.db = None
         self.table = None
+        self.lance_dataset = None
+        self.lance_uri = self.lance_dir / f"{TABLE_NAME}.lance"
         self.schema = None
         self.tensor_dtype = None
         self.tensor_shape = None
@@ -72,19 +75,11 @@ class ResultDatasetWriter:
         data_array = np.array(data)
         first_tensor = data_array[0]
 
-        # On first write, create the schema and table
+        # On first write, create the schema. The Lance dataset is written below after
+        # the first batch is converted to Arrow, which avoids creating an empty table
+        # through LanceDB's vector-validation path.
         if self.schema is None:
             self._create_schema(first_tensor)
-            self.db = lancedb.connect(str(self.lance_dir))
-            # Create empty table with schema
-            empty_data = pa.table(
-                {
-                    "object_id": pa.array([], type=pa.string()),
-                    "data": pa.array([], type=self.schema.field("data").type),
-                },
-                schema=self.schema,
-            )
-            self.table = self.db.create_table(TABLE_NAME, empty_data, mode="overwrite")
         else:
             # Validate that all tensors match the established schema
             for i, tensor in enumerate(data):
@@ -108,18 +103,23 @@ class ResultDatasetWriter:
             "data": pa.array(flattened_data, type=self.schema.field("data").type),
         }
 
-        # Convert to PyArrow table and add to Lance
+        # Convert to PyArrow table and write through pylance. LanceDB 0.30+ rejects
+        # NaNs in fixed-size-list/vector columns in table.add(), while pylance writes
+        # the same fixed-size-list schema without changing Hyrax's on-disk format.
         arrow_table = pa.table(batch_data, schema=self.schema)
-        self.table.add(arrow_table)
+        mode = "overwrite" if self.lance_dataset is None else "append"
+        target = self.lance_uri if self.lance_dataset is None else self.lance_dataset
+        self.lance_dataset = lance.write_dataset(arrow_table, target, mode=mode)
+        self.table = self.lance_dataset
         self.batch_count += 1
 
         logger.debug(f"Wrote batch {self.batch_count} with {len(object_ids)} records")
 
     def commit(self):
-        """Finalize the write by optimizing the table."""
-        if self.table is not None:
+        """Finalize the write by optimizing the LanceDB table."""
+        if self.lance_dataset is not None:
             logger.info(f"Optimizing Lance table after {self.batch_count} batches")
-            self.table.optimize()
+            lancedb.connect(str(self.lance_dir)).open_table(TABLE_NAME).optimize()
             logger.info("Lance table optimization complete")
 
     def _create_schema(self, sample_tensor: np.ndarray):
