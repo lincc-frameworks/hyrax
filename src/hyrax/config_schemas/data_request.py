@@ -52,6 +52,11 @@ class DataRequestConfig(BaseConfigModel):
         description="Dataset-specific configuration as a free-form dictionary.",
     )
 
+    augment: bool | None = Field(
+        None,
+        description="Enable augmentation for this dataset. When true, augment_<field> methods are used.",
+    )
+
     @field_validator("data_location")
     @classmethod
     def resolve_data_location(cls, v: str) -> str:
@@ -195,6 +200,20 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
             normalized[group_name] = _normalize_dataset_group(group_value)
 
         return normalized
+
+    @model_validator(mode="after")
+    def reject_augment_on_infer(self) -> DataRequestDefinition:
+        """Augmentation cannot be enabled on the 'infer' data group."""
+        for group_name, group_value in self.root.items():
+            if group_name == "infer":
+                for friendly_name, cfg in group_value.items():
+                    if cfg.augment:
+                        raise ValueError(
+                            f"Augmentation cannot be enabled on 'infer' data group "
+                            f"(dataset '{friendly_name}'). Augmentation is only valid for "
+                            f"'train', 'validate', and 'test' groups."
+                        )
+        return self
 
     @model_validator(mode="after")
     def require_at_least_one_dataset(self) -> DataRequestDefinition:

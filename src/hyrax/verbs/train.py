@@ -48,6 +48,7 @@ class Train(Verb):
         from hyrax.config_utils import create_results_dir, log_runtime_config
         from hyrax.gpu_monitor import GpuMonitor
         from hyrax.pytorch_ignite import (
+            Events,
             attach_best_checkpoint,
             create_trainer,
             create_validator,
@@ -122,6 +123,12 @@ class Train(Verb):
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir)
+
+        # Dispatch on_epoch_start to all DataProviders at the start of each epoch.
+        @trainer.on(Events.EPOCH_STARTED)
+        def dispatch_epoch_start(engine):
+            for provider in dataset.values():
+                provider.on_epoch_start("train")
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:
