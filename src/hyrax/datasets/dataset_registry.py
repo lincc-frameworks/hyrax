@@ -131,6 +131,19 @@ class HyraxDataset:
         """
         return [] if self._metadata_table is None else list(self._metadata_table.colnames)
 
+    def on_epoch_start(self, verb: str):
+        """Called at the beginning of each epoch (or once for single-pass verbs).
+
+        Parameters
+        ----------
+        verb : str
+            Name of the verb that is running, e.g. ``"train"``, ``"infer"``,
+            ``"test"``, or ``"engine"``.
+
+        Override in subclasses to respond to epoch-level lifecycle events.
+        """
+        pass
+
     def metadata(self, idxs: npt.ArrayLike, fields: list[str]) -> npt.ArrayLike:
         """Returns a table representing the metadata given an array of indexes and a list of fields.
 

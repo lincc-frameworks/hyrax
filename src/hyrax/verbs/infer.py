@@ -80,6 +80,9 @@ class Infer(Verb):
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}\n{dataset}"
         )
 
+        for provider in dataset.values():
+            provider.on_epoch_start("infer")
+
         # setup_dataset returns a dataset dictionary keyed by split name.
         # When split_fraction is defined on the "infer" group, setup_dataset
         # will have already computed split_indices on the DataProvider.
