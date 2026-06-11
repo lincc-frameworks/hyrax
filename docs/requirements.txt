@@ -10,4 +10,4 @@ sphinx-copybutton
 sphinx-book-theme
 sphinx-design
 sphinx-togglebutton
-sphinx-rtd-theme>=3.0
+sphinx-rtd-theme>=3.1.0

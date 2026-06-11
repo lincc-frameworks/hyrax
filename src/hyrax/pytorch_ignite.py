@@ -19,13 +19,15 @@ from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler, Subset, SubsetRandomSampler, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, Sampler, SubsetRandomSampler
 
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
+
+_LEGACY_SPLIT_KEYS = ("train_size", "validate_size", "test_size")
 
 
 class SubsetSequentialSampler(Sampler[int]):
@@ -74,6 +76,27 @@ def setup_dataset(
     dict[str, DataProvider]
         Mapping of data group names to DataProvider instances.
     """
+
+    found = [k for k in _LEGACY_SPLIT_KEYS if k in config.get("data_set", {})]
+    if found:
+        raise RuntimeError(
+            f"Legacy split configuration keys found in [data_set]: {found}\n\n"
+            "The train_size/validate_size/test_size configuration style has been removed.\n"
+            "Please migrate to split_fraction in your [data_request] groups.\n\n"
+            "Example:\n"
+            "  [data_request.train.data]\n"
+            "  dataset_class = 'YourDataset'\n"
+            "  data_location = '/path/to/data'\n"
+            "  primary_id_field = 'id'\n"
+            "  split_fraction = 0.6\n\n"
+            "  [data_request.validate.data]\n"
+            "  dataset_class = 'YourDataset'\n"
+            "  data_location = '/path/to/data'\n"
+            "  primary_id_field = 'id'\n"
+            "  split_fraction = 0.2\n\n"
+            "For more information, see: https://hyrax.readthedocs.io/en/stable/dataset_splits.html"
+        )
+
     data_request = generate_data_request_from_config(config)
     keys = splits if splits is not None else tuple(data_request.keys())
     return {k: DataProvider(config, data_request[k]) for k in keys if k in data_request}
@@ -125,7 +148,7 @@ def dist_data_loader(
     config: dict,
     shuffle: bool = False,
 ):
-    """Create a Pytorch Ignite distributed data loader.
+    """Create Pytorch Ignite distributed data loaders.
 
     It is recommended that each verb needing dataloaders only call this function once.
 
@@ -150,9 +173,8 @@ def dist_data_loader(
 
     Returns
     -------
-    DataLoader (or an ignite-wrapped equivalent)
-        This is the distributed dataloader, formed by calling
-        :func:`ignite.distributed.auto_dataloader`.
+    tuple[DataLoader, list[int]]
+        The distributed dataloader and the list of indices it samples from.
     """
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader.
@@ -176,165 +198,20 @@ def dist_data_loader(
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    # Determine the index set and optional per-sample weights from the provider.
+    def make_sampler(indexes: Sequence[int], sampler_shuffle: bool):
+        if not indexes:
+            return None
+        if sampler_shuffle:
+            return SubsetRandomSampler(indexes, generator=torch_rng)
+        return SubsetSequentialSampler(indexes)
+
+    indexes = list(range(len(dataset)))
     if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
-        indexes = list(dataset.split_indices)
-        weights = dataset.split_weights  # ndarray or None
-    else:
-        indexes = list(range(len(dataset)))
-        weights = None
+        indexes = dataset.split_indices
 
-    # Build a Subset so the sampler works in subset-local index space (0..len-1).
-    sub_dataset = Subset(dataset, indexes)
+    sampler = make_sampler(indexes, shuffle)
 
-    # Choose the appropriate sampler.
-    if weights is not None:
-        sampler = WeightedRandomSampler(
-            weights=list(weights),
-            num_samples=len(indexes),
-            generator=torch_rng,
-            replacement=True,
-        )
-    elif shuffle:
-        sampler = SubsetRandomSampler(range(len(indexes)), generator=torch_rng)
-    else:
-        sampler = None
-
-    return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
-
-
-def create_splits(data_set: Dataset, config: dict):
-    """Returns train, test, and validation indexes constructed to be used with the passed in
-    dataset. The allocation of indexes in the underlying dataset to samplers depends on
-    the data_set section of the config dict.
-
-    .. deprecated::
-        This function and the associated configuration style using
-        ``config["data_set"]["train_size"]``, ``config["data_set"]["validate_size"]``,
-        and ``config["data_set"]["test_size"]`` is deprecated and will be removed in a
-        future release. Please migrate to defining separate dataset groups in
-        ``[data_request]`` with ``split_fraction`` for each group.
-
-    Parameters
-    ----------
-    data_set : Dataset
-        The data set to use
-    config : dict
-        Configuration that defines dataset splits
-    split : str
-        Name of the split to use.
-    """
-    warnings.warn(
-        "\n\n"
-        "DEPRECATION WARNING: Legacy split configuration detected\n\n"
-        "Defining dataset splits via config['data_set'] fields (train_size,\n"
-        "validate_size, test_size) is DEPRECATED and will be removed in a future\n"
-        "release.\n\n"
-        "Please migrate to the new split_fraction approach by:\n"
-        "  1. Defining separate dataset groups in [data_request] (e.g., [data_request.train],\n"
-        "     [data_request.validate], [data_request.test])\n"
-        "  2. Adding 'split_fraction' to each group's configuration\n"
-        "  3. Ensuring all groups share the same 'data_location' and 'primary_id_field'\n\n"
-        "Example migration:\n"
-        "  OLD STYLE:\n"
-        "    [data_set]\n"
-        "    train_size = 0.7\n"
-        "    validate_size = 0.15\n"
-        "    test_size = 0.15\n\n"
-        "  NEW STYLE:\n"
-        "    [data_request.train.data]\n"
-        "    dataset_class = 'YourDataset'\n"
-        "    data_location = '/path/to/data'\n"
-        "    primary_id_field = 'id'\n"
-        "    split_fraction = 0.7\n\n"
-        "    [data_request.validate.data]\n"
-        "    dataset_class = 'YourDataset'\n"
-        "    data_location = '/path/to/data'\n"
-        "    primary_id_field = 'id'\n"
-        "    split_fraction = 0.15\n\n"
-        "    [data_request.test.data]\n"
-        "    dataset_class = 'YourDataset'\n"
-        "    data_location = '/path/to/data'\n"
-        "    primary_id_field = 'id'\n"
-        "    split_fraction = 0.15\n\n"
-        "For more information, see: https://hyrax.readthedocs.io/\n",
-        FutureWarning,
-        stacklevel=2,
-    )
-
-    data_set_size = len(data_set)  # type: ignore[arg-type]
-
-    # Init the splits based on config values
-    train_size = config["data_set"]["train_size"] if config["data_set"]["train_size"] else None
-    test_size = config["data_set"]["test_size"] if config["data_set"]["test_size"] else None
-    validate_size = config["data_set"]["validate_size"] if config["data_set"]["validate_size"] else None
-
-    # Convert all values specified as counts into ratios of the underlying container
-    if isinstance(train_size, int):
-        train_size = train_size / data_set_size
-    if isinstance(test_size, int):
-        test_size = test_size / data_set_size
-    if isinstance(validate_size, int):
-        validate_size = validate_size / data_set_size
-
-    # Initialize Test size when not provided
-    if test_size is None:
-        if train_size is None:
-            train_size = 0.25
-
-        if validate_size is None:  # noqa: SIM108
-            test_size = 1.0 - train_size
-        else:
-            test_size = 1.0 - (train_size + validate_size)
-
-    # Initialize train size when not provided, and can be inferred from test_size and validate_size.
-    if train_size is None:
-        if validate_size is None:  # noqa: SIM108
-            train_size = 1.0 - test_size
-        else:
-            train_size = 1.0 - (test_size + validate_size)
-
-    # If splits cover more than the entire dataset, error out.
-    if validate_size is None:
-        if np.round(train_size + test_size, decimals=5) > 1.0:
-            raise RuntimeError("Split fractions add up to more than 1.0")
-    elif np.round(train_size + test_size + validate_size, decimals=5) > 1.0:
-        raise RuntimeError("Split fractions add up to more than 1.0")
-
-    # If any split is less than 0.0 also error out
-    if (
-        np.round(test_size, decimals=5) < 0.0
-        or np.round(train_size, decimals=5) < 0.0
-        or (validate_size is not None and np.round(validate_size, decimals=5) < 0.0)
-    ):
-        raise RuntimeError("One of the Split fractions configured is negative.")
-
-    indices = list(range(data_set_size))
-
-    # shuffle the indices
-    seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
-    np.random.seed(seed)
-    np.random.shuffle(indices)
-
-    # Given the number of samples in the dataset and the ratios of the splits
-    # we can calculate the number of samples in each split.
-    num_test = int(np.round(data_set_size * test_size))
-    num_train = int(np.round(data_set_size * train_size))
-
-    # split the indices
-    test_idx = indices[:num_test]
-    train_idx = indices[num_test : num_test + num_train]
-
-    # assume that validate gets all the remaining indices
-    if validate_size:
-        num_validate = int(np.round(data_set_size * validate_size))
-        valid_idx = indices[num_test + num_train : num_test + num_train + num_validate]
-
-    split_inds = {"train": train_idx, "test": test_idx}
-    if validate_size:
-        split_inds["validate"] = valid_idx
-
-    return split_inds
+    return idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes
 
 
 def create_splits_from_fractions(
