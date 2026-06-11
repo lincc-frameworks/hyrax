@@ -556,38 +556,6 @@ class DataProvider:
                     "This is likely an error in the dataset class definition."
                 )
 
-            # Discover augment_<field> methods if augmentation is enabled for this dataset.
-            augment_cfg = dataset_definition.get("augment")
-            if augment_cfg:
-                self.augment_enabled[friendly_name] = augment_cfg
-                self._has_any_augmentation = True
-                self.augment_getters[friendly_name] = {}
-
-                if isinstance(augment_cfg, dict):
-                    # Dict mode: only wire up fields marked True; hard error if method missing.
-                    for field_name, enabled in augment_cfg.items():
-                        if not enabled:
-                            continue
-                        method_name = f"augment_{field_name}"
-                        augment_fn = getattr(dataset_instance, method_name, None)
-                        if augment_fn is None or not callable(augment_fn):
-                            raise RuntimeError(
-                                f"augment dict requests augmentation for field '{field_name}' "
-                                f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
-                                f"but no callable '{method_name}' method was found."
-                            )
-                        self.augment_getters[friendly_name][field_name] = augment_fn
-                else:
-                    # Boolean True mode: discover all augment_<field> methods permissively.
-                    for name in dir(dataset_instance):
-                        if not name.startswith("augment_"):
-                            continue
-                        augment_fn = getattr(dataset_instance, name, None)
-                        if not callable(augment_fn):
-                            continue
-                        field_name = name.removeprefix("augment_")
-                        self.augment_getters[friendly_name][field_name] = augment_fn
-
             # Get all the dataset's metadata fields and store them in
             # `self.all_metadata_fields` dictionary. Modify the name to be
             # <metadata_field_name>_<friendly_name>, i.e. "RA_cifar" or "photoz_hsc".
@@ -621,6 +589,36 @@ class DataProvider:
             # provide slightly faster iteration than lists, which is beneficial
             # for repeated access in `resolve_data`.
             self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
+            # Discover augment_<field> methods if augmentation is enabled for this dataset.
+            augment_cfg = dataset_definition.get("augment")
+            if augment_cfg:
+                self._has_any_augmentation = True
+                self.augment_getters[friendly_name] = {}
+
+                # Normalize bool to a per-field dict keyed by requested_fields:
+                # fields with an augment_<field> method get True, others False.
+                if augment_cfg is True:
+                    available = set()
+                    for name in dir(dataset_instance):
+                        if name.startswith("augment_") and callable(getattr(dataset_instance, name, None)):
+                            available.add(name.removeprefix("augment_"))
+                    augment_cfg = {f: f in available for f in self.requested_fields[friendly_name]}
+
+                self.augment_enabled[friendly_name] = augment_cfg
+
+                for field_name, enabled in augment_cfg.items():
+                    if not enabled:
+                        continue
+                    method_name = f"augment_{field_name}"
+                    augment_fn = getattr(dataset_instance, method_name, None)
+                    if augment_fn is None or not callable(augment_fn):
+                        raise RuntimeError(
+                            f"augment dict requests augmentation for field '{field_name}' "
+                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                            f"but no callable '{method_name}' method was found."
+                        )
+                    self.augment_getters[friendly_name][field_name] = augment_fn
 
     def _build_join_indices(self):
         """Build reverse-index mappings for datasets that declare a ``join_field``.
