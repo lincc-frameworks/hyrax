@@ -134,13 +134,13 @@ class HyraxDataset:
     def on_epoch_start(self, verb: str):
         """Called at the beginning of each epoch (or once for single-pass verbs).
 
+        Override in subclasses to respond to epoch-level lifecycle events.
+
         Parameters
         ----------
         verb : str
             Name of the verb that is running, e.g. ``"train"``, ``"infer"``,
             ``"test"``, or ``"engine"``.
-
-        Override in subclasses to respond to epoch-level lifecycle events.
         """
         pass
 
