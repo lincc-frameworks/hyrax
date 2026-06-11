@@ -505,6 +505,34 @@ class MockButler:
         else:
             self.band_request_count[band] += 1
 
+    def query_datasets(self, dataset_type, data_id=None, collections=None, find_first=True):
+        """Return mock resolved refs matching query_datasets signature."""
+        if dataset_type != "deep_coadd":
+            return []
+        data_id = {} if data_id is None else dict(data_id)
+        tract = data_id.get("tract")
+        patch = data_id.get("patch")
+        band = data_id.get("band", "g")
+        skymap = data_id.get("skymap", "mock")
+
+        if tract is not None and patch is not None:
+            return [MockDatasetRef(dataset_type, data_id)]
+
+        refs = []
+        for tract_patch in MockSkyMap.ids:
+            refs.append(
+                MockDatasetRef(
+                    dataset_type,
+                    {
+                        "tract": tract_patch["tract_id"],
+                        "patch": 42,
+                        "band": band,
+                        "skymap": skymap,
+                    },
+                )
+            )
+        return refs
+
     def get(self, dataset_type, data_id=None):
         """Retrieve mock data product.
 
@@ -515,6 +543,9 @@ class MockButler:
         Returns:
             Mock object depending on dataset_type
         """
+        if isinstance(dataset_type, MockDatasetRef):
+            data_id = dataset_type.dataId
+            dataset_type = dataset_type.datasetType
         data_id = {} if data_id is None else data_id
 
         if dataset_type == "skyMap":
@@ -543,6 +574,14 @@ class MockButler:
 
         else:
             raise ValueError(f"Unsupported dataset_type: {dataset_type}")
+
+
+class MockDatasetRef:
+    """Minimal mock DatasetRef with dataset type and data ID."""
+
+    def __init__(self, dataset_type, data_id):
+        self.datasetType = dataset_type
+        self.dataId = dict(data_id)
 
 
 # Mock geometry module that contains the classes

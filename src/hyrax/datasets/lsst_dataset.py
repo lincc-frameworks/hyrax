@@ -75,6 +75,9 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
         self.set_function_transform()
         self.set_crop_transform()
+        self._deep_coadd_refs = {}
+        if self._butler_config is not None:
+            self._build_deep_coadd_ref_cache()
 
     def _butler_available(self):
         try:
@@ -288,9 +291,36 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         This function only returns the single principle tract and patch in the case of overlap.
         """
         radec = self._parse_sphere_point(row)
-        skymap = self._get_butler_thread_safe().get("skyMap", {"skymap": self._butler_config["skymap"]})
+        skymap = self._get_skymap(self._butler_config["skymap"])
         tract_info = skymap.findTract(radec)
         return (tract_info, tract_info.findPatch(radec))
+
+    @functools.lru_cache(maxsize=4)  # noqa: B019
+    def _get_skymap(self, skymap_name):
+        """Fetch and cache the immutable skymap object by name."""
+        return self._get_butler_thread_safe().get("skyMap", {"skymap": skymap_name})
+
+    def _build_deep_coadd_ref_cache(self):
+        """Bulk-resolve deep_coadd refs for catalog tracts/patches and configured bands."""
+        butler = self._get_butler_thread_safe()
+        needed_tract_patches = set()
+        for row in self.catalog:
+            tract_info, patch_info = self._get_tract_patch(row)
+            needed_tract_patches.add((tract_info.getId(), patch_info.sequential_index))
+
+        for band in LSSTDataset.BANDS:
+            data_id = {"skymap": self.config["data_set"]["skymap"], "band": band}
+            refs = list(
+                butler.query_datasets(
+                    "deep_coadd",
+                    data_id=data_id,
+                    collections=self._butler_config["collections"],
+                )
+            )
+            for ref in refs:
+                key = (ref.dataId["tract"], ref.dataId["patch"], ref.dataId["band"])
+                if (key[0], key[1]) in needed_tract_patches:
+                    self._deep_coadd_refs[key] = ref
 
     # super basic patch caching
     @functools.lru_cache(maxsize=128)  # noqa: B019
@@ -303,20 +333,11 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         Uses functools.lru_cache for basic in-memory caching.
         """
         data = []
-
-        # Get the patch images we need
         for band in LSSTDataset.BANDS:
-            # Set up the data dict
-            butler_dict = {
-                "tract": tract_index,
-                "patch": patch_index,
-                "skymap": self.config["data_set"]["skymap"],
-                "band": band,
-            }
-
-            # pull from butler
-            image = self._get_butler_thread_safe().get("deep_coadd", butler_dict)
+            ref = self._deep_coadd_refs[(tract_index, patch_index, band)]
+            image = self._get_butler_thread_safe().get(ref)
             data.append(image.getImage())
+
         return data
 
     def _fetch_single_cutout(self, row):
