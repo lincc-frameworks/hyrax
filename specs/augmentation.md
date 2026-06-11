@@ -23,7 +23,7 @@ There are many methods for data augmentation, some of which are too complex or c
 We plan to programmatically extend the Hyrax dataset interface to support an `augment_<field_name>` family of functions in parallel to the existing `get_<field_name>`  
 family of functions. This allows dataset writers to define default augmentations, which can be used simply by configuration as well as for users of dataset classes to easily override the default augmentation method.
 
-We will also be adding a `augmentation` configuration option on the friendly name of a Dataset. In the first version this will be a simple `true`/`false` flag to control whether the `augment_<field_name>` functions are used during sampling. In a future version it could be extended to a dictionary that would allow per-field selection of `augment` or `get` methods, allowing easier selection of augmentation methods on pre-built dataset classes.
+We will also be adding an `augment` configuration option on the friendly name of a Dataset. In the first version this will be a simple `true`/`false` flag to control whether the `augment_<field_name>` functions are used during sampling. In a future version it could be extended to a dictionary that would allow per-field selection of `augment` or `get` methods, allowing easier selection of augmentation methods on pre-built dataset classes.
 
 ## Configuration
 
@@ -80,13 +80,19 @@ Because the return value from the `get_<field_name>` functions are cached, but t
 
 **`index`** is the index of the data in the dataset. This allows authors to implement various index-aware augmentation strategies. See examples below:
 
-**`rng_seed`** is a 64 bit integer which is provided to allow correlation between fields in the same row of augmented data. Hyrax uses its master random seed (`seed` in hyrax config) to generate `rng_seed` values for all augmented indexes.
+**`rng_seed`** is a 64 bit integer which is provided to allow correlation between fields in the same row of augmented data. Hyrax will derive `rng_seed` values from the master random seed (`data_set.seed` in hyrax config) via a two-level numpy RNG chain: a top-level `_augment_rng` advances once per epoch to produce a fresh `_epoch_rng`, which is then drawn from sequentially in `resolve_data` — one integer per call. This means:
+
+- **Single-threaded access** is reproducible by call order within an epoch.
+- **Multi-threaded access** is intentionally non-reproducible (no locks on the hot path).
+- The same `rng_seed` will be passed to all `augment_<field>` calls within a single row, enabling correlated augmentation across fields (e.g. same rotation for image and mask).
 
 The return value from `augment_<field_name>` is the augmented data.
 
 It is important to note that when augmentation is enabled on a field, **every call to that field (whether it is for a class that is oversampled or not)** will use the `augment_<field_name>` codepath. This is to ensure that all data goes through augmentation, not just the data in classes which are underrepresented in the underlying dataset.
 
-Datasets will also get a new callback `on_epoch_start` , which will be called if it exists. This will be implemented by a `pass` implementation in `HyraxDataset` which classes can override. DataProvider will get an `on_epoch_start` which will dispatch calls to all active Dataset Classes in the current run. DataProvider's method will be called from an `Events.EPOCH_STARTED` handler in `pytorch_ignite.py` 
+Datasets will also get a new callback `on_epoch_start(self, verb: str)`, which will be implemented by a `pass` implementation in `HyraxDataset` which classes can override. The `verb` parameter will receive the name of the running verb (e.g. `"train"`, `"infer"`, `"test"`, `"engine"`). DataProvider will get a corresponding `on_epoch_start(self, verb: str)` which will reset the epoch RNG and dispatch calls to all active Dataset instances.
+
+For the `train` verb, DataProvider's `on_epoch_start` will be called via an `Events.EPOCH_STARTED` handler registered in `Train.run()`. For single-pass verbs (`infer`, `test`, `engine`), it will be called once before execution begins.
 
 ## Dataset Caching interface:
 
@@ -150,7 +156,7 @@ Note also that the `ExampleAugmentDataset` class derives from `ExampleDataset` d
 For some data it is desirable to use the underlying data unchanged on first access and augmentation on subsequent access in an epoch. The random rotation dataset class can be extended as follows to achieve this result using a `self.seen` set that is reset in the `on_epoch_start` method.
 
 **`class ExampleAugmentedDataset(ExampleDataset):`**  
-  **`def on_epoch_start(self):`**  
+  **`def on_epoch_start(self, verb):`**  
     **`self.seen = set()`**  
     
   **`def apply_rotation(self, data, idx, rng_seed):`**  
@@ -169,6 +175,18 @@ For some data it is desirable to use the underlying data unchanged on first acce
 
 ## Non-Training Actions
 
-For "infer" data requests defining any augmentation is a hard error, because augmentation/oversampling should never occur in inference on real data.
+For "infer" data requests defining any augmentation is a hard error (enforced by a model validator on `DataRequestDefinition`), because augmentation/oversampling should never occur in inference on real data.
 
 For "validate" and "test" there are valid reasons for wanting to examine performance on purely augmented data (e.g. Test Time Augmentation), so an `augment` configuration is valid on those groups.
+
+## V1 Implementation Details
+
+The following details reflect design decisions for the V1 implementation:
+
+**Memory safety without deepcopy:** Rather than `deepcopy` of cached base data, the augmentation pass will build a new output dict. Non-augmented fields will share references to the cached arrays. For augmented ndarray fields, a read-only view (`value.view()` with `writeable=False`) will be passed to `augment_<field>`, ensuring augmentation functions cannot mutate the cache. Augmentation functions are expected to return new arrays.
+
+**Tensorboard metrics:** Augmentation time will be logged as `augmentation_s` to tensorboard alongside the existing `cache_hit_s` and `cache_miss_s` metrics.
+
+**Join-map handling:** When augmentation is active on a secondary (joined) dataset, the dataset-local index from the join map will be passed to `augment_<field>` rather than the DataProvider-level index.
+
+**`row_cache_key` deferred:** The `row_cache_key` dataset interface described in the caching section above is deferred to a future version. V1 will not cache augmented results — the existing DataCache will cache `get_<field>` results as before, and augmentation will be applied post-cache.

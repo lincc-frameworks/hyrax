@@ -8,9 +8,15 @@ Implement the augmentation system described in `specs/augmentation.md`. This add
 
 **V1 only** — `augment` is a boolean. V2 (per-field dict) is out of scope but the design should not preclude it.
 
+## V1 Implementation Status
+
+V1 was implemented in commit `95e82028` (PR #942). All steps below are annotated with their implementation status and any divergences from the original plan.
+
 ---
 
 ## Step 1: Config Schema — Add `augment` field to `DataRequestConfig`
+
+**Status:** ✅ Implemented as planned.
 
 **File:** `src/hyrax/config_schemas/data_request.py`
 
@@ -53,23 +59,33 @@ def reject_augment_on_infer(self) -> DataRequestDefinition:
 
 ## Step 2: HyraxDataset — Add `on_epoch_start`
 
+**Status:** ✅ Implemented with divergence — signature includes `verb` parameter.
+
 **File:** `src/hyrax/datasets/dataset_registry.py`
 
 Add one method to `HyraxDataset`:
 
 ```python
-def on_epoch_start(self):
-    """Called at the beginning of each training epoch.
-    Override in subclasses for epoch-level state resets (e.g. augmentation bookkeeping)."""
+def on_epoch_start(self, verb: str):
+    """Called at the beginning of each epoch (or once for single-pass verbs).
+
+    Parameters
+    ----------
+    verb : str
+        Name of the verb that is running, e.g. ``"train"``, ``"infer"``,
+        ``"test"``, or ``"engine"``.
+
+    Override in subclasses to respond to epoch-level lifecycle events.
+    """
     pass
 ```
 
-This is a plain method with a default no-op implementation — no registration or decorator needed.
+This is a plain method with a default no-op implementation — no registration or decorator needed. The `verb` parameter was added during implementation to allow datasets to vary behavior by verb (e.g. skip augmentation bookkeeping during inference).
 
 Note: `row_cache_key` from the spec is **deferred to a future version**. V1 does not add a dataset-level cache key interface. Instead, the existing DataCache caches `get_<field>` results as it does today, and `augment_<field>` is applied post-cache (see Step 3c and Step 4).
 
 **Tests:** `tests/hyrax/test_augmentation.py`
-- `on_epoch_start()` is callable (no-op on base class).
+- `on_epoch_start(verb)` is callable (no-op on base class).
 
 ---
 
@@ -77,7 +93,11 @@ Note: `row_cache_key` from the spec is **deferred to a future version**. V1 does
 
 **File:** `src/hyrax/datasets/data_provider.py`
 
+**Status:** ✅ Implemented (see sub-steps for divergences).
+
 ### 3a: Store augmentation config and augment getters during `prepare_datasets`
+
+**Status:** ✅ Implemented as planned.
 
 In `prepare_datasets()`, after populating `self.dataset_getters`, also populate:
 
@@ -92,33 +112,42 @@ For each friendly_name where `augment` is truthy in the data_request entry:
 
 ### 3b: RNG seed generation
 
+**Status:** ✅ Implemented with divergence — uses numpy RNG chain instead of hash.
+
 Add RNG infrastructure attributes in `__init__`:
 
 ```python
-self._augment_master_seed = config.get("seed", None) or config["data_set"].get("seed", None)
+# config["data_set"]["seed"] uses false as the Hyrax sentinel for "not set";
+# treat it as None so numpy seeds from OS entropy rather than silently using 0.
+_raw_seed = config["data_set"]["seed"]
+_master_seed = None if _raw_seed is False else _raw_seed
+self._augment_rng = np.random.default_rng(_master_seed)
+self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
 self._current_epoch = 0
 ```
 
-Add a helper to generate per-row rng seeds deterministically from the master seed, epoch, and index:
+Add a helper to draw the next seed from the epoch RNG:
 
 ```python
-def _augment_rng_seed(self, idx: int) -> np.int64:
-    """Generate a deterministic, epoch-varying rng_seed for augmentation."""
-    import hashlib
-    seed_bytes = hashlib.sha256(
-        f"{self._augment_master_seed}:{self._current_epoch}:{idx}".encode()
-    ).digest()[:8]
-    return np.int64(int.from_bytes(seed_bytes, "little"))
+def _augment_rng_seed(self) -> np.int64:
+    """Draw the next seed from the epoch RNG for one resolve_data call."""
+    return self._epoch_rng.integers(np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64)
 ```
 
-The rng_seed **varies per epoch** so that augmented data differs across training epochs (e.g. different random rotations each epoch). `self._current_epoch` starts at 0 and is incremented by `on_epoch_start` (Step 3d).
+**Divergence from original plan:** The original plan used a SHA256 hash of `(master_seed, epoch, idx)` to produce per-index deterministic seeds. The implementation instead uses a two-level numpy RNG chain:
+- `_augment_rng` is seeded once from the master seed and advances once per epoch to produce `_epoch_rng`.
+- `_epoch_rng` is drawn from sequentially in `resolve_data` — one integer per call — so call order within an epoch determines the seed sequence.
+- **Single-threaded access** is reproducible by call order (not by index).
+- **Multi-threaded access** is intentionally non-reproducible (no locks on the hot path).
 
-The use of a hash ensures:
-- Determinism from the master seed (reproducible runs)
-- No collisions between nearby indices
-- Different augmentations each epoch for the same index
+This approach was chosen because:
+- It avoids the overhead of hashing on every `resolve_data` call.
+- Per-index determinism is not needed since a near-future version will not have the same indexes every epoch anyway (balanced sampling will change the index sequence).
+- The rng_seed still **varies per epoch** so augmented data differs across training epochs.
 
 ### 3c: Modify `resolve_data`
+
+**Status:** ✅ Implemented with divergences — no deepcopy (uses new dict + read-only views), sequential RNG drawing instead of hash, tensorboard logging of augmentation_s, join-map index handling.
 
 #### Critical design constraint: augmentation is a post-cache layer
 
@@ -185,20 +214,37 @@ def resolve_data(self, idx):
     if not self._has_any_augmentation:
         return base_data
 
-    # 5. Augmentation pass: deepcopy so we don't mutate the cache, then augment
-    rng_seed = self._augment_rng_seed(idx)
-    augmented_data = copy.deepcopy(base_data)
-    for friendly_name, fields_data in augmented_data.items():
+    # 5. Augmentation pass: build a new output dict so the cache is never mutated.
+    #    Array references are reused for non-augmented fields; augment_<field> returns
+    #    a new array for augmented ones, so no copies are needed here.
+    rng_seed = self._augment_rng_seed()
+    augmented_data = {}
+    for friendly_name, fields_data in base_data.items():
         if friendly_name == "object_id":
+            augmented_data[friendly_name] = fields_data
             continue
         if not self.augment_enabled.get(friendly_name, False):
+            augmented_data[friendly_name] = fields_data
             continue
         if fields_data is None:   # left outer join miss
+            augmented_data[friendly_name] = None
             continue
+
+        # Use dataset-local indices for join-map secondaries.
+        dataset_idx = idx
+        if friendly_name in self._join_maps:
+            dataset_idx = self._join_maps[friendly_name].get(base_data["object_id"])
+
+        new_fields = {}
         for field, value in fields_data.items():
             augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
-            if augment_fn is not None:
-                augmented_data[friendly_name][field] = augment_fn(value, idx, rng_seed)
+            if augment_fn is not None and isinstance(value, np.ndarray):
+                value = value.view()
+                value.flags.writeable = False
+            new_fields[field] = (
+                augment_fn(value, dataset_idx, rng_seed) if augment_fn is not None else value
+            )
+        augmented_data[friendly_name] = new_fields
     return augmented_data
 ```
 
@@ -207,9 +253,9 @@ def resolve_data(self, idx):
 1. `data_cache.try_fetch(7)` → **cache hit** (was populated during epoch 1).
 2. `base_data` = cached `get_<field>` results (e.g. raw FITS pixel data). No I/O.
 3. `_has_any_augmentation` is `True` → enter augment pass.
-4. `rng_seed = hash(master_seed, epoch=2, idx=7)` — different from epoch 1.
-5. `deepcopy(base_data)` — so the cache entry stays clean.
-6. For each augment-enabled field, call `augment_<field>(cached_value, 7, rng_seed)`.
+4. `rng_seed = self._epoch_rng.integers(...)` — drawn sequentially from the epoch RNG, which was reseeded at the start of epoch 2.
+5. Build a new `augmented_data` dict. Non-augmented fields share references to cached arrays. For augmented ndarray fields, pass a read-only view to `augment_<field>`.
+6. For each augment-enabled field, call `augment_<field>(read_only_view, 7, rng_seed)`.
 7. Return augmented data. The cache still holds the original `get_<field>` results.
 
 The same index on epoch 3 would hit the cache again at step 1, get a different
@@ -223,17 +269,22 @@ without any I/O.
 - When `augment` is off (or absent), the code path is identical to today — the `_has_any_augmentation` check short-circuits to `return base_data`, no deepcopy.
 - When `augment` is on, `augment_<field>` is called for fields that have it; fields without fall back to their `get_<field>` value (V1 per spec).
 - The same `rng_seed` is passed to all `augment_<field>` calls within a single row, enabling correlated augmentation across fields (e.g. same rotation for image and mask).
-- `deepcopy` prevents augmentation from mutating the cached base data.
+- A new output dict is built instead of deepcopy — non-augmented fields share references; augmented ndarray fields get read-only views to prevent cache mutation. This avoids the cost of deepcopy.
 - `_has_any_augmentation` is a bool set once during `prepare_datasets` (true if any friendly_name has `augment=True`), avoiding per-call dictionary scans when augmentation is not in use.
+- Augmentation time is logged as `augmentation_s` to tensorboard.
+- For secondary (joined) datasets, the dataset-local index from the join map is passed to `augment_<field>` instead of the DataProvider-level index.
 
 ### 3d: Add `on_epoch_start` to DataProvider
 
+**Status:** ✅ Implemented with divergence — reseeds epoch RNG and accepts `verb` parameter.
+
 ```python
-def on_epoch_start(self):
-    """Dispatch on_epoch_start to all active dataset instances."""
+def on_epoch_start(self, verb: str):
+    """Reset the epoch RNG and dispatch on_epoch_start to all dataset instances."""
+    self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
     self._current_epoch += 1
     for dataset in self.prepped_datasets.values():
-        dataset.on_epoch_start()
+        dataset.on_epoch_start(verb)
 ```
 
 **Tests:** `tests/hyrax/test_augmentation.py` (new file)
@@ -262,6 +313,8 @@ Test cases:
 
 ## Step 4: DataCache — Do NOT modify this file
 
+**Status:** ✅ Confirmed — no changes made.
+
 **File:** `src/hyrax/datasets/data_cache.py` — **zero modifications. Do not touch this file.**
 
 DataCache already does exactly what augmentation needs: it caches `get_<field>`
@@ -275,7 +328,7 @@ without any changes to their signatures or behavior.
 | Scenario | What DataCache stores | What `resolve_data` returns |
 |----------|----------------------|---------------------------|
 | `augment=False` (or absent) | `get_<field>` results (same as today) | cached data directly (same as today) |
-| `augment=True` | `get_<field>` results (same as today) | `deepcopy(cached) → augment_<field>` applied |
+| `augment=True` | `get_<field>` results (same as today) | new dict with read-only views → `augment_<field>` applied |
 
 In both cases, DataCache stores and serves the same thing: raw `get_<field>`
 output. The augmentation layer in `resolve_data` consumes DataCache output and
@@ -296,20 +349,17 @@ in Step 3c are structured incorrectly. Go back and fix `resolve_data` instead.**
 
 ---
 
-## Step 5: Wire `on_epoch_start` into the training loop
+## Step 5: Wire `on_epoch_start` into verbs
 
-**File:** `src/hyrax/pytorch_ignite.py`
+**Status:** ✅ Implemented with divergence — wired into all verbs, not just train.
 
-In `create_trainer`, after creating the engine, add a handler:
+### 5a: Training verb
 
-```python
-# This needs the DataProvider(s) to be accessible. We'll pass them via
-# a new parameter or attach them to the engine.
-```
+**File:** `src/hyrax/verbs/train.py`
 
 **Problem:** `create_trainer` doesn't currently have access to the DataProvider. The trainer engine only receives the DataLoader, not the underlying DataProvider.
 
-**Solution:** Add the `on_epoch_start` handler in `Train.run()` (in `src/hyrax/verbs/train.py`) where both `trainer` and `dataset` dict are in scope:
+**Solution:** Add the `on_epoch_start` handler in `Train.run()` where both `trainer` and `dataset` dict are in scope:
 
 ```python
 from hyrax.pytorch_ignite import Events
@@ -317,17 +367,32 @@ from hyrax.pytorch_ignite import Events
 @trainer.on(Events.EPOCH_STARTED)
 def dispatch_epoch_start(engine):
     for provider in dataset.values():
-        provider.on_epoch_start()
+        provider.on_epoch_start("train")
 ```
 
-This is added in `Train.run()` between the `create_trainer()` call and the `trainer.run()` call (around line 203-233 in train.py).
+This is added in `Train.run()` between the `create_trainer()` call and the `trainer.run()` call.
+
+### 5b: Single-pass verbs (infer, test, engine)
+
+**Files:** `src/hyrax/verbs/infer.py`, `src/hyrax/verbs/test.py`, `src/hyrax/verbs/engine.py`
+
+Single-pass verbs call `on_epoch_start` once before execution begins, passing the verb name:
+
+- **infer.py:** Iterates all providers in the dataset dict and calls `provider.on_epoch_start("infer")`
+- **test.py:** Iterates all providers and calls `provider.on_epoch_start("test")`
+- **engine.py:** Calls `infer_dataset.on_epoch_start("engine")` on the infer provider
+
+This ensures the epoch RNG is initialized for augmentation even in non-training contexts (e.g. Test Time Augmentation).
 
 **Tests:** (in `tests/hyrax/test_augmentation.py`)
 - Integration test using the `loopback_hyrax` pattern (HyraxLoopback + AugmentedRandomDataset) with `augment=True` and `epochs=2`. Verify `on_epoch_start` is called on dataset instances at the start of each epoch by tracking call count in the test dataset subclass.
+- Epoch dispatch test covers two dataset instances to verify all providers are dispatched.
 
 ---
 
 ## Step 6: Default config
+
+**Status:** ✅ Confirmed — no changes needed.
 
 **File:** `src/hyrax/hyrax_default_config.toml`
 
@@ -337,15 +402,18 @@ No changes needed. The `augment` key lives in the `data_request` config (per fri
 
 ## File Change Summary
 
-| File | Change |
-|------|--------|
-| `src/hyrax/config_schemas/data_request.py` | Add `augment` field to `DataRequestConfig`; add infer-group validation |
-| `src/hyrax/datasets/dataset_registry.py` | Add `on_epoch_start()` to `HyraxDataset` |
-| `src/hyrax/datasets/data_provider.py` | Add augment getter discovery, rng_seed generation, augment dispatch in `resolve_data`, `on_epoch_start` dispatch |
-| `src/hyrax/datasets/data_cache.py` | No changes |
-| `src/hyrax/verbs/train.py` | Wire `Events.EPOCH_STARTED` handler to call `DataProvider.on_epoch_start()` |
-| `tests/hyrax/test_data_request_config.py` | Tests for `augment` config field and infer-group rejection |
-| `tests/hyrax/test_augmentation.py` (new) | Tests for augment dispatch, rng_seed correlation, cache behavior, on_epoch_start |
+| File | Change | V1 Status |
+|------|--------|-----------|
+| `src/hyrax/config_schemas/data_request.py` | Add `augment` field to `DataRequestConfig`; add infer-group validation | ✅ Done |
+| `src/hyrax/datasets/dataset_registry.py` | Add `on_epoch_start(verb)` to `HyraxDataset` | ✅ Done |
+| `src/hyrax/datasets/data_provider.py` | Add augment getter discovery, rng_seed generation, augment dispatch in `resolve_data`, `on_epoch_start` dispatch | ✅ Done |
+| `src/hyrax/datasets/data_cache.py` | No changes | ✅ Confirmed |
+| `src/hyrax/verbs/train.py` | Wire `Events.EPOCH_STARTED` handler to call `DataProvider.on_epoch_start("train")` | ✅ Done |
+| `src/hyrax/verbs/infer.py` | Call `on_epoch_start("infer")` before execution | ✅ Done (added during implementation) |
+| `src/hyrax/verbs/test.py` | Call `on_epoch_start("test")` before execution | ✅ Done (added during implementation) |
+| `src/hyrax/verbs/engine.py` | Call `on_epoch_start("engine")` before execution | ✅ Done (added during implementation) |
+| `tests/hyrax/test_data_request_config.py` | Tests for `augment` config field and infer-group rejection | ✅ Done |
+| `tests/hyrax/test_augmentation.py` (new) | Tests for augment dispatch, rng_seed correlation, cache behavior, on_epoch_start | ✅ Done |
 
 ---
 
@@ -363,8 +431,14 @@ No changes needed. The `augment` key lives in the `data_request` config (per fri
 
 ## Resolved Design Decisions
 
-1. **Epoch-varying rng_seed:** Yes. `rng_seed` incorporates `self._current_epoch` so augmented data varies across epochs. This is the right default since a near-future version will not have the same indexes every epoch anyway.
+1. **Epoch-varying rng_seed:** Yes. `rng_seed` varies per epoch via the two-level numpy RNG chain (`_augment_rng` → `_epoch_rng`), so augmented data differs across epochs. This is the right default since a near-future version will not have the same indexes every epoch anyway.
 
 2. **Cache granularity / `row_cache_key`:** Deferred. V1 has no dataset-level cache key interface. The existing DataCache caches `get_<field>` results as today; augmentation is post-cache.
 
-3. **`get_<field>` caching for augmented rows:** Yes — this is the whole point of the design. DataCache caches `get_<field>` results (the expensive I/O). `augment_<field>` runs post-cache on a deepcopy of the cached data, so augmentation benefits from cached base data without polluting the cache with augmented results.
+3. **`get_<field>` caching for augmented rows:** Yes — this is the whole point of the design. DataCache caches `get_<field>` results (the expensive I/O). `augment_<field>` runs post-cache on a new output dict with read-only ndarray views, so augmentation benefits from cached base data without polluting the cache with augmented results.
+
+4. **RNG approach:** Sequential numpy RNG drawing (not per-index hash). Reproducible by call order in single-threaded mode; intentionally non-reproducible under multi-threading (no locks on the hot path). Per-index determinism was dropped because balanced sampling will change index sequences in a future version.
+
+5. **Memory safety:** New output dict with shared references for non-augmented fields and read-only ndarray views for augmented fields, instead of `deepcopy`. Avoids the cost of deep-copying large arrays on every `resolve_data` call.
+
+6. **`on_epoch_start` verb parameter:** The `verb: str` parameter was added to allow datasets to vary behavior by verb context. All verbs dispatch `on_epoch_start` — the `train` verb via `Events.EPOCH_STARTED`, and single-pass verbs (`infer`, `test`, `engine`) with a single call before execution.
