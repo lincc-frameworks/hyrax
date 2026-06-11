@@ -246,9 +246,8 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
         for group_name, group_value in self.root.items():
             if group_name == "infer":
                 for friendly_name, cfg in group_value.items():
-                    has_augment = (
-                        cfg.augment is True
-                        or (isinstance(cfg.augment, dict) and any(cfg.augment.values()))
+                    has_augment = cfg.augment is True or (
+                        isinstance(cfg.augment, dict) and any(cfg.augment.values())
                     )
                     if has_augment:
                         raise ValueError(

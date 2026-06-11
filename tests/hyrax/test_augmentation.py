@@ -260,7 +260,9 @@ def test_augment_dict_dispatches_per_field(tmp_path):
     """augment dict selectively enables augmentation per field."""
     config = _make_hyrax_config()
     dp = _make_dp(
-        config, "AugmentedRandomDataset", tmp_path,
+        config,
+        "AugmentedRandomDataset",
+        tmp_path,
         augment={"image": True, "label": False},
         fields=["image", "label"],
     )
@@ -278,7 +280,9 @@ def test_augment_dict_all_false_no_augmentation(tmp_path):
     """augment dict with all False values performs no augmentation."""
     config = _make_hyrax_config()
     dp = _make_dp(
-        config, "AugmentedRandomDataset", tmp_path,
+        config,
+        "AugmentedRandomDataset",
+        tmp_path,
         augment={"image": False},
         fields=["image"],
     )
@@ -295,7 +299,9 @@ def test_augment_dict_missing_method_raises_runtime_error(tmp_path):
     # AugmentedRandomDataset has augment_image but NOT augment_label
     with pytest.raises(RuntimeError, match="augment_label"):
         _make_dp(
-            config, "AugmentedRandomDataset", tmp_path,
+            config,
+            "AugmentedRandomDataset",
+            tmp_path,
             augment={"image": True, "label": True},
             fields=["image", "label"],
         )
@@ -305,7 +311,9 @@ def test_augment_dict_rng_seed_same_within_row(tmp_path):
     """Dict-mode augmentation still passes the same rng_seed to all augment calls in a row."""
     config = _make_hyrax_config()
     dp = _make_dp(
-        config, "SeedTrackingDataset", tmp_path,
+        config,
+        "SeedTrackingDataset",
+        tmp_path,
         augment={"image": True, "label": True},
         fields=["image", "label"],
     )
