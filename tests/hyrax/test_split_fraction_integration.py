@@ -374,7 +374,7 @@ class TestDistDataLoaderSplitIndices:
         # Manually set split_indices to a subset
         dp.split_indices = [0, 1, 2, 3, 4]
 
-        _, returned_indices = dist_data_loader(dp, config, False)
+        _, returned_indices = dist_data_loader(dp, config)
 
         assert returned_indices == [0, 1, 2, 3, 4]
 
@@ -388,7 +388,7 @@ class TestDistDataLoaderSplitIndices:
         dp = _make_provider(config, "./data/test", size=size)
         assert dp.split_indices is None
 
-        _, returned_indices = dist_data_loader(dp, config, False)
+        _, returned_indices = dist_data_loader(dp, config)
 
         assert returned_indices == list(range(size))
 
@@ -410,8 +410,8 @@ class TestDistDataLoaderSplitIndices:
         train_dp.split_indices = split_indices["train"]
         validate_dp.split_indices = split_indices["validate"]
 
-        _, train_indices = dist_data_loader(train_dp, config, False)
-        _, validate_indices = dist_data_loader(validate_dp, config, False)
+        _, train_indices = dist_data_loader(train_dp, config)
+        _, validate_indices = dist_data_loader(validate_dp, config)
 
         assert len(train_indices) == 60
         assert len(validate_indices) == 40
@@ -432,7 +432,7 @@ class TestDistDataLoaderSplitIndices:
 
         # This should not raise an error about sampler and shuffle being
         # mutually exclusive.
-        loader, returned_indices = dist_data_loader(dp, config, False)
+        loader, returned_indices = dist_data_loader(dp, config)
 
         assert returned_indices == [0, 1, 2, 3, 4]
         # Verify the dataloader was created successfully
@@ -527,7 +527,7 @@ class TestDistDataLoaderShuffleSamplers:
         config["data_loader"]["shuffle"] = True  # Legacy key should not be passed through.
         dp = _make_provider(config, "./data/test", size=20)
 
-        _, returned_indices = dist_data_loader(dp, config, False, True)
+        _, returned_indices = dist_data_loader(dp, config, shuffle=True)
 
         assert returned_indices == list(range(20))
         assert isinstance(captured["sampler"], SubsetRandomSampler)
@@ -550,38 +550,11 @@ class TestDistDataLoaderShuffleSamplers:
         config = _make_config()
         dp = _make_provider(config, "./data/test", size=20)
 
-        _, returned_indices = dist_data_loader(dp, config, False, False)
+        _, returned_indices = dist_data_loader(dp, config)
 
         assert returned_indices == list(range(20))
         assert isinstance(captured["sampler"], SubsetSequentialSampler)
         assert "shuffle" not in captured["kwargs"]
-
-    def test_legacy_multi_split_only_shuffles_train(self, monkeypatch):
-        """Legacy multi-split calls shuffle only the train split."""
-        from torch.utils.data import SubsetRandomSampler
-
-        from hyrax import pytorch_ignite
-        from hyrax.pytorch_ignite import SubsetSequentialSampler, dist_data_loader
-
-        captured = {}
-
-        def fake_auto_dataloader(dataset, sampler=None, **kwargs):
-            captured[len(captured)] = sampler
-            return object()
-
-        monkeypatch.setattr(pytorch_ignite.idist, "auto_dataloader", fake_auto_dataloader)
-
-        config = _make_config()
-        config["data_set"]["train_size"] = 0.6
-        config["data_set"]["validate_size"] = 0.2
-        config["data_set"]["test_size"] = 0.2
-        dp = _make_provider(config, "./data/test", size=20)
-
-        loaders = dist_data_loader(dp, config, ["train", "validate"], True)
-
-        assert set(loaders) == {"train", "validate"}
-        assert isinstance(captured[0], SubsetRandomSampler)
-        assert isinstance(captured[1], SubsetSequentialSampler)
 
     def test_shuffle_true_builds_generator_on_idist_device(self, monkeypatch):
         """Random sampler generator should be created on the Ignite-selected device."""
@@ -618,7 +591,7 @@ class TestDistDataLoaderShuffleSamplers:
         config["data_set"]["seed"] = 123
         dp = _make_provider(config, "./data/test", size=20)
 
-        _, returned_indices = dist_data_loader(dp, config, False, True)
+        _, returned_indices = dist_data_loader(dp, config, shuffle=True)
 
         assert returned_indices == list(range(20))
         assert captured["generator_device"] == torch.device("mps")
