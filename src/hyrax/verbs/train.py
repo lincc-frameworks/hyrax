@@ -55,6 +55,7 @@ class Train(Verb):
             setup_dataset,
             setup_model,
         )
+        from hyrax.splitting_utils import create_splits
         from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
@@ -82,6 +83,7 @@ class Train(Verb):
             config,
             splits=Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS,
         )
+        create_splits(config, dataset, results_dir=results_dir, persist=True)
         model = setup_model(config, dataset["train"])
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "

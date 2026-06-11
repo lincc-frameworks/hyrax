@@ -568,6 +568,8 @@ def create_splits(
         logger.info("Reusing equivalent split from %s", next(iter(equivalent_paths.values())).parent)
         splits = load_split_files(equivalent_paths)
         assign_splits_to_providers(datasets, splits)
+        if persist and results_dir is not None:
+            persist_splits(results_dir, splits, config)
         return splits
 
     # Compute fresh splits

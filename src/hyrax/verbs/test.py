@@ -65,6 +65,7 @@ class Test(Verb):
             setup_dataset,
             setup_model,
         )
+        from hyrax.splitting_utils import create_splits
 
         config = self.config
 
@@ -80,6 +81,7 @@ class Test(Verb):
             splits=Test.REQUIRED_DATA_GROUPS + Test.OPTIONAL_DATA_GROUPS,
             shuffle=False,
         )
+        create_splits(config, dataset, persist=False)
 
         # Verify that test dataset exists
         if not isinstance(dataset, dict) or "test" not in dataset:

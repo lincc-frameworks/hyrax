@@ -63,6 +63,7 @@ class Engine(Verb):
         from hyrax.datasets.result_factories import create_results_writer
         from hyrax.plugin_utils import load_prepare_inputs, load_to_tensor
         from hyrax.pytorch_ignite import setup_dataset
+        from hyrax.splitting_utils import create_splits
 
         config = self.config
 
@@ -113,6 +114,7 @@ class Engine(Verb):
         # of the data_request dictionary. And we can assume that we'll be working
         # with map-style datasets. But for now, this gets us going.
         dataset = setup_dataset(config, splits=("infer",), shuffle=False)
+        create_splits(config, dataset, persist=False)
 
         # In the `train` and `infer` verbs, we use `dist_data_loader` to create
         # our data loaders. But here in `engine`, we can assume that we can simply

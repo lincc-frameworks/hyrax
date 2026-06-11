@@ -55,22 +55,15 @@ class Verb(ABC):  # noqa: B024
     def validate_data_request(self) -> None:
         """Validate the data_request configuration for this verb's known groups.
 
-        Reads ``data_request`` from the verb's config and checks:
-
-        1. All groups listed in ``REQUIRED_DATA_GROUPS`` are present.
-        2. Cross-group split_fraction constraints (sum ≤ 1.0, consistency) hold
-           for the active groups only — groups outside
-           ``REQUIRED_DATA_GROUPS + OPTIONAL_DATA_GROUPS`` are ignored so that
-           unrelated groups in a shared config do not cause false failures.
-
-        Verbs that define neither ``REQUIRED_DATA_GROUPS`` nor
-        ``OPTIONAL_DATA_GROUPS`` skip validation entirely.
+        Reads ``data_request`` from the verb's config and verifies that every
+        group listed in ``REQUIRED_DATA_GROUPS`` is present.  Verbs that define
+        neither ``REQUIRED_DATA_GROUPS`` nor ``OPTIONAL_DATA_GROUPS`` skip
+        validation entirely.
 
         Raises
         ------
         RuntimeError
-            If a required group is absent, or if cross-group split_fraction
-            constraints are violated for the active groups.
+            If a required group is absent from the data_request config.
         """
         if not self.REQUIRED_DATA_GROUPS and not self.OPTIONAL_DATA_GROUPS:
             return
@@ -93,30 +86,6 @@ class Verb(ABC):  # noqa: B024
                 f"data_request configuration, but they were not found. "
                 f"Available groups: {sorted(data_request.keys())}."
             )
-
-        # Build a DataRequestDefinition so we can call validate_cross_group.
-        # If the stored config is structurally invalid, surface the problem as a
-        # runtime error so that verb-time validation does not get silently skipped.
-        from pydantic import ValidationError
-
-        from hyrax.config_schemas.data_request import DataRequestDefinition
-
-        try:
-            definition = DataRequestDefinition.model_validate(data_request)
-        except ValidationError as exc:
-            raise RuntimeError(
-                f"Invalid data_request configuration for {type(self).__name__}: {exc}"
-            ) from exc
-
-        # Restrict cross-group validation to the groups this verb actually uses.
-        # Groups outside REQUIRED + OPTIONAL (e.g. 'infer' for a Train verb) are
-        # ignored so that their configs cannot cause false validation failures.
-        all_verb_groups = set(self.REQUIRED_DATA_GROUPS + self.OPTIONAL_DATA_GROUPS)
-        active_groups = all_verb_groups & set(data_request.keys())
-        try:
-            definition.validate_cross_group(active_groups)
-        except ValueError as exc:
-            raise RuntimeError(f"Data request validation failed for {type(self).__name__}: {exc}") from exc
 
 
 # Verbs with no class are assumed to have a function in hyrax.py which
