@@ -19,7 +19,7 @@ from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler, SubsetRandomSampler
+from torch.utils.data import DataLoader, Dataset, Sampler, Subset, SubsetRandomSampler, WeightedRandomSampler
 
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
@@ -147,7 +147,7 @@ def dist_data_loader(
     dataset: Dataset,
     config: dict,
     shuffle: bool = False,
-):
+) -> DataLoader:
     """Create Pytorch Ignite distributed data loaders.
 
     It is recommended that each verb needing dataloaders only call this function once.
@@ -157,8 +157,9 @@ def dist_data_loader(
     dataset : hyrax.datasets.dataset_registry.HyraxDataset
         A Hyrax dataset instance.  When *dataset* is a :class:`DataProvider`
         with ``split_indices`` set (by :func:`~hyrax.splitting_utils.create_splits`),
-        the loader is restricted to those indices.  When ``split_weights`` is also
-        set, a :class:`~torch.utils.data.WeightedRandomSampler` is used so that
+        the loader is restricted to those indices via a :class:`~torch.utils.data.Subset`.
+        When ``split_weights`` is also set, a
+        :class:`~torch.utils.data.WeightedRandomSampler` is used so that
         under-represented classes are over-sampled to achieve the configured
         class distribution.
     config : dict
@@ -166,15 +167,15 @@ def dist_data_loader(
     shuffle : bool, optional
         If ``True`` and no weights are present, a
         :class:`~torch.utils.data.SubsetRandomSampler` is used for uniform
-        shuffling.  If ``False``, a :class:`SubsetSequentialSampler` preserves
+        shuffling.  If ``False`` and no weights, a sequential sampler preserves
         deterministic order.  Ignored when ``split_weights`` is set (weighted
         sampling always draws with replacement).  Defaults to ``False`` so
         non-training verbs preserve deterministic order.
 
     Returns
     -------
-    tuple[DataLoader, list[int]]
-        The distributed dataloader and the list of indices it samples from.
+    DataLoader
+        The distributed dataloader.
     """
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader.
@@ -198,129 +199,25 @@ def dist_data_loader(
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    def make_sampler(indexes: Sequence[int], sampler_shuffle: bool):
-        if not indexes:
-            return None
-        if sampler_shuffle:
-            return SubsetRandomSampler(indexes, generator=torch_rng)
-        return SubsetSequentialSampler(indexes)
-
     indexes = list(range(len(dataset)))
+    weights = None
     if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
         indexes = dataset.split_indices
+        weights = dataset.split_weights
 
-    sampler = make_sampler(indexes, shuffle)
+    sub_dataset = Subset(dataset, indexes)
+    n = len(indexes)
 
-    return idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes
-
-
-def create_splits_from_fractions(
-    dataset_providers: dict[str, Any],
-    config: dict,
-    *,
-    shuffle: bool = True,
-) -> dict[str, list[int]]:
-    """Partition a shared set of indices across dataset groups using the
-    ``split_fraction`` defined on each ``DataProvider``.
-
-    All providers in *dataset_providers* are expected to wrap the **same
-    underlying data source** (same ``data_location``).  The full index range
-    ``[0, len)`` of the first provider is shuffled deterministically (when
-    *shuffle* is ``True``) using ``config["data_set"]["seed"]``, then sliced
-    into contiguous, non-overlapping segments proportional to each provider's
-    ``split_fraction``.
-
-    Parameters
-    ----------
-    dataset_providers : dict[str, Any]
-        Mapping of group name (e.g. ``"train"``, ``"validate"``) to a
-        ``DataProvider`` instance whose ``split_fraction`` is set.
-    config : dict
-        The Hyrax runtime configuration.  Only ``config["data_set"]["seed"]``
-        is used here.
-    shuffle : bool, optional
-        Whether to shuffle the index array before slicing.  Defaults to
-        ``True``.  Set to ``False`` for inference / test workloads where
-        deterministic sequential ordering is required.
-
-    Returns
-    -------
-    dict[str, list[int]]
-        Mapping of group name → list of indices assigned to that group.
-
-    Raises
-    ------
-    RuntimeError
-        If any provider is missing a ``split_fraction``, if the fractions
-        sum to more than 1.0, or if providers have mismatched lengths.
-    """
-
-    # --- Validate inputs ---------------------------------------------------
-    fractions: dict[str, float] = {}
-    for name, provider in dataset_providers.items():
-        frac = getattr(provider, "split_fraction", None)
-        if frac is None:
-            raise RuntimeError(
-                f"DataProvider for group '{name}' does not have a split_fraction set. "
-                "All providers passed to create_splits_from_fractions must define one."
-            )
-        fractions[name] = frac
-
-    total = sum(fractions.values())
-    if np.round(total, decimals=5) > 1.0:
-        raise RuntimeError(f"split_fraction values sum to {total}, which exceeds 1.0. Fractions: {fractions}")
-
-    # --- Validate that all providers have the same length ------------------
-    # Even though providers sharing the same data_location are expected to
-    # wrap identical underlying data, configuration differences (e.g.,
-    # dataset_config filters, caching issues, or implementation bugs) could
-    # lead to length mismatches. We validate this assumption explicitly to
-    # prevent silent out-of-range errors or incorrect data access.
-    provider_lengths = {name: len(provider) for name, provider in dataset_providers.items()}
-    unique_lengths = set(provider_lengths.values())
-    if len(unique_lengths) > 1:
-        raise RuntimeError(
-            f"All providers passed to create_splits_from_fractions must have the same length. "
-            f"Got lengths: {provider_lengths}"
+    if weights is not None:
+        sampler = WeightedRandomSampler(
+            weights=list(weights), num_samples=n, generator=torch_rng, replacement=True
         )
+    elif shuffle:
+        sampler = SubsetRandomSampler(range(n), generator=torch_rng)
+    else:
+        sampler = None
 
-    # --- Determine the full index set from the first provider ---------------
-    # We have verified that all providers have the same length, so we can safely
-    # use the length of the first provider to determine the full index range.
-    first_provider = next(iter(dataset_providers.values()))
-    data_set_size = len(first_provider)
-    indices = list(range(data_set_size))
-
-    # --- Optionally shuffle using the configured seed -----------------------
-    if shuffle:
-        seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
-        np.random.seed(seed)
-        np.random.shuffle(indices)
-
-    # --- Slice indices proportionally ---------------------------------------
-    # The iteration order over fractions.items() determines which split receives
-    # which contiguous block of indices. Since dicts maintain insertion order
-    # (Python 3.7+), this preserves the order from setup_dataset's `splits`
-    # parameter. When splits is None, the order comes from data_request.keys()
-    # (TOML table order). This ensures deterministic, reproducible partitioning.
-    split_indices: dict[str, list[int]] = {}
-    offset = 0
-    last_split_name = None
-    for name, frac in fractions.items():
-        count = int(np.round(data_set_size * frac))
-        # Clamp to avoid overrunning the index list
-        count = min(count, data_set_size - offset)
-        split_indices[name] = indices[offset : offset + count]
-        offset += count
-        last_split_name = name
-
-    # Assign any leftover indices to the last split, but only if the fractions
-    # sum to approximately 1.0 (i.e., the user intended to use all indices).
-    # When fractions sum to < 1.0, leftover indices should remain unassigned.
-    if offset < data_set_size and last_split_name is not None and total >= 1.0 - 1e-5:
-        split_indices[last_split_name].extend(indices[offset:])
-
-    return split_indices
+    return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
 
 # TODO: Clean up the input variables here.

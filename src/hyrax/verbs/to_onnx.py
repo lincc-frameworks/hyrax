@@ -98,7 +98,7 @@ class ToOnnx(Verb):
         model.train(False)
 
         # Create an instance of the dataloader so that we can request a sample batch.
-        infer_data_loader, _ = dist_data_loader(dataset["infer"], config_from_training, False)
+        infer_data_loader = dist_data_loader(dataset["infer"], config_from_training)
 
         # Generate the `context` dictionary that will be provided to the ONNX exporter.
         context = {

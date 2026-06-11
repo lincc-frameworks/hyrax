@@ -102,7 +102,7 @@ class Test(Verb):
         )
 
         # Determine which dataset to use for testing
-        test_data_loader, _ = dist_data_loader(dataset["test"], config, False)
+        test_data_loader = dist_data_loader(dataset["test"], config)
 
         # Save the loaded model weights to the test results directory
         model.save(results_dir / "test_weights.pth")

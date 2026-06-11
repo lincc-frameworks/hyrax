@@ -109,7 +109,7 @@ class Train(Verb):
 
         dataset_splits = [s for s in Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS if s in dataset]
 
-        data_loaders: dict[str, tuple] = {}
+        data_loaders = {}
         for split_name in dataset_splits:
             data_loaders[split_name] = dist_data_loader(
                 dataset[split_name],
@@ -117,8 +117,8 @@ class Train(Verb):
                 shuffle=split_name == "train" and train_shuffle,
             )
 
-        train_data_loader, _ = data_loaders["train"]
-        validation_data_loader, _ = data_loaders.get("validate", (None, None))
+        train_data_loader = data_loaders["train"]
+        validation_data_loader = data_loaders.get("validate")
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir)
