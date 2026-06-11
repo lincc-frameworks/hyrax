@@ -68,19 +68,25 @@ class TestDataProviderSplitFraction:
     """Verify that DataProvider correctly extracts split_fraction,
     primary_data_location, and initialises split_indices."""
 
-    def test_split_fraction_extracted_from_primary_dataset(self):
-        """split_fraction is read from the primary dataset definition."""
+    def test_split_fraction_not_a_dataprovider_attribute(self):
+        """split_fraction is no longer stored on DataProvider (moved to config['split']).
+
+        The legacy split_fraction field was removed from DataProvider in Phase 2.
+        Splits are now controlled via config['split'] and assigned via create_splits.
+        """
         config = _make_config()
         dp = _make_provider(config, "./data/test", split_fraction=0.6)
 
-        assert dp.split_fraction == 0.6
+        assert not hasattr(dp, "split_fraction"), (
+            "split_fraction should not be a DataProvider attribute; use config['split']['<group>'] instead."
+        )
 
-    def test_split_fraction_none_when_not_set(self):
-        """split_fraction defaults to None when not in the data request."""
+    def test_split_indices_none_by_default_regardless_of_legacy_fraction(self):
+        """split_indices is always None until assigned externally via create_splits."""
         config = _make_config()
         dp = _make_provider(config, "./data/test", split_fraction=None)
 
-        assert dp.split_fraction is None
+        assert dp.split_indices is None
 
     def test_primary_data_location_stored(self):
         """primary_data_location is populated from the primary dataset."""
@@ -393,20 +399,24 @@ class TestDistDataLoaderSplitIndices:
         assert returned_indices == list(range(size))
 
     def test_split_indices_count_matches_fraction(self):
-        """End-to-end: create providers with fractions, compute splits,
-        assign indices, and verify dist_data_loader returns correct counts."""
+        """End-to-end: assign split_indices manually and verify dist_data_loader
+        returns correct counts using the new split_indices-based approach."""
         from hyrax.pytorch_ignite import dist_data_loader
 
         config = _make_config()
         size = 100
         config["data_set"]["seed"] = 42
 
-        train_dp = _make_provider(config, "./data/test", split_fraction=0.6, size=size)
-        validate_dp = _make_provider(config, "./data/test", split_fraction=0.4, size=size)
+        train_dp = _make_provider(config, "./data/test", size=size)
+        validate_dp = _make_provider(config, "./data/test", size=size)
 
-        # Simulate what setup_dataset does
-        providers = {"train": train_dp, "validate": validate_dp}
-        split_indices = create_splits_from_fractions(providers, config)
+        # Use stub providers for create_splits_from_fractions (which still requires
+        # the legacy split_fraction stub interface)
+        stub_providers = {
+            "train": _make_stub_provider(size, split_fraction=0.6),
+            "validate": _make_stub_provider(size, split_fraction=0.4),
+        }
+        split_indices = create_splits_from_fractions(stub_providers, config)
         train_dp.split_indices = split_indices["train"]
         validate_dp.split_indices = split_indices["validate"]
 

@@ -94,7 +94,6 @@ def test_best_checkpoint_without_validation(tmp_path):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path / "data_train"),
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
             }
         },
         "infer": {
@@ -114,7 +113,7 @@ def test_best_checkpoint_without_validation(tmp_path):
     results_dir = find_most_recent_results_dir(h.config, "train")
     best_checkpoints = list(results_dir.glob("*trainer_loss=*.pt"))
     assert len(best_checkpoints) == 1, (
-        f"Expected 1 training-loss best-checkpoint file, found: {best_checkpoints}"
+        f"Expected 1 validation-loss best-checkpoint file, found: {best_checkpoints}"
     )
 
 
@@ -258,6 +257,12 @@ def test_train_split_fraction(tmp_path):
                 "primary_id_field": "object_id",
             }
         },
+    }
+
+    h.config["split"] = {
+        "train": 0.7,
+        "validate": 0.3,
+        "infer": 1.0,
     }
 
     # Configure the underlying random dataset

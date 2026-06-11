@@ -3,7 +3,7 @@ import logging
 import warnings
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import ignite.distributed as idist
 import numpy as np
@@ -19,7 +19,7 @@ from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler, SubsetRandomSampler
+from torch.utils.data import DataLoader, Dataset, Sampler, Subset, SubsetRandomSampler, WeightedRandomSampler
 
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
@@ -56,61 +56,27 @@ def setup_dataset(
     splits: tuple[str, ...] | None = None,
     shuffle: bool = True,
 ) -> dict[str, DataProvider]:
-    """This function creates an instance of the requested dataset(s) specified in the
-    runtime configuration for the given splits (data_groups).
-
-    It will create an instance of a DataProvider, and return that as the dataset.
+    """Create DataProvider instances for each requested data group.
 
     Parameters
     ----------
     config : dict
-        The runtime configuration
+        The runtime configuration.
     splits : tuple[str, ...] | None, optional
-        When provided, only create DataProvider instances for the groups whose
-        names appear in *splits*.  Groups present in the data_request but not
-        listed here are silently skipped.  When ``None`` (the default) every
-        group in the data_request is loaded — preserving backward compatibility.
+        When provided, only create DataProvider instances for the listed groups.
+        When ``None`` every group in the data_request is loaded.
     shuffle : bool, optional
-        Whether to shuffle indices when computing ``split_fraction``-based
-        partitions via :func:`create_splits_from_fractions`.  Defaults to
-        ``True``.  Set to ``False`` for inference / test verbs where
-        deterministic ordering is required.
+        Unused; kept for backward-compatibility with call sites that still pass
+        it.  Split shuffling is now handled by ``splitting_utils.create_splits``.
 
     Returns
     -------
     dict[str, DataProvider]
-        A dictionary mapping data group names to DataProvider instances.
+        Mapping of data group names to DataProvider instances.
     """
-
-    dataset = {}
     data_request = generate_data_request_from_config(config)
-
-    # Create DataProvider instances for the requested splits.  When
-    # ``splits`` is None we load every group in the data_request.
-    keys_to_load = splits if splits is not None else tuple(data_request.keys())
-    for key in keys_to_load:
-        if key not in data_request:
-            continue
-        ds = DataProvider(config, data_request[key])
-        dataset[key] = ds
-
-    # --- Compute split indices for providers that define split_fraction ---
-    # Group DataProvider instances by their primary_data_location.  Only
-    # providers whose split_fraction is set participate in the partitioning.
-    from collections import defaultdict
-
-    providers_by_location: dict[str, dict[str, DataProvider]] = defaultdict(dict)
-    for group_name, provider in dataset.items():
-        if isinstance(provider, DataProvider) and provider.split_fraction is not None:
-            loc = provider.primary_data_location
-            providers_by_location[loc][group_name] = provider
-
-    for _loc, providers in providers_by_location.items():
-        split_indices = create_splits_from_fractions(providers, config, shuffle=shuffle)
-        for group_name, indices in split_indices.items():
-            providers[group_name].split_indices = indices
-
-    return dataset
+    keys = splits if splits is not None else tuple(data_request.keys())
+    return {k: DataProvider(config, data_request[k]) for k in keys if k in data_request}
 
 
 def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
@@ -157,37 +123,36 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
 def dist_data_loader(
     dataset: Dataset,
     config: dict,
-    split: Union[str, list[str], bool] = False,
     shuffle: bool = False,
 ):
-    """Create Pytorch Ignite distributed data loaders
+    """Create a Pytorch Ignite distributed data loader.
 
     It is recommended that each verb needing dataloaders only call this function once.
 
     Parameters
     ----------
     dataset : hyrax.datasets.dataset_registry.HyraxDataset
-        A Hyrax dataset instance
+        A Hyrax dataset instance.  When *dataset* is a :class:`DataProvider`
+        with ``split_indices`` set (by :func:`~hyrax.splitting_utils.create_splits`),
+        the loader is restricted to those indices.  When ``split_weights`` is also
+        set, a :class:`~torch.utils.data.WeightedRandomSampler` is used so that
+        under-represented classes are over-sampled to achieve the configured
+        class distribution.
     config : dict
         Hyrax runtime configuration
-    split : Union[str, list[str]], Optional
-        The name(s) of the split we want to use from the data set.
-        If this is false or not passed, then a single data loader is returned
-        that corresponds to the entire dataset.
     shuffle : bool, optional
-        If ``True``, selected training indices are sampled with
-        ``SubsetRandomSampler``. If ``False``, selected indices are sampled with
-        ``SubsetSequentialSampler``. Defaults to ``False`` so non-training verbs
-        preserve deterministic order.
+        If ``True`` and no weights are present, a
+        :class:`~torch.utils.data.SubsetRandomSampler` is used for uniform
+        shuffling.  If ``False``, a :class:`SubsetSequentialSampler` preserves
+        deterministic order.  Ignored when ``split_weights`` is set (weighted
+        sampling always draws with replacement).  Defaults to ``False`` so
+        non-training verbs preserve deterministic order.
 
     Returns
     -------
-    Dataloader (or an ignite-wrapped equivalent)
-        This is the distributed dataloader, formed by calling ignite.distributed.auto_dataloader
-
-    For multiple splits, we return a dictionary where the keys are the names of the splits
-    and the value is either a Dataloader as described above or the value None if the split
-    was not configured.
+    DataLoader (or an ignite-wrapped equivalent)
+        This is the distributed dataloader, formed by calling
+        :func:`ignite.distributed.auto_dataloader`.
     """
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader.
@@ -211,62 +176,31 @@ def dist_data_loader(
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    def make_sampler(indexes: Sequence[int], sampler_shuffle: bool):
-        if not indexes:
-            return None
-        if sampler_shuffle:
-            return SubsetRandomSampler(indexes, generator=torch_rng)
-        return SubsetSequentialSampler(indexes)
-
-    # Handle case where no split is needed.
-    if isinstance(split, bool):
-        # We still need to return the list of indexes used by the dataloader,
-        # but here, it will simply be the indexes for the entire dataset.
+    # Determine the index set and optional per-sample weights from the provider.
+    if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
+        indexes = list(dataset.split_indices)
+        weights = dataset.split_weights  # ndarray or None
+    else:
         indexes = list(range(len(dataset)))
-        # If the dataset is a DataProvider with pre-computed split_indices
-        # (set by setup_dataset from split_fraction), restrict the dataloader
-        # to only those indices. Otherwise, sample the full dataset in the
-        # requested order.
-        if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
-            indexes = dataset.split_indices
+        weights = None
 
-        sampler = make_sampler(indexes, shuffle)
+    # Build a Subset so the sampler works in subset-local index space (0..len-1).
+    sub_dataset = Subset(dataset, indexes)
 
-        return idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes
+    # Choose the appropriate sampler.
+    if weights is not None:
+        sampler = WeightedRandomSampler(
+            weights=list(weights),
+            num_samples=len(indexes),
+            generator=torch_rng,
+            replacement=True,
+        )
+    elif shuffle:
+        sampler = SubsetRandomSampler(range(len(indexes)), generator=torch_rng)
+    else:
+        sampler = None
 
-    # NOTE: The logic below is deprecated. It is kept for backward compatibility
-    # with older configuration that define data splits with ["data_set"]["train_size"],
-    # ["data_set"]["validate_size"], ["data_set"]["test_size"] rather than defining
-    # separate groups in the data_request with split_fraction.
-    # We should anticipate removing this legacy logic in a future release once
-    # users have had time to migrate their configs to the new style of defining
-    # splits.
-    if isinstance(split, str):
-        split = [split]
-
-    # Create the indexes for all splits based on config.
-    indexes = create_splits(dataset, config)
-
-    # Create samplers and dataloaders for each split we are interested in.
-    # In the legacy multi-split path, the train split is the only split that
-    # honors the shuffle option; validation/test remain deterministic.
-    samplers = {
-        s: make_sampler(indexes[s], shuffle and s == "train") if indexes.get(s) else None for s in split
-    }
-
-    dataloaders = {
-        split: (idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes[split])
-        if sampler
-        else None
-        for split, sampler in samplers.items()
-    }
-
-    none_keys = [k for k, v in dataloaders.items() if v is None]
-    for key in none_keys:
-        del dataloaders[key]
-
-    # Return only one if we were only passed one split in, return the dictionary otherwise.
-    return dataloaders[split[0]] if len(split) == 1 else dataloaders
+    return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
 
 def create_splits(data_set: Dataset, config: dict):

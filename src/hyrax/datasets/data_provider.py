@@ -309,13 +309,13 @@ class DataProvider:
 
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
-        self.split_fraction = None
         self.primary_data_location = None
 
-        # Assigned externally by setup_dataset after construction when
-        # split_fraction-based partitioning is in use.  When set, this
-        # contains the list of indices that this provider should serve.
+        # Assigned externally by create_splits after construction.
+        # split_indices: list of dataset indices this provider should serve.
+        # split_weights: per-sample WRS weights (ndarray) or None when unbalanced.
         self.split_indices = None
+        self.split_weights = None
 
         # Join support: populated by _build_join_indices after prepare_datasets.
         # Maps friendly_name → join_field name for datasets that use joining.
@@ -398,8 +398,12 @@ class DataProvider:
                 repr_str += f"  Dataset class: {data['dataset_class']}\n"
                 if "data_location" in data:
                     repr_str += f"  Data location: {data['data_location']}\n"
-                if "split_fraction" in data:
-                    repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
+                if self.primary_dataset == friendly_name and self.split_indices is not None:
+                    repr_str += f"  Selected items: {len(self.split_indices)}"
+                    if self.split_weights is not None:
+                        n_classes = len(set(self.split_weights))
+                        repr_str += f" (rebalanced, {n_classes} weight values)"
+                    repr_str += "\n"
                 primary_id_field = data.get("primary_id_field")
                 if primary_id_field not in (None, False):
                     repr_str += f"  Primary ID field: {primary_id_field}\n"
@@ -544,12 +548,6 @@ class DataProvider:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = primary_id_field
 
-                # Store the split_fraction and data_location from the primary
-                # dataset's definition.  The Pydantic validator on
-                # DataRequestConfig guarantees that split_fraction is only
-                # present when primary_id_field is set, so we only need to
-                # look for it here.
-                self.split_fraction = dataset_definition.get("split_fraction", None)
                 self.primary_data_location = dataset_definition.get("data_location", None)
 
             # Record join_field for secondary datasets that join by key.
