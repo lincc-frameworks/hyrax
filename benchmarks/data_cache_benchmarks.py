@@ -52,9 +52,49 @@ class DataCacheBenchmarks:
         for i in range(len(self.data_provider)):
             self.data_provider[i]
 
+
+class DataCacheHitBenchmarks:
+    """Benchmarks for cache-hit performance with a pre-filled cache."""
+
+    def setup_cache(self):
+        """Download the HSC1k dataset only once."""
+        data_dir = Path("./hsc1k").resolve()
+        data_dir.mkdir(exist_ok=True)
+        hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
+        if not hsc_data_dir.exists():
+            pooch.retrieve(
+                url=HSC1K_ARCHIVE_URL,
+                known_hash=HSC1K_ARCHIVE_HASH,
+                fname="hsc_demo_data.zip",
+                path=data_dir,
+                processor=pooch.Unzip(extract_dir="."),
+            )
+
+    def setup(self):
+        """Build a DataProvider and fill its cache before each timing run."""
+        data_dir = Path("./hsc1k").resolve()
+        hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
+
+        h = Hyrax()
+        h.config["general"]["results_dir"] = str(data_dir)
+        h.config["data_request"] = {
+            "train": {
+                "data": {
+                    "dataset_class": "HSCDataset",
+                    "data_location": str(hsc_data_dir),
+                    "fields": ["image"],
+                    "primary_id_field": "object_id",
+                }
+            },
+        }
+        h.config["data_set"]["use_cache"] = True
+        self.data_provider = h.prepare()["train"]
+
+        # Fill the cache — this cost is excluded from timing.
+        for i in range(len(self.data_provider)):
+            self.data_provider[i]
+
     def time_cache_hit_hsc1k(self):
         """Benchmark cache-hit performance after the cache is filled."""
         for i in range(len(self.data_provider)):
             self.data_provider[i]
-        # Now measure cache hit
-        self.data_provider[0]
