@@ -379,8 +379,6 @@ class TraceResult(TracePrintable):
         logger.debug(f"Received Trace {trace_def.stage_name} {trace_def.func_name}")
 
         captured_params = {}
-        # print(trace_def.stage_name, trace_def.func_name, "ARGS:", args)
-        # print("types:", [type(elem) for elem in args])
         if len(trace_def.params_to_capture) == 0:
             for index, arg in enumerate(args):
                 name = f"{index:0>3}_call"
