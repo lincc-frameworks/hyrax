@@ -85,18 +85,20 @@ following and these decisions are **normative**:
 
 ```toml
 [split]
-train    = 1.0   # float in (0, 1]  OR  a path to a previously generated split file
-validate = 1.0
-test     = 1.0
-infer    = 1.0
+# Group keys are absent by default; any group not listed defaults to 1.0.
 rng_seed = ""    # "" ⇒ fall back to config["data_set"]["seed"]
+
+# Examples — add only the groups you need:
+# train    = 0.8   # float in (0, 1]  OR  a path to a previously generated split file
+# validate = 0.2
 ```
 
 Semantics:
 
 - **`split.<group>`** — fraction of the group's primary dataset to use, OR a
   filesystem path (string) to a previously generated `<group>_split.npz`.
-  - Float domain: `0.0 < f <= 1.0`. Default `1.0`.
+  - Float domain: `0.0 < f <= 1.0`. **Default `1.0`** (use the full dataset)
+    for any group in `data_request` that is absent from `[split]`.
   - For groups that share a `data_location` (e.g. `train`+`validate` over the
     same source), `0.0 < Σ fractions <= 1.0`; the splits are **non-overlapping**
     partitions of that shared source. Σ < 1.0 is allowed (use a subset).
@@ -121,15 +123,14 @@ Semantics:
   - A non-empty `rng_seed` ⇒ shuffle with a dedicated
     `np.random.default_rng(rng_seed)` instead (does not touch global RNG state).
 
-**Defaults & unknown group keys.** The four standard groups
-(`train`/`validate`/`test`/`infer`) plus `rng_seed` are shipped in
-`hyrax_default_config.toml` so no validation warning fires for them. A user may
-add a non-standard group key (e.g. `split.finetune`). Today
-`ConfigManager._validate_runtime_config` (`config_utils.py:505`) only **warns**
-on keys without a default — it does not error — so non-standard groups still work.
-To suppress that warning for legitimately dynamic tables, add `split` and
-`balance.distribution` to a new `DYNAMIC_KEY_TABLES` allowlist consulted by
-`_validate_runtime_config` (see §6.3). This is **not** Pydantic validation.
+**Defaults & unknown group keys.** The `[split]` table ships with **only
+`rng_seed`** in `hyrax_default_config.toml`; all group keys (`train`,
+`validate`, etc.) are absent by default. Any group present in `data_request`
+but absent from `[split]` is treated as having fraction `1.0` — the full
+dataset, which reproduces current Hyrax behavior. Since `split` is listed in
+`DYNAMIC_KEY_TABLES` (§6.3), `ConfigManager._validate_runtime_config`
+(`config_utils.py:505`) does not warn when users add their own group keys (e.g.
+`split.finetune`). This is **not** Pydantic validation.
 
 **Mixing fractions and paths (validated in `create_splits`):**
 
@@ -235,9 +236,11 @@ is non-empty):
    `raw_to_name = {v: k for k, v in name_to_raw.items()}`.
 2. After the full dataset scan that builds
    `class_inds: {raw_value: list[int]}`, re-key it:
-   `class_inds = {raw_to_name[rv]: inds for rv, inds in class_inds.items()}`.
-   If a raw value observed in the dataset is absent from `raw_to_name`, raise
-   `RuntimeError` (every raw value must be covered by a label alias).
+   `class_inds = {raw_to_name[rv]: inds for rv, inds in class_inds.items() if rv in raw_to_name}`.
+   If a raw value observed in the dataset is absent from `raw_to_name`, **log a
+   warning** and skip those items — they are excluded from all split groups.
+   This is not an error: `[label]` only needs to cover the classes referenced by
+   `balance.distribution`, not every class present in the dataset.
 3. `validate_distribution_labels` (§7.2) then operates entirely in string
    alias space — both `observed_labels` (now the alias keys) and
    `distribution` keys are strings.
@@ -802,8 +805,9 @@ New `tests/hyrax/test_splitting_utils.py` (fast, using `HyraxRandomDataset` whos
     Verify: `class_inds` is re-keyed to aliases before weight computation;
     weights are correct; `split_config.toml` round-trips `[label]`.
     Error cases: a `balance.distribution` key absent from `[label]` ⇒ raise
-    (pre-scan); a dataset raw value not covered by `[label]` ⇒ raise
-    (post-scan); duplicate raw values in `[label]` ⇒ raise (pre-scan).
+    (pre-scan); duplicate raw values in `[label]` ⇒ raise (pre-scan).
+    Warning case: a dataset raw value absent from `[label]` ⇒ log warning,
+    items excluded from splits, no error raised.
 7. **Paths input** — generate a split dir, then point `split.*` at the `.npz`
    files: loads without recompute; mixed float+path ⇒ raise; differing parent
    dirs ⇒ raise.

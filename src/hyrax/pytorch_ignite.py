@@ -209,9 +209,19 @@ def dist_data_loader(
     n = len(indexes)
 
     if weights is not None:
-        sampler = WeightedRandomSampler(
-            weights=list(weights), num_samples=n, generator=torch_rng, replacement=True
-        )
+        # WeightedRandomSampler hardcodes torch.double internally.  On MPS,
+        # float64 is unsupported and any active DeviceContext intercepts the
+        # internal torch.as_tensor call and pushes it to MPS.  Fix: push a CPU
+        # context so the weights tensor lands on CPU, and use a matching CPU
+        # generator.  SubsetRandomSampler uses torch.randperm (int64, MPS-safe)
+        # so torch_rng can stay on idist.device().
+        cpu_rng = torch.Generator(device="cpu")
+        if seed is not None:
+            cpu_rng.manual_seed(seed)
+        with torch.device("cpu"):
+            sampler = WeightedRandomSampler(
+                weights=list(weights), num_samples=n, generator=cpu_rng, replacement=True
+            )
     elif shuffle:
         sampler = SubsetRandomSampler(range(n), generator=torch_rng)
     else:

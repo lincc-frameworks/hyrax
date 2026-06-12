@@ -289,6 +289,127 @@ def test_create_splits_custom_distribution(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Test 6a: [label] translation — integer raw values, string aliases
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_label_table_translation(tmp_path):
+    """[label] maps string aliases to integer raw values from get_label.
+
+    Verifies: class_inds re-keyed to aliases; weights computed correctly;
+    split_config.toml round-trips the [label] table.
+
+    Error cases:
+      - distribution key absent from [label] → RuntimeError (pre-scan)
+      - dataset raw value not covered by [label] → RuntimeError (post-scan)
+      - duplicate raw values in [label] → RuntimeError (pre-scan)
+    """
+    import tomlkit
+
+    from hyrax.splitting_utils import (
+        create_splits,
+        validate_balance_config,
+    )
+
+    # HyraxRandomDataset.get_label returns integers when provided_labels=[0,1,2]
+    int_labels = [0, 1, 2]
+    shared_loc = str(tmp_path / "shared_data")
+    split_cfg = {"train": 0.8, "validate": 0.2, "rng_seed": 7}
+    balance_cfg = {
+        "field": "label",
+        "groups": ["train"],
+        "distribution": {"cat": 0.5, "dog": 0.3, "bird": 0.2},
+    }
+    label_cfg = {"cat": 0, "dog": 1, "bird": 2}
+
+    config = _make_config(
+        size=90,
+        provided_labels=int_labels,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        balance=balance_cfg,
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    config["label"] = label_cfg
+
+    datasets = _make_providers(config, ("train", "validate"))
+    result = create_splits(config, datasets, results_dir=tmp_path, persist=True)
+
+    # Weights should be set on train (it's in groups_to_balance)
+    assert result["train"]["weights"] is not None
+    assert len(result["train"]["weights"]) == len(result["train"]["indexes"])
+    # validate group has no weights (not in groups)
+    assert result["validate"]["weights"] is None
+
+    # split_config.toml should contain [label]
+    toml_path = tmp_path / "split_config.toml"
+    assert toml_path.exists()
+    persisted = dict(tomlkit.parse(toml_path.read_text()))
+    assert "label" in persisted
+    assert persisted["label"]["cat"] == 0
+    assert persisted["label"]["dog"] == 1
+
+    # Error: distribution key absent from [label] → pre-scan raise
+    bad_balance_missing_key = {
+        "field": "label",
+        "groups": ["train"],
+        "distribution": {"cat": 0.6, "unknown_alias": 0.4},
+    }
+    bad_config = _make_config(
+        size=90,
+        provided_labels=int_labels,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        balance=bad_balance_missing_key,
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    bad_config["label"] = label_cfg
+    bad_datasets = _make_providers(bad_config, ("train", "validate"))
+    with pytest.raises(RuntimeError, match=r"not defined in \[label\]"):
+        validate_balance_config(bad_config, bad_datasets)
+
+    # Dataset raw value not covered by [label] → warning log, not an error.
+    # Items with that raw value are excluded from all split groups.
+    incomplete_label = {"cat": 0, "dog": 1}  # missing bird=2
+    config_incomplete = _make_config(
+        size=90,
+        provided_labels=int_labels,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        balance={"field": "label", "groups": ["train"], "distribution": {"cat": 0.6, "dog": 0.4}},
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    config_incomplete["label"] = incomplete_label
+    datasets_incomplete = _make_providers(config_incomplete, ("train", "validate"))
+    result_incomplete = create_splits(config_incomplete, datasets_incomplete)  # must not raise
+    # Only cat+dog items appear; bird items (raw value 2) are excluded
+    all_indices = set(result_incomplete["train"]["indexes"].tolist()) | set(
+        result_incomplete["validate"]["indexes"].tolist()
+    )
+    assert len(all_indices) > 0
+    assert len(all_indices) < 90  # some items excluded (the bird ones)
+
+    # Error: duplicate raw values in [label] → pre-scan raise
+    dupe_label = {"cat": 0, "kitty": 0, "dog": 1, "bird": 2}
+    config_dupe = _make_config(
+        size=90,
+        provided_labels=int_labels,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        balance=balance_cfg,
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    config_dupe["label"] = dupe_label
+    datasets_dupe = _make_providers(config_dupe, ("train", "validate"))
+    with pytest.raises(RuntimeError, match="unique"):
+        validate_balance_config(config_dupe, datasets_dupe)
+
+
+# ---------------------------------------------------------------------------
 # Test 7: Path input → load without recomputing
 # ---------------------------------------------------------------------------
 

@@ -14,10 +14,8 @@ Implementing `specs/splits_and_balancing_spec.md` on branch `awo/splits-and-bala
 Add new tables **after** the existing config sections:
 ```toml
 [split]
-train    = 1.0
-validate = 1.0
-test     = 1.0
-infer    = 1.0
+# Group keys are absent by default; any group in data_request not listed
+# here defaults to fraction 1.0 (full dataset).
 rng_seed = ""
 
 [balance]
@@ -25,6 +23,12 @@ field  = ""
 groups = []
 
 [balance.distribution]
+
+# [label]
+# Optional. Maps human-readable string aliases to the raw values returned by
+# get_<balance.field>.  Needed when get_<balance.field> returns non-string
+# values (e.g. integers).  This table has no entries in the default config;
+# users add their own alias = raw_value pairs.
 ```
 
 ### 1b. Config migration `003_move_split_fraction_to_split.py`
@@ -41,9 +45,9 @@ Create `src/hyrax/config_migrations/migrations/003_move_split_fraction_to_split.
 ### 1d. `config_utils.py`
 Add near `_validate_runtime_config` (line ~505):
 ```python
-DYNAMIC_KEY_TABLES = ("split", "distribution")
+DYNAMIC_KEY_TABLES = ("split", "distribution", "label")
 ```
-When recursing into a table whose name is in `DYNAMIC_KEY_TABLES`, skip the "no default" warning for its children.
+When recursing into a table whose name is in `DYNAMIC_KEY_TABLES`, skip the "no default" warning for its children. `"split"` covers non-standard group keys; `"distribution"` covers class-fraction keys; `"label"` covers user-defined alias keys.
 
 ---
 
@@ -58,8 +62,8 @@ def validate_balance_config(config, datasets) -> None
 def validate_distribution_labels(distribution, observed_labels) -> None
 ```
 - `validate_split_config`: per-group float domain `(0,1]`; all-floats-or-all-paths; paths share parent dir; for groups sharing `primary_data_location`, `Σ ≤ 1.0`.
-- `validate_balance_config`: pre-scan checks — `field` getter exists; `groups ⊆ data_request` (warn extras); `distribution` values in `(0,1]`, sum to 1.0.
-- `validate_distribution_labels`: post-scan; unknown label in distribution → raise; observed label missing from non-empty distribution → warn + weight 0.
+- `validate_balance_config`: pre-scan checks — `field` getter exists; `groups ⊆ data_request` (warn extras); `distribution` values in `(0,1]`, sum to 1.0. When `[label]` is non-empty also checks: (a) label values are unique (no two aliases map to the same raw value); (b) every key in `balance.distribution` appears in `[label]`.
+- `validate_distribution_labels`: post-scan; unknown label in distribution → raise; observed label missing from non-empty distribution → warn + weight 0. Operates entirely in alias string space when `[label]` is present (re-keying has already been done in `_compute_splits`).
 
 ### RNG helper
 ```python
@@ -74,7 +78,7 @@ def _compute_splits(config, datasets) -> dict[str, dict]
 Groups datasets by `provider.primary_data_location`. For each location group:
 - `infer`: first `round(N * fraction)` indices, no shuffle, weights None.
 - Non-stratified (`balance.field` falsy): shuffle + contiguous slice (mirrors `create_splits_from_fractions` logic being moved here from `pytorch_ignite.py`).
-- Stratified (`balance.field` set): build `class_inds` via `get_<field>` scan → call `validate_distribution_labels` → per-class shuffle + slice → compute weights per §5 for groups in `groups_to_balance`.
+- Stratified (`balance.field` set): build `class_inds` via `get_<field>` scan. If `[label]` is non-empty: build `raw_to_name = {v: k for k, v in config["label"].items()}` and re-key `class_inds` to alias strings; if a raw value is not covered by `[label]`, raise `RuntimeError`. Then call `validate_distribution_labels` (operates in alias space). Per-class shuffle + slice → compute weights per §5 for groups in `groups_to_balance`.
 
 Compute `groups_to_balance` per spec §4.2 table:
 ```python
@@ -89,7 +93,7 @@ def persist_splits(results_dir, splits, config) -> None
 def load_split_files(paths) -> dict[str, dict]
 def assign_splits_to_providers(datasets, splits) -> None
 ```
-- `persist_splits`: `np.savez_compressed` per group — always `indexes` (`int64`), `weights` (`float64`) only when not None. Also writes `split_config.toml` with `data_request`, `split`, `balance` sections.
+- `persist_splits`: `np.savez_compressed` per group — always `indexes` (`int64`), `weights` (`float64`) only when not None. Also writes `split_config.toml` with `data_request`, `split`, `balance`, **and `label`** sections (so the persisted config is self-contained for equivalency checks and traceability).
 - `load_split_files`: loads `.npz`; `weights = npz["weights"] if "weights" in npz.files else None`.
 - `assign_splits_to_providers`: `provider.split_indices = indexes.tolist()`, `provider.split_weights = weights`.
 
@@ -227,6 +231,7 @@ Ten tests per spec §15 using `HyraxRandomDataset` (has `get_label`, `provided_l
 4. Stratified splits (`balance.field="label"`) → class ratios preserved, weights None
 5. Equal rebalance (`groups=["train"]`, empty distribution) → train weights ∝ inverse frequency
 6. Custom distribution + validation/checking; groups=[] with distribution → all non-infer groups; sum violation → raise; unknown label → raise; missing label → warn
+6a. **`[label]` translation** — use a dataset whose `get_label` returns integers (e.g. `0`, `1`, `2`); define `[label]` mapping string aliases → those integers; set `balance.distribution` using alias strings. Verify: `class_inds` re-keyed to aliases; weights correct; `split_config.toml` round-trips `[label]`. Error cases: distribution key absent from `[label]` → raise (pre-scan); duplicate raw values in `[label]` → raise (pre-scan). Warning case: dataset raw value absent from `[label]` → log warning, items excluded, no error.
 7. Paths input: load without recompute; mixed float+path → raise; differing parent dirs → raise
 8. Equivalency reuse: identical config reuses split dir; any changed field → not equivalent
 9. `dist_data_loader` Subset + sampler types (WRS when weights, SubsetRandomSampler when shuffle, None when sequential)
@@ -256,7 +261,7 @@ Ten tests per spec §15 using `HyraxRandomDataset` (has `get_label`, `provided_l
 | `src/hyrax/verbs/engine.py` | Switch to `create_splits` driver |
 | `src/hyrax/verbs/to_onnx.py` | Verify no stale split ref |
 | `src/hyrax/verbs/verb_registry.py` | Remove `validate_cross_group` split logic |
-| `src/hyrax/config_utils.py` | Add `DYNAMIC_KEY_TABLES` |
+| `src/hyrax/config_utils.py` | Add `"split"` and `"label"` to `DYNAMIC_KEY_TABLES` |
 | `tests/hyrax/test_config_migrations.py` | Add migration 003 tests |
 
 ---

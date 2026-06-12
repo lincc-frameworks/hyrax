@@ -193,6 +193,22 @@ def validate_balance_config(config: dict, datasets: dict[str, DataProvider]) -> 
                 f"balance.distribution values sum to {total:.6f}; they must sum to exactly 1.0."
             )
 
+    # [label] pre-scan checks (only consulted when both label table and distribution are present)
+    label_cfg = dict(config.get("label") or {})
+    if label_cfg:
+        raw_values = list(label_cfg.values())
+        if len(raw_values) != len(set(str(v) for v in raw_values)):
+            raise RuntimeError(
+                "[label] values must be unique — two or more aliases map to the same raw value."
+            )
+        if distribution:
+            for dist_key in distribution:
+                if dist_key not in label_cfg:
+                    raise RuntimeError(
+                        f"balance.distribution key '{dist_key}' is not defined in [label]. "
+                        "All distribution keys must appear in [label] when [label] is non-empty."
+                    )
+
 
 def validate_distribution_labels(distribution: dict, observed_labels: set) -> None:
     """Cross-check distribution keys against the observed class labels (post-scan).
@@ -296,6 +312,26 @@ def _compute_splits(config: dict, datasets: dict[str, DataProvider]) -> dict[str
                 label = getter(i)
                 class_inds.setdefault(label, []).append(i)
 
+            # [label] re-keying: translate raw values to alias strings (§4.3)
+            label_cfg = dict(config.get("label") or {})
+            if label_cfg:
+                raw_to_name = {v: k for k, v in label_cfg.items()}
+                rekeyed: dict[Any, list[int]] = {}
+                for raw_val, inds in class_inds.items():
+                    alias = raw_to_name.get(raw_val)
+                    if alias is None:
+                        logger.warning(
+                            "Dataset contains raw label value %r from get_%s "
+                            "that has no alias in [label]; %d item(s) with this value "
+                            "will be excluded from all split groups.",
+                            raw_val,
+                            field,
+                            len(inds),
+                        )
+                    else:
+                        rekeyed[alias] = inds
+                class_inds = rekeyed
+
             validate_distribution_labels(distribution, set(class_inds))
 
             # Build reverse lookup for weight computation
@@ -347,7 +383,7 @@ def persist_splits(results_dir: Path, splits: dict[str, dict], config: dict) -> 
         np.savez_compressed(results_dir / f"{group}_split.npz", **save_kwargs)
 
     split_config: dict = {}
-    for key in ("data_request", "split", "balance"):
+    for key in ("data_request", "split", "balance", "label"):
         if key in config:
             split_config[key] = config[key]
     with open(results_dir / "split_config.toml", "w") as f:

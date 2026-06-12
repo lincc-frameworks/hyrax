@@ -184,7 +184,7 @@ class ConfigManager:
     # Tables whose child keys are user-defined (group names, class labels) and
     # legitimately have no entry in the default config.  Children of these tables
     # are skipped by _validate_runtime_config.
-    DYNAMIC_KEY_TABLES = ("distribution",)
+    DYNAMIC_KEY_TABLES = ("split", "distribution", "label")
 
     def __init__(
         self,
