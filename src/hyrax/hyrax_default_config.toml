@@ -403,6 +403,10 @@ batch_size = 512
 # The path to the model weights file to use for inference.
 model_weights_file = false
 
+[infer_stream]
+# Path to model weights. If false, uses the most recent training results.
+model_weights_file = false
+
 # >>> I believe that we can simply remove this entry <<<<<<<<<<<<<<<<<<<<<<<<<<<
 # The data_set split to use for inference. Use `false` for entire dataset.
 split = "infer"
