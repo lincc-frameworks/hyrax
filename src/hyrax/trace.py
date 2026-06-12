@@ -346,7 +346,7 @@ class TraceResult(TracePrintable):
             if obj.split_indices is not None:
                 return obj.split_indices[self.trace_batch_size - 1] + 1
 
-            return raw_func(obj)
+            return min(self.trace_batch_size, raw_func(obj))
 
         cls.__len__ = new_len
         self.shimmed_funcs.append((cls, "__len__", raw_func))
