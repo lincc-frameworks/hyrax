@@ -190,3 +190,19 @@ The following details reflect design decisions for the V1 implementation:
 **Join-map handling:** When augmentation is active on a secondary (joined) dataset, the dataset-local index from the join map will be passed to `augment_<field>` rather than the DataProvider-level index.
 
 **`row_cache_key` deferred:** The `row_cache_key` dataset interface described in the caching section above is deferred to a future version. V1 will not cache augmented results — the existing DataCache will cache `get_<field>` results as before, and augmentation will be applied post-cache.
+
+## V3 Cache Restructuring
+
+Implementation plan: `specs/augmentation-cache-plan.md`
+
+The following decisions were made for the `row_cache_key` implementation and associated DataCache restructuring:
+
+**`row_cache_key` implemented:** The dataset interface described in the caching section above is implemented in V3. DataCache is restructured to use per-dataset cache maps keyed by the return value of each dataset's `row_cache_key` method. The default implementation preserves V1 behavior (cache base data by index, do not cache augmented data).
+
+**Per-dataset cache maps:** DataCache maintains a separate `dict[np.int64, dict]` per dataset (friendly name). This replaces the single flat map keyed by DataProvider index. Each dataset's `row_cache_key` determines the cache key independently, supporting different index mappings (joins) and per-dataset augmented-data caching decisions.
+
+**DataCache owns cache-key dispatch:** DataProvider calls `data_cache.try_fetch(friendly_name, real_idx, rng_seed)` and DataCache internally invokes the dataset's `row_cache_key`. When augmentation is active for a dataset, DataCache performs a two-level lookup: augmented key first (`row_cache_key(idx, rng_seed)`), then base key (`row_cache_key(idx, None)`). When augmentation is not active, only the base key is tried. DataCache knows at construction time which datasets have augmentation, so it skips the augmented-key lookup when unnecessary.
+
+**Preload thread removed:** The `preload_cache` and `preload_threads` config keys and the associated `DataCache` preload thread are removed. The preload thread's strategy of sequentially iterating indices 0 through len does not match the access pattern of `WeightedRandomSampler` (used by the balanced sampling feature). Users needing I/O prefetching should use PyTorch DataLoader's `num_workers` and `prefetch_factor` parameters, which are already passed through from Hyrax's `[data_loader]` config and which naturally match whatever access pattern the sampler dictates.
+
+**Augmentation folded into per-dataset loop:** Instead of a separate augmentation sweep over the assembled data dict (the V1 approach), augmentation is applied per-dataset inside the cache lookup loop in `resolve_data`. This eliminates the second pass and allows cache hits on augmented data (when `row_cache_key` opts in) to skip both the `get_<field>` and `augment_<field>` calls entirely.
