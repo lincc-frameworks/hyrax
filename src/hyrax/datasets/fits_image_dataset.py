@@ -49,13 +49,11 @@ name for your catalog file. ``h.config["data_set"]["filter_column_name"]`` and
 ``h.config["data_set"]["filename_column_name"]`` work in a corresponding manner.
 
 If your dataset does not fit in memory on your system, we recommend setting
-``h.config["data_set"]["use_cache"]`` and ``h.config["data_set"]["preload_cache"]`` to ``False``.
-Both are ``True`` by default. The former caches all tensors read during an epoch into system RAM, with the
-intent of speeding up later epochs of training if your disk has low bandwidth. The latter begins this process
-of caching all tensors into system RAM in a background thread as soon as the ``FitsImageDataset`` is
-constructed, front-running the ``train`` or ``infer`` verb requesting tensors. The intent of this optimization
-is to speed up the first epoch of training in the case where your disk has high latency. Both will result in
-crashes if there is not enough room in your system RAM for the entire dataset.
+``h.config["data_set"]["use_cache"]`` to ``False``.
+This caches all tensors read during an epoch into system RAM, with the
+intent of speeding up later epochs of training if your disk has low bandwidth.
+This will result in crashes if there is not enough room in your system RAM
+for the entire dataset.
 
 If you need to truncate your dataset to fit in RAM, the easiest way is to select a small number of rows
 from your original catalog file. FitsImageDataset will only attempt to load images that exist in the catalog.

@@ -4,6 +4,7 @@ from collections.abc import Callable
 from types import MethodType
 from typing import Any
 
+import numpy as np
 import numpy.typing as npt
 
 from hyrax.plugin_utils import get_or_load_class, update_registry
@@ -130,6 +131,24 @@ class HyraxDataset:
             during construction of the HyraxDataset (or derived class).
         """
         return [] if self._metadata_table is None else list(self._metadata_table.colnames)
+
+    def row_cache_key(self, idx: int, rng_seed: np.int64 | None = None) -> np.int64 | None:
+        """Return a cache key for this row, or None to skip caching.
+
+        Parameters
+        ----------
+        idx : int
+            The dataset-local index.
+        rng_seed : np.int64 | None
+            When augmentation is active, the rng_seed that would be passed to
+            ``augment_<field>``.  ``None`` for non-augmented access.
+
+        Returns
+        -------
+        np.int64 | None
+            Cache key, or ``None`` to skip caching for this call.
+        """
+        return np.int64(idx) if rng_seed is None else None
 
     def on_epoch_start(self, verb: str):
         """Called at the beginning of each epoch (or once for single-pass verbs).
