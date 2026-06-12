@@ -120,6 +120,7 @@ class Engine(Verb):
         # our data loaders. But here in `engine`, we can assume that we can simply
         # find the length of our dataset and then iterate over it in batches.
         infer_dataset = dataset["infer"]
+        infer_dataset.on_epoch_start("engine")
         batch_size = config["data_loader"]["batch_size"]
 
         # Initialize the ResultDatasetWriter to persist results of inference

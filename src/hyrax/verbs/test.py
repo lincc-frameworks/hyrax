@@ -103,6 +103,9 @@ class Test(Verb):
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Test dataset:{Style.RESET_ALL}\n{dataset['test']}"
         )
 
+        for provider in dataset.values():
+            provider.on_epoch_start("test")
+
         # Determine which dataset to use for testing
         test_data_loader = dist_data_loader(dataset["test"], config)
 

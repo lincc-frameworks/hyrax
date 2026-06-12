@@ -636,6 +636,61 @@ def test_none_groups_are_skipped():
     assert "validate" not in definition
 
 
+def test_augment_field_defaults_to_none():
+    """augment field defaults to None when not specified."""
+    cfg = DataRequestConfig(
+        dataset_class="SomeDataset",
+        data_location="/tmp/data",
+        primary_id_field="id",
+    )
+    assert cfg.augment is None
+
+
+def test_augment_true_on_train_group_passes_validation():
+    """augment=True on a train group passes DataRequestDefinition validation."""
+    definition = DataRequestDefinition(
+        {
+            "train": {
+                "data": {
+                    "dataset_class": "DS",
+                    "data_location": "/tmp",
+                    "primary_id_field": "id",
+                    "augment": True,
+                }
+            }
+        }
+    )
+    assert definition["train"]["data"].augment is True
+
+
+def test_augment_true_on_infer_group_raises_validation_error():
+    """augment=True on the infer group raises a ValidationError."""
+    with pytest.raises(ValidationError, match="Augmentation cannot be enabled on 'infer'"):
+        DataRequestDefinition(
+            {
+                "infer": {
+                    "data": {
+                        "dataset_class": "DS",
+                        "data_location": "/tmp",
+                        "primary_id_field": "id",
+                        "augment": True,
+                    }
+                }
+            }
+        )
+
+
+def test_augment_field_preserved_in_as_dict():
+    """augment=True round-trips through as_dict."""
+    cfg = DataRequestConfig(
+        dataset_class="DS",
+        data_location="/tmp",
+        primary_id_field="id",
+        augment=True,
+    )
+    assert cfg.as_dict()["augment"] is True
+
+
 def test_issue_817_single_named_source_no_extra_data_nesting():
     """Regression test for issue #817.
 

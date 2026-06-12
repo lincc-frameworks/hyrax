@@ -1,0 +1,174 @@
+# Augmentation in Hyrax
+
+Link to sampling doc: [Splits and Dataset Balancing in Hyrax](https://docs.google.com/document/d/11_Ma-hF5u7xV-MBWXvt68ibn-UqCesS9jrXeD8AzOlM/edit?tab=t.0)
+
+## Motivation and Scope:
+
+Most astronomical datasets are unbalanced in the sense that they have many more members of particular classes than others. This presents a challenge for training ML models, which is typically remedied with some combination of focal loss, and sampling or augmenting the data set. Focal loss is already easily incorporated into hyrax via a model's \`train\_batch\` function; however, support within hyrax for balanced sampling and augmentation techniques has been nonexistent. This gap has leadto hyrax users rolling their own independent versions of the functionality ([kbmod-ml](https://github.com/dirac-institute/kbmod-ml/compare/main...htohfa:kbmod-ml:main#diff-8882292c2b762bb56ce29b385a9f01f2a9a26ca808aef439266b250a0f67dd08), [applecider](https://github.com/applecider-ml/applecider/blob/1921a54db8444d4b74d2947c9a7dc68b1790a1ef/src/applecider/datasets/oversampler_mixin.py)).
+
+Like any problem having to do with data preparation, the ultimate fall-back is for a user to prepare a dataset which is already sampled and/or augmented according to their desire, and then to write a dataset class for hyrax which feeds their processed data to their model. This creates significant user experience gaps enumerated below:
+
+**Unfamiliar with ML Techniques:** An astronomer unfamiliar with ML techniques, but familiar enough with ML and their data to identify a class imbalance wants to address a data class imbalance in their Hyrax project. Because Hyrax does not offer an avenue for them, they must learn and implement all of their data sampling and augmentation outside of hyrax. Then they must integrate this data with hyrax, potentially requiring them to learn Hyrax's dataset classes, and data handling in greater detail than would have been otherwise necessary had their dataset not been unbalanced.
+
+**Using a public or built-in dataset:** An astronomer using a public dataset (such as LSSTDownloadedDataset, or MultiModalUniverseDataset) encounters an ML problem where they need to rectify a class imbalance in public data. In the current approach they must either reimplement significant parts of the corresponding hyrax dataset class, or make their augmenting code mimic the public dataset in some way. In most cases they will incur significant storage costs for augmented data at Rubin scale, which would be otherwise unnecessary.
+
+**Sharing augmentation techniques:** In a public dataset where there are unbalanced data and several known successful augmentation techniques, the current paradigm offers no way for dataset authors making that public dataset available to also make the dominant augmentation techniques available to other scientists. Ultimately users of the dataset are forced to implement their own augmentation.
+
+By providing an accessible, performant, and intuitive configuration interface to balanced dataset sampling and augmentation, we can offer all of these users value from using Hyrax. This document will cover the augmentation design only, while balanced sampling concerns will be in [Splits and Dataset Balancing in Hyrax](https://docs.google.com/document/d/11_Ma-hF5u7xV-MBWXvt68ibn-UqCesS9jrXeD8AzOlM/edit?tab=t.0)
+
+There are many methods for data augmentation, some of which are too complex or coupled to specific types of data to support initially. By supporting too many paradigms, we risk bloating the feature and making it too complex. As a first pass we plan to support only augmentation methods where each new sample is created from a single data sample in the underlying dataset.
+
+## Design Overview
+
+We plan to programmatically extend the Hyrax dataset interface to support an `augment_<field_name>` family of functions in parallel to the existing `get_<field_name>`  
+family of functions. This allows dataset writers to define default augmentations, which can be used simply by configuration as well as for users of dataset classes to easily override the default augmentation method.
+
+We will also be adding a `augmentation` configuration option on the friendly name of a Dataset. In the first version this will be a simple `true`/`false` flag to control whether the `augment_<field_name>` functions are used during sampling. In a future version it could be extended to a dictionary that would allow per-field selection of `augment` or `get` methods, allowing easier selection of augmentation methods on pre-built dataset classes.
+
+## Configuration
+
+A data request in hyrax configuration is formed of nested dictionaries, where the outer layer is a data group (e.g. "train", "validate", "test", "infer") and within that there are friendly names which each correspond to a single hyrax dataset class at runtime. 
+
+An example configuration with the new V1 key is below:
+
+`"train": { # data group`  
+  `"data": { # friendly name`  
+    `"dataset_class": "HyraxCifarDataset",`  
+    `"fields": ["image", "label"],`  
+    `"primary_id_field": "object_id",`  
+    `"augment": true`  
+  `}`  
+`}`
+
+**`augment`:**   
+If true, oversampling/augmentation is enabled, If this section is missing, no augmentation or oversampling is performed, and Hyrax reverts to its exact behavior prior to this feature being implemented. The default value is `false`.
+
+When augmentation is enabled, all fields with `augment_<field_name>` member functions defined will be used, and when the `augment_<field_name>` function is not defined, data access will fall back to the `get_<field_name>`
+
+In Version 2 the `augment` config key can optionally be dictionary valued, specifying field-by-field whether or not augmentation is enabled for that field.
+
+`"train": { # data group`  
+  `"data": { # friendly name`  
+    `"dataset_class": "HyraxCifarDataset",`  
+    `"fields": ["image", "label"],`  
+    `"primary_id_field": "object_id",`  
+    `"augment": {`  
+        `"image": true,`  
+        `"label": false,`  
+    `}`  
+  `}`  
+`}`
+
+The dictionary goes from field names to either `true` or `false`. In the case of `false` the `get_<field_name>` methods will be used for the corresponding field. In the case of `true` the `augment_<field name>` methods will be used. In this case the lack of the corresponding method is a hard error, rather than the permissive system in V1.
+
+The `augment` dictionary must be complete in that all fields that will be fed to the model must be specified as keys. The sole exception is for the field specified as `primary_id_field` in the friendly name config, which is implicitly treated as "repeat" for the purpose of oversampling. Specifying the `primary_id_field` as "augment" in the `field_sample_method` dictionary is a fatal error.
+
+Completeness also means that in the case where no `field` is specified in the friendly name config, then all non-primary-id fields in the underlying dataset must be specified in this dictionary. If this dictionary is not complete, Hyrax will emit an informative error and stop.
+
+If a field is specified in this dictionary as `true` and the corresponding `augment_<field_name>` method does not exist on the underlying dataset class, the configuration is invalid and Hyrax must stop and produce an informative error. The detection of this class of error ought to be delayed after config parsing and validation (potentially as late as the first valid call of the `augment_<field_name>` method by `DataProvider`) in order to permit metaprogramming by Dataset authors in their constructors.
+
+## Dataset Augmentation Interface
+
+The data augmentation functions on a Hyrax dataset class are modeled after the existing Hyrax `get_<field_name>` methods, in that the name contains the field name to which the function refers. The canonical signature is:
+
+**`def augment_<field_name>(self, data, index, rng_seed):`**
+
+**`self`** is the typical class object reference to the Dataset class.
+
+**`data`** is the result from calling the corresponding `get_<field_name>` method during sampling.  
+Because the return value from the `get_<field_name>` functions are cached, but the result of `augment_<field_name>` is not, this interface choice decouples the `rng_seed` generation from the data cache subsystem.
+
+**`index`** is the index of the data in the dataset. This allows authors to implement various index-aware augmentation strategies. See examples below:
+
+**`rng_seed`** is a 64 bit integer which is provided to allow correlation between fields in the same row of augmented data. Hyrax uses its master random seed (`seed` in hyrax config) to generate `rng_seed` values for all augmented indexes.
+
+The return value from `augment_<field_name>` is the augmented data.
+
+It is important to note that when augmentation is enabled on a field, **every call to that field (whether it is for a class that is oversampled or not)** will use the `augment_<field_name>` codepath. This is to ensure that all data goes through augmentation, not just the data in classes which are underrepresented in the underlying dataset.
+
+Datasets will also get a new callback `on_epoch_start` , which will be called if it exists. This will be implemented by a `pass` implementation in `HyraxDataset` which classes can override. DataProvider will get an `on_epoch_start` which will dispatch calls to all active Dataset Classes in the current run. DataProvider's method will be called from an `Events.EPOCH_STARTED` handler in `pytorch_ignite.py` 
+
+## Dataset Caching interface:
+
+By default augmented data is not cached; however, we offer users a method to do row caching on augmented data points if they choose. The key dataset interface is:
+
+`def row_cache_key(self, idx, rng_seed=None):`  
+   
+When a cache lookup happens, this function is called with the parameters that the relevant `get_<field_name>` and `augment_<field_name>` functions would receive, and its return value is used to provide a key for `DataCache`.
+
+This function should return a `np.int64` with the desired cache key, or `None` if the relevant data should not be cached. The default implementation is:
+
+`def row_cache_key(self, idx, rng_seed=None):`  
+    `return idx if rng_seed is None else None`
+
+This replicates the existing hyrax behavior of only using the idx as a cache key, and not caching augmented data, and is the behavior of caching if the dataset author does not define `row_cache_key`.
+
+Note that cache key applies to the entire row, not just a particular row+field combination: For a row of data, there will be multiple dispatches to the various `augment_<field>` and `get_<field>` functions corresponding to the various fields in the data request on a cache miss. However, there are only a handful of dispatches to `row_cache_key` for a given `data_request` corresponding to whatever cache keys are necessary for `resolve_data` to assemble the data dictionary with all fields filled out.
+
+## Example: Random Rotations
+
+Given an image dataset with a mask layer, object ids and labels the config would look something like the following.
+
+`"train": {`  
+  `"data": {`  
+    `"dataset_class": "ExampleAugmentedDataset",`  
+    `"fields": ["image", "mask", "label"],`  
+    `"primary_id_field": "object_id",`  
+    `"augment": {`  
+        `"image": true,`  
+        `"mask": true,`  
+        `"label": false,`  
+    `} # or "augment": true in v1`  
+  `}`  
+`}`
+
+This configuration protects `label` and `object_id` fields from augmentation, but `mask` and `image` are subject to random rotations defined by the member functions in `ExampleAugmentingDataset` shown below:
+
+**`import torch`**  
+**`import torchvision.transforms.functional as F`**
+
+**`class ExampleAugmentedDataset(ExampleDataset):`**
+
+  **`def random_rotation(self, rng_seed):`**  
+    **`gen = torch.Generator().manual_seed(rng_seed)`**  
+    **`return torch.empty(1).uniform_(-180,180, generator=gen)[0]`**
+
+  **`def augment_image(self, data, idx, rng_seed):`**  
+    **`return F.rotate(data, angle = self.random_rotation(rng_seed))`**
+
+  **`def augment_mask(self, data, idx, rng_seed):`**  
+    **`return F.rotate(data, angle = self.random_rotation(rng_seed))`**
+
+In this example, the augment functions receive the same `rng_seed` across each oversampled index from hyrax. This property combined with the management of the rng in the `random_rotation` function ensures that both image and mask receive the same random rotation for a given row of data fed to the model.
+
+When this class is sampled under a balanced regime (e.g. because  [Splits and Dataset Balancing in Hyrax](https://docs.google.com/document/d/11_Ma-hF5u7xV-MBWXvt68ibn-UqCesS9jrXeD8AzOlM/edit?tab=t.0) is enabled) the `augment_image` and `augment_mask` functions receive more than one call with the same `idx` value. This behaviour ensures that a downstream ML model learns to distinguish between the classes, and not distinguish whether the augmentation function was run, because the augmentation function is always run.
+
+Note also that the `ExampleAugmentDataset` class derives from `ExampleDataset` demonstrating how someone might extend a widely distributed dataset class to perform a custom augmentation on a small number of fields relevant to their science.
+
+## Example: Augmenting only repeated data
+
+For some data it is desirable to use the underlying data unchanged on first access and augmentation on subsequent access in an epoch. The random rotation dataset class can be extended as follows to achieve this result using a `self.seen` set that is reset in the `on_epoch_start` method.
+
+**`class ExampleAugmentedDataset(ExampleDataset):`**  
+  **`def on_epoch_start(self):`**  
+    **`self.seen = set()`**  
+    
+  **`def apply_rotation(self, data, idx, rng_seed):`**  
+    **`if idx in self.seen:`**  
+      **`return F.rotate(data, angle=self.random_rotation(rng_seed))`**  
+    **`self.seen.add(idx)`**  
+    **`return data`**
+
+  **`def random_rotation(self, rng_seed):`**  
+    **`gen = torch.Generator().manual_seed(rng_seed)`**  
+    **`return torch.empty(1).uniform_(-180,180, generator=gen)[0]`**  
+  **`def augment_image(self, data, idx, rng_seed):`**  
+    **`return self.apply_rotation(data, idx, rng_seed)`**  
+  **`def augment_mask(self, data, idx, rng_seed):`**  
+    **`return self.apply_rotation(data, idx, rng_seed`**
+
+## Non-Training Actions
+
+For "infer" data requests defining any augmentation is a hard error, because augmentation/oversampling should never occur in inference on real data.
+
+For "validate" and "test" there are valid reasons for wanting to examine performance on purely augmented data (e.g. Test Time Augmentation), so an `augment` configuration is valid on those groups.
