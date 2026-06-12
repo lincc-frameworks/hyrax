@@ -338,8 +338,6 @@ class TraceResult(TracePrintable):
         raw_func = cls.__dict__.get("__len__")
 
         def new_len(obj):
-            import numpy as np
-
             # We actually need the length to be one-past-the-end of whever split index we will
             # encounter at the end of the first (and only) batch
             #
@@ -348,13 +346,7 @@ class TraceResult(TracePrintable):
             if obj.split_indices is not None:
                 return obj.split_indices[self.trace_batch_size - 1] + 1
 
-            split_fraction = 1.0 if obj.split_fraction is None else obj.split_fraction
-            max_len = int(np.ceil(self.trace_batch_size / split_fraction))
-
-            # Don't ever make the new length longer than the old length
-            # Can happen in some weird split situations on small datasets (like RandomDataset)
-            # in testing contexts
-            return min(max_len, raw_func(obj))
+            return min(self.trace_batch_size, raw_func(obj))
 
         cls.__len__ = new_len
         self.shimmed_funcs.append((cls, "__len__", raw_func))

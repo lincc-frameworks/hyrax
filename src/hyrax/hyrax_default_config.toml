@@ -500,3 +500,43 @@ num_detail_plots = 6
 
 # The directory containing the ONNX model used for inference in production
 model_directory = false
+
+
+[split]
+# Per-group split configuration.  Keys correspond to groups in [data_request].
+# Each value is a fraction of the group's primary dataset to use — float in
+# (0.0, 1.0] — or a path to a previously generated <group>_split.npz file.
+# Groups absent from this table default to 1.0 (use the full dataset).
+
+# RNG seed for shuffling/partitioning.  Empty string falls back to
+# config["data_set"]["seed"] (reproducing current behavior exactly).
+# A non-empty value uses a dedicated generator and does not touch global RNG state.
+rng_seed = ""
+
+
+[balance]
+# Name of the field identifying each item's class.  Must resolve to a
+# get_<field> getter on the primary dataset.  Empty string disables stratification.
+field = ""
+
+# Data groups whose sampling weights are adjusted to the target distribution.
+# Empty list disables rebalancing.  See [balance.distribution] for the target.
+groups = []
+
+[balance.distribution]
+# Maps class label → target fraction in (0.0, 1.0].  Empty table means equal
+# target across all observed classes (uniform).  Values must sum to exactly 1.0.
+# Example:
+# label_0 = 0.25
+# label_1 = 0.75
+
+# [label]
+# Optional. Maps human-readable string aliases to the raw values returned by
+# get_<balance.field>.  Needed when get_<balance.field> returns non-string
+# values (e.g. integers), because TOML table keys must be strings while
+# balance.distribution keys must match what get_<balance.field> actually returns.
+# All values must be unique.  All balance.distribution keys must appear here.
+# Example:
+#   cat  = 0
+#   dog  = 1
+#   bird = 2
