@@ -245,6 +245,7 @@ def test_trace_result_populates_resolve_data_stage(loopback_hyrax):
     stage = trace_result["resolve_data"]
     assert isinstance(stage, TraceStage)
     assert len(stage) > 0, "resolve_data stage should have at least one captured call"
+    assert len(stage) == 3, f"trace=3 should produce exactly 3 resolve_data calls, got {len(stage)}"
 
     # Each call should be printable
     first_call = stage[0]
