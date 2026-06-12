@@ -364,15 +364,84 @@ def test_create_splits_equivalency_reuse(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Test 9: dist_data_loader Subset + sampler types (placeholder)
+# Test 9: dist_data_loader Subset + sampler types
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(reason="Phase 4 (verb integration) not yet implemented.")
-def test_dist_data_loader_uses_subset_sampler():
-    """Placeholder: once verb integration is done, verify that split_indices
-    on a DataProvider causes dist_data_loader to use a SubsetSequentialSampler."""
-    pass
+def test_dist_data_loader_sampler_types(tmp_path):
+    """dist_data_loader creates a Subset restricted to split_indices.
+
+    - WeightedRandomSampler when split_weights is set
+    - SubsetRandomSampler when shuffle=True and no weights
+    - No explicit sampler (sequential) when shuffle=False and no weights
+    """
+    from torch.utils.data import SubsetRandomSampler, WeightedRandomSampler
+
+    from hyrax.pytorch_ignite import dist_data_loader
+    from hyrax.splitting_utils import create_splits
+
+    size = 60
+    shared_loc = str(tmp_path / "shared_data")
+    labels = ["A", "B"]
+
+    # ── weighted sampler ──────────────────────────────────────────────────
+    split_cfg = {"train": 0.7, "validate": 0.3, "rng_seed": 11}
+    balance_cfg = {"field": "label", "groups": ["train"], "distribution": {}}
+    config_w = _make_config(
+        size=size,
+        provided_labels=labels,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        balance=balance_cfg,
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets_w = _make_providers(config_w, ("train", "validate"))
+    create_splits(config_w, datasets_w)
+
+    loader_weighted = dist_data_loader(datasets_w["train"], config_w, shuffle=True)
+    assert isinstance(loader_weighted.sampler, WeightedRandomSampler), (
+        "Expected WeightedRandomSampler when split_weights is set"
+    )
+
+    # ── SubsetRandomSampler (shuffle, no weights) ─────────────────────────
+    config_s = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split={"train": 0.8, "rng_seed": 12},
+        data_location=shared_loc,
+        groups=("train",),
+    )
+    datasets_s = _make_providers(config_s, ("train",))
+    create_splits(config_s, datasets_s)
+
+    loader_shuffle = dist_data_loader(datasets_s["train"], config_s, shuffle=True)
+    assert isinstance(loader_shuffle.sampler, SubsetRandomSampler), (
+        "Expected SubsetRandomSampler when shuffle=True and no weights"
+    )
+
+    # ── sequential (no sampler) ───────────────────────────────────────────
+    config_seq = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split={"train": 0.8, "rng_seed": 13},
+        data_location=shared_loc,
+        groups=("train",),
+    )
+    datasets_seq = _make_providers(config_seq, ("train",))
+    create_splits(config_seq, datasets_seq)
+
+    loader_seq = dist_data_loader(datasets_seq["train"], config_seq, shuffle=False)
+    # No sampler → DataLoader uses its own default SequentialSampler over the Subset
+    assert not isinstance(loader_seq.sampler, (WeightedRandomSampler, SubsetRandomSampler)), (
+        "Expected no weighted/random sampler when shuffle=False and no weights"
+    )
+
+    # Verify all loaders reference a Subset dataset
+    from torch.utils.data import Subset
+
+    for loader in (loader_weighted, loader_shuffle, loader_seq):
+        assert isinstance(loader.dataset, Subset), "DataLoader should wrap a Subset"
 
 
 # ---------------------------------------------------------------------------

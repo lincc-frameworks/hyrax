@@ -87,6 +87,20 @@ class Verb(ABC):  # noqa: B024
                 f"Available groups: {sorted(data_request.keys())}."
             )
 
+        # Run Pydantic structural validation so that a structurally invalid
+        # data_request injected after set_config is caught at verb-instantiation
+        # time rather than silently skipped.
+        from pydantic import ValidationError
+
+        from hyrax.config_schemas.data_request import DataRequestDefinition
+
+        try:
+            DataRequestDefinition.model_validate(data_request)
+        except ValidationError as exc:
+            raise RuntimeError(
+                f"Invalid data_request configuration for {type(self).__name__}: {exc}"
+            ) from exc
+
 
 # Verbs with no class are assumed to have a function in hyrax.py which
 # performs their function. All other verbs should be defined by named classes
