@@ -176,6 +176,36 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     return retval
 
 
+def setup_model_from_sample(config: dict, sample_batch: dict) -> torch.nn.Module:
+    """Create a model from a pre-formatted batch dict instead of a DataProvider.
+
+    Like :func:`setup_model` but accepts a batch dict directly, bypassing the
+    DataLoader/DataProvider pipeline.  Used by
+    :class:`~hyrax.verbs.infer_stream.InferStream` to pre-flight model
+    architecture without a dataset.
+
+    Parameters
+    ----------
+    config : dict
+        The runtime configuration.
+    sample_batch : dict
+        A representative batch with the same structure as batches that will be
+        processed later (e.g. ``{"object_id": [...], "data": {...}}``).
+
+    Returns
+    -------
+    torch.nn.Module
+        An instance of the model class specified in the configuration.
+    """
+    from hyrax.trace import reset_trace
+
+    model_cls = fetch_model_class(config)
+    prepared_sample = model_cls.prepare_inputs(sample_batch)
+    retval = model_cls(config=config, data_sample=prepared_sample)
+    reset_trace()
+    return retval
+
+
 def dist_data_loader(
     dataset: Dataset,
     config: dict,
@@ -374,11 +404,22 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     return func(batch)
 
 
-def _create_process_func(funcname, device, model, config):
+def create_process_func(funcname, device, model, config):
+    """Build the per-batch processing function used by the Ignite engine loop.
+
+    Returns a partial of ``_inner_loop`` with ``func``, ``prepare_inputs``,
+    ``device``, and ``config`` already bound.  The remaining signature is
+    ``(engine, batch)`` — pass ``None`` for *engine* when calling outside an
+    Ignite engine (e.g. from :class:`~hyrax.verbs.infer_stream.InferStreamSession`).
+    """
     inner_step = extract_model_method(model, funcname)
     prepare_inputs = extract_model_method(model, "prepare_inputs")
     inner_loop = functools.partial(_inner_loop, inner_step, prepare_inputs, device, config)
     return inner_loop
+
+
+# Keep the old private name as an alias so any external callers are unaffected.
+_create_process_func = create_process_func
 
 
 def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, config: dict) -> Engine:
@@ -401,7 +442,7 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
         The runtime config in use
     """
     torch.set_default_device(device.type)
-    return Engine(_create_process_func(funcname, device, model, config))
+    return Engine(create_process_func(funcname, device, model, config))
 
 
 def extract_model_method(model, method_name):
