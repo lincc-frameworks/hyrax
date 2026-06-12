@@ -82,6 +82,9 @@ class Infer(Verb):
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}\n{dataset}"
         )
 
+        for provider in dataset.values():
+            provider.on_epoch_start("infer")
+
         data_loader = dist_data_loader(dataset["infer"], config)
 
         load_model_weights(config, model, "infer")
