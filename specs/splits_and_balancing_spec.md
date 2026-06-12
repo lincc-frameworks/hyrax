@@ -195,6 +195,55 @@ Semantics:
 > `field = ""` both mean "unset". Code must treat falsy `field`/`groups`/
 > `distribution` as "not configured".
 
+### 4.3 `[label]` table
+
+```toml
+[label]
+# Optional. Maps human-readable string aliases to the raw values
+# returned by get_<balance.field>.  Needed when get_<balance.field>
+# returns non-string values (e.g. integers), because TOML table keys
+# must be strings while balance.distribution keys must match what
+# get_<balance.field> actually returns.
+#
+# Example:
+#   cat  = 0
+#   dog  = 1
+#   bird = 2
+```
+
+Semantics:
+
+- **Optional.** When present and `balance.distribution` is non-empty, every
+  key in `balance.distribution` is resolved through `[label]` to obtain the
+  raw value that `get_<balance.field>` returns for that class. When absent,
+  `balance.distribution` keys are assumed to match directly whatever
+  `get_<balance.field>` returns (typically strings).
+- **`[label]` is only consulted for `balance.distribution` key resolution.**
+  It does not affect stratification when `distribution` is empty, and it does
+  not change how class names appear in logs or `__repr__`.
+- **Uniqueness.** `[label]` values must be unique — no two aliases may map to
+  the same raw value; else raise `RuntimeError` at validation.
+- **Coverage.** All keys in `balance.distribution` must appear in `[label]`
+  (when `[label]` is non-empty); else raise `RuntimeError`.
+- `[label]` is a `DYNAMIC_KEY_TABLE` (§6.3) — its child keys are user-defined
+  and intentionally have no entries in `hyrax_default_config.toml`.
+
+**Runtime translation** (when `[label]` is present and `balance.distribution`
+is non-empty):
+
+1. Build `name_to_raw = config["label"]` and the inverse
+   `raw_to_name = {v: k for k, v in name_to_raw.items()}`.
+2. After the full dataset scan that builds
+   `class_inds: {raw_value: list[int]}`, re-key it:
+   `class_inds = {raw_to_name[rv]: inds for rv, inds in class_inds.items()}`.
+   If a raw value observed in the dataset is absent from `raw_to_name`, raise
+   `RuntimeError` (every raw value must be covered by a label alias).
+3. `validate_distribution_labels` (§7.2) then operates entirely in string
+   alias space — both `observed_labels` (now the alias keys) and
+   `distribution` keys are strings.
+4. The weight formula (§5) is computed against the re-keyed `class_inds`, so
+   `count_c` and `target_c` are looked up by alias string.
+
 ---
 
 ## 5. Weighting model (precise formulas)
@@ -307,13 +356,15 @@ to skip the "no default defined" warning for child keys of dynamic tables:
 ```python
 # Tables whose *child keys* are user-defined (group names, class labels) and so
 # legitimately have no entry in the default config.
-DYNAMIC_KEY_TABLES = ("split", "distribution")  # 'distribution' nests under 'balance'
+DYNAMIC_KEY_TABLES = ("split", "distribution", "label")
+# 'distribution' nests under 'balance'; 'label' is top-level.
 ```
 
 When recursing into a table whose name is in `DYNAMIC_KEY_TABLES`, do not warn on
 unknown children. This is purely cosmetic (the current code only warns, never
 errors), so it may be deferred, but is recommended to keep logs clean for
-`balance.distribution` (arbitrary labels) and non-standard split groups.
+`balance.distribution` (arbitrary fractions), `[label]` (arbitrary string aliases),
+and non-standard split groups.
 
 ---
 
@@ -382,9 +433,18 @@ knowable from the config and dataset classes alone, before any data is read:
 `groups ⊆ data_request` (warn on extras); `distribution` values each in
 `(0.0, 1.0]` and summing to exactly 1.0.
 
+When `[label]` is non-empty, `validate_balance_config` also enforces these
+**label-table pre-scan checks**:
+
+- `[label]` values are unique (no two aliases map to the same raw value);
+  else raise `RuntimeError`.
+- Every key in `balance.distribution` appears in `[label]`; else raise
+  `RuntimeError`.
+
 The **label-level** checks need the set of observed class labels and therefore
 can only run **after** the full dataset scan. They live in a separate helper,
-called from the stratified branch of §7.3 once `class_inds` has been built:
+called from the stratified branch of §7.3 once `class_inds` has been built
+and (if `[label]` is present) re-keyed to alias strings (§4.3):
 
 ```python
 def validate_distribution_labels(distribution: dict, observed_labels: set) -> None
@@ -394,6 +454,13 @@ def validate_distribution_labels(distribution: dict, observed_labels: set) -> No
 - An observed label missing from a non-empty `distribution` ⇒ **warn** and
   treat its target as 0 — samples of that class get weight 0 (§5).
 - No-op when `distribution` is empty.
+
+> When `[label]` is present, `observed_labels` is the set of **alias strings**
+> (the re-keyed `class_inds` keys from §4.3 step 2), so
+> `validate_distribution_labels` operates entirely in string space with no
+> awareness of `[label]` itself. When `[label]` is absent, `get_<field>` is
+> assumed to return values that match `balance.distribution` keys directly
+> (typically strings).
 
 ### 7.3 Core split computation
 
@@ -729,6 +796,14 @@ New `tests/hyrax/test_splitting_utils.py` (fast, using `HyraxRandomDataset` whos
    **all** non-infer groups (§4.2 table); sum-to-1.0 violation ⇒ raise
    (pre-scan); unknown label ⇒ raise (post-scan, §7.2); missing label ⇒ warn +
    weight 0.
+6a. **`[label]` translation** — use a dataset whose `get_<field>` returns
+    integers (e.g. `0`, `1`, `2`); define `[label]` mapping string aliases to
+    those integers; set `balance.distribution` using the alias strings.
+    Verify: `class_inds` is re-keyed to aliases before weight computation;
+    weights are correct; `split_config.toml` round-trips `[label]`.
+    Error cases: a `balance.distribution` key absent from `[label]` ⇒ raise
+    (pre-scan); a dataset raw value not covered by `[label]` ⇒ raise
+    (post-scan); duplicate raw values in `[label]` ⇒ raise (pre-scan).
 7. **Paths input** — generate a split dir, then point `split.*` at the `.npz`
    files: loads without recompute; mixed float+path ⇒ raise; differing parent
    dirs ⇒ raise.
@@ -762,7 +837,8 @@ Run: `python -m pytest -m "not slow"`, then `ruff check/format` and
 
 **Modified**
 - `src/hyrax/hyrax_default_config.toml` — add `[split]` and `[balance]`
-  (+`[balance.distribution]`) tables with defaults.
+  (+`[balance.distribution]`) tables with defaults; add an empty `[label]`
+  table comment block so the key is discoverable in the default config.
 - `src/hyrax/pytorch_ignite.py` — simplify `setup_dataset`; remove
   `create_splits_from_fractions`; rework `dist_data_loader` (`Subset` + WRS,
   return the bare loader).
@@ -775,10 +851,11 @@ Run: `python -m pytest -m "not slow"`, then `ruff check/format` and
 - `src/hyrax/verbs/to_onnx.py` — loader unpack change only (§3 D8).
 - `src/hyrax/verbs/verb_registry.py` — `validate_data_request` no longer calls
   the removed `validate_cross_group` split path.
-- `src/hyrax/config_utils.py` — `DYNAMIC_KEY_TABLES` (optional warning
-  suppression).
+- `src/hyrax/config_utils.py` — `DYNAMIC_KEY_TABLES` extended to include
+  `"label"` (optional warning suppression for dynamic child keys).
 - `tests/hyrax/test_config_migrations.py` — migration 003 tests.
-- `docs/dataset_splits.rst` — document `[split]`/`[balance]` and `create_splits`.
+- `docs/dataset_splits.rst` — document `[split]`/`[balance]`/`[label]` and
+  `create_splits`.
 
 ---
 
