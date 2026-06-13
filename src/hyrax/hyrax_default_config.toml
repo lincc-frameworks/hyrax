@@ -391,7 +391,7 @@ split = "infer"
 
 [vector_db]
 # The type of vector db to use. Use "false" to disable vector database.
-name = "chromadb"
+name = "lance"
 
 # The directory where the vector database will be stored. Use "false" to create
 # a new vector database in a timestamped directory. Otherwise set to a path.
@@ -416,6 +416,21 @@ vector_size_warning = 10000
 # The number of elements in the vectors that will be stored in the vector database.
 # This must be the same as the size of the vectors produced by the model.
 vector_size = 64
+
+
+[vector_db.lance]
+# Number of IVF partitions for the HNSW index. Higher values create smaller
+# partitions (e.g. 256 faster search, slower index creation). Set to "false" to
+# let Lance choose automatically.
+num_partitions = false
+
+# Number of PQ subvectors for quantization. Must divide the vector dimension
+# evenly. Higher values improve recall at the cost of a larger index. Set to
+# "false" to let Lance choose automatically.
+num_sub_vectors = false
+
+# Distance metric for the HNSW index. Supported values: "L2", "cosine".
+metric = "L2"
 
 
 [results]

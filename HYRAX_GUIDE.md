@@ -134,7 +134,7 @@ src/hyrax/models/       Model definitions and MODEL_REGISTRY
 src/hyrax/datasets/    Dataset implementations and DATASET_REGISTRY
 src/hyrax/verbs/        CLI verb implementations and VERB_REGISTRY
 src/hyrax/config_schemas/ Pydantic schemas (experimental, data_request only)
-src/hyrax/vector_dbs/   ChromaDB / Qdrant integrations
+src/hyrax/vector_dbs/   Lance / ChromaDB / Qdrant integrations
 src/hyrax/downloadCutout/ Cutout downloading utilities
 src/hyrax_cli/          CLI entry point (main.py)
 tests/hyrax/            Test suite
@@ -249,7 +249,7 @@ High-level pipeline:
 4. **Infer** — run a trained model over a dataset; save latent representations.
 5. **UMAP** — reduce dimensionality of latent vectors for visualization.
 6. **Visualize** — interactive exploration in Jupyter (holoviews / bokeh).
-7. **Vector DB** — store and query latent vectors (ChromaDB or Qdrant).
+7. **Vector DB** — store and query latent vectors (Lance, ChromaDB, or Qdrant).
 
 Each verb that produces output creates its own timestamped results directory.
 
@@ -305,9 +305,10 @@ Each verb that produces output creates its own timestamped results directory.
 
 ### Working with Vector Databases
 - Implementations in `src/hyrax/vector_dbs/`
-- Supported: ChromaDB, Qdrant
+- Supported: Lance (recommended), ChromaDB, Qdrant
 - Commands: `save_to_database`, `database_connection`
 - Configuration in `[vector_db]` section
+- **Lance**: indexes the existing inference results table in-place; set `vector_db_dir` to the same path as `infer_results_dir`
 
 ## Notebook Development
 - Jupyter integration via `holoviews`, `bokeh` for visualizations
