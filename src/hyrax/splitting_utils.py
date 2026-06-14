@@ -38,7 +38,7 @@ def _shuffle(indices: list[int], config: dict) -> None:
     When ``split.rng_seed`` is empty, reproduces the legacy global-seed shuffle
     used by ``create_splits_from_fractions`` bit-for-bit.
     """
-    rng_seed = config.get("split", {}).get("rng_seed", "")
+    rng_seed = config["split"]["rng_seed"]
     if not rng_seed:
         seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
         np.random.seed(seed)
@@ -100,7 +100,7 @@ def validate_split_config(config: dict, datasets: dict[str, DataProvider]) -> No
         On any violated constraint (mixed float/path, bad domain, shared-location
         sum > 1.0, paths not in same directory).
     """
-    split_cfg = config.get("split", {})
+    split_cfg = config["split"]
     group_values = {name: split_cfg.get(name, 1.0) for name in datasets}
 
     path_groups = [n for n, v in group_values.items() if _is_path_value(v)]
@@ -155,6 +155,11 @@ def validate_balance_config(config: dict, datasets: dict[str, DataProvider]) -> 
     RuntimeError
         If getter is missing, distribution is malformed, or distribution sum ≠ 1.0.
     """
+    balance_cfg = config["balance"]
+    field = balance_cfg["field"] if balance_cfg["field"] else None
+    balance_groups = balance_cfg["groups"]
+    distribution = balance_cfg["distribution"]
+
     if not field:
         if balance_groups or distribution:
             raise RuntimeError(
@@ -193,7 +198,7 @@ def validate_balance_config(config: dict, datasets: dict[str, DataProvider]) -> 
             )
 
     # [label] pre-scan checks (only consulted when both label table and distribution are present)
-    label_cfg = dict(config.get("label") or {})
+    label_cfg = config["label"]
     if label_cfg:
         raw_values = list(label_cfg.values())
         if len(raw_values) != len(set(str(v) for v in raw_values)):
@@ -244,11 +249,11 @@ def _compute_splits(config: dict, datasets: dict[str, DataProvider]) -> dict[str
     -------
     dict mapping group_name → {"indexes": np.ndarray[int64], "weights": np.ndarray[float64] | None}
     """
-    split_cfg = config.get("split", {})
-    balance_cfg = config.get("balance", {})
-    field = balance_cfg.get("field") or None
-    balance_groups_cfg = list(balance_cfg.get("groups") or [])
-    distribution = dict(balance_cfg.get("distribution") or {})
+    split_cfg = config["split"]
+    balance_cfg = config["balance"]
+    field = balance_cfg["field"] if balance_cfg["field"] else None
+    balance_groups_cfg = balance_cfg["groups"]
+    distribution = balance_cfg["distribution"]
 
     # Resolve groups_to_balance per spec §4.2 table
     if balance_groups_cfg:
