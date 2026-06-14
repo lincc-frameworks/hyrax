@@ -124,10 +124,14 @@ def validate_split_config(config: dict, datasets: dict[str, DataProvider]) -> No
                 "All split path files must share a common parent directory. "
                 f"Found multiple parents: {[str(p) for p in parents]}"
             )
+        for name in path_groups:
+            if not Path(str(split_cfg[name])).exists():
+                raise RuntimeError(f"split.{name} = {split_cfg[name]} does not exist.")
         return
 
     # All floats: validate domain
     for name in datasets:
+        # if `name` isn't in split_cfg, use full dataset
         raw = split_cfg.get(name, 1.0)
         frac = 1.0 if raw in ("", None, False) else float(raw)
         if not (0.0 < frac <= 1.0):
@@ -194,8 +198,8 @@ def validate_balance_config(config: dict, datasets: dict[str, DataProvider]) -> 
                 raise RuntimeError(
                     f"balance.distribution['{label}'] = {val!r} is not a valid float."
                 ) from err
-            if not (0.0 < fval <= 1.0):
-                raise RuntimeError(f"balance.distribution['{label}'] = {fval} is out of range (0.0, 1.0].")
+            if not (0.0 <= fval <= 1.0):
+                raise RuntimeError(f"balance.distribution['{label}'] = {fval} is out of range [0.0, 1.0].")
         total = sum(float(v) for v in distribution.values())
         if np.round(total, 5) != 1.0:
             raise RuntimeError(

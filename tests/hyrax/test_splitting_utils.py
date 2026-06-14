@@ -622,3 +622,134 @@ def test_create_splits_persist_round_trip(tmp_path):
         saved_cfg = tomlkit.parse(f.read())
     assert "split" in saved_cfg
     assert "data_request" in saved_cfg
+
+
+# ---------------------------------------------------------------------------
+# Test 11: Path-based split → non-existent file raises RuntimeError
+# ---------------------------------------------------------------------------
+
+
+def test_validate_split_config_path_not_found_raises(tmp_path):
+    """validate_split_config raises RuntimeError when a path-based split file does not exist."""
+    from hyrax.splitting_utils import validate_split_config
+
+    missing_path = str(tmp_path / "nonexistent_split.npz")
+    config = _make_config(
+        size=20,
+        tmp_path=tmp_path,
+        split={"train": missing_path},
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    with pytest.raises(RuntimeError, match="does not exist"):
+        validate_split_config(config, datasets)
+
+
+def test_validate_split_config_existing_path_does_not_raise(tmp_path):
+    """validate_split_config accepts a path-based split value when the file exists."""
+    from hyrax.splitting_utils import create_splits, persist_splits, validate_split_config
+
+    size = 20
+    config = _make_config(size=size, tmp_path=tmp_path, groups=("train",))
+    datasets = _make_providers(config, ("train",))
+
+    result = create_splits(config, datasets)
+    persist_splits(tmp_path, result, config)
+
+    train_npz = tmp_path / "train_split.npz"
+    assert train_npz.exists()
+
+    config2 = _make_config(size=size, tmp_path=tmp_path, split={"train": str(train_npz)}, groups=("train",))
+    datasets2 = _make_providers(config2, ("train",))
+
+    # Should not raise
+    validate_split_config(config2, datasets2)
+
+
+# ---------------------------------------------------------------------------
+# Test 12: distribution value of 0.0 is now valid (range changed to [0, 1])
+# ---------------------------------------------------------------------------
+
+
+def test_validate_balance_config_zero_distribution_value_is_valid(tmp_path):
+    """balance.distribution values of exactly 0.0 are accepted (range is [0.0, 1.0])."""
+    from hyrax.splitting_utils import validate_balance_config
+
+    labels = ["A", "B", "C"]
+    # Class C gets weight 0 — valid: intentionally excluded from sampling
+    balance_cfg = {"field": "label", "groups": [], "distribution": {"A": 0.7, "B": 0.3, "C": 0.0}}
+    config = _make_config(
+        size=90,
+        provided_labels=labels,
+        tmp_path=tmp_path,
+        balance=balance_cfg,
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    # Must not raise
+    validate_balance_config(config, datasets)
+
+
+def test_validate_balance_config_negative_distribution_value_raises(tmp_path):
+    """balance.distribution values below 0.0 are rejected."""
+    from hyrax.splitting_utils import validate_balance_config
+
+    labels = ["A", "B"]
+    balance_cfg = {"field": "label", "groups": [], "distribution": {"A": 1.1, "B": -0.1}}
+    config = _make_config(
+        size=60,
+        provided_labels=labels,
+        tmp_path=tmp_path,
+        balance=balance_cfg,
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    with pytest.raises(RuntimeError, match=r"out of range"):
+        validate_balance_config(config, datasets)
+
+
+def test_compute_weights_zero_distribution_gives_zero_weights(tmp_path):
+    """Samples whose label has distribution=0.0 receive weight 0.0.
+
+    A and B each target 50% of sampling; C targets 0%.  After create_splits
+    every C-labelled sample in the train split must have weight 0.0, while
+    every A- and B-labelled sample must have a positive weight.
+    """
+    from hyrax.splitting_utils import create_splits
+
+    labels = ["A", "B", "C"]
+    shared_loc = str(tmp_path / "shared_data")
+    split_cfg = {"train": 0.8, "validate": 0.2, "rng_seed": 42}
+    balance_cfg = {
+        "field": "label",
+        "groups": ["train"],
+        "distribution": {"A": 0.5, "B": 0.5, "C": 0.0},
+    }
+    config = _make_config(
+        size=90,
+        provided_labels=labels,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        balance=balance_cfg,
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+    result = create_splits(config, datasets)
+
+    train_indices = result["train"]["indexes"].tolist()
+    train_weights = result["train"]["weights"]
+    assert train_weights is not None
+
+    primary_ds = datasets["train"].prepped_datasets["data"]
+    for i, idx in enumerate(train_indices):
+        label = primary_ds.get_label(idx)
+        if label == "C":
+            assert train_weights[i] == 0.0, f"expected weight 0.0 for label C at dataset index {idx}"
+        else:
+            assert train_weights[i] > 0.0, (
+                f"expected positive weight for label {label!r} at dataset index {idx}"
+            )
