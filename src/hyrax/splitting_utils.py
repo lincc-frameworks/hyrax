@@ -124,7 +124,7 @@ def validate_split_config(config: dict, datasets: dict[str, DataProvider]) -> No
     # All floats: validate domain
     for name in datasets:
         raw = split_cfg.get(name, 1.0)
-        frac = float(raw) if raw else 1.0
+        frac = 1.0 if raw in ("", None, False) else float(raw)
         if not (0.0 < frac <= 1.0):
             raise RuntimeError(f"split.{name} = {frac} is out of range (0.0, 1.0].")
 
@@ -135,7 +135,8 @@ def validate_split_config(config: dict, datasets: dict[str, DataProvider]) -> No
             continue
         loc = provider.primary_data_location
         if loc:
-            frac = float(split_cfg.get(name, 1.0))
+            raw = split_cfg.get(name, 1.0)
+            frac = 1.0 if raw in ("", None, False) else float(raw)
             location_fracs.setdefault(loc, []).append(frac)
 
     for loc, fracs in location_fracs.items():
