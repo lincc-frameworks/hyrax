@@ -165,11 +165,16 @@ def test_create_splits_sum_exceeds_one_raises(tmp_path):
 
 
 def test_create_splits_stratified_proportions(tmp_path):
-    """With balance.field='label', each split should contain ~equal class proportions."""
+    """With balance.field='label', each split should contain ~equal class proportions.
+    Note that this unit test introduces random selection, and thus the assertions
+    are approximate (within 2% of the expected 1/3 proportion for each of 3 classes)
+    rather than exact. This generally seems to be fine, but a failure here may
+    indicate that the test needs to be re-run, or that the size of the dataset
+    should be increased to reduce variance."""
     from hyrax.splitting_utils import create_splits
 
     labels = ["A", "B", "C"]
-    size = 300
+    size = 10_000
     shared_loc = str(tmp_path / "shared_data")
     split_cfg = {"train": 0.6, "validate": 0.2, "test": 0.2, "rng_seed": 1}
     balance_cfg = {"field": "label", "groups": [], "distribution": {}}
@@ -201,8 +206,8 @@ def test_create_splits_stratified_proportions(tmp_path):
     val_fracs = class_fractions(result["validate"]["indexes"].tolist())
 
     for lbl in labels:
-        assert abs(train_fracs.get(lbl, 0) - 1 / 3) < 0.10, f"train class {lbl} proportion off"
-        assert abs(val_fracs.get(lbl, 0) - 1 / 3) < 0.10, f"validate class {lbl} proportion off"
+        assert abs(train_fracs.get(lbl, 0) - 1 / 3) < 0.02, f"train class {lbl} proportion off"
+        assert abs(val_fracs.get(lbl, 0) - 1 / 3) < 0.02, f"validate class {lbl} proportion off"
 
 
 # ---------------------------------------------------------------------------
