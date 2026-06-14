@@ -154,14 +154,12 @@ def validate_balance_config(config: dict, datasets: dict[str, DataProvider]) -> 
     RuntimeError
         If getter is missing, distribution is malformed, or distribution sum ≠ 1.0.
     """
-    balance_cfg = config.get("balance", {})
-    field = balance_cfg.get("field") or None
-    balance_groups = list(balance_cfg.get("groups") or [])
-    distribution = dict(balance_cfg.get("distribution") or {})
-
     if not field:
+        if balance_groups or distribution:
+            raise RuntimeError(
+                "balance.field must be set when balance.groups or balance.distribution are provided."
+            )
         return
-
     for group_name, provider in datasets.items():
         if group_name == "infer":
             continue
