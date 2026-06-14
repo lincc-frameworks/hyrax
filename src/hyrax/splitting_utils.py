@@ -24,10 +24,11 @@ def _is_path_value(val: Any) -> bool:
 
 
 def _resolve_seed(config: dict) -> int | None:
-    """Return the effective RNG seed, resolving '' to config['data_set']['seed']."""
-    rng_seed = config.get("split", {}).get("rng_seed", "")
+    """Return the effective RNG seed, resolving '' or false to
+    config['data_set']['seed']."""
+    rng_seed = config["split"]["rng_seed"] if config["split"]["rng_seed"] else None
     if not rng_seed:
-        raw = config.get("data_set", {}).get("seed")
+        raw = config["data_set"]["seed"]
         return raw if raw else None
     return rng_seed
 
@@ -38,7 +39,11 @@ def _shuffle(indices: list[int], config: dict) -> None:
     When ``split.rng_seed`` is empty, reproduces the legacy global-seed shuffle
     used by ``create_splits_from_fractions`` bit-for-bit.
     """
-    rng_seed = config["split"]["rng_seed"]
+    rng_seed = config["split"]["rng_seed"] if config["split"]["rng_seed"] else None
+    if isinstance(rng_seed, str):
+        raise RuntimeError(
+            f"split.rng_seed must be an integer (or false to use data_set.seed); got {rng_seed!r}."
+        )
     if not rng_seed:
         seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
         np.random.seed(seed)
@@ -308,6 +313,11 @@ def _compute_splits(config: dict, datasets: dict[str, DataProvider]) -> dict[str
 
         else:
             # Stratified: build class index map, then distribute per-class
+            logger.info(
+                f"Computing stratified or balanced splits for data_location '{_loc}' "
+                f"using balance.field '{field}'. This requires a full scan of "
+                "the dataset, which may take a while for large datasets."
+            )
             primary_ds = _primary_instance(first_provider)
             getter = getattr(primary_ds, f"get_{field}")
 
