@@ -39,17 +39,17 @@ def _shuffle(indices: list[int], config: dict) -> None:
     When ``split.rng_seed`` is empty, reproduces the legacy global-seed shuffle
     used by ``create_splits_from_fractions`` bit-for-bit.
     """
-    rng_seed = config["split"]["rng_seed"] if config["split"]["rng_seed"] else None
+    rng_seed = config["split"].get("rng_seed")
     if isinstance(rng_seed, str):
         raise RuntimeError(
             f"split.rng_seed must be an integer (or false to use data_set.seed); got {rng_seed!r}."
         )
-    if not rng_seed:
+    if rng_seed in ("", None, False):
         seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
         np.random.seed(seed)
         np.random.shuffle(indices)
     else:
-        np.random.default_rng(rng_seed).shuffle(indices)
+        np.random.default_rng(int(rng_seed)).shuffle(indices)
 
 
 def _primary_instance(provider: DataProvider) -> Any:
@@ -278,7 +278,8 @@ def _compute_splits(config: dict, datasets: dict[str, DataProvider]) -> dict[str
     if "infer" in datasets:
         provider = datasets["infer"]
         n_items = len(provider)
-        frac = float(split_cfg.get("infer", 1.0)) if not _is_path_value(split_cfg.get("infer")) else 1.0
+        raw = split_cfg.get("infer", 1.0)
+        frac = 1.0 if raw in ("", None, False) else float(raw)
         count = round(n_items * frac)
         result["infer"] = {
             "indexes": np.array(list(range(count)), dtype=np.int64),
@@ -295,7 +296,10 @@ def _compute_splits(config: dict, datasets: dict[str, DataProvider]) -> dict[str
     for _loc, loc_datasets in location_groups.items():
         first_provider = next(iter(loc_datasets.values()))
         n_items = len(first_provider)
-        fractions = {name: float(split_cfg.get(name, 1.0)) for name in loc_datasets}
+        fractions = {
+            name: (1.0 if split_cfg.get(name, 1.0) in ("", None, False) else float(split_cfg.get(name, 1.0)))
+            for name in loc_datasets
+        }
         total = sum(fractions.values())
         last_name = list(loc_datasets.keys())[-1]
 
@@ -555,12 +559,9 @@ def find_equivalent_split(config: dict, results_root: Path | None = None) -> dic
         if not equivalent:
             continue
 
-        paths: dict[str, Path] = {}
-        for group in config.get("data_request") or {}:
-            npz_path = split_dir / f"{group}_split.npz"
-            if npz_path.exists():
-                paths[group] = npz_path
-        if paths:
+        required_groups = set(config.get("data_request") or {})
+        paths = {g: split_dir / f"{g}_split.npz" for g in required_groups}
+        if required_groups and all(p.exists() for p in paths.values()):
             return paths
 
     return None

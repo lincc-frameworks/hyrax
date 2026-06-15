@@ -429,8 +429,7 @@ class DataProvider:
                 if self.primary_dataset == friendly_name and self.split_indices is not None:
                     repr_str += f"  Selected items: {len(self.split_indices)}"
                     if self.split_weights is not None:
-                        n_classes = len(set(self.split_weights))
-                        repr_str += f" (rebalanced, {n_classes} weight values)"
+                        repr_str += " (rebalanced)"
                     repr_str += "\n"
                 primary_id_field = data.get("primary_id_field")
                 if primary_id_field not in (None, False):
