@@ -17,6 +17,7 @@ if "LANCE_LOG" not in os.environ:
 import lancedb
 import numpy as np
 import pyarrow as pa
+import torch
 
 from .dataset_registry import HyraxDataset
 
@@ -62,51 +63,63 @@ class ResultDatasetWriter:
         data : list[np.ndarray]
             List of numpy arrays (tensors) to write
         """
-        if len(object_ids) != len(data):
-            raise ValueError("Length of object_ids must match length of data")
+        # Normalize data to dict format for uniform handling
+        if isinstance(data, (torch.Tensor, np.ndarray, list)):
+            data_dict = {"data": np.array(data)}
+        else:
+            # data_dict = data
+            data_dict = {key: np.array(val) for key, val in data.items()}
 
-        if len(data) == 0:
+        if len(object_ids) == 0:
             return
 
         # Convert data to numpy array for uniform handling
-        data_array = np.array(data)
-        first_tensor = data_array[0]
+        # data_array = np.array(data)
+        # first_tensor = data_array[0]
 
         # On first write, create the schema and table
         if self.schema is None:
-            self._create_schema(first_tensor)
+            self._create_schema(data_dict)
             self.db = lancedb.connect(str(self.lance_dir))
             # Create empty table with schema
             empty_data = pa.table(
                 {
                     "object_id": pa.array([], type=pa.string()),
-                    "data": pa.array([], type=self.schema.field("data").type),
+                    **{key: pa.array([], type=self.schema.field(key).type) for key in data_dict},
                 },
                 schema=self.schema,
             )
             self.table = self.db.create_table(TABLE_NAME, empty_data, mode="overwrite")
         else:
             # Validate that all tensors match the established schema
-            for i, tensor in enumerate(data):
-                if tensor.dtype != self.tensor_dtype:
-                    raise ValueError(
-                        f"Tensor at index {i} has dtype {tensor.dtype}, "
-                        f"but schema expects {self.tensor_dtype}"
-                    )
-                if tensor.shape != tuple(self.tensor_shape):
-                    raise ValueError(
-                        f"Tensor at index {i} has shape {tensor.shape}, "
-                        f"but schema expects {tuple(self.tensor_shape)}"
-                    )
+            for key, arr in data_dict.items():
+                for i, tensor in enumerate(arr):
+                    # make checking dtype cleaner
+                    if tensor.dtype != self.tensor_dtype[key]:
+                        raise ValueError(
+                            f"Tensor at index {i} has dtype {tensor.dtype}, "
+                            f"but schema expects {self.tensor_dtype[key]}"
+                        )
+                    if tensor.shape != tuple(self.tensor_shape[key]):
+                        raise ValueError(
+                            f"Tensor at index {i} has shape {tensor.shape}, "
+                            f"but schema expects {tuple(self.tensor_shape[key])}"
+                        )
 
         # Flatten tensors for storage
-        flattened_data = [tensor.flatten() for tensor in data]
-
-        # Create PyArrow record batch
+        # flattened_data = [tensor.flatten() for tensor in data]
         batch_data = {
             "object_id": pa.array([str(oid) for oid in object_ids], type=pa.string()),
-            "data": pa.array(flattened_data, type=self.schema.field("data").type),
         }
+        for key, arr in data_dict.items():
+            flattened = [tensor.flatten() for tensor in arr]
+            batch_data[key] = pa.array(flattened, type=self.schema.field(key).type)
+
+        # Create PyArrow record batch
+        # batch_data = {
+        #     "object_id": pa.array([str(oid) for oid in object_ids], type=pa.string()),
+        #     "data": pa.array(flattened_data, type=self.schema.field("data").type),
+        # }
 
         # Convert to PyArrow table and add to Lance
         arrow_table = pa.table(batch_data, schema=self.schema)
@@ -122,21 +135,30 @@ class ResultDatasetWriter:
             self.table.optimize()
             logger.info("Lance table optimization complete")
 
-    def _create_schema(self, sample_tensor: np.ndarray):
+    def _create_schema(self, sample_data: Union[dict[str, np.ndarray], np.ndarray]):
         """Create PyArrow schema with tensor metadata.
 
         Parameters
         ----------
-        sample_tensor : np.ndarray
-            Sample tensor to determine dtype and shape
+        sample_data : np.ndarray
+            Sample tensor or dict to determine dtype and shape
         """
+        # Normalize to dict format
+        # TODO: double check if this is stricly necessary
+        if isinstance(sample_data, dict):
+            data_dict = {key: arr[0] for key, arr in sample_data.items()}
+        else:
+            data_dict = {"data": sample_data}
+
         # Get dtype and shape from sample
-        self.tensor_dtype = sample_tensor.dtype
-        self.tensor_shape = list(sample_tensor.shape)
-        flattened_size = int(np.prod(self.tensor_shape))
+        self.tensor_dtype = {}
+        self.tensor_shape = {}
+        fields = [pa.field("object_id", pa.string())]
 
         # Map numpy dtype to PyArrow type
-        pa_type = pa.from_numpy_dtype(self.tensor_dtype)
+        # pa_type = pa.from_numpy_dtype(self.tensor_dtype)
+
+        metadata_dict = {}
 
         # Create schema with metadata
         metadata = {
@@ -144,17 +166,39 @@ class ResultDatasetWriter:
             b"tensor_dtype": str(self.tensor_dtype).encode("utf-8"),
         }
 
-        self.schema = pa.schema(
-            [
-                pa.field("object_id", pa.string()),
-                pa.field("data", pa.list_(pa_type, flattened_size)),
-            ],
-            metadata=metadata,
-        )
+        for key, sample_tensor in data_dict.items():
+            self.tensor_dtype[key] = sample_tensor.dtype
+            self.tensor_shape[key] = list(sample_tensor.shape)
+            flattened_size = int(np.prod(self.tensor_shape[key]))
 
-        logger.debug(
-            f"Created schema for tensors with shape {self.tensor_shape} and dtype {self.tensor_dtype}"
-        )
+            # Map numpy dtype to PyArrow type
+            pa_type = pa.from_numpy_dtype(self.tensor_dtype[key])
+
+            fields.append(pa.field(key, pa.list_(pa_type, flattened_size)))
+
+            # Store metadata for this field
+            metadata_dict[key] = {
+                "tensor_shape": self.tensor_shape[key],
+                "tensor_dtype": str(self.tensor_dtype[key]),
+            }
+        # Create schema with metadata
+        metadata = {k: json.dumps(v).encode("utf-8") for k, v in metadata_dict.items()}
+        self.schema = pa.schema(fields, metadata=metadata)
+
+        # self.schema = pa.schema(
+        #     [
+        #         pa.field("object_id", pa.string()),
+        #         pa.field("data", pa.list_(pa_type, flattened_size)),
+        #     ],
+        #     metadata=metadata,
+        # )
+
+        # logger.debug(
+        #     f"Created schema for tensors with shape {self.tensor_shape} and dtype {self.tensor_dtype}"
+        # )
+        logger.debug(f"Created schema with fields: {list(data_dict.keys())}")
+        for key in data_dict:
+            logger.debug(f"  {key}: shape {self.tensor_shape[key]}, dtype {self.tensor_dtype[key]}")
 
 
 class ResultDataset(HyraxDataset):
@@ -193,9 +237,21 @@ class ResultDataset(HyraxDataset):
         if schema_metadata is None:
             raise RuntimeError("Lance table schema is missing metadata")
 
-        # Decode tensor shape and dtype from metadata
-        self.tensor_shape = json.loads(schema_metadata[b"tensor_shape"].decode("utf-8"))
-        self.tensor_dtype = np.dtype(schema_metadata[b"tensor_dtype"].decode("utf-8"))
+        loaded_metadata = {k.decode("utf-8"): v.decode("utf-8") for k, v in schema_metadata.items()}
+
+        if "tensor_shape" in loaded_metadata and "tensor_dtype" in loaded_metadata:
+            # Backwards compatibility for old schema format with single tensor
+            loaded_metadata = {
+                "data": {
+                    "tensor_shape": json.loads(loaded_metadata["tensor_shape"]),
+                    "tensor_dtype": loaded_metadata["tensor_dtype"],
+                }
+            }
+        else:
+            loaded_metadata = {key: json.loads(value) for key, value in loaded_metadata.items()}
+
+        self.tensor_shape = {key: loaded_metadata[key]["tensor_shape"] for key in loaded_metadata}
+        self.tensor_dtype = {key: np.dtype(loaded_metadata[key]["tensor_dtype"]) for key in loaded_metadata}
 
         logger.debug(f"Opened Lance table with shape {self.tensor_shape} and dtype {self.tensor_dtype}")
 
@@ -239,18 +295,32 @@ class ResultDataset(HyraxDataset):
         # Use take for O(k) random access, where k is the number of indices.
         result = self.lance_dataset.take(idx)
 
-        # Extract data column and reshape; combine chunks if needed before accessing values buffer
-        data_column = result["data"]
-        if isinstance(data_column, pa.ChunkedArray):
-            data_column = data_column.combine_chunks()
-
-        flat_np = data_column.values.to_numpy(zero_copy_only=False)
-
-        # Reshape to original tensor shape
-        tensors = flat_np.reshape(-1, *self.tensor_shape).astype(self.tensor_dtype, copy=False)
+        # Extract data column and reshape
+        tensors = []
+        for i in range(len(idx)):
+            row_data = {}
+            for key in self.keys():
+                flat_data = result[key][i].as_py()
+                tensor = np.array(flat_data, dtype=self.tensor_dtype[key])
+                tensor = tensor.reshape(self.tensor_shape[key])
+                row_data[key] = tensor
+            tensors.append(row_data)
 
         # Return single tensor or array of tensors
         return tensors[0] if is_single else tensors
+
+    def get_combined_tensor(self, idx: int):
+        """Get a combined and flattened tensor if multiple fields are present,
+        by concatenating all the fields together.
+        """
+        row_data = self.__getitem__(idx)
+        if len(row_data) == 1:
+            return np.concatenate([row_data[key].flatten() for key in self.keys()], axis=-1)
+        else:
+            tensors = []
+            for row in row_data:
+                tensors.append(np.concatenate([row[key].flatten() for key in self.keys()], axis=-1))
+            return np.vstack(tensors)
 
     def __get_all__(self):
         """Get all data tensors in the dataset.
@@ -323,3 +393,7 @@ class ResultDataset(HyraxDataset):
         # Use scanner with projection to only read object_id column
         scanner = self.lance_dataset.scanner(columns=["object_id"])
         return [oid.as_py() for batch in scanner.to_batches() for oid in batch["object_id"]]
+
+    def keys(self) -> list[str]:
+        """Return the keys of the data tensors."""
+        return list(self.tensor_dtype.keys())

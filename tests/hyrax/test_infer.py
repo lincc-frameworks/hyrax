@@ -73,7 +73,7 @@ def test_infer_order(loopback_hyrax, train_shuffle):
 
         print(f"orig idx: {dataset_idx}, infer idx: {idx}")
         print(f"orig data: {dataset[dataset_idx]}, infer data: {inference_results[idx]}")
-        assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]))
+        assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]["data"]))
 
 
 def test_infer_split_fraction_preserves_underlying_dataset_order(loopback_hyrax):
@@ -100,7 +100,7 @@ def test_infer_split_fraction_preserves_underlying_dataset_order(loopback_hyrax)
     assert inference_results.ids() == expected_ids
 
     for idx, expected_output in enumerate(expected_outputs):
-        assert np.all(np.isclose(expected_output, inference_results[idx]))
+        assert np.all(np.isclose(expected_output, inference_results[idx]["data"]))
 
 
 def test_load_model_weights_updates_config_when_auto_detected(tmp_path):
