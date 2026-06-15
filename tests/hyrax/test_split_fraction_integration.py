@@ -118,6 +118,30 @@ class TestSplitConfigFlow:
         assert len(datasets["train"].split_indices) == 60
         assert len(datasets["validate"].split_indices) == 40
 
+    def test_three_way_split_assigns_indices(self, tmp_path):
+        """60/20/20 split assigns non-overlapping indices of the correct size to all three providers."""
+        from hyrax.splitting_utils import create_splits
+
+        split_cfg = {"train": 0.6, "validate": 0.2, "test": 0.2, "rng_seed": 10}
+        config = _make_config(str(tmp_path), split=split_cfg, size=100)
+        datasets = _make_providers(config, str(tmp_path), groups=("train", "validate", "test"))
+
+        create_splits(config, datasets)
+
+        assert datasets["train"].split_indices is not None
+        assert datasets["validate"].split_indices is not None
+        assert datasets["test"].split_indices is not None
+        assert len(datasets["train"].split_indices) == 60
+        assert len(datasets["validate"].split_indices) == 20
+        assert len(datasets["test"].split_indices) == 20
+
+        train_set = set(datasets["train"].split_indices)
+        val_set = set(datasets["validate"].split_indices)
+        test_set = set(datasets["test"].split_indices)
+        assert train_set.isdisjoint(val_set)
+        assert train_set.isdisjoint(test_set)
+        assert val_set.isdisjoint(test_set)
+
     def test_split_indices_are_non_overlapping(self, tmp_path):
         """No index appears in more than one split."""
         from hyrax.splitting_utils import create_splits
@@ -167,6 +191,23 @@ class TestSplitConfigFlow:
         from hyrax.splitting_utils import validate_split_config
 
         split_cfg = {"train": 0.7, "validate": 0.5}
+        config = _make_config(str(tmp_path), split=split_cfg, size=100)
+        datasets = _make_providers(config, str(tmp_path), groups=("train", "validate"))
+
+        with pytest.raises(RuntimeError, match="sum to"):
+            validate_split_config(config, datasets)
+
+    def test_error_when_split_fraction_missing_for_shared_location(self, tmp_path):
+        """Missing split fraction for one group at a shared location raises RuntimeError.
+
+        When a group has no entry in config['split'] it defaults to 1.0 (full dataset).
+        Combined with any explicit fraction from another group at the same location,
+        the sum exceeds 1.0 and validate_split_config must raise.
+        """
+        from hyrax.splitting_utils import validate_split_config
+
+        # validate has no split entry → defaults to 1.0; train=0.6 → sum=1.6
+        split_cfg = {"train": 0.6, "rng_seed": 1}
         config = _make_config(str(tmp_path), split=split_cfg, size=100)
         datasets = _make_providers(config, str(tmp_path), groups=("train", "validate"))
 

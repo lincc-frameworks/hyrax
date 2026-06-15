@@ -136,6 +136,117 @@ def test_create_splits_custom_fractions_non_overlapping_deterministic(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Test 2a: small dataset
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_small_dataset(tmp_path):
+    """create_splits works correctly on a very small dataset (5 items).
+
+    Verifies split indices are assigned, non-overlapping, within bounds, and
+    cover the whole dataset when fractions sum to 1.0.
+    """
+    from hyrax.splitting_utils import create_splits
+
+    size = 5
+    shared_loc = str(tmp_path / "shared_data")
+    split_cfg = {"train": 0.6, "validate": 0.4, "rng_seed": 1}
+    config = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+    result = create_splits(config, datasets)
+
+    train_idx = result["train"]["indexes"].tolist()
+    val_idx = result["validate"]["indexes"].tolist()
+
+    assert all(0 <= i < size for i in train_idx)
+    assert all(0 <= i < size for i in val_idx)
+    assert set(train_idx).isdisjoint(set(val_idx))
+    assert sorted(train_idx + val_idx) == list(range(size))
+
+
+# ---------------------------------------------------------------------------
+# Test 2b: clamping prevents overrun
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_clamping_prevents_overrun(tmp_path):
+    """A 50/50 split of a 3-item dataset never assigns more than 3 total indices.
+
+    round(3 × 0.5) = 2 due to banker's rounding.  Without the per-group clamp
+    ``min(round(n * frac), n - offset)`` and the last-group rule, both groups
+    would claim 2 indices each (total 4), overrunning the 3-item dataset.
+    """
+    from hyrax.splitting_utils import create_splits
+
+    size = 3
+    shared_loc = str(tmp_path / "shared_data")
+    split_cfg = {"train": 0.5, "validate": 0.5, "rng_seed": 1}
+    config = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+    result = create_splits(config, datasets)
+
+    train_idx = result["train"]["indexes"].tolist()
+    val_idx = result["validate"]["indexes"].tolist()
+
+    assert len(train_idx) + len(val_idx) <= size
+    assert set(train_idx).isdisjoint(set(val_idx))
+    assert all(0 <= i < size for i in train_idx + val_idx)
+
+
+# ---------------------------------------------------------------------------
+# Test 2c: rounding leftover indices assigned to last split
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_rounding_leftover_indices_assigned_to_last_split(tmp_path):
+    """When fractions sum to 1.0 but don't divide evenly, all leftover indices
+    go to the last split group so no items are lost.
+
+    10 items, train=0.33, validate=0.33, test=0.34:
+      round(3.3)=3, round(3.3)=3, last group gets 10−6=4 (not round(3.4)=3).
+    Without the last-group rule the total would be 9, silently dropping 1 item.
+    """
+    from hyrax.splitting_utils import create_splits
+
+    size = 10
+    shared_loc = str(tmp_path / "shared_data")
+    split_cfg = {"train": 0.33, "validate": 0.33, "test": 0.34, "rng_seed": 1}
+    config = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split=split_cfg,
+        data_location=shared_loc,
+        groups=("train", "validate", "test"),
+    )
+    datasets = _make_providers(config, ("train", "validate", "test"))
+    result = create_splits(config, datasets)
+
+    train_idx = result["train"]["indexes"].tolist()
+    val_idx = result["validate"]["indexes"].tolist()
+    test_idx = result["test"]["indexes"].tolist()
+
+    # Every index must be assigned exactly once
+    assert sorted(train_idx + val_idx + test_idx) == list(range(size))
+
+    # train and validate get their rounded share; test absorbs the leftover
+    assert len(train_idx) == 3
+    assert len(val_idx) == 3
+    assert len(test_idx) == 4
+
+
+# ---------------------------------------------------------------------------
 # Test 3: Σ > 1.0 on shared location → RuntimeError
 # ---------------------------------------------------------------------------
 
@@ -753,3 +864,113 @@ def test_compute_weights_zero_distribution_gives_zero_weights(tmp_path):
             assert train_weights[i] > 0.0, (
                 f"expected positive weight for label {label!r} at dataset index {idx}"
             )
+
+
+# ---------------------------------------------------------------------------
+# Test 13: split value range validation – (0.0, 1.0]
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fraction", [0.001, 0.5, 0.75, 0.99, 1.0])
+def test_validate_split_config_valid_fraction_passes(tmp_path, fraction):
+    """validate_split_config accepts any split value in (0.0, 1.0]."""
+    from hyrax.splitting_utils import validate_split_config
+
+    config = _make_config(
+        size=50,
+        tmp_path=tmp_path,
+        split={"train": fraction},
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    # Must not raise
+    validate_split_config(config, datasets)
+
+
+@pytest.mark.parametrize("fraction", [-1.0, -0.001, 1.001, 1.5, 2.0])
+def test_validate_split_config_out_of_range_raises(tmp_path, fraction):
+    """validate_split_config raises RuntimeError for split values outside (0.0, 1.0]."""
+    from hyrax.splitting_utils import validate_split_config
+
+    config = _make_config(
+        size=50,
+        tmp_path=tmp_path,
+        split={"train": fraction},
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    with pytest.raises(RuntimeError, match="out of range"):
+        validate_split_config(config, datasets)
+
+
+def test_validate_split_config_multiple_valid_groups_passes(tmp_path):
+    """validate_split_config accepts multiple groups when every value is in (0.0, 1.0]."""
+    from hyrax.splitting_utils import validate_split_config
+
+    shared_loc = str(tmp_path / "shared_data")
+    config = _make_config(
+        size=100,
+        tmp_path=tmp_path,
+        split={"train": 0.6, "validate": 0.2, "test": 0.2},
+        data_location=shared_loc,
+        groups=("train", "validate", "test"),
+    )
+    datasets = _make_providers(config, ("train", "validate", "test"))
+
+    # Must not raise
+    validate_split_config(config, datasets)
+
+
+def test_validate_split_config_different_location_excluded_from_sum(tmp_path):
+    """A group at a different data_location is not counted toward the shared-location sum.
+
+    train and validate share shared_loc with fractions summing to exactly 1.0.
+    test lives at a separate location with no explicit split (defaults to 1.0).
+    If the locations were not isolated, the combined total would be 2.0 and raise;
+    correct behaviour is to pass silently.
+    """
+    from hyrax.splitting_utils import validate_split_config
+
+    shared_loc = str(tmp_path / "shared_data")
+    other_loc = str(tmp_path / "other_data")
+
+    config = _make_config(
+        size=100,
+        tmp_path=tmp_path,
+        split={"train": 0.6, "validate": 0.4},
+        data_location=shared_loc,
+        groups=("train", "validate", "test"),
+    )
+    # Redirect the test group to a separate location
+    config["data_request"]["test"]["data"]["data_location"] = other_loc
+
+    datasets = _make_providers(config, ("train", "validate", "test"))
+
+    # Must not raise: shared_loc sum is 1.0; other_loc sum is 1.0 (independent)
+    validate_split_config(config, datasets)
+
+
+def test_validate_split_config_infer_excluded_from_sum(tmp_path):
+    """infer is excluded from the shared-location sum check.
+
+    train uses 0.8 of shared_loc; infer also points at shared_loc with its
+    default fraction of 1.0.  If infer were counted, the combined sum would
+    be 1.8 and raise.  Because infer is always treated as independent, only
+    train's 0.8 is summed and validate_split_config passes.
+    """
+    from hyrax.splitting_utils import validate_split_config
+
+    shared_loc = str(tmp_path / "shared_data")
+    config = _make_config(
+        size=100,
+        tmp_path=tmp_path,
+        split={"train": 0.8},
+        data_location=shared_loc,
+        groups=("train", "infer"),
+    )
+    datasets = _make_providers(config, ("train", "infer"))
+
+    # Must not raise
+    validate_split_config(config, datasets)
