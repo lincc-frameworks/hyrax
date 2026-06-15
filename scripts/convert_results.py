@@ -210,7 +210,6 @@ def verify(input_dir: Path, output_dir: Path) -> None:
                     raise RuntimeError(
                         f"Row {lance_idx}: object_id {obj_id!r} found in Lance but not in {batch_path.name}."
                     )
-                print(dataset[lance_idx])
                 lance_tensor = np.asarray(dataset[lance_idx]["data"])
                 numpy_tensor = np.asarray(id_to_tensor[obj_id])
                 tensors_match_bitwise = (

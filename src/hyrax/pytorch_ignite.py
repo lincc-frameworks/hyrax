@@ -982,9 +982,9 @@ def create_save_batch_callback(results_dir):
 
         # Ensure the batch results are on CPU and detached from the computation graph
         if isinstance(batch_results, dict):
-            batch_results = {k: v.detach().to("cpu") for k, v in batch_results.items()}
+            batch_results = {k: v.detach().to("cpu").to_numpy() for k, v in batch_results.items()}
         elif isinstance(batch_results, torch.Tensor):
-            batch_results = batch_results.detach().to("cpu")
+            batch_results = batch_results.detach().to("cpu").to_numpy()
         else:
             btype = type(batch_results)
             msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {btype}"
