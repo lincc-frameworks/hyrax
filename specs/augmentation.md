@@ -93,20 +93,19 @@ For the `train` verb, DataProvider's `on_epoch_start` will be called via an `Eve
 
 ## Dataset Caching interface:
 
-By default augmented data is not cached; however, we offer users a method to do row caching on augmented data points if they choose. The key dataset interface is:
+DataCache maintains two separate cache maps per dataset:
 
-`def row_cache_key(self, idx, rng_seed=None):`  
-   
-When a cache lookup happens, this function is called with the parameters that the relevant `get_<field_name>` and `augment_<field_name>` functions would receive, and its return value is used to provide a key for `DataCache`.
+* **Base cache** — keyed directly by `real_idx` (an int). Stores the result of `get_<field>` calls. No dataset method is called to produce the key; the index is used as-is.
+* **Augment cache** — keyed by the return value of `augment_cache_key`. Stores augmented results. Only populated when the dataset opts in.
 
-This function should return a `np.int64` with the desired cache key, or `None` if the relevant data should not be cached. The default implementation is:
+By default augmented data is not cached, which is the standard expectation in ML training where augmentations should produce different results each epoch. Dataset authors who want to cache augmented results (e.g., when augmentation is deterministic and expensive) can override:
 
-`def row_cache_key(self, idx, rng_seed=None):`  
-    `return idx if rng_seed is None else None`
+`def augment_cache_key(self, idx, rng_seed):`  
+    `return None`
 
-This replicates the existing hyrax behavior of only using the idx as a cache key, and not caching augmented data, and is the behavior of caching if the dataset author does not define `row_cache_key`.
+This method is only called when augmentation is active. It receives the dataset-local index and the `rng_seed` that was passed to `augment_<field>`. It should return an `np.int64` cache key, or `None` to skip caching augmented data.
 
-Note that cache key applies to the entire row, not just a particular row+field combination: For a row of data, there will be multiple dispatches to the various `augment_<field>` and `get_<field>` functions corresponding to the various fields in the data request on a cache miss. However, there are only a handful of dispatches to `row_cache_key` for a given `data_request` corresponding to whatever cache keys are necessary for `resolve_data` to assemble the data dictionary with all fields filled out.
+On lookup, DataCache checks the augment cache first (when augmentation is active and an `rng_seed` is present), then falls back to the base cache. This two-level lookup means a base cache hit still avoids calling `get_<field>` even when the augmented result isn't cached — only `augment_<field>` re-runs.
 
 ## Example: Random Rotations
 
@@ -183,20 +182,20 @@ The following details reflect design decisions for the V1 implementation:
 
 **Join-map handling:** When augmentation is active on a secondary (joined) dataset, the dataset-local index from the join map will be passed to `augment_<field>` rather than the DataProvider-level index.
 
-**`row_cache_key` deferred:** The `row_cache_key` dataset interface described in the caching section above is deferred to a future version. V1 will not cache augmented results — the existing DataCache will cache `get_<field>` results as before, and augmentation will be applied post-cache.
+**Augment caching deferred to V3:** V1 does not cache augmented results — the existing DataCache caches `get_<field>` results as before, and augmentation is applied post-cache.
 
 ## V3 Cache Restructuring
 
 Implementation plan: `specs/augmentation-cache-plan.md`
 
-The following decisions were made for the `row_cache_key` implementation and associated DataCache restructuring:
+The following decisions were made for the `augment_cache_key` implementation and associated DataCache restructuring:
 
-**`row_cache_key` implemented:** The dataset interface described in the caching section above is implemented in V3. DataCache is restructured to use per-dataset cache maps keyed by the return value of each dataset's `row_cache_key` method. The default implementation preserves V1 behavior (cache base data by index, do not cache augmented data).
+**Two separate cache maps per dataset:** DataCache maintains a base cache (`dict[int, dict]`) keyed directly by `real_idx`, and an augment cache (`dict[np.int64, dict]`) keyed by `augment_cache_key`. The separate key-spaces make collisions impossible and eliminate method calls on the base-data hot path — the index is used directly as the cache key with no dispatch.
 
-**Per-dataset cache maps:** DataCache maintains a separate `dict[np.int64, dict]` per dataset (friendly name). This replaces the single flat map keyed by DataProvider index. Each dataset's `row_cache_key` determines the cache key independently, supporting different index mappings (joins) and per-dataset augmented-data caching decisions.
+**`augment_cache_key` opt-in:** The default `augment_cache_key` returns `None` (don't cache augmented data). This matches the ML convention that augmented data should vary across epochs. Dataset authors override this only when augmented results are deterministic and expensive to recompute. The method is only called when augmentation is active, so datasets without augmentation pay zero cost.
 
-**DataCache owns cache-key dispatch:** DataProvider calls `data_cache.try_fetch(friendly_name, real_idx, rng_seed)` and DataCache internally invokes the dataset's `row_cache_key`. When augmentation is active for a dataset, DataCache performs a two-level lookup: augmented key first (`row_cache_key(idx, rng_seed)`), then base key (`row_cache_key(idx, None)`). When augmentation is not active, only the base key is tried. DataCache knows at construction time which datasets have augmentation, so it skips the augmented-key lookup when unnecessary.
+**Per-dataset cache maps:** DataCache maintains separate base and augment caches per dataset (friendly name). This replaces the single flat map keyed by DataProvider index, supporting different index mappings (joins) and per-dataset augmented-data caching decisions.
 
 **Preload thread removed:** The `preload_cache` and `preload_threads` config keys and the associated `DataCache` preload thread are removed. The preload thread's strategy of sequentially iterating indices 0 through len does not match the access pattern of `WeightedRandomSampler` (used by the balanced sampling feature). Users needing I/O prefetching should use PyTorch DataLoader's `num_workers` and `prefetch_factor` parameters, which are already passed through from Hyrax's `[data_loader]` config and which naturally match whatever access pattern the sampler dictates.
 
-**Augmentation folded into per-dataset loop:** Instead of a separate augmentation sweep over the assembled data dict (the V1 approach), augmentation is applied per-dataset inside the cache lookup loop in `resolve_data`. This eliminates the second pass and allows cache hits on augmented data (when `row_cache_key` opts in) to skip both the `get_<field>` and `augment_<field>` calls entirely.
+**Augmentation folded into per-dataset loop:** Instead of a separate augmentation sweep over the assembled data dict (the V1 approach), augmentation is applied per-dataset inside the cache lookup loop in `resolve_data`. This eliminates the second pass and allows cache hits on augmented data (when `augment_cache_key` opts in) to skip both the `get_<field>` and `augment_<field>` calls entirely.

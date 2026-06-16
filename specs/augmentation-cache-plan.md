@@ -2,8 +2,9 @@
 
 ## Summary
 
-Restructure DataCache for per-dataset caching to support the `row_cache_key` dataset
-interface. Remove the preload thread (replaced by PyTorch DataLoader `num_workers`).
+Restructure DataCache for per-dataset caching with separate base and augment caches.
+Add the `augment_cache_key` dataset interface for opt-in caching of augmented data.
+Remove the preload thread (replaced by PyTorch DataLoader `num_workers`).
 Move cache-key dispatch logic into DataCache so DataProvider gets simpler, not more complex.
 
 ## Context
@@ -13,47 +14,52 @@ flat map keyed by DataProvider index. Augmentation runs post-cache and is never
 cached. This works when all datasets share the same index space, but breaks when:
 
 - Multiple datasets have different index mappings (joins).
-- A dataset wants to cache augmented results via `row_cache_key`.
+- A dataset wants to cache augmented results via `augment_cache_key`.
 - The preload thread assumes sequential 0..len access but the sampler
   (WeightedRandomSampler on `awo/splits-and-balancing-spec`) picks random indices.
 
-This plan implements the `row_cache_key` interface from `specs/augmentation.md`,
-restructures DataCache to use per-dataset cache maps, and removes the preload thread.
+This plan implements the `augment_cache_key` interface from `specs/augmentation.md`,
+restructures DataCache to use separate base and augment caches per dataset, and removes
+the preload thread.
 
 ---
 
-## Step 1: Add `row_cache_key` to HyraxDataset
+## Step 1: Add `augment_cache_key` to HyraxDataset
 
 **File:** `src/hyrax/datasets/dataset_registry.py`
 
 Add one method to `HyraxDataset`:
 
 ```python
-def row_cache_key(self, idx: int, rng_seed: np.int64 | None = None) -> np.int64 | None:
-    """Return a cache key for this row, or None to skip caching.
+def augment_cache_key(self, idx: int, rng_seed: np.int64) -> np.int64 | None:
+    """Return a cache key for augmented data, or None to skip caching.
+
+    Base (non-augmented) data is always cached by index — no method call
+    needed. This method is only called when augmentation is active, to
+    decide whether the augmented result should also be cached. The default
+    returns None (augmented data is regenerated each access), which is the
+    standard expectation in ML training.
 
     Parameters
     ----------
     idx : int
         The dataset-local index.
-    rng_seed : np.int64 | None
-        When augmentation is active, the rng_seed that would be passed to
-        ``augment_<field>``.  ``None`` for non-augmented access.
+    rng_seed : np.int64
+        The rng_seed passed to ``augment_<field>`` methods.
 
     Returns
     -------
     np.int64 | None
-        Cache key, or ``None`` to skip caching for this call.
+        Cache key, or ``None`` to skip caching augmented data.
     """
-    return np.int64(idx) if rng_seed is None else None
+    return None
 ```
 
 Add `import numpy as np` at the top of the file (it already imports `numpy.typing`,
 so add the numpy import next to it).
 
 **Tests:** `tests/hyrax/test_augmentation.py` (add to existing file)
-- Default `row_cache_key(5)` returns `np.int64(5)`.
-- Default `row_cache_key(5, rng_seed=np.int64(42))` returns `None`.
+- Default `augment_cache_key(5, rng_seed=np.int64(42))` returns `None`.
 - Subclass override is respected.
 
 ---
@@ -215,11 +221,11 @@ def __init__(
         The Hyrax configuration.
     datasets : dict[str, HyraxDataset]
         Mapping of friendly_name to dataset instance. Used to call
-        ``row_cache_key`` during cache operations.
+        ``augment_cache_key`` for augmented data caching.
     augment_active : dict[str, bool]
         Mapping of friendly_name to whether augmentation is active
-        for that dataset. When True, ``try_fetch`` will attempt a
-        two-level lookup (augmented key first, then base key).
+        for that dataset. When True, ``try_fetch`` will check the
+        augment cache before falling back to the base cache.
     """
     self._use_cache = config["data_set"]["use_cache"]
     self._datasets = datasets
@@ -229,10 +235,9 @@ def __init__(
     self._insert_count = 0
     self.logging_interval = 1000
 
-    # Per-dataset cache maps: friendly_name -> {cache_key: field_data_dict}
-    self._cache_maps: dict[str, dict[np.int64, dict]] = {
-        name: {} for name in datasets
-    }
+    # Separate base and augment caches per dataset
+    self._base_cache: dict[str, dict[int, dict]] = {name: {} for name in datasets}
+    self._augment_cache: dict[str, dict[np.int64, dict]] = {name: {} for name in datasets}
 ```
 
 The `"HyraxDataset"` string annotation avoids a circular import. Do NOT add
@@ -241,8 +246,9 @@ The `"HyraxDataset"` string annotation avoids a circular import. Do NOT add
 ### 3c: Remove old methods
 
 Delete entirely:
-- `_idx_check` — cache keys from `row_cache_key` are arbitrary `np.int64` values,
-  so bounds checking is not meaningful.
+- `_idx_check` — base cache keys are plain indices and augment cache keys from
+  `augment_cache_key` are arbitrary `np.int64` values, so bounds checking is not
+  meaningful.
 - `start_preload_thread`
 - `_preload_tensor_cache`
 - `_lazy_map_executor`
@@ -260,10 +266,8 @@ def try_fetch(
 ) -> tuple[dict | None, bool]:
     """Try to fetch cached data for a single dataset.
 
-    When augmentation is active for this dataset and ``rng_seed`` is not
-    None, this method first tries the augmented cache key. On miss, it
-    falls back to the base cache key. When augmentation is not active,
-    only the base key is tried.
+    When augmentation is active and ``rng_seed`` is provided, this checks
+    the augment cache first.  On miss it falls back to the base cache.
 
     Parameters
     ----------
@@ -284,68 +288,48 @@ def try_fetch(
     if not self._use_cache:
         return None, False
 
-    dataset = self._datasets[friendly_name]
-    cache_map = self._cache_maps[friendly_name]
-
-    # When augmentation is active, try augmented key first
+    # When augmentation is active, try augment cache first
     if self._augment_active.get(friendly_name, False) and rng_seed is not None:
-        aug_key = dataset.row_cache_key(real_idx, rng_seed)
+        aug_key = self._datasets[friendly_name].augment_cache_key(real_idx, rng_seed)
         if aug_key is not None:
-            cached = cache_map.get(aug_key)
+            cached = self._augment_cache[friendly_name].get(aug_key)
             if cached is not None:
                 return cached, True
 
-    # Try base key
-    base_key = dataset.row_cache_key(real_idx)
-    if base_key is not None:
-        cached = cache_map.get(base_key)
-        if cached is not None:
-            return cached, False
+    # Try base cache — keyed directly by index, no method call
+    cached = self._base_cache[friendly_name].get(real_idx)
+    if cached is not None:
+        return cached, False
 
     return None, False
 ```
 
-### 3e: New `insert` method
+### 3e: New `insert_base` and `insert_augmented` methods
 
-Replace `insert_into_cache(self, idx, data)` with:
+Replace `insert_into_cache(self, idx, data)` with two methods:
 
 ```python
-def insert(
-    self,
-    friendly_name: str,
-    real_idx: int,
-    rng_seed: np.int64 | None,
-    data: dict[str, Any],
+def insert_base(self, friendly_name: str, real_idx: int, data: dict[str, Any]):
+    """Insert base (non-augmented) field data. Key is real_idx directly."""
+    if not self._use_cache:
+        return
+    self._do_insert(self._base_cache[friendly_name], real_idx, data)
+
+def insert_augmented(
+    self, friendly_name: str, real_idx: int, rng_seed: np.int64, data: dict[str, Any],
 ):
-    """Insert field data into the cache for a single dataset.
+    """Insert augmented field data. Calls augment_cache_key; no-op if it returns None."""
+    if not self._use_cache:
+        return
+    cache_key = self._datasets[friendly_name].augment_cache_key(real_idx, rng_seed)
+    if cache_key is None:
+        return
+    self._do_insert(self._augment_cache[friendly_name], cache_key, data)
 
-    Calls ``row_cache_key`` to determine the cache key. If the key is
-    ``None``, this is a no-op (the dataset opted out of caching for
-    this call).
-
-    Parameters
-    ----------
-    friendly_name : str
-        The dataset friendly name.
-    real_idx : int
-        The dataset-local index.
-    rng_seed : np.int64 | None
-        The augmentation RNG seed, or None for base data.
-    data : dict[str, Any]
-        The field data dict to cache.
-    """
+def _do_insert(self, cache_map: dict, cache_key, data: dict[str, Any]):
     start_time = time.monotonic_ns()
     prefix = self.__class__.__name__
 
-    if not self._use_cache:
-        return
-
-    dataset = self._datasets[friendly_name]
-    cache_key = dataset.row_cache_key(real_idx, rng_seed)
-    if cache_key is None:
-        return
-
-    cache_map = self._cache_maps[friendly_name]
     self._insert_count += 1
     old_value = cache_map.get(cache_key)
     if old_value is not None:
@@ -367,7 +351,8 @@ The static `_data_size` method is unchanged — it works on any dict structure.
 
 Rewrite the class-level docstring to reflect per-dataset caching and the removal
 of preload. Remove all references to preloading threads. Mention that caching is
-now per-dataset and uses `row_cache_key` for key computation.
+now per-dataset with separate base (keyed by index) and augment (keyed by
+`augment_cache_key`) caches.
 
 ---
 
@@ -475,8 +460,6 @@ def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str | None]:
         # its truthiness (non-empty dict) indicates any augmentation is active.
         effective_rng = rng_seed if self.augment_enabled.get(friendly_name) else None
 
-        # Ask DataCache — it handles row_cache_key dispatch and the
-        # two-level lookup (augmented then base) internally.
         cached_data, already_augmented = self.data_cache.try_fetch(
             friendly_name, real_idx, effective_rng
         )
@@ -490,19 +473,19 @@ def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str | None]:
             augmented = self._apply_augmentation(
                 friendly_name, cached_data, real_idx, rng_seed
             )
-            self.data_cache.insert(friendly_name, real_idx, rng_seed, augmented)
+            self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
             result[friendly_name] = augmented
         else:
             # Full cache miss — call get_<field> methods.
             had_any_miss = True
             base_data = {field: getters[field](real_idx) for field in fields}
-            self.data_cache.insert(friendly_name, real_idx, None, base_data)
+            self.data_cache.insert_base(friendly_name, real_idx, base_data)
 
             if effective_rng is not None:
                 augmented = self._apply_augmentation(
                     friendly_name, base_data, real_idx, rng_seed
                 )
-                self.data_cache.insert(friendly_name, real_idx, rng_seed, augmented)
+                self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                 result[friendly_name] = augmented
             else:
                 result[friendly_name] = base_data
@@ -544,7 +527,7 @@ Key differences from current code:
 
 **File:** `tests/hyrax/test_augmentation.py` (add to existing file)
 
-### 5a: Test dataset with custom `row_cache_key`
+### 5a: Test dataset with custom `augment_cache_key`
 
 Create a test dataset that caches augmented results:
 
@@ -555,45 +538,41 @@ class CachingAugmentDataset(HyraxRandomDataset):
     def augment_image(self, data, idx, rng_seed):
         return -data
 
-    def row_cache_key(self, idx, rng_seed=None):
-        if rng_seed is None:
-            return np.int64(idx)
-        # Cache augmented data under a different key derived from idx + rng_seed.
+    def augment_cache_key(self, idx, rng_seed):
         return np.int64(idx * 1_000_000 + (rng_seed % 1_000_000))
 ```
 
 ### 5b: Test cases
 
 1. **Per-dataset cache hit/miss:** Two datasets in one DataProvider. Access an
-   index, verify both datasets' data is cached independently. Invalidate one
-   dataset's cache (by using a different `row_cache_key` subclass), verify the
-   other dataset still has a cache hit.
+   index, verify both datasets' data is cached independently.
 
-2. **Augmented data not cached by default:** With default `row_cache_key`,
+2. **Augmented data not cached by default:** With default `augment_cache_key`,
    verify that calling `resolve_data` twice with augmentation enabled produces
    different augmented results (different rng_seed each call) but the base
    data is cached (get methods called only once). Use a spy/counter on the
    `get_image` method to verify call count.
 
-3. **Augmented data cached with custom `row_cache_key`:** Test DataCache
+3. **Augmented data cached with custom `augment_cache_key`:** Test DataCache
    directly (not through DataProvider) so you can control the rng_seed.
    Construct a DataCache with a `CachingAugmentDataset` instance and
-   `augment_active=True`. Call `insert(fn, idx=0, rng_seed=np.int64(42), data)`
-   then `try_fetch(fn, idx=0, rng_seed=np.int64(42))` and verify
+   `augment_active=True`. Call `insert_base(fn, idx=0, data)` then
+   `insert_augmented(fn, idx=0, rng_seed=np.int64(42), data)` then
+   `try_fetch(fn, idx=0, rng_seed=np.int64(42))` and verify
    `(data, True)` is returned. Also verify that a different rng_seed
    (e.g. `np.int64(99)`) misses the augmented cache but still hits the
-   base cache if base data was also inserted.
+   base cache.
 
-4. **`row_cache_key` returning None skips cache:** Create a dataset whose
-   `row_cache_key` always returns `None`. Verify data is never cached
-   (get methods called every time).
+4. **`augment_cache_key` returning None skips augment cache:** Create a dataset
+   whose `augment_cache_key` always returns `None`. Verify augmented data is
+   never cached but base data is still cached by index.
 
 5. **Mixed datasets:** One dataset with augmentation, one without. Verify
    the non-augmented dataset caches normally (key = idx), and the augmented
    dataset caches base data but not augmented data (default behavior).
 
 6. **Join-map index translation:** With a joined secondary dataset, verify
-   that `row_cache_key` receives the dataset-local index (from the join map),
+   that the base cache uses the dataset-local index (from the join map),
    not the DataProvider-level index.
 
 ### 5c: Update existing tests
@@ -617,7 +596,7 @@ python -m pytest -m "not slow"
 
 ## Implementation Order
 
-1. **Step 1** — Add `row_cache_key` to HyraxDataset. No dependencies.
+1. **Step 1** — Add `augment_cache_key` to HyraxDataset. No dependencies.
 2. **Step 2** — Remove preload references outside DataCache (config, tests, docs).
    No dependency on Step 1.
 3. **Steps 3 + 4 together** — Rewrite DataCache and update DataProvider. These
@@ -637,24 +616,29 @@ Steps 1 and 2 have no dependency on each other and can be done in either order.
    pattern from the sampler. The preload thread's sequential 0..len strategy
    is incompatible with WeightedRandomSampler.
 
-2. **DataCache owns `row_cache_key` dispatch.** DataProvider calls
-   `data_cache.try_fetch(friendly_name, real_idx, rng_seed)` and DataCache
-   internally calls the dataset's `row_cache_key`. This keeps cache-key logic
-   out of DataProvider.
+2. **Separate base and augment caches.** Base data is cached by `real_idx`
+   directly (no method call). Augmented data uses `augment_cache_key`, which
+   defaults to `None` (don't cache). The separate key-spaces make collisions
+   impossible and eliminate method calls on the base-data hot path.
 
-3. **Two-level lookup only when needed.** DataCache knows at construction time
+3. **`augment_cache_key` is opt-in.** The default returns `None`, matching
+   the ML convention that augmented data should vary across epochs. Only
+   called when augmentation is active, so datasets without augmentation pay
+   zero cost.
+
+4. **Two-level lookup only when needed.** DataCache knows at construction time
    which datasets have augmentation enabled. For datasets without augmentation,
-   `try_fetch` does a single lookup (base key only). The augmented-key lookup
+   `try_fetch` does a single lookup (base cache only). The augment-cache lookup
    is only attempted when `augment_active[friendly_name]` is True and
    `rng_seed` is not None.
 
-4. **Per-dataset cache maps.** Each dataset gets its own `dict[np.int64, dict]`.
+5. **Per-dataset cache maps.** Each dataset gets its own base and augment dicts.
    This avoids key collisions between datasets and makes size tracking
    straightforward. The aggregate `_data_size_bytes` covers all maps.
 
-5. **`_idx_check` removed.** Cache keys from `row_cache_key` are arbitrary
-   `np.int64` values (could include rng_seed hash), so bounds checking against
-   dataset length is not meaningful.
+6. **`_idx_check` removed.** Base cache keys are plain indices and augment cache
+   keys are arbitrary `np.int64` values, so bounds checking against dataset
+   length is not meaningful.
 
 6. **Augmentation folded into per-dataset loop.** Instead of a separate
    augmentation sweep over the assembled data dict, augmentation is applied

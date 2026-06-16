@@ -922,24 +922,22 @@ class DataProvider:
             # Determine effective rng_seed for this dataset.
             effective_rng = rng_seed if self.augment_enabled.get(friendly_name) else None
 
-            # Ask DataCache — it handles row_cache_key dispatch and the
-            # two-level lookup (augmented then base) internally.
             cached_data, already_augmented = self.data_cache.try_fetch(friendly_name, real_idx, effective_rng)
 
             if cached_data is not None and (already_augmented or effective_rng is None):
                 result[friendly_name] = cached_data
             elif cached_data is not None:
                 augmented = self._apply_augmentation(friendly_name, cached_data, real_idx, rng_seed)
-                self.data_cache.insert(friendly_name, real_idx, rng_seed, augmented)
+                self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                 result[friendly_name] = augmented
             else:
                 had_any_miss = True
                 base_data = {field: getters[field](real_idx) for field in fields}
-                self.data_cache.insert(friendly_name, real_idx, None, base_data)
+                self.data_cache.insert_base(friendly_name, real_idx, base_data)
 
                 if effective_rng is not None:
                     augmented = self._apply_augmentation(friendly_name, base_data, real_idx, rng_seed)
-                    self.data_cache.insert(friendly_name, real_idx, rng_seed, augmented)
+                    self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                     result[friendly_name] = augmented
                 else:
                     result[friendly_name] = base_data

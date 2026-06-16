@@ -66,14 +66,12 @@ class CachingAugmentDataset(HyraxRandomDataset):
     def augment_image(self, data, idx, rng_seed):
         return -data
 
-    def row_cache_key(self, idx, rng_seed=None):
-        if rng_seed is None:
-            return np.int64(idx)
+    def augment_cache_key(self, idx, rng_seed):
         return np.int64(idx * 1_000_000 + (rng_seed % 1_000_000))
 
 
 class NoCacheDataset(HyraxRandomDataset):
-    """Dataset whose row_cache_key always returns None (never caches)."""
+    """Dataset whose augment_cache_key always returns None (never caches augmented data)."""
 
     def __init__(self, config, data_location):
         super().__init__(config, data_location)
@@ -83,7 +81,10 @@ class NoCacheDataset(HyraxRandomDataset):
         self.get_image_call_count += 1
         return super().get_image(idx)
 
-    def row_cache_key(self, idx, rng_seed=None):
+    def augment_image(self, data, idx, rng_seed):
+        return -data
+
+    def augment_cache_key(self, idx, rng_seed):
         return None
 
 
@@ -579,34 +580,25 @@ def test_on_epoch_start_called_during_test(tmp_path_factory):
 
 
 # ---------------------------------------------------------------------------
-# V3 Cache Restructuring: row_cache_key and per-dataset DataCache
+# V3 Cache Restructuring: augment_cache_key and per-dataset DataCache
 # ---------------------------------------------------------------------------
 
 
-def test_row_cache_key_default_returns_idx():
-    """Default row_cache_key(idx) returns np.int64(idx)."""
+def test_augment_cache_key_default_returns_none():
+    """Default augment_cache_key returns None (don't cache augmented data)."""
     d = MinimalHyraxDataset(config={})
-    result = d.row_cache_key(5)
-    assert result == np.int64(5)
-    assert isinstance(result, np.int64)
+    assert d.augment_cache_key(5, rng_seed=np.int64(42)) is None
 
 
-def test_row_cache_key_default_with_rng_seed_returns_none():
-    """Default row_cache_key(idx, rng_seed=...) returns None."""
-    d = MinimalHyraxDataset(config={})
-    assert d.row_cache_key(5, rng_seed=np.int64(42)) is None
-
-
-def test_row_cache_key_subclass_override():
-    """Subclass override of row_cache_key is respected."""
+def test_augment_cache_key_subclass_override():
+    """Subclass override of augment_cache_key is respected."""
     config = _make_hyrax_config()
     d = CachingAugmentDataset(config, data_location="/tmp")
-    assert d.row_cache_key(3) == np.int64(3)
-    assert d.row_cache_key(3, rng_seed=np.int64(42)) == np.int64(3 * 1_000_000 + 42)
+    assert d.augment_cache_key(3, rng_seed=np.int64(42)) == np.int64(3 * 1_000_000 + 42)
 
 
 def test_datacache_per_dataset_try_fetch_and_insert(tmp_path):
-    """DataCache per-dataset insert and try_fetch round-trip correctly."""
+    """DataCache per-dataset insert_base and try_fetch round-trip correctly."""
     from hyrax.datasets.data_cache import DataCache
 
     config = _make_hyrax_config()
@@ -615,7 +607,7 @@ def test_datacache_per_dataset_try_fetch_and_insert(tmp_path):
     cache = DataCache(config, datasets, augment_active={"data": False})
 
     data = {"image": np.array([1, 2, 3])}
-    cache.insert("data", real_idx=0, rng_seed=None, data=data)
+    cache.insert_base("data", real_idx=0, data=data)
 
     fetched, already_aug = cache.try_fetch("data", real_idx=0)
     assert fetched is data
@@ -634,8 +626,8 @@ def test_datacache_augmented_two_level_lookup(tmp_path):
     base_data = {"image": np.array([1, 2, 3])}
     aug_data = {"image": np.array([-1, -2, -3])}
 
-    cache.insert("data", real_idx=0, rng_seed=None, data=base_data)
-    cache.insert("data", real_idx=0, rng_seed=np.int64(42), data=aug_data)
+    cache.insert_base("data", real_idx=0, data=base_data)
+    cache.insert_augmented("data", real_idx=0, rng_seed=np.int64(42), data=aug_data)
 
     # Augmented key hit
     fetched, already_aug = cache.try_fetch("data", real_idx=0, rng_seed=np.int64(42))
@@ -648,22 +640,22 @@ def test_datacache_augmented_two_level_lookup(tmp_path):
     assert already_aug is False
 
 
-def test_datacache_row_cache_key_none_skips_cache(tmp_path):
-    """row_cache_key returning None causes data to never be cached."""
+def test_datacache_augment_cache_key_none_skips_augment_cache(tmp_path):
+    """augment_cache_key returning None means augmented data is not cached."""
     config = _make_hyrax_config()
-    dp = _make_dp(config, "NoCacheDataset", tmp_path, augment=False, fields=["image"])
+    dp = _make_dp(config, "NoCacheDataset", tmp_path, augment=True, fields=["image"])
     dataset_instance = dp.prepped_datasets["data"]
 
     dp.resolve_data(0)
     assert dataset_instance.get_image_call_count == 1
 
-    # get_image called again because nothing was cached
+    # Base data is cached so get_image is NOT called again, but augment re-runs
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 2
+    assert dataset_instance.get_image_call_count == 1
 
 
 def test_augmented_data_not_cached_by_default(tmp_path):
-    """With default row_cache_key, augmented data is not cached but base data is."""
+    """With default augment_cache_key, augmented data is not cached but base data is."""
     config = _make_hyrax_config()
     dp = _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=True, fields=["image"])
     dataset_instance = dp.prepped_datasets["data"]

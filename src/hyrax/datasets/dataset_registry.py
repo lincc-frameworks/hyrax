@@ -132,23 +132,31 @@ class HyraxDataset:
         """
         return [] if self._metadata_table is None else list(self._metadata_table.colnames)
 
-    def row_cache_key(self, idx: int, rng_seed: np.int64 | None = None) -> np.int64 | None:
-        """Return a cache key for this row, or None to skip caching.
+    def augment_cache_key(self, idx: int, rng_seed: np.int64) -> np.int64 | None:
+        """Return a cache key for augmented data, or None to skip caching.
+
+        Base (non-augmented) data is always cached by index. This method is
+        only called when augmentation is active, to decide whether the
+        augmented result should also be cached. The default returns ``None``
+        (augmented data is regenerated each access), which is the standard
+        expectation in ML training.
+
+        Override this when augmented results are deterministic and expensive
+        to recompute.
 
         Parameters
         ----------
         idx : int
             The dataset-local index.
-        rng_seed : np.int64 | None
-            When augmentation is active, the rng_seed that would be passed to
-            ``augment_<field>``.  ``None`` for non-augmented access.
+        rng_seed : np.int64
+            The rng_seed passed to ``augment_<field>`` methods.
 
         Returns
         -------
         np.int64 | None
-            Cache key, or ``None`` to skip caching for this call.
+            Cache key, or ``None`` to skip caching augmented data.
         """
-        return np.int64(idx) if rng_seed is None else None
+        return None
 
     def on_epoch_start(self, verb: str):
         """Called at the beginning of each epoch (or once for single-pass verbs).
