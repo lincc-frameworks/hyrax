@@ -220,7 +220,7 @@ def dist_data_loader(
             cpu_rng.manual_seed(seed)
         with torch.device("cpu"):
             sampler = WeightedRandomSampler(
-                weights=list(weights), num_samples=n, generator=cpu_rng, replacement=True
+                weights=weights, num_samples=n, generator=cpu_rng, replacement=True
             )
     elif shuffle:
         sampler = SubsetRandomSampler(range(n), generator=torch_rng)
