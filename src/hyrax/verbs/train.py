@@ -56,6 +56,7 @@ class Train(Verb):
             setup_dataset,
             setup_model,
         )
+        from hyrax.splitting_utils import create_splits
         from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
@@ -83,6 +84,7 @@ class Train(Verb):
             config,
             splits=Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS,
         )
+        create_splits(config, dataset, results_dir=results_dir, persist=True)
         model = setup_model(config, dataset["train"])
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
@@ -110,7 +112,7 @@ class Train(Verb):
 
         dataset_splits = [s for s in Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS if s in dataset]
 
-        data_loaders: dict[str, tuple] = {}
+        data_loaders = {}
         for split_name in dataset_splits:
             data_loaders[split_name] = dist_data_loader(
                 dataset[split_name],
@@ -118,8 +120,8 @@ class Train(Verb):
                 shuffle=split_name == "train" and train_shuffle,
             )
 
-        train_data_loader, _ = data_loaders["train"]
-        validation_data_loader, _ = data_loaders.get("validate", (None, None))
+        train_data_loader = data_loaders["train"]
+        validation_data_loader = data_loaders.get("validate")
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir)
