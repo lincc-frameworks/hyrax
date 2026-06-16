@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import copy
+import logging
 from pathlib import Path
 
 import numpy as np
@@ -974,3 +976,618 @@ def test_validate_split_config_infer_excluded_from_sum(tmp_path):
 
     # Must not raise
     validate_split_config(config, datasets)
+
+
+# ===========================================================================
+# Additional spec-coverage tests
+#
+# The tests below fill gaps between specs/splits_and_balancing_spec.md and the
+# scenarios covered above.  Each test cites the relevant spec section.
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# Test 14: validate_split_config — all-floats-or-all-paths and shared parent
+# (spec §4.1 "Mixing fractions and paths", §7.2, §15.7)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_split_config_mixed_float_and_path_raises(tmp_path):
+    """Mixing a path value and a float value across groups → RuntimeError.
+
+    The mixed check fires before any file-existence check, so the path need
+    not exist for this validation to trigger.
+    """
+    from hyrax.splitting_utils import validate_split_config
+
+    shared_loc = str(tmp_path / "shared_data")
+    config = _make_config(
+        size=50,
+        tmp_path=tmp_path,
+        split={"train": str(tmp_path / "train_split.npz"), "validate": 0.4},
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+
+    with pytest.raises(RuntimeError, match="all floats or all paths"):
+        validate_split_config(config, datasets)
+
+
+def test_validate_split_config_differing_parent_dirs_raises(tmp_path):
+    """Path-based split values that live in different parent dirs → RuntimeError."""
+    from hyrax.splitting_utils import validate_split_config
+
+    dir_a = tmp_path / "a"
+    dir_b = tmp_path / "b"
+    dir_a.mkdir()
+    dir_b.mkdir()
+
+    config = _make_config(
+        size=50,
+        tmp_path=tmp_path,
+        split={
+            "train": str(dir_a / "train_split.npz"),
+            "validate": str(dir_b / "validate_split.npz"),
+        },
+        data_location=str(tmp_path / "shared_data"),
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+
+    with pytest.raises(RuntimeError, match="common parent directory"):
+        validate_split_config(config, datasets)
+
+
+# ---------------------------------------------------------------------------
+# Test 15: validate_balance_config — pre-scan rules
+# (spec §4.2, §7.2)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_balance_config_missing_getter_raises(tmp_path):
+    """balance.field with no matching get_<field> on the primary dataset → raise."""
+    from hyrax.splitting_utils import validate_balance_config
+
+    config = _make_config(
+        size=30,
+        tmp_path=tmp_path,
+        balance={"field": "bogus", "groups": [], "distribution": {}},
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    with pytest.raises(RuntimeError, match="get_bogus"):
+        validate_balance_config(config, datasets)
+
+
+def test_validate_balance_config_field_unset_with_groups_raises(tmp_path):
+    """balance.groups/distribution set while balance.field is falsy → raise."""
+    from hyrax.splitting_utils import validate_balance_config
+
+    config = _make_config(
+        size=30,
+        tmp_path=tmp_path,
+        balance={"field": False, "groups": ["train"], "distribution": {}},
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    with pytest.raises(RuntimeError, match="balance.field must be set"):
+        validate_balance_config(config, datasets)
+
+
+def test_validate_balance_config_extra_group_warns(tmp_path, caplog):
+    """A balance.groups entry absent from data_request warns (not an error)."""
+    from hyrax.splitting_utils import validate_balance_config
+
+    config = _make_config(
+        size=30,
+        provided_labels=["A", "B"],
+        tmp_path=tmp_path,
+        balance={"field": "label", "groups": ["train", "ghost"], "distribution": {}},
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    with caplog.at_level(logging.WARNING, logger="hyrax.splitting_utils"):
+        validate_balance_config(config, datasets)  # must not raise
+
+    assert "ghost" in caplog.text
+    assert "not in data_request" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# Test 16: validate_distribution_labels — post-scan warn / no-op
+# (spec §7.2)
+# ---------------------------------------------------------------------------
+
+
+def test_validate_distribution_labels_missing_observed_label_warns(caplog):
+    """An observed class absent from a non-empty distribution warns (weight 0),
+    and does not raise."""
+    from hyrax.splitting_utils import validate_distribution_labels
+
+    with caplog.at_level(logging.WARNING, logger="hyrax.splitting_utils"):
+        validate_distribution_labels({"A": 1.0}, {"A", "B"})
+
+    assert "B" in caplog.text
+    assert "absent from balance.distribution" in caplog.text
+
+
+def test_validate_distribution_labels_empty_distribution_is_noop():
+    """An empty distribution imposes no constraints on observed labels."""
+    from hyrax.splitting_utils import validate_distribution_labels
+
+    # Must not raise even though labels are present.
+    validate_distribution_labels({}, {"A", "B"})
+
+
+# ---------------------------------------------------------------------------
+# Test 17: groups_to_balance table row 3 — distribution-only balances all
+# non-infer groups (spec §4.2 table, §15.6)
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_distribution_only_balances_all_non_infer_groups(tmp_path):
+    """balance.groups=[] + non-empty distribution → every non-infer group gets
+    weights, while ``infer`` is always left unbalanced (the third row of the
+    spec §4.2 table, which excludes ``infer``)."""
+    from hyrax.splitting_utils import create_splits
+
+    labels = ["A", "B"]
+    shared_loc = str(tmp_path / "shared_data")
+    config = _make_config(
+        size=100,
+        provided_labels=labels,
+        tmp_path=tmp_path,
+        split={"train": 0.6, "validate": 0.4, "rng_seed": 3},
+        balance={"field": "label", "groups": [], "distribution": {"A": 0.5, "B": 0.5}},
+        data_location=shared_loc,
+        groups=("train", "validate", "infer"),
+    )
+    datasets = _make_providers(config, ("train", "validate", "infer"))
+    result = create_splits(config, datasets)
+
+    assert result["train"]["weights"] is not None, "train should be balanced"
+    assert result["validate"]["weights"] is not None, "validate should be balanced too"
+    assert result["infer"]["weights"] is None, "infer must never be balanced"
+
+
+# ---------------------------------------------------------------------------
+# Test 18: Weight values — uniform == inverse frequency, custom == raw
+# target_c / count_c (spec §5, §15.5, §15.6)
+# ---------------------------------------------------------------------------
+
+
+def _split_label_counts(provider, indices):
+    """Return (labels_per_index, count_per_label) for a split using get_label."""
+    primary = provider.prepped_datasets["data"]
+    labels = [str(primary.get_label(i)) for i in indices]
+    counts: dict[str, int] = {}
+    for lbl in labels:
+        counts[lbl] = counts.get(lbl, 0) + 1
+    return labels, counts
+
+
+def test_create_splits_uniform_weights_are_inverse_frequency(tmp_path):
+    """Equal rebalance (empty distribution) → w_i = (1/K) / count_{class(i)}."""
+    from hyrax.splitting_utils import create_splits
+
+    labels = ["A", "B"]
+    shared_loc = str(tmp_path / "shared_data")
+    config = _make_config(
+        size=120,
+        provided_labels=labels,
+        tmp_path=tmp_path,
+        split={"train": 0.7, "validate": 0.3, "rng_seed": 4},
+        balance={"field": "label", "groups": ["train"], "distribution": {}},
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+    result = create_splits(config, datasets)
+
+    train_idx = result["train"]["indexes"].tolist()
+    weights = result["train"]["weights"]
+    labels_for, counts = _split_label_counts(datasets["train"], train_idx)
+
+    uniform = 1.0 / len(labels)  # K observed classes
+    for w, lbl in zip(weights, labels_for):
+        assert np.isclose(w, uniform / counts[lbl])
+
+
+def test_create_splits_custom_distribution_weight_values_are_raw(tmp_path):
+    """Custom distribution → w_i = target_{class(i)} / count_{class(i)} (raw,
+    not normalised)."""
+    from hyrax.splitting_utils import create_splits
+
+    labels = ["A", "B"]
+    shared_loc = str(tmp_path / "shared_data")
+    dist = {"A": 0.6, "B": 0.4}
+    config = _make_config(
+        size=120,
+        provided_labels=labels,
+        tmp_path=tmp_path,
+        split={"train": 0.8, "validate": 0.2, "rng_seed": 8},
+        balance={"field": "label", "groups": ["train"], "distribution": dist},
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+    result = create_splits(config, datasets)
+
+    train_idx = result["train"]["indexes"].tolist()
+    weights = result["train"]["weights"]
+    labels_for, counts = _split_label_counts(datasets["train"], train_idx)
+
+    for w, lbl in zip(weights, labels_for):
+        assert np.isclose(w, dist[lbl] / counts[lbl])
+
+
+# ---------------------------------------------------------------------------
+# Test 19: infer compute branch — first-N contiguous, unshuffled, weights None
+# (spec §4.1, §7.3)
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_infer_first_n_contiguous_no_shuffle(tmp_path):
+    """The infer group takes the first round(N*frac) indices with no shuffle."""
+    from hyrax.splitting_utils import create_splits
+
+    size = 20
+    config = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split={"infer": 0.5, "rng_seed": 1},
+        groups=("infer",),
+    )
+    datasets = _make_providers(config, ("infer",))
+    result = create_splits(config, datasets)
+
+    assert result["infer"]["indexes"].tolist() == list(range(10))
+    assert result["infer"]["weights"] is None
+
+
+# ---------------------------------------------------------------------------
+# Test 20: Σ < 1.0 on a shared location leaves a subset unused
+# (spec §4.1, §15.2)
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_partial_fractions_leave_subset_unused(tmp_path):
+    """train=0.5 + validate=0.3 (Σ=0.8) on a shared location assigns only 80% of
+    the items; the rest are left unused and the splits do not overlap."""
+    from hyrax.splitting_utils import create_splits
+
+    size = 100
+    shared_loc = str(tmp_path / "shared_data")
+    config = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split={"train": 0.5, "validate": 0.3, "rng_seed": 9},
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+    result = create_splits(config, datasets)
+
+    train_idx = result["train"]["indexes"].tolist()
+    val_idx = result["validate"]["indexes"].tolist()
+
+    assert len(train_idx) == 50
+    assert len(val_idx) == 30
+    assert set(train_idx).isdisjoint(set(val_idx))
+    assert len(set(train_idx) | set(val_idx)) == 80  # 20 items unused
+
+
+# ---------------------------------------------------------------------------
+# Test 21: distinct data_locations get independent fractions
+# (spec §4.1)
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_distinct_locations_independent_fractions(tmp_path):
+    """Two groups at different data_locations each take a fraction of their own
+    source, so a 0.6 fraction on each is valid even though the sum exceeds 1.0."""
+    from hyrax.splitting_utils import create_splits
+
+    size = 100
+    shared_loc = str(tmp_path / "shared_data")
+    other_loc = str(tmp_path / "other_data")
+    config = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split={"train": 0.6, "validate": 0.6, "rng_seed": 1},
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    # Redirect validate to its own source.
+    config["data_request"]["validate"]["data"]["data_location"] = other_loc
+    datasets = _make_providers(config, ("train", "validate"))
+
+    result = create_splits(config, datasets)
+
+    assert len(result["train"]["indexes"]) == 60
+    assert len(result["validate"]["indexes"]) == 60
+
+
+# ---------------------------------------------------------------------------
+# Test 22: configs_equivalent — identical and per-field change detection
+# (spec §7.5, §15.8)
+# ---------------------------------------------------------------------------
+
+
+def _equiv_base_config() -> dict:
+    """Minimal config dict carrying every field configs_equivalent inspects."""
+    return {
+        "data_set": {"seed": 42},
+        "split": {"train": 0.8, "validate": 0.2, "rng_seed": 5},
+        "balance": {"field": "label", "groups": ["train"], "distribution": {"A": 0.5, "B": 0.5}},
+        "data_request": {
+            "train": {
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "data_location": "/loc",
+                    "primary_id_field": "object_id",
+                }
+            },
+            "validate": {
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "data_location": "/loc",
+                    "primary_id_field": "object_id",
+                }
+            },
+        },
+    }
+
+
+def test_configs_equivalent_identical_configs():
+    """Two structurally identical configs are equivalent with no diffs."""
+    from hyrax.splitting_utils import configs_equivalent
+
+    base = _equiv_base_config()
+    equivalent, diffs = configs_equivalent(base, copy.deepcopy(base))
+
+    assert equivalent
+    assert diffs == []
+
+
+def _mut_field(c):
+    c["balance"]["field"] = "other"
+
+
+def _mut_distribution(c):
+    c["balance"]["distribution"] = {"A": 0.7, "B": 0.3}
+
+
+def _mut_rng_seed(c):
+    c["split"]["rng_seed"] = 999
+
+
+def _mut_dataset_class(c):
+    c["data_request"]["train"]["data"]["dataset_class"] = "Other"
+
+
+def _mut_data_location(c):
+    c["data_request"]["train"]["data"]["data_location"] = "/other"
+
+
+def _mut_fraction(c):
+    c["split"]["train"] = 0.5
+
+
+def _mut_groups(c):
+    c["balance"]["groups"] = ["validate"]
+
+
+@pytest.mark.parametrize(
+    "mutate, expected",
+    [
+        (_mut_field, "balance.field"),
+        (_mut_distribution, "balance.distribution"),
+        (_mut_rng_seed, "rng_seed"),
+        (_mut_dataset_class, "dataset_class"),
+        (_mut_data_location, "data_location"),
+        (_mut_fraction, "split.train"),
+        (_mut_groups, "balance.groups membership"),
+    ],
+)
+def test_configs_equivalent_detects_changes(mutate, expected):
+    """Each equivalency-relevant field, when changed, makes configs non-equivalent
+    and is named in the diff list (spec §7.5)."""
+    from hyrax.splitting_utils import configs_equivalent
+
+    base = _equiv_base_config()
+    cur = copy.deepcopy(base)
+    mutate(cur)
+
+    equivalent, diffs = configs_equivalent(base, cur)
+
+    assert not equivalent
+    assert any(expected in d for d in diffs), f"expected '{expected}' in diffs, got {diffs}"
+
+
+# ---------------------------------------------------------------------------
+# Test 23: path input with a differing sibling split_config.toml warns
+# (spec §3 D10, §7.1 step 2)
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_path_sibling_config_difference_warns(tmp_path, caplog):
+    """Supplying split files whose sibling split_config.toml differs from the
+    current config logs a warning but still loads the files."""
+    from hyrax.splitting_utils import create_splits, persist_splits
+
+    size = 40
+    config = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split={"train": 0.5, "rng_seed": 5},
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+    result = create_splits(config, datasets)
+    persist_splits(tmp_path, result, config)  # writes train_split.npz + split_config.toml
+
+    train_npz = tmp_path / "train_split.npz"
+
+    # Reload via path but with a different rng_seed → sibling config differs.
+    config2 = _make_config(
+        size=size,
+        tmp_path=tmp_path,
+        split={"train": str(train_npz), "rng_seed": 999},
+        groups=("train",),
+    )
+    datasets2 = _make_providers(config2, ("train",))
+
+    with caplog.at_level(logging.WARNING, logger="hyrax.splitting_utils"):
+        create_splits(config2, datasets2)
+
+    assert "different config" in caplog.text
+    assert datasets2["train"].split_indices is not None
+
+
+# ---------------------------------------------------------------------------
+# Test 24: load_split_files error paths (spec §7.4)
+# ---------------------------------------------------------------------------
+
+
+def test_load_split_files_missing_indexes_array_raises(tmp_path):
+    """An .npz without an 'indexes' array → RuntimeError."""
+    from hyrax.splitting_utils import load_split_files
+
+    bad_npz = tmp_path / "train_split.npz"
+    np.savez_compressed(bad_npz, other=np.array([1, 2, 3]))
+
+    with pytest.raises(RuntimeError, match="missing the required 'indexes'"):
+        load_split_files({"train": bad_npz})
+
+
+def test_load_split_files_missing_file_raises(tmp_path):
+    """A path that does not exist → RuntimeError."""
+    from hyrax.splitting_utils import load_split_files
+
+    with pytest.raises(RuntimeError, match="not found"):
+        load_split_files({"train": tmp_path / "does_not_exist.npz"})
+
+
+def test_load_split_files_round_trips_weights(tmp_path):
+    """A persisted balanced group reloads its weights as an ndarray."""
+    from hyrax.splitting_utils import create_splits, load_split_files
+
+    shared_loc = str(tmp_path / "shared_data")
+    config = _make_config(
+        size=80,
+        provided_labels=["A", "B"],
+        tmp_path=tmp_path,
+        split={"train": 0.75, "validate": 0.25, "rng_seed": 6},
+        balance={"field": "label", "groups": ["train"], "distribution": {}},
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+    create_splits(config, datasets, results_dir=tmp_path, persist=True)
+
+    loaded = load_split_files(
+        {
+            "train": tmp_path / "train_split.npz",
+            "validate": tmp_path / "validate_split.npz",
+        }
+    )
+
+    assert loaded["train"]["weights"] is not None
+    assert isinstance(loaded["train"]["weights"], np.ndarray)
+    assert loaded["validate"]["weights"] is None
+
+
+# ---------------------------------------------------------------------------
+# Test 25: rng_seed semantics (spec §4.1)
+# ---------------------------------------------------------------------------
+
+
+def test_create_splits_rng_seed_false_uses_data_set_seed(tmp_path):
+    """rng_seed=false falls back to config['data_set']['seed']: identical seeds
+    give identical splits; a different seed gives a different split."""
+    from hyrax.splitting_utils import create_splits
+
+    shared_loc = str(tmp_path / "shared_data")
+
+    def build(ds_seed):
+        cfg = _make_config(
+            size=100,
+            tmp_path=tmp_path,
+            split={"train": 0.6, "validate": 0.4, "rng_seed": False},
+            data_location=shared_loc,
+            groups=("train", "validate"),
+        )
+        cfg["data_set"]["seed"] = ds_seed
+        return cfg
+
+    cfg_a = build(42)
+    ds_a = _make_providers(cfg_a, ("train", "validate"))
+    create_splits(cfg_a, ds_a)
+
+    cfg_b = build(42)
+    ds_b = _make_providers(cfg_b, ("train", "validate"))
+    create_splits(cfg_b, ds_b)
+
+    # Same fallback seed → identical splits.
+    assert ds_a["train"].split_indices == ds_b["train"].split_indices
+
+    cfg_c = build(7)
+    ds_c = _make_providers(cfg_c, ("train", "validate"))
+    create_splits(cfg_c, ds_c)
+
+    # Different fallback seed → different shuffle.
+    assert ds_a["train"].split_indices != ds_c["train"].split_indices
+
+
+def test_create_splits_string_rng_seed_raises(tmp_path):
+    """A non-empty string rng_seed is rejected (must be an integer or false)."""
+    from hyrax.splitting_utils import create_splits
+
+    config = _make_config(
+        size=20,
+        tmp_path=tmp_path,
+        split={"train": 1.0, "rng_seed": "abc"},
+        groups=("train",),
+    )
+    datasets = _make_providers(config, ("train",))
+
+    with pytest.raises(RuntimeError, match="must be an integer"):
+        create_splits(config, datasets)
+
+
+# ---------------------------------------------------------------------------
+# Test 26: DataProvider.__repr__ reflects split selection and rebalancing
+# (spec §8)
+# ---------------------------------------------------------------------------
+
+
+def test_data_provider_repr_reflects_split_and_rebalance(tmp_path):
+    """After create_splits, __repr__ shows the selected-item count and marks a
+    rebalanced (weighted) group."""
+    from hyrax.splitting_utils import create_splits
+
+    shared_loc = str(tmp_path / "shared_data")
+    config = _make_config(
+        size=80,
+        provided_labels=["A", "B"],
+        tmp_path=tmp_path,
+        split={"train": 0.7, "validate": 0.3, "rng_seed": 2},
+        balance={"field": "label", "groups": ["train"], "distribution": {}},
+        data_location=shared_loc,
+        groups=("train", "validate"),
+    )
+    datasets = _make_providers(config, ("train", "validate"))
+    create_splits(config, datasets)
+
+    train_repr = repr(datasets["train"])
+    val_repr = repr(datasets["validate"])
+
+    assert "Selected items:" in train_repr
+    assert "(rebalanced)" in train_repr  # train carries weights
+    assert "Selected items:" in val_repr
+    assert "(rebalanced)" not in val_repr  # validate is unweighted

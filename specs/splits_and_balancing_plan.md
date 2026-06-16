@@ -16,7 +16,7 @@ Add new tables **after** the existing config sections:
 [split]
 # Group keys are absent by default; any group in data_request not listed
 # here defaults to fraction 1.0 (full dataset).
-rng_seed = ""
+rng_seed = false
 
 [balance]
 field  = ""
@@ -69,7 +69,7 @@ def validate_distribution_labels(distribution, observed_labels) -> None
 ```python
 def _shuffle(indices, config) -> None:  # in-place
 ```
-Reproduces exact current shuffle semantics when `rng_seed == ""` (global `np.random.seed` + `np.random.shuffle`). Uses `np.random.default_rng(rng_seed)` otherwise.
+Reproduces exact current shuffle semantics when `rng_seed` is falsy (`false`, the default → global `np.random.seed` + `np.random.shuffle`). Uses `np.random.default_rng(rng_seed)` for an integer seed; a non-empty string raises `RuntimeError`.
 
 ### Core split computation
 ```python

@@ -86,7 +86,7 @@ following and these decisions are **normative**:
 ```toml
 [split]
 # Group keys are absent by default; any group not listed defaults to 1.0.
-rng_seed = ""    # "" ⇒ fall back to config["data_set"]["seed"]
+rng_seed = false    # false ⇒ fall back to config["data_set"]["seed"]
 
 # Examples — add only the groups you need:
 # train    = 0.8   # float in (0, 1]  OR  a path to a previously generated split file
@@ -107,9 +107,9 @@ Semantics:
   - `infer` is always treated independently (never partitioned against
     train/validate/test).
 - **`split.rng_seed`** — RNG seed for shuffling/partitioning.
-  - `""` (default) ⇒ fall back to **exactly the RNG mechanism the current code
-    uses**: the global NumPy RNG seeded with `config["data_set"]["seed"]`
-    (`false` ⇒ `None` ⇒ system entropy):
+  - `false` (default; any falsy value) ⇒ fall back to **exactly the RNG
+    mechanism the current code uses**: the global NumPy RNG seeded with
+    `config["data_set"]["seed"]` (`false` ⇒ `None` ⇒ system entropy):
 
     ```python
     seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
@@ -120,8 +120,10 @@ Semantics:
     This reproduces today's `create_splits_from_fractions` shuffle
     (`pytorch_ignite.py:485–487`) bit-for-bit, so a default config yields
     splits identical to current Hyrax.
-  - A non-empty `rng_seed` ⇒ shuffle with a dedicated
+  - An integer `rng_seed` ⇒ shuffle with a dedicated
     `np.random.default_rng(rng_seed)` instead (does not touch global RNG state).
+  - A non-empty **string** `rng_seed` is invalid and raises `RuntimeError`
+    (it must be an integer, or `false` to fall back to `data_set.seed`).
 
 **Defaults & unknown group keys.** The `[split]` table ships with **only
 `rng_seed`** in `hyrax_default_config.toml`; all group keys (`train`,
@@ -473,7 +475,11 @@ RNG per §4.1 and wrap it in one helper so both branches below share it:
 ```python
 def _shuffle(indices: list[int], config: dict) -> None:   # in-place
     rng_seed = config["split"]["rng_seed"]
-    if rng_seed == "":   # fall back to the RNG the current code uses
+    if isinstance(rng_seed, str):   # must be an integer or false
+        raise RuntimeError(
+            f"split.rng_seed must be an integer (or false to use data_set.seed); got {rng_seed!r}."
+        )
+    if not rng_seed:     # false/None/0 ⇒ fall back to the RNG the current code uses
         seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
         np.random.seed(seed)
         np.random.shuffle(indices)
