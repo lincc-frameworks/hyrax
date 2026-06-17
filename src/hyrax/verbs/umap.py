@@ -109,6 +109,9 @@ class Umap(Verb):
         index_choices = rng.choice(np.arange(total_length), size=sample_size, replace=False)
 
         # If the input to umap is not of the shape [samples,input_dims] we reshape the input accordingly
+        # TODO: Make this that it can scan through the config, check if there's a 'umap' data_request,
+        # and if not, default to flattening all dimensions except the batch dimension. This would allow users to specify
+        # exactly what data they want to umap without forcing a particular shape on the input data.
         data_sample = inference_results.get_combined_tensor(index_choices)
 
         if model_path is None:
@@ -175,6 +178,9 @@ class Umap(Verb):
                 # We flatten all dimensions of the input array except the dimension
                 # corresponding to batch elements. This ensures that all inputs to
                 # the UMAP algorithm are flattend per input item in the batch
+                # TODO: Make this that it can scan through the config, check if there's a 'umap' data_request,
+                # and if not, default to flattening all dimensions except the batch dimension. This would allow users to specify
+                # exactly what data they want to umap without forcing a particular shape on the input data.
                 inference_results.get_combined_tensor(batch_indexes),
             )
             for batch_indexes in np.array_split(all_indexes, num_batches)

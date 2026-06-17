@@ -17,7 +17,6 @@ if "LANCE_LOG" not in os.environ:
 import lancedb
 import numpy as np
 import pyarrow as pa
-import torch
 
 from .dataset_registry import HyraxDataset
 
@@ -64,7 +63,7 @@ class ResultDatasetWriter:
             List of numpy arrays (tensors) to write
         """
         # Normalize data to dict format for uniform handling
-        if isinstance(data, (torch.Tensor, np.ndarray, list)):
+        if isinstance(data, (np.ndarray, list)) or data.__class__.__name__ == "Tensor":
             data_dict = {"data": np.array(data)}
         else:
             # data_dict = data

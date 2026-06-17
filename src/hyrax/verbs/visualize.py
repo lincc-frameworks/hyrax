@@ -116,6 +116,9 @@ class Visualize(Verb):
 
         # Get the umap data and put it in a kdtree for indexing.
         self.umap_results = load_results_dataset(self.config, results_dir=input_dir, verb="umap")
+        # TODO: Make this that it can scan through the config, check if there's a 'visualize' data_request,
+        # and if not, default to flattening all dimensions except the batch dimension. This would allow users to specify
+        # exactly what data they want to umap without forcing a particular shape on the input data.
         self.umap_results = self.umap_results.get_combined_tensor(np.arange(len(self.umap_results)))
 
         # Build a DataProvider from the live config for metadata access.
