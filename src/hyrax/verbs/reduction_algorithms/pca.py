@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 class PCA(ReductionAlgorithm):
-    """Placeholder PCA reduction algorithm."""
+    """PCA reduction implementation."""
 
     def __init__(self, config: dict, reduction_results=None):
         super().__init__(config, reduction_results)
@@ -76,7 +76,7 @@ class PCA(ReductionAlgorithm):
         Raises
         ------
         ValueError
-            If the loaded model is not a UMAP instance or if its input/output dimensions are incompatible.
+            If the loaded model is not a PCA instance or if its input/output dimensions are incompatible.
         """
         # PCA type check
         if not isinstance(reducer, sklearn_decomposition.PCA):

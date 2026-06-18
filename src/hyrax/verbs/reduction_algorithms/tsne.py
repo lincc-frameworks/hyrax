@@ -9,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 
 class TSNE(ReductionAlgorithm):
-    """Placeholder TSNE reduction algorithm."""
+    """TSNE reduction implementation."""
 
     def __init__(self, config: dict, reduction_results=None):
         super().__init__(config, reduction_results)
