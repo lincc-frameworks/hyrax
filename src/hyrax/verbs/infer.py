@@ -55,6 +55,7 @@ class Infer(Verb):
             setup_dataset,
             setup_model,
         )
+        from hyrax.splitting_utils import create_splits
         from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
@@ -71,6 +72,7 @@ class Infer(Verb):
             splits=Infer.REQUIRED_DATA_GROUPS + Infer.OPTIONAL_DATA_GROUPS,
             shuffle=False,
         )
+        create_splits(config, dataset, persist=False)
         model = setup_model(config, dataset["infer"])
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL} "
@@ -80,16 +82,10 @@ class Infer(Verb):
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference dataset(s):{Style.RESET_ALL}\n{dataset}"
         )
 
-        # setup_dataset returns a dataset dictionary keyed by split name.
-        # When split_fraction is defined on the "infer" group, setup_dataset
-        # will have already computed split_indices on the DataProvider.
-        # dist_data_loader with split=False will automatically apply a
-        # deterministic sampler to restrict the dataloader to those indices.
-        if isinstance(dataset, dict) and "infer" in dataset:
-            dataset = dataset["infer"]
-            logger.debug(f"Inference dataset has length: {len(dataset)}")  # type: ignore[arg-type]
+        for provider in dataset.values():
+            provider.on_epoch_start("infer")
 
-        data_loader, _ = dist_data_loader(dataset, config, False)
+        data_loader = dist_data_loader(dataset["infer"], config)
 
         load_model_weights(config, model, "infer")
         log_runtime_config(config, results_dir)

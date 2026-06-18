@@ -309,13 +309,30 @@ class DataProvider:
 
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
-        self.split_fraction = None
         self.primary_data_location = None
 
-        # Assigned externally by setup_dataset after construction when
-        # split_fraction-based partitioning is in use.  When set, this
-        # contains the list of indices that this provider should serve.
+        # Augmentation support
+        self.augment_getters = {}  # friendly_name -> {field_name: augment_func}
+        self.augment_enabled = {}  # friendly_name -> bool
+        self._has_any_augmentation = False
+        # _augment_rng advances once per epoch (in on_epoch_start) to produce a fresh
+        # _epoch_rng for that epoch.  _epoch_rng is drawn from sequentially in
+        # resolve_data — one integer per call — so call order within an epoch determines
+        # the seed sequence.  Single-threaded access is reproducible; multi-threaded
+        # access is intentionally non-reproducible (no locks on this hot path).
+        # config["data_set"]["seed"] uses false as the Hyrax sentinel for "not set";
+        # treat it as None so numpy seeds from OS entropy rather than silently using 0.
+        _raw_seed = config["data_set"]["seed"]
+        _master_seed = None if _raw_seed is False else _raw_seed
+        self._augment_rng = np.random.default_rng(_master_seed)
+        self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
+        self._current_epoch = 0
+
+        # Assigned externally by create_splits after construction.
+        # split_indices: list of dataset indices this provider should serve.
+        # split_weights: per-sample WRS weights (ndarray) or None when unbalanced.
         self.split_indices = None
+        self.split_weights = None
 
         # Join support: populated by _build_join_indices after prepare_datasets.
         # Maps friendly_name → join_field name for datasets that use joining.
@@ -362,6 +379,17 @@ class DataProvider:
                 if not hasattr(self, method_name):
                     setattr(self, method_name, getattr(primary_dataset_instance, method_name))
 
+    def _augment_rng_seed(self) -> np.int64:
+        """Draw the next seed from the epoch RNG for one resolve_data call."""
+        return self._epoch_rng.integers(np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64)
+
+    def on_epoch_start(self, verb: str):
+        """Reset the epoch RNG and dispatch on_epoch_start to all dataset instances."""
+        self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
+        self._current_epoch += 1
+        for dataset in self.prepped_datasets.values():
+            dataset.on_epoch_start(verb)
+
     def __getitem__(self, idx) -> dict:
         """This method returns data for a given index.
 
@@ -398,8 +426,11 @@ class DataProvider:
                 repr_str += f"  Dataset class: {data['dataset_class']}\n"
                 if "data_location" in data:
                     repr_str += f"  Data location: {data['data_location']}\n"
-                if "split_fraction" in data:
-                    repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
+                if self.primary_dataset == friendly_name and self.split_indices is not None:
+                    repr_str += f"  Selected items: {len(self.split_indices)}"
+                    if self.split_weights is not None:
+                        repr_str += " (rebalanced)"
+                    repr_str += "\n"
                 primary_id_field = data.get("primary_id_field")
                 if primary_id_field not in (None, False):
                     repr_str += f"  Primary ID field: {primary_id_field}\n"
@@ -442,6 +473,15 @@ class DataProvider:
                 for field_name, getter in self.dataset_getters[friendly_name].items():
                     new_getter = trace.instrument_dataset_getter(dataset, getter, friendly_name, field_name)
                     self.dataset_getters[friendly_name][field_name] = new_getter
+
+            for friendly_name, field_to_fcn_map in self.field_collate_functions.items():
+                dataset = self.prepped_datasets[friendly_name]
+                for field_name, field_collate_fn in field_to_fcn_map.items():
+                    if field_collate_fn is not None:
+                        new_field_collate_fn = trace.instrument_field_collate(
+                            dataset, field_collate_fn, friendly_name, field_name
+                        )
+                        self.field_collate_functions[friendly_name][field_name] = new_field_collate_fn
 
             for friendly_name, collate_fn in self.custom_collate_functions.items():
                 dataset = self.prepped_datasets[friendly_name]
@@ -528,6 +568,20 @@ class DataProvider:
                     "This is likely an error in the dataset class definition."
                 )
 
+            # Discover augment_<field> methods if augmentation is enabled for this dataset.
+            if dataset_definition.get("augment"):
+                self.augment_enabled[friendly_name] = True
+                self._has_any_augmentation = True
+                self.augment_getters[friendly_name] = {}
+                for name in dir(dataset_instance):
+                    if not name.startswith("augment_"):
+                        continue
+                    augment_fn = getattr(dataset_instance, name, None)
+                    if not callable(augment_fn):
+                        continue
+                    field_name = name.removeprefix("augment_")
+                    self.augment_getters[friendly_name][field_name] = augment_fn
+
             # Get all the dataset's metadata fields and store them in
             # `self.all_metadata_fields` dictionary. Modify the name to be
             # <metadata_field_name>_<friendly_name>, i.e. "RA_cifar" or "photoz_hsc".
@@ -544,12 +598,6 @@ class DataProvider:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = primary_id_field
 
-                # Store the split_fraction and data_location from the primary
-                # dataset's definition.  The Pydantic validator on
-                # DataRequestConfig guarantees that split_fraction is only
-                # present when primary_id_field is set, so we only need to
-                # look for it here.
-                self.split_fraction = dataset_definition.get("split_fraction", None)
                 self.primary_data_location = dataset_definition.get("data_location", None)
 
             # Record join_field for secondary datasets that join by key.
@@ -808,51 +856,92 @@ class DataProvider:
         cached_data = self.data_cache.try_fetch(idx)
         if cached_data is not None:
             tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
-            return cached_data
-
-        # Pre-fetch the primary object ID when any joins are configured.
-        if self._join_maps:
-            primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
-            object_id_str = str(primary_id_getter(idx))
+            if not self._has_any_augmentation:
+                return cached_data
+            base_data = cached_data
         else:
-            object_id_str = None  # computed lazily below if needed
-
-        returned_data: dict[str, dict[str, Any] | str | None] = {}
-
-        for friendly_name, fields in self.requested_fields.items():
-            getters = self.dataset_getters[friendly_name]
-
-            # Determine the real index for this dataset.
-            if friendly_name in self._join_maps:
-                real_idx = self._join_maps[friendly_name].get(object_id_str)
-                if real_idx is None:
-                    # Left outer join: no match in this secondary.
-                    returned_data[friendly_name] = None
-                    continue
+            # Pre-fetch the primary object ID when any joins are configured.
+            if self._join_maps:
+                primary_id_getter = self.dataset_getters[self.primary_dataset][
+                    self.primary_dataset_id_field_name
+                ]
+                object_id_str = str(primary_id_getter(idx))
             else:
-                real_idx = idx
+                object_id_str = None  # computed lazily below if needed
 
-            data_dict = {field: getters[field](real_idx) for field in fields}
-            returned_data[friendly_name] = data_dict
+            base_data: dict[str, dict[str, Any] | str | None] = {}
 
-        # Because there is machinery in the consuming code that expects an "object_id"
-        # key in the returned data, we will add that here if a primary dataset.
-        if self.primary_dataset:
-            # If the primary id field wasn't already requested, we fetch it now.
-            if self.primary_dataset_id_field_name not in returned_data.get(self.primary_dataset, {}):
-                if object_id_str is not None:
-                    object_id = object_id_str
+            for friendly_name, fields in self.requested_fields.items():
+                getters = self.dataset_getters[friendly_name]
+
+                # Determine the real index for this dataset.
+                if friendly_name in self._join_maps:
+                    real_idx = self._join_maps[friendly_name].get(object_id_str)
+                    if real_idx is None:
+                        # Left outer join: no match in this secondary.
+                        base_data[friendly_name] = None
+                        continue
                 else:
-                    primary_getter = self.dataset_getters[self.primary_dataset]
-                    object_id = str(primary_getter[self.primary_dataset_id_field_name](idx))
-            else:
-                object_id = returned_data[self.primary_dataset][self.primary_dataset_id_field_name]
+                    real_idx = idx
 
-            returned_data["object_id"] = str(object_id)
+                data_dict = {field: getters[field](real_idx) for field in fields}
+                base_data[friendly_name] = data_dict
 
-        self.data_cache.insert_into_cache(idx, returned_data)
-        tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
-        return returned_data
+            # Because there is machinery in the consuming code that expects an "object_id"
+            # key in the returned data, we will add that here if a primary dataset.
+            if self.primary_dataset:
+                # If the primary id field wasn't already requested, we fetch it now.
+                if self.primary_dataset_id_field_name not in base_data.get(self.primary_dataset, {}):
+                    if object_id_str is not None:
+                        object_id = object_id_str
+                    else:
+                        primary_getter = self.dataset_getters[self.primary_dataset]
+                        object_id = str(primary_getter[self.primary_dataset_id_field_name](idx))
+                else:
+                    object_id = base_data[self.primary_dataset][self.primary_dataset_id_field_name]
+
+                base_data["object_id"] = str(object_id)
+
+            self.data_cache.insert_into_cache(idx, base_data)
+            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
+
+        if not self._has_any_augmentation:
+            return base_data
+
+        # Augmentation pass: build a new output dict so the cache is never mutated.
+        # Array references are reused for non-augmented fields; augment_<field> returns
+        # a new array for augmented ones, so no copies are needed here.
+        augment_start = time.monotonic_ns()
+        rng_seed = self._augment_rng_seed()
+        augmented_data: dict[str, dict[str, Any] | str | None] = {}
+        for friendly_name, fields_data in base_data.items():
+            if friendly_name == "object_id":
+                augmented_data[friendly_name] = fields_data
+                continue
+            if not self.augment_enabled.get(friendly_name, False):
+                augmented_data[friendly_name] = fields_data
+                continue
+            if fields_data is None:  # left outer join miss
+                augmented_data[friendly_name] = None
+                continue
+
+            # Use dataset-local indices for join-map secondaries.
+            dataset_idx = idx
+            if friendly_name in self._join_maps:
+                dataset_idx = self._join_maps[friendly_name].get(base_data["object_id"])
+
+            new_fields: dict[str, Any] = {}
+            for field, value in fields_data.items():
+                augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
+                if augment_fn is not None and isinstance(value, np.ndarray):
+                    value = value.view()
+                    value.flags.writeable = False
+                new_fields[field] = (
+                    augment_fn(value, dataset_idx, rng_seed) if augment_fn is not None else value
+                )
+            augmented_data[friendly_name] = new_fields
+        tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
+        return augmented_data
 
     # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
     # ^ we should be able to remove most or all of this method and the metadata_fields method.

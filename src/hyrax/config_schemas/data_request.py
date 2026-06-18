@@ -7,12 +7,10 @@ the Hyrax framework.
 
 from __future__ import annotations
 
-from collections import defaultdict
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-import numpy as np
 from pydantic import Field, RootModel, field_validator, model_validator
 
 from .base import BaseConfigModel
@@ -30,13 +28,6 @@ class DataRequestConfig(BaseConfigModel):
         None, description="Name of the primary identifier field in the dataset."
     )
 
-    split_fraction: float | None = Field(
-        None,
-        description="Fraction of the dataset to use, must be greater than 0.0 and at most 1.0.",
-        gt=0.0,
-        le=1.0,
-    )
-
     join_field: str | None = Field(
         None,
         description=(
@@ -52,6 +43,11 @@ class DataRequestConfig(BaseConfigModel):
         description="Dataset-specific configuration as a free-form dictionary.",
     )
 
+    augment: bool | None = Field(
+        None,
+        description="Enable augmentation for this dataset. When true, augment_<field> methods are used.",
+    )
+
     @field_validator("data_location")
     @classmethod
     def resolve_data_location(cls, v: str) -> str:
@@ -61,13 +57,6 @@ class DataRequestConfig(BaseConfigModel):
         if parsed.scheme and v.startswith(f"{parsed.scheme}://"):
             return v
         return str(Path(v).expanduser().resolve())
-
-    @model_validator(mode="after")
-    def require_primary_id_for_split_fraction(self) -> DataRequestConfig:
-        """Ensure that split_fraction is only set when primary_id_field is also provided."""
-        if self.split_fraction is not None and self.primary_id_field is None:
-            raise ValueError("'split_fraction' can only be specified when 'primary_id_field' is also set.")
-        return self
 
     @model_validator(mode="after")
     def join_field_excludes_primary(self) -> DataRequestConfig:
@@ -197,6 +186,20 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
         return normalized
 
     @model_validator(mode="after")
+    def reject_augment_on_infer(self) -> DataRequestDefinition:
+        """Augmentation cannot be enabled on the 'infer' data group."""
+        for group_name, group_value in self.root.items():
+            if group_name == "infer":
+                for friendly_name, cfg in group_value.items():
+                    if cfg.augment:
+                        raise ValueError(
+                            f"Augmentation cannot be enabled on 'infer' data group "
+                            f"(dataset '{friendly_name}'). Augmentation is only valid for "
+                            f"'train', 'validate', and 'test' groups."
+                        )
+        return self
+
+    @model_validator(mode="after")
     def require_at_least_one_dataset(self) -> DataRequestDefinition:
         """Ensure at least one dataset group is provided."""
         if not self.root:
@@ -229,63 +232,7 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
         return self
 
     def validate_cross_group(self, groups: set[str]) -> None:
-        """Run cross-group split_fraction checks restricted to the specified groups.
-
-        This method is intended to be called by verb classes at instantiation time,
-        scoped to only the dataset groups the verb actually uses (via
-        ``REQUIRED_DATA_GROUPS`` and ``OPTIONAL_DATA_GROUPS``).  By restricting
-        validation to active groups, configs that contain groups irrelevant to the
-        current verb do not cause false validation failures.
-
-        Parameters
-        ----------
-        groups : set[str]
-            Set of active group names to validate.  Only configs belonging to
-            these groups are considered.
-
-        Raises
-        ------
-        ValueError
-            If split_fraction values for a given ``data_location`` sum to more
-            than 1.0, or if split_fraction consistency is violated (some configs
-            for a location set it while others do not).
-        """
-        filtered = {k: v for k, v in self.root.items() if k in groups}
-
-        # Check that split_fraction values for the same data_location do not exceed 1.0.
-        fractions_by_location: dict[str, list[float]] = defaultdict(list)
-        for _group_name, config in _iter_all_configs(filtered):
-            if config.split_fraction is not None:
-                fractions_by_location[config.data_location].append(config.split_fraction)
-
-        for location, fractions in fractions_by_location.items():
-            total = sum(fractions)
-            if np.round(total, decimals=5) > 1.0:
-                raise ValueError(
-                    f"The sum of split_fraction values for data_location '{location}' "
-                    f"is {total}, which exceeds 1.0."
-                )
-
-        # Check that all configs sharing a data_location either all set split_fraction or none do.
-        configs_by_location: dict[str, list[tuple[str, DataRequestConfig]]] = defaultdict(list)
-        for group_name, config in _iter_all_configs(filtered):
-            configs_by_location[config.data_location].append((group_name, config))
-
-        for location, group_configs in configs_by_location.items():
-            if len(group_configs) < 2:
-                continue
-
-            has_fraction = [cfg.split_fraction is not None for _, cfg in group_configs]
-
-            if any(has_fraction) and not all(has_fraction):
-                missing_groups = [
-                    group_name for (group_name, cfg) in group_configs if cfg.split_fraction is None
-                ]
-                raise ValueError(
-                    f"All configs sharing data_location '{location}' must specify "
-                    f"'split_fraction' when any of them does. Missing in: "
-                    f"{', '.join(missing_groups)}."
-                )
+        """No-op: cross-group split validation is now handled by splitting_utils.validate_split_config."""
 
     def __contains__(self, key: str) -> bool:
         """Return True if the group name is present in the definition."""

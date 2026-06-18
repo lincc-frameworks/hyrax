@@ -266,25 +266,6 @@ filter_catalog = false
 # (other than cropping) be applied to the images.  
 transform = "tanh"
 
-# train_size, validation_size, and test_size use these conventions:
-# * A `float` between `0.0` and `1.0` is the proportion of the dataset to include in the split.
-# * An `int`, represents the absolute number of samples in the particular split.
-# * It is an error for these values to add to more than 1.0 as ratios or the size
-#   of the dataset if expressed as integers.
-
-# Size of the train split. If `false`, the value is automatically set to the
-# complement of test_size plus validate_size (if any).
-train_size = 0.6
-
-# Size of the validation split. If `false`, and both train_size and test_size
-# are defined, the value is set to the complement of the other two sizes summed.
-# If `false`, and only one of the other sizes is defined, no validate split is created.
-validate_size = 0.2
-
-# Size of the test split. If `false`, the value is set to the complement of train_size plus
-# the validate_size (if any). If `false` and `train_size = false`, test_size is set to `0.25`.
-test_size = 0.2
-
 # Number to seed with for generating a random split. Use `false` to seed from a
 # system source at runtime.
 seed = false
@@ -580,3 +561,41 @@ num_detail_plots = 6
 
 # The directory containing the ONNX model used for inference in production
 model_directory = false
+
+
+[split]
+# Per-group split configuration.  Keys correspond to groups in [data_request].
+# Values are a fraction of the group's primary dataset to use — (0.0, 1.0]
+# or a path to a previously generated <group>_split.npz file.
+# Groups absent from this table default to 1.0 (use the full dataset).
+
+# RNG seed for shuffling/partitioning. `false` uses config["data_set"]["seed"].
+# A non-empty value uses a dedicated generator and does affect global RNG state.
+rng_seed = false
+
+
+[balance]
+# Name of the field identifying each item's class.  Must resolve to a
+# get_<field> getter on the primary dataset.  `false` disables stratification.
+field = false
+
+# Data groups whose sampling weights are adjusted to the target distribution.
+# Empty list disables rebalancing.  See [balance.distribution] for the target.
+groups = []
+
+[balance.distribution]
+# Maps class label → target fraction in (0.0, 1.0].  Empty table means equal
+# target across all observed classes (uniform).  Values must sum to exactly 1.0.
+# Example:
+# cat = 0.25
+# dog = 0.75
+
+[label]
+# Optional. Maps human-readable string aliases to the raw values returned by
+# get_<balance.field>.  Required when balance.distribution is used and 
+# get_<balance.field> returns non-string values (e.g. integers),
+# All balance.distribution keys must appear here.
+# Example:
+#   cat  = 0
+#   dog  = 1
+#   bird = 2
