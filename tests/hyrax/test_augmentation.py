@@ -75,10 +75,10 @@ class NoCacheDataset(HyraxRandomDataset):
 
     def __init__(self, config, data_location):
         super().__init__(config, data_location)
-        self.get_image_call_count = 0
+        self.image_getter_call_count = 0
 
     def get_image(self, idx):
-        self.get_image_call_count += 1
+        self.image_getter_call_count += 1
         return super().get_image(idx)
 
     def augment_image(self, data, idx, rng_seed):
@@ -647,11 +647,11 @@ def test_datacache_augment_cache_key_none_skips_augment_cache(tmp_path):
     dataset_instance = dp.prepped_datasets["data"]
 
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
 
     # Base data is cached so get_image is NOT called again, but augment re-runs
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
 
 
 def test_augmented_data_not_cached_by_default(tmp_path):
@@ -661,12 +661,12 @@ def test_augmented_data_not_cached_by_default(tmp_path):
     dataset_instance = dp.prepped_datasets["data"]
 
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
     assert len(dataset_instance.augment_image_calls) == 1
 
     # Second call: base data cached (get_image not called), augment re-runs
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
     assert len(dataset_instance.augment_image_calls) == 2
 
 

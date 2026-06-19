@@ -927,7 +927,9 @@ class DataProvider:
             if cached_data is not None and (already_augmented or effective_rng is None):
                 result[friendly_name] = cached_data
             elif cached_data is not None:
+                augment_start = time.monotonic_ns()
                 augmented = self._apply_augmentation(friendly_name, cached_data, real_idx, rng_seed)
+                tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
                 self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                 result[friendly_name] = augmented
             else:
@@ -936,7 +938,9 @@ class DataProvider:
                 self.data_cache.insert_base(friendly_name, real_idx, base_data)
 
                 if effective_rng is not None:
+                    augment_start = time.monotonic_ns()
                     augmented = self._apply_augmentation(friendly_name, base_data, real_idx, rng_seed)
+                    tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
                     self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                     result[friendly_name] = augmented
                 else:

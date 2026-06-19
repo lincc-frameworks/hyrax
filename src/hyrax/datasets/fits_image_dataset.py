@@ -130,7 +130,7 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
         metadata = self._prepare_metadata()
         super().__init__(config, metadata)
 
-        self._before_preload()
+        self._post_init_hook()
 
     def _init_from_path(self, path: Union[Path, str]):
         """__init__ helper. Initialize an HSC data set from a path. This involves several filesystem scan
@@ -256,10 +256,7 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
         return filter_catalog
 
-    def _before_preload(self) -> None:
-        # Provided so subclasses can make edits to the class after full initialization
-        # but before the cache preload thread starts iterating over the datastructure and
-        # fetching
+    def _post_init_hook(self) -> None:
         pass
 
     def _prepare_metadata(self):
@@ -535,13 +532,6 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
         tensorboardx_logger.log_duration_ts(f"{prefix}/object_convert_tensor_time_s", start_time)
         return data_transformed_numpy
 
-    # TODO: Performance Change when files are read/cache pytorch tensors?
-    #
-    # This function loads from a file every time __getitem__ is called
-    # Do we want to pre-cache these into memory in init?
-    # Do we want to memoize them on first __getitem__ call?
-    #
-    # For now we just do it the naive way
     def _load_tensor_for_cache(self, object_id: str):
         """Implementation of TensorCacheMixin abstract method."""
         return self._read_object_id(object_id)
