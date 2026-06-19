@@ -602,17 +602,24 @@ class DataProvider:
                 self._has_any_augmentation = True
                 self.augment_getters[friendly_name] = {}
 
-                # Normalize bool to a list of field names that have augment methods.
+                # Normalize bool to a list of requested field names that have augment methods.
                 if augment_cfg is True:
-                    augment_cfg = [
+                    available = {
                         name.removeprefix("augment_")
                         for name in dir(dataset_instance)
                         if name.startswith("augment_") and callable(getattr(dataset_instance, name, None))
-                    ]
+                    }
+                    augment_cfg = [f for f in self.requested_fields[friendly_name] if f in available]
 
                 self.augment_enabled[friendly_name] = augment_cfg
 
                 for field_name in augment_cfg:
+                    if field_name not in self.requested_fields[friendly_name]:
+                        raise RuntimeError(
+                            f"augment list requests augmentation for field '{field_name}' "
+                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                            f"but '{field_name}' is not a field on this dataset."
+                        )
                     method_name = f"augment_{field_name}"
                     augment_fn = getattr(dataset_instance, method_name, None)
                     if augment_fn is None or not callable(augment_fn):
