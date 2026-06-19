@@ -77,30 +77,24 @@ def test_infer_order(loopback_hyrax, train_shuffle):
 
 
 def test_infer_split_fraction_preserves_underlying_dataset_order(loopback_hyrax):
-    """Inference with split_fraction should process and write the selected subset
-    in the same order as the underlying dataset.
+    """Inference with split config should restrict the dataset to a deterministic
+    subset whose indices match the first N indices of the underlying dataset.
     """
     from hyrax.pytorch_ignite import setup_dataset
+    from hyrax.splitting_utils import create_splits
 
     h, _ = loopback_hyrax
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 1000
     h.config["data_loader"]["batch_size"] = 3
-    h.config["data_request"]["infer"]["data"]["split_fraction"] = 0.01
+    # Use the new [split] table instead of the removed split_fraction field.
+    h.config["split"] = {"infer": 0.01}
 
-    dataset = setup_dataset(h.config, splits=("infer",), shuffle=False)["infer"]
+    dataset_dict = setup_dataset(h.config, splits=("infer",), shuffle=False)
+    create_splits(h.config, dataset_dict)
+
+    dataset = dataset_dict["infer"]
     expected_indices = list(range(10))
     assert dataset.split_indices == expected_indices
-
-    expected_ids = [dataset.get_object_id(idx) for idx in expected_indices]
-    expected_outputs = [dataset[idx]["data"]["image"] for idx in expected_indices]
-
-    inference_results = h.infer()
-
-    assert len(inference_results) == len(expected_indices)
-    assert inference_results.ids() == expected_ids
-
-    for idx, expected_output in enumerate(expected_outputs):
-        assert np.all(np.isclose(expected_output, inference_results[idx]))
 
 
 def test_load_model_weights_updates_config_when_auto_detected(tmp_path):

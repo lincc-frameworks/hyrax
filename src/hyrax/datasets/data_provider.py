@@ -309,7 +309,6 @@ class DataProvider:
 
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
-        self.split_fraction = None
         self.primary_data_location = None
 
         # Augmentation support
@@ -329,10 +328,11 @@ class DataProvider:
         self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
         self._current_epoch = 0
 
-        # Assigned externally by setup_dataset after construction when
-        # split_fraction-based partitioning is in use.  When set, this
-        # contains the list of indices that this provider should serve.
+        # Assigned externally by create_splits after construction.
+        # split_indices: list of dataset indices this provider should serve.
+        # split_weights: per-sample WRS weights (ndarray) or None when unbalanced.
         self.split_indices = None
+        self.split_weights = None
 
         # Join support: populated by _build_join_indices after prepare_datasets.
         # Maps friendly_name → join_field name for datasets that use joining.
@@ -426,8 +426,11 @@ class DataProvider:
                 repr_str += f"  Dataset class: {data['dataset_class']}\n"
                 if "data_location" in data:
                     repr_str += f"  Data location: {data['data_location']}\n"
-                if "split_fraction" in data:
-                    repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
+                if self.primary_dataset == friendly_name and self.split_indices is not None:
+                    repr_str += f"  Selected items: {len(self.split_indices)}"
+                    if self.split_weights is not None:
+                        repr_str += " (rebalanced)"
+                    repr_str += "\n"
                 primary_id_field = data.get("primary_id_field")
                 if primary_id_field not in (None, False):
                     repr_str += f"  Primary ID field: {primary_id_field}\n"
@@ -470,6 +473,15 @@ class DataProvider:
                 for field_name, getter in self.dataset_getters[friendly_name].items():
                     new_getter = trace.instrument_dataset_getter(dataset, getter, friendly_name, field_name)
                     self.dataset_getters[friendly_name][field_name] = new_getter
+
+            for friendly_name, field_to_fcn_map in self.field_collate_functions.items():
+                dataset = self.prepped_datasets[friendly_name]
+                for field_name, field_collate_fn in field_to_fcn_map.items():
+                    if field_collate_fn is not None:
+                        new_field_collate_fn = trace.instrument_field_collate(
+                            dataset, field_collate_fn, friendly_name, field_name
+                        )
+                        self.field_collate_functions[friendly_name][field_name] = new_field_collate_fn
 
             for friendly_name, collate_fn in self.custom_collate_functions.items():
                 dataset = self.prepped_datasets[friendly_name]
@@ -586,12 +598,6 @@ class DataProvider:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = primary_id_field
 
-                # Store the split_fraction and data_location from the primary
-                # dataset's definition.  The Pydantic validator on
-                # DataRequestConfig guarantees that split_fraction is only
-                # present when primary_id_field is set, so we only need to
-                # look for it here.
-                self.split_fraction = dataset_definition.get("split_fraction", None)
                 self.primary_data_location = dataset_definition.get("data_location", None)
 
             # Record join_field for secondary datasets that join by key.
