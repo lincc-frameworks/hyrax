@@ -256,14 +256,14 @@ def test_augment_cache_get_field_cached_augment_reruns(tmp_path):
     assert len(dataset_instance.augment_image_calls) == 2
 
 
-def test_augment_dict_dispatches_per_field(tmp_path):
-    """augment dict selectively enables augmentation per field."""
+def test_augment_list_dispatches_per_field(tmp_path):
+    """augment list selectively enables augmentation per field."""
     config = _make_hyrax_config()
     dp = _make_dp(
         config,
         "AugmentedRandomDataset",
         tmp_path,
-        augment={"image": True, "label": False},
+        augment=["image"],
         fields=["image", "label"],
     )
     dataset_instance = dp.prepped_datasets["data"]
@@ -276,14 +276,14 @@ def test_augment_dict_dispatches_per_field(tmp_path):
     assert result["data"]["label"] == dataset_instance.get_label(0)
 
 
-def test_augment_dict_all_false_no_augmentation(tmp_path):
-    """augment dict with all False values performs no augmentation."""
+def test_augment_empty_list_no_augmentation(tmp_path):
+    """augment as an empty list performs no augmentation."""
     config = _make_hyrax_config()
     dp = _make_dp(
         config,
         "AugmentedRandomDataset",
         tmp_path,
-        augment={"image": False},
+        augment=[],
         fields=["image"],
     )
     dataset_instance = dp.prepped_datasets["data"]
@@ -293,8 +293,8 @@ def test_augment_dict_all_false_no_augmentation(tmp_path):
     assert np.all(result["data"]["image"] >= 0)
 
 
-def test_augment_dict_missing_method_raises_runtime_error(tmp_path):
-    """augment dict with True for a field without augment_<field> raises RuntimeError."""
+def test_augment_list_missing_method_raises_runtime_error(tmp_path):
+    """augment list naming a field without augment_<field> raises RuntimeError."""
     config = _make_hyrax_config()
     # AugmentedRandomDataset has augment_image but NOT augment_label
     with pytest.raises(RuntimeError, match="augment_label"):
@@ -302,19 +302,19 @@ def test_augment_dict_missing_method_raises_runtime_error(tmp_path):
             config,
             "AugmentedRandomDataset",
             tmp_path,
-            augment={"image": True, "label": True},
+            augment=["image", "label"],
             fields=["image", "label"],
         )
 
 
-def test_augment_dict_rng_seed_same_within_row(tmp_path):
-    """Dict-mode augmentation still passes the same rng_seed to all augment calls in a row."""
+def test_augment_list_rng_seed_same_within_row(tmp_path):
+    """List-mode augmentation still passes the same rng_seed to all augment calls in a row."""
     config = _make_hyrax_config()
     dp = _make_dp(
         config,
         "SeedTrackingDataset",
         tmp_path,
-        augment={"image": True, "label": True},
+        augment=["image", "label"],
         fields=["image", "label"],
     )
     dataset_instance = dp.prepped_datasets["data"]

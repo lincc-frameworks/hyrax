@@ -45,27 +45,24 @@ If true, oversampling/augmentation is enabled, If this section is missing, no au
 
 When augmentation is enabled, all fields with `augment_<field_name>` member functions defined will be used, and when the `augment_<field_name>` function is not defined, data access will fall back to the `get_<field_name>`
 
-In Version 2 the `augment` config key can optionally be dictionary valued, specifying field-by-field whether or not augmentation is enabled for that field.
+In Version 2 the `augment` config key can optionally be a list of field names to augment, parallel to the `fields` list in the data request.
 
 `"train": { # data group`  
   `"data": { # friendly name`  
     `"dataset_class": "HyraxCifarDataset",`  
     `"fields": ["image", "label"],`  
     `"primary_id_field": "object_id",`  
-    `"augment": {`  
-        `"image": true,`  
-        `"label": false,`  
-    `}`  
+    `"augment": ["image"]`  
   `}`  
 `}`
 
-The dictionary goes from field names to either `true` or `false`. In the case of `false` the `get_<field_name>` methods will be used for the corresponding field. In the case of `true` the `augment_<field name>` methods will be used. In this case the lack of the corresponding method is a hard error, rather than the permissive system in V1.
+Fields listed in `augment` will use `augment_<field_name>` methods. Fields not listed will use `get_<field_name>`. The lack of the corresponding `augment_<field_name>` method for a listed field is a hard error, rather than the permissive system in V1.
 
-The `augment` dictionary must be complete in that all fields that will be fed to the model must be specified as keys. The sole exception is for the field specified as `primary_id_field` in the friendly name config, which is implicitly treated as "repeat" for the purpose of oversampling. Specifying the `primary_id_field` as "augment" in the `field_sample_method` dictionary is a fatal error.
+The `primary_id_field` must not appear in the `augment` list — it is implicitly repeated for oversampling and must not be augmented. Listing the `primary_id_field` in `augment` is a fatal error.
 
-Completeness also means that in the case where no `field` is specified in the friendly name config, then all non-primary-id fields in the underlying dataset must be specified in this dictionary. If this dictionary is not complete, Hyrax will emit an informative error and stop.
+Fields listed in `augment` must be a subset of `fields`. Listing a field for augmentation that is not in the data request is a fatal error.
 
-If a field is specified in this dictionary as `true` and the corresponding `augment_<field_name>` method does not exist on the underlying dataset class, the configuration is invalid and Hyrax must stop and produce an informative error. The detection of this class of error ought to be delayed after config parsing and validation (potentially as late as the first valid call of the `augment_<field_name>` method by `DataProvider`) in order to permit metaprogramming by Dataset authors in their constructors.
+If a field is listed in `augment` and the corresponding `augment_<field_name>` method does not exist on the underlying dataset class, the configuration is invalid and Hyrax must stop and produce an informative error. The detection of this class of error ought to be delayed after config parsing and validation (potentially as late as the first valid call of the `augment_<field_name>` method by `DataProvider`) in order to permit metaprogramming by Dataset authors in their constructors.
 
 ## Dataset Augmentation Interface
 
@@ -120,11 +117,8 @@ Given an image dataset with a mask layer, object ids and labels the config would
     `"dataset_class": "ExampleAugmentedDataset",`  
     `"fields": ["image", "mask", "label"],`  
     `"primary_id_field": "object_id",`  
-    `"augment": {`  
-        `"image": true,`  
-        `"mask": true,`  
-        `"label": false,`  
-    `} # or "augment": true in v1`  
+    `"augment": ["image", "mask"]`  
+    `# or "augment": true in v1`  
   `}`  
 `}`
 

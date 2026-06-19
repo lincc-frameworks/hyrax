@@ -23,9 +23,9 @@ V1 was implemented in commit `95e82028` (PR #942). All steps below are annotated
 Add to `DataRequestConfig`:
 
 ```python
-augment: bool | None = Field(
+augment: bool | list[str] | None = Field(
     None,
-    description="Enable augmentation for this dataset. When true, augment_<field> methods are used.",
+    description="Enable augmentation for this dataset. When true, augment_<field> methods are used. When a list, only the listed fields are augmented.",
 )
 ```
 

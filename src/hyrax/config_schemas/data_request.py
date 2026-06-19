@@ -43,15 +43,15 @@ class DataRequestConfig(BaseConfigModel):
         description="Dataset-specific configuration as a free-form dictionary.",
     )
 
-    augment: bool | dict[str, bool] | None = Field(
+    augment: bool | list[str] | None = Field(
         None,
         description=(
             "Enable augmentation for this dataset. When True (boolean), all "
             "augment_<field> methods found on the dataset class are used, with "
             "fallback to get_<field> for fields without an augment method. "
-            "When a dict mapping field names to booleans, fields marked True "
-            "require an augment_<field> method (hard error if missing) and "
-            "fields marked False use get_<field>."
+            "When a list of field names, only the listed fields are augmented "
+            "(each must have an augment_<field> method — hard error if missing) "
+            "and unlisted fields use get_<field>."
         ),
     )
 
@@ -76,34 +76,22 @@ class DataRequestConfig(BaseConfigModel):
         return self
 
     @model_validator(mode="after")
-    def validate_augment_dict(self) -> DataRequestConfig:
-        """Validate the dict form of augment against fields and primary_id_field."""
-        if not isinstance(self.augment, dict):
+    def validate_augment_list(self) -> DataRequestConfig:
+        """Validate the list form of augment against fields and primary_id_field."""
+        if not isinstance(self.augment, list):
             return self
 
-        if self.primary_id_field is not None and self.augment.get(self.primary_id_field) is True:
+        if self.primary_id_field is not None and self.primary_id_field in self.augment:
             raise ValueError(
                 f"Cannot enable augmentation on primary_id_field '{self.primary_id_field}'. "
                 f"The primary ID field is implicitly repeated and must not be augmented."
             )
 
         if self.fields is not None:
-            expected = {f for f in self.fields if f != self.primary_id_field}
-            augment_keys = set(self.augment.keys()) - (
-                {self.primary_id_field} if self.primary_id_field else set()
-            )
-            missing = expected - augment_keys
-            extra = augment_keys - expected
-            if missing or extra:
-                parts = []
-                if missing:
-                    parts.append(f"missing fields: {sorted(missing)}")
-                if extra:
-                    parts.append(f"extra fields not in 'fields': {sorted(extra)}")
-                raise ValueError(
-                    f"augment dict must specify exactly the fields in 'fields' "
-                    f"(excluding primary_id_field). {'; '.join(parts)}"
-                )
+            allowed = set(self.fields)
+            extra = set(self.augment) - allowed
+            if extra:
+                raise ValueError(f"augment list contains fields not in 'fields': {sorted(extra)}")
 
         return self
 
@@ -231,7 +219,7 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
             if group_name == "infer":
                 for friendly_name, cfg in group_value.items():
                     has_augment = cfg.augment is True or (
-                        isinstance(cfg.augment, dict) and any(cfg.augment.values())
+                        isinstance(cfg.augment, list) and len(cfg.augment) > 0
                     )
                     if has_augment:
                         raise ValueError(

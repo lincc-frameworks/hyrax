@@ -313,7 +313,7 @@ class DataProvider:
 
         # Augmentation support
         self.augment_getters = {}  # friendly_name -> {field_name: augment_func}
-        self.augment_enabled = {}  # friendly_name -> bool
+        self.augment_enabled = {}  # friendly_name -> list[str]
         self._has_any_augmentation = False
         # _augment_rng advances once per epoch (in on_epoch_start) to produce a fresh
         # _epoch_rng for that epoch.  _epoch_rng is drawn from sequentially in
@@ -602,25 +602,22 @@ class DataProvider:
                 self._has_any_augmentation = True
                 self.augment_getters[friendly_name] = {}
 
-                # Normalize bool to a per-field dict keyed by requested_fields:
-                # fields with an augment_<field> method get True, others False.
+                # Normalize bool to a list of field names that have augment methods.
                 if augment_cfg is True:
-                    available = set()
-                    for name in dir(dataset_instance):
-                        if name.startswith("augment_") and callable(getattr(dataset_instance, name, None)):
-                            available.add(name.removeprefix("augment_"))
-                    augment_cfg = {f: f in available for f in self.requested_fields[friendly_name]}
+                    augment_cfg = [
+                        name.removeprefix("augment_")
+                        for name in dir(dataset_instance)
+                        if name.startswith("augment_") and callable(getattr(dataset_instance, name, None))
+                    ]
 
                 self.augment_enabled[friendly_name] = augment_cfg
 
-                for field_name, enabled in augment_cfg.items():
-                    if not enabled:
-                        continue
+                for field_name in augment_cfg:
                     method_name = f"augment_{field_name}"
                     augment_fn = getattr(dataset_instance, method_name, None)
                     if augment_fn is None or not callable(augment_fn):
                         raise RuntimeError(
-                            f"augment dict requests augmentation for field '{field_name}' "
+                            f"augment list requests augmentation for field '{field_name}' "
                             f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
                             f"but no callable '{method_name}' method was found."
                         )
