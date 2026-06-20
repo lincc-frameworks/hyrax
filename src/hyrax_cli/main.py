@@ -56,9 +56,18 @@ def main():
         verb = fetch_verb_class(args.verb)(hyrax_instance.config)
         retval = verb.run_cli(args)
     else:
-        getattr(hyrax_instance, args.verb)()
+        retval = getattr(hyrax_instance, args.verb)()
 
-    exit(retval)
+    sys.exit(_normalize_exit_code(retval))
+
+
+def _normalize_exit_code(retval):
+    """Convert verb return values into process exit codes."""
+    if retval is None:
+        return 0
+    if isinstance(retval, int):
+        return retval
+    return 0
 
 
 def _add_major_arguments(parser):

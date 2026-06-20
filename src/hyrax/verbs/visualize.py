@@ -90,6 +90,8 @@ class Visualize(Verb):
         input_dir: Union[Path, str] | None = None,
         *,
         return_verb: bool = False,
+        image_mode: str | None = None,
+        fits_rgb_bands: list[str] | tuple[str, str, str] | None = None,
         make_lupton_rgb_opts: dict | None = None,
         overlays: list[dict | CatalogOverlay] | None = None,
         **kwargs,
@@ -109,6 +111,16 @@ class Visualize(Verb):
         return_verb : bool, optional
             If True, also return the underlying Visualize instance for post-hoc access
             to selection state. Defaults to False.
+
+        image_mode : {"auto", "grayscale", "color"}, optional
+            Thumbnail display mode. "grayscale" displays one image plane, "color" builds
+            RGB thumbnails when enough bands are available, and "auto" preserves legacy
+            behavior by showing FITS thumbnails in grayscale and 3-band tensors in color.
+            Defaults to config["visualize"]["image_mode"].
+
+        fits_rgb_bands : list[str] or tuple[str, str, str], optional
+            FITS filter names to map onto red, green, and blue in color mode.
+            Defaults to config["visualize"]["fits_rgb_bands"].
 
         make_lupton_rgb_opts : dict, optional
             Dictionary of options to pass to astropy's make_lupton_rgb function for RGB image creation.
@@ -216,6 +228,23 @@ class Visualize(Verb):
             raise ValueError(
                 f"torch_tensor_bands must specify either 1 band (single-band) or 3 bands (RGB). "
                 f"Got {len(self.torch_tensor_bands)} bands: {self.torch_tensor_bands}"
+            )
+
+        configured_image_mode = (
+            image_mode if image_mode is not None else self.config["visualize"].get("image_mode", "auto")
+        )
+        self.image_mode = self._validate_image_mode(configured_image_mode)
+
+        configured_fits_rgb_bands = (
+            fits_rgb_bands
+            if fits_rgb_bands is not None
+            else self.config["visualize"].get("fits_rgb_bands", ["I", "R", "G"])
+        )
+        self.fits_rgb_bands = [str(band) for band in configured_fits_rgb_bands]
+        if len(self.fits_rgb_bands) != 3:
+            raise ValueError(
+                "fits_rgb_bands must specify exactly three filters mapped to red, green, and blue. "
+                f"Got {self.fits_rgb_bands}"
             )
 
         # Store make_lupton_rgb options with defaults
@@ -346,12 +375,23 @@ class Visualize(Verb):
             )
 
             refresh_btn = pn.widgets.Button(name="Resample Images", button_type="primary")
+            image_mode_select = pn.widgets.Select(
+                name="Image Mode",
+                options={"Auto": "auto", "Grayscale": "grayscale", "Color": "color"},
+                value=self.image_mode,
+                width=130,
+            )
 
             # Create a button row with spinner next to button
-            button_row = pn.Row(refresh_btn, self.spinner, align="start")
+            button_row = pn.Row(refresh_btn, image_mode_select, self.spinner, align="start")
 
             image_pane = DynamicMap(
-                self._load_images, streams=[Params(refresh_btn, ["clicks"]), *table_streams]
+                self._load_images,
+                streams=[
+                    Params(refresh_btn, ["clicks"]),
+                    Params(image_mode_select, ["value"]),
+                    *table_streams,
+                ],
             )
 
             images_panel = pn.pane.HoloViews(image_pane)
@@ -831,12 +871,105 @@ class Visualize(Verb):
     def _load_images(self, **kwargs):
         # Turn on spinner manually before loading
         self.spinner.value = True
+        if "value" in kwargs and kwargs["value"] is not None:
+            self.image_mode = self._validate_image_mode(kwargs["value"])
         self.update_points(**kwargs)
         # Load images
         result = self._make_image_pane(total_width=self.plot_options["width"])
         # Turn off spinner when done
         self.spinner.value = False
         return result
+
+    @staticmethod
+    def _validate_image_mode(image_mode: str) -> str:
+        image_mode = str(image_mode).lower()
+        valid_modes = {"auto", "grayscale", "color"}
+        if image_mode not in valid_modes:
+            raise ValueError(f"image_mode must be one of {sorted(valid_modes)}. Got {image_mode!r}.")
+        return image_mode
+
+    @staticmethod
+    def _metadata_value_to_string(value) -> str:
+        if isinstance(value, bytes):
+            return value.decode("utf-8")
+        if hasattr(value, "item"):
+            value = value.item()
+            if isinstance(value, bytes):
+                return value.decode("utf-8")
+        return str(value)
+
+    @staticmethod
+    def _crop_center(arr: np.ndarray, crop_shape: tuple[int, int] | list[int]) -> np.ndarray:
+        crop_h, crop_w = crop_shape
+
+        if arr.ndim == 3:
+            h, w, _ = arr.shape
+        else:
+            h, w = arr.shape
+
+        if crop_h > h or crop_w > w:
+            logger.warning(f"Crop size {crop_shape} exceeds image size {(h, w)}. Skipping crop.")
+            return arr
+
+        top = (h - crop_h) // 2
+        left = (w - crop_w) // 2
+
+        if arr.ndim == 3:
+            return arr[top : top + crop_h, left : left + crop_w, :]
+        else:
+            return arr[top : top + crop_h, left : left + crop_w]
+
+    def _load_tensor_image_array(self, tensor) -> np.ndarray:
+        render_rgb = self.image_mode == "color" or (
+            self.image_mode == "auto" and len(self.torch_tensor_bands) == 3
+        )
+
+        if render_rgb:
+            if len(self.torch_tensor_bands) != 3:
+                raise ValueError(
+                    "image_mode='color' for PyTorch tensor images requires 3 torch_tensor_bands."
+                )
+            rgb_arrays = []
+            for band_idx in self.torch_tensor_bands:
+                rgb_arrays.append(tensor[band_idx].numpy())
+            return np.stack(rgb_arrays, axis=-1)
+
+        band_idx = self.torch_tensor_bands[0]
+        return tensor[band_idx].numpy()
+
+    def _load_fits_rgb_array(self, object_id: str) -> np.ndarray:
+        from astropy.io import fits
+
+        original_dataset = getattr(self.umap_results, "original_dataset", None)
+        if original_dataset is None or not hasattr(original_dataset, "object_file_paths"):
+            raise RuntimeError(
+                "FITS color thumbnails require an original dataset with object_file_paths()."
+            )
+
+        paths_by_band = original_dataset.object_file_paths(str(object_id), self.fits_rgb_bands)
+        bands = []
+        for band in self.fits_rgb_bands:
+            bands.append(fits.getdata(paths_by_band[band], memmap=False))
+
+        return np.stack(bands, axis=-1)
+
+    def _normalize_grayscale_image(self, arr: np.ndarray) -> np.ndarray:
+        arr = np.asarray(arr)
+        finite_positive = arr[np.isfinite(arr) & (arr > 0)]
+
+        if finite_positive.size == 0:
+            return np.zeros_like(arr, dtype=float)
+
+        min_positive = np.min(finite_positive)
+        max_value = np.nanmax(arr)
+        if not np.isfinite(max_value) or max_value <= min_positive:
+            return np.zeros_like(arr, dtype=float)
+
+        arr = np.nan_to_num(arr, nan=min_positive, posinf=max_value, neginf=min_positive)
+        arr = np.maximum(arr, min_positive)
+
+        norm = LogNorm(vmin=min_positive, vmax=max_value)
+        return norm(arr)
 
     def _make_image_pane(self, total_width: int = 500, *args, **kwargs):
         """
@@ -853,26 +986,6 @@ class Visualize(Verb):
             bokeh_plot = plot.state
             bokeh_plot.toolbar.autohide = True
             bokeh_plot.title.text_font_size = "8pt"
-
-        def crop_center(arr: np.ndarray, crop_shape: tuple[int, int]) -> np.ndarray:
-            crop_h, crop_w = crop_shape
-
-            if arr.ndim == 3:  # RGB case
-                h, w, c = arr.shape
-            else:  # Single-band case
-                h, w = arr.shape
-
-            if crop_h > h or crop_w > w:
-                logger.warning(f"Crop size {crop_shape} exceeds image size {(h, w)}. Skipping crop.")
-                return arr
-
-            top = (h - crop_h) // 2
-            left = (w - crop_w) // 2
-
-            if arr.ndim == 3:
-                return arr[top : top + crop_h, left : left + crop_w, :]
-            else:
-                return arr[top : top + crop_h, left : left + crop_w]
 
         n_images = 6
         n_rows = 2
@@ -900,7 +1013,7 @@ class Visualize(Verb):
             # DEBUG: object_ids = meta[self.object_id_column_name]
             raw_filenames = meta[self.filename_column_name]
 
-            filenames = [f.decode("utf-8") for f in raw_filenames]
+            filenames = [self._metadata_value_to_string(f) for f in raw_filenames]
 
         else:
             sampled_ids = []
@@ -912,7 +1025,10 @@ class Visualize(Verb):
         # Defining a Fallback Image to Display in case of errors
         # Matching Shape is important because otherwise Haloviews'
         # DynamicMap fails silently
-        if len(self.torch_tensor_bands) == 3:
+        placeholder_is_rgb = self.image_mode == "color" or (
+            self.image_mode == "auto" and len(self.torch_tensor_bands) == 3
+        )
+        if placeholder_is_rgb:
             placeholder_arr = np.full((64, 64, 3), 1.0)
         else:
             placeholder_arr = np.full((64, 64), 1.0)
@@ -925,21 +1041,13 @@ class Visualize(Verb):
                         cutout_path = base_dir / cutout_path
 
                     if cutout_path.suffix.lower() == ".fits":
-                        arr = fits.getdata(cutout_path)
+                        if self.image_mode == "color":
+                            arr = self._load_fits_rgb_array(str(sampled_ids[i]))
+                        else:
+                            arr = fits.getdata(cutout_path)
                     elif cutout_path.suffix.lower() == ".pt":
                         tensor = torch.load(cutout_path, map_location="cpu", weights_only=True)
-
-                        if len(self.torch_tensor_bands) == 1:
-                            # Single-band extraction
-                            band_idx = self.torch_tensor_bands[0]
-                            arr = tensor[band_idx].numpy()
-                        else:
-                            # RGB extraction (3 bands)
-                            rgb_arrays = []
-                            for band_idx in self.torch_tensor_bands:
-                                rgb_arrays.append(tensor[band_idx].numpy())
-                            # Stack along new axis to create (H, W, 3) RGB array
-                            arr = np.stack(rgb_arrays, axis=-1)
+                        arr = self._load_tensor_image_array(tensor)
                     else:
                         raise ValueError(
                             f"Unsupported file format: {cutout_path.suffix}. Currently\
@@ -947,7 +1055,7 @@ class Visualize(Verb):
                         )
 
                     if crop_to:
-                        arr = crop_center(arr, crop_to)
+                        arr = self._crop_center(arr, crop_to)
 
                     # Handle normalization differently for single-band vs RGB
                     if arr.ndim == 3:
@@ -961,15 +1069,7 @@ class Visualize(Verb):
                         # Use configurable options for make_lupton_rgb
                         arr = make_lupton_rgb(r_band, g_band, b_band, **self.make_lupton_rgb_opts)
                     else:  # Single-band case
-                        # Ensure data is positive for log scaling
-                        min_positive = np.min(arr[arr > 0]) if np.any(arr > 0) else 1e-10
-                        arr = np.maximum(
-                            arr, min_positive
-                        )  # Replace zeros/negatives with minimum positive value
-
-                        # Apply LogNorm-like scaling
-                        norm = LogNorm(vmin=min_positive, vmax=np.max(arr))
-                        arr = norm(arr)
+                        arr = self._normalize_grayscale_image(arr)
 
                     # DEBUG: title = f"{chosen_idx[i]}:{object_ids[i]}\n{sampled_ids[i]}"
                     title = f"{sampled_ids[i]}"
