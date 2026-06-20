@@ -76,3 +76,17 @@ def test_prepare(test_hyrax_small_dataset_hscstars):
             "36411457130215774",
             "36411457130216436",
         ]
+
+
+def test_object_file_paths(test_hyrax_small_dataset_hscstars):
+    ds = test_hyrax_small_dataset_hscstars.prepare()["train"]
+
+    object_id = next(ds.ids())
+    paths = ds.object_file_paths(object_id)
+
+    path = next(iter(paths.values()))
+    assert path.exists()
+    assert path.suffix == ".fits"
+
+    with pytest.raises(KeyError, match="missing requested filter"):
+        ds.object_file_paths(object_id, ["g"])
