@@ -128,7 +128,7 @@ class UMAP(ReductionAlgorithm):
 
         from tqdm.auto import tqdm
 
-        if self.config["reduce"]["umap"]["parallel"]:
+        if self.config["reduce"]["parallel"]:
             import multiprocessing as mp
 
             # Process pool loop

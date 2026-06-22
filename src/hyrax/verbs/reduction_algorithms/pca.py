@@ -128,7 +128,7 @@ class PCA(ReductionAlgorithm):
 
         from tqdm.auto import tqdm
 
-        if self.config["reduce"]["pca"]["parallel"]:
+        if self.config["reduce"]["parallel"]:
             import multiprocessing as mp
 
             with mp.get_context("spawn").Pool(processes=mp.cpu_count()) as pool:

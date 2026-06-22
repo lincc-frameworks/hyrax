@@ -19,7 +19,7 @@ class TSNE(ReductionAlgorithm):
         """Transform and fit the given data."""
         from tqdm.auto import tqdm
 
-        if self.config["reduce"]["tsne"]["parallel"]:
+        if self.config["reduce"]["parallel"]:
             import multiprocessing as mp
 
             # Process pool loop

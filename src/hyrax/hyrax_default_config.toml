@@ -430,16 +430,16 @@ algorithm = "umap"
 # Save the fitted reducer model as a pickle file 
 save_fit_model = true
 
-# The number of data points to use in reduce_dimensions at once.
+# The number of data points to use when transforming with reduction algorithm at once
 batch_size = 1024
+
+# Use multiprocessing during transforming with redudction algorithm (More memory intensive)
+parallel = false
 
 
 [reduce.umap]
-# Number of data points used to fit the umap transform.
+# Number of data points used to fit the umap model.
 fit_sample_size = 1024
-
-# Use multiprocessing during transforming to umap space (More memory intensive)
-parallel = false
 
 # Path to a pre-existing umap reducer model
 model_path = false
@@ -456,8 +456,6 @@ n_neighbors = 15
 
 
 [reduce.tsne]
-# Use multiprocessing during transforming to umap space (More memory intensive)
-parallel = false
 
 
 [reduce.tsne.kwargs]
@@ -469,11 +467,8 @@ perplexity = 30.0
 
 
 [reduce.pca]
-# Number of data points used to fit the pca transform.
+# Number of data points used to fit the pca model.
 fit_sample_size = 1024
-
-# Use multiprocessing during transforming with pca (More memory intensive)
-parallel = false
 
 # Path to a pre-existing pca reducer model
 model_path = false
