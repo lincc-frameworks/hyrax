@@ -95,7 +95,6 @@ at the official site: https://www.cs.toronto.edu/~kriz/cifar.html
                 "data_location": "./data",
                 "fields": ["image", "label"],
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
             },
         }
     }

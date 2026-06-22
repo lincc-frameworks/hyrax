@@ -87,13 +87,14 @@ def setup_dataset(
             "  [data_request.train.data]\n"
             "  dataset_class = 'YourDataset'\n"
             "  data_location = '/path/to/data'\n"
-            "  primary_id_field = 'id'\n"
-            "  split_fraction = 0.6\n\n"
+            "  primary_id_field = 'id'\n\n"
             "  [data_request.validate.data]\n"
             "  dataset_class = 'YourDataset'\n"
             "  data_location = '/path/to/data'\n"
-            "  primary_id_field = 'id'\n"
-            "  split_fraction = 0.2\n\n"
+            "  primary_id_field = 'id'\n\n"
+            "  [split]\n"
+            "  train = 0.8\n"
+            "  validate = 0.2\n\n"
             "For more information, see: https://hyrax.readthedocs.io/en/stable/dataset_splits.html"
         )
 
