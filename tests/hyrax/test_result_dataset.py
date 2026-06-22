@@ -1,6 +1,7 @@
 """Tests for Lance-based ResultDataset and ResultDatasetWriter."""
 
 import numpy as np
+import pyarrow as pa
 import pytest
 
 import hyrax
@@ -31,9 +32,15 @@ def test_writer_basic(tmp_path, sample_data):
     writer.write_batch(object_ids, data)
     writer.commit()
 
-    # Verify lance_db directory was created
+    # Verify lance_db directory was created with the original fixed-size-list result format.
     lance_dir = tmp_path / "lance_db"
     assert lance_dir.exists()
+
+    h = hyrax.Hyrax()
+    dataset = ResultDataset(h.config, tmp_path)
+    data_type = dataset.table.schema.field("data").type
+    assert pa.types.is_fixed_size_list(data_type)
+    assert data_type.list_size == data[0].size
 
 
 def test_writer_multiple_batches(tmp_path):
