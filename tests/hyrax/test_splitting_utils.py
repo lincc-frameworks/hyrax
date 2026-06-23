@@ -1505,6 +1505,7 @@ def test_resolve_seed_explicit_rng_seed_ignores_data_set(rng_seed_value):
     config = {"split": {"rng_seed": rng_seed_value}, "data_set": {"seed": 999}}
     assert _resolve_seed(config) == rng_seed_value
 
+
 def test_resolve_seed_truthy_rng_seed_no_data_set():
     """When rng_seed is set, data_set being absent does not matter."""
     from hyrax.splitting_utils import _resolve_seed
