@@ -60,10 +60,12 @@ def test_umap_order(loopback_inferred_hyrax):
         for i, orig_id in enumerate(original_dataset_ids):
             if orig_id == result_id:
                 dataset_idx = i
+                assert dataset_idx == idx
                 break
         else:
-            raise AssertionError("Failed to find a corresponding ID")
+            raise AssertionError("Failed to find a corresponding ID in original dataset")
 
+        # Found the corresponding index in the original dataset, now check that the data matches
         umap_result = umap_results[idx].reshape(data_shape)
 
         print(f"orig idx: {dataset_idx}, umap idx: {idx}")
@@ -183,10 +185,12 @@ def test_pca_order(loopback_inferred_hyrax):
         for i, orig_id in enumerate(original_dataset_ids):
             if orig_id == result_id:
                 dataset_idx = i
+                assert dataset_idx == idx
                 break
         else:
-            raise AssertionError("Failed to find a corresponding ID")
+            raise AssertionError("Failed to find a corresponding ID in original dataset")
 
+        # Found the corresponding index in the original dataset, now check that the data matches
         pca_result = pca_results[idx].reshape(data_shape)
 
         print(f"orig idx: {dataset_idx}, pca idx: {idx}")
@@ -300,10 +304,12 @@ def test_tsne_order(loopback_inferred_hyrax):
         for i, orig_id in enumerate(original_dataset_ids):
             if orig_id == result_id:
                 dataset_idx = i
+                assert dataset_idx == idx
                 break
         else:
-            raise AssertionError("Failed to find a corresponding ID")
+            raise AssertionError("Failed to find a corresponding ID in original dataset")
 
+        # Found the corresponding index in the original dataset, now check that the data matches
         tsne_result = tsne_results[idx].reshape(data_shape)
 
         print(f"orig idx: {dataset_idx}, tsne idx: {idx}")

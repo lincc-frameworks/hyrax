@@ -131,6 +131,12 @@ class PCA(ReductionAlgorithm):
         if self.config["reduce"]["parallel"]:
             import multiprocessing as mp
 
+            # Process pool loop
+            # Use 'spawn' context to safely create subprocesses after
+            # OpenMP threads are being opened by other processes in hyrax
+            # Not using spawn causes the issue linked below
+            # https://github.com/lincc-frameworks/hyrax/issues/291
+            # TODO: Find more elegant solution than just using spawn
             with mp.get_context("spawn").Pool(processes=mp.cpu_count()) as pool:
                 for batch_ids, transformed_batch in tqdm(
                     pool.imap(self._transform_batch, args),

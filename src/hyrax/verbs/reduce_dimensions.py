@@ -43,7 +43,7 @@ class ReduceDimensions(Verb):
             "--model-path",
             type=str,
             required=False,
-            help="Path to a pre-existing reducer model.",
+            help="Path to a previously saved reducer model.",
         )
 
     def run_cli(self, args: Namespace | None = None):
@@ -88,7 +88,7 @@ class ReduceDimensions(Verb):
             Directory containing the dataset to reduce dimensions for.
 
         model_path : str or Path, Optional
-            Path to a pre-existing reducer model.
+            Path to a previously saved reducer model.
 
         Returns
         -------
