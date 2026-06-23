@@ -313,7 +313,7 @@ class DataProvider:
 
         # Augmentation support
         self.augment_getters = {}  # friendly_name -> {field_name: augment_func}
-        self.augment_enabled = {}  # friendly_name -> bool
+        self.augment_enabled = {}  # friendly_name -> list[str]
         self._has_any_augmentation = False
         # _augment_rng advances once per epoch (in on_epoch_start) to produce a fresh
         # _epoch_rng for that epoch.  _epoch_rng is drawn from sequentially in
@@ -568,20 +568,6 @@ class DataProvider:
                     "This is likely an error in the dataset class definition."
                 )
 
-            # Discover augment_<field> methods if augmentation is enabled for this dataset.
-            if dataset_definition.get("augment"):
-                self.augment_enabled[friendly_name] = True
-                self._has_any_augmentation = True
-                self.augment_getters[friendly_name] = {}
-                for name in dir(dataset_instance):
-                    if not name.startswith("augment_"):
-                        continue
-                    augment_fn = getattr(dataset_instance, name, None)
-                    if not callable(augment_fn):
-                        continue
-                    field_name = name.removeprefix("augment_")
-                    self.augment_getters[friendly_name][field_name] = augment_fn
-
             # Get all the dataset's metadata fields and store them in
             # `self.all_metadata_fields` dictionary. Modify the name to be
             # <metadata_field_name>_<friendly_name>, i.e. "RA_cifar" or "photoz_hsc".
@@ -609,6 +595,40 @@ class DataProvider:
             # provide slightly faster iteration than lists, which is beneficial
             # for repeated access in `resolve_data`.
             self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
+            # Discover augment_<field> methods if augmentation is enabled for this dataset.
+            augment_cfg = dataset_definition.get("augment")
+            if augment_cfg:
+                self._has_any_augmentation = True
+                self.augment_getters[friendly_name] = {}
+
+                # Normalize bool to a list of requested field names that have augment methods.
+                if augment_cfg is True:
+                    available = {
+                        name.removeprefix("augment_")
+                        for name in dir(dataset_instance)
+                        if name.startswith("augment_") and callable(getattr(dataset_instance, name, None))
+                    }
+                    augment_cfg = [f for f in self.requested_fields[friendly_name] if f in available]
+
+                self.augment_enabled[friendly_name] = augment_cfg
+
+                for field_name in augment_cfg:
+                    if field_name not in self.requested_fields[friendly_name]:
+                        raise RuntimeError(
+                            f"augment list requests augmentation for field '{field_name}' "
+                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                            f"but '{field_name}' is not a field on this dataset."
+                        )
+                    method_name = f"augment_{field_name}"
+                    augment_fn = getattr(dataset_instance, method_name, None)
+                    if augment_fn is None or not callable(augment_fn):
+                        raise RuntimeError(
+                            f"augment list requests augmentation for field '{field_name}' "
+                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                            f"but no callable '{method_name}' method was found."
+                        )
+                    self.augment_getters[friendly_name][field_name] = augment_fn
 
     def _build_join_indices(self):
         """Build reverse-index mappings for datasets that declare a ``join_field``.
