@@ -226,7 +226,7 @@ def test_structurally_invalid_data_request_raises():
             "dataset_class": "HyraxRandomDataset",
             "data_location": "/tmp/data",
             "primary_id_field": "id",
-            "invalid_split_value": 1.5,
+            "unexpected_key": 1.5,
         }
     }
     with pytest.raises(RuntimeError, match="Invalid data_request"):
