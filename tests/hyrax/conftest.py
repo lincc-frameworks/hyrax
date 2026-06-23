@@ -3,7 +3,6 @@ import sys
 
 import numpy as np
 import pytest
-import torch
 
 import hyrax
 from hyrax.datasets.data_provider import DataProvider
@@ -31,23 +30,6 @@ def pytest_configure(config):
             msg = "Attempted to raise open file limit, and failed. Tests may not work.\n"
             msg += f"See error below when trying to raise open file limit: \n {e}"
             raise RuntimeError(msg) from e
-
-
-@pytest.fixture(autouse=True)
-def restore_default_device():
-    """Restore the torch default device after every test.
-
-    ``create_engine`` calls ``torch.set_default_device(idist.device())`` and never
-    restores it, leaking global process state (e.g. ``mps`` on Apple Silicon) into
-    later tests. That makes device-sensitive tests order-dependent -- most visibly
-    ``WeightedRandomSampler``, whose ``__init__`` runs ``torch.as_tensor(weights,
-    dtype=torch.double)`` with no device kwarg and fails on MPS (no float64) when a
-    non-CPU default device is active. Snapshotting and restoring here keeps tests
-    isolated regardless of execution order.
-    """
-    prior = torch.get_default_device()
-    yield
-    torch.set_default_device(prior)
 
 
 @pytest.fixture(scope="function")
