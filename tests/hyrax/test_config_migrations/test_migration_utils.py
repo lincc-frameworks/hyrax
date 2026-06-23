@@ -1,20 +1,17 @@
-"""Tests for the versioned config migration system."""
+"""Tests for migration helper functions and registry metadata."""
 
-import logging
 import warnings
 
 import pytest
 import tomlkit
 
 from hyrax.config_migrations import (
-    CURRENT_CONFIG_VERSION,
     DEPRECATED_KEY_NAMES,
     MigrationStep,
     migrate_config,
     move_key,
     rename_table,
 )
-from hyrax.config_utils import ConfigManager
 
 # ---------------------------------------------------------------------------
 # rename_table helper
@@ -74,64 +71,33 @@ def test_move_key_missing_source_is_noop():
 
 
 # ---------------------------------------------------------------------------
+# MigrationStep and DEPRECATED_KEY_NAMES
+# ---------------------------------------------------------------------------
+
+
+def test_deprecated_key_names_derived_from_migrations():
+    """DEPRECATED_KEY_NAMES is automatically built from MigrationStep.key_renames."""
+    assert "model_inputs" in DEPRECATED_KEY_NAMES
+    assert DEPRECATED_KEY_NAMES["model_inputs"] == "data_request"
+    assert "data_loader.shuffle" in DEPRECATED_KEY_NAMES
+    assert DEPRECATED_KEY_NAMES["data_loader.shuffle"] == "train.shuffle"
+
+
+def test_migration_step_without_key_renames():
+    """A MigrationStep with no renames still works as a migration."""
+    step = MigrationStep(func=lambda c: c)
+    assert step.key_renames == {}
+
+
+# ---------------------------------------------------------------------------
 # migrate_config: version detection and chain
 # ---------------------------------------------------------------------------
 
 
-def test_migrate_config_legacy_model_inputs_warns_and_renames(caplog):
-    """A v1-era config (no config_version, uses [model_inputs]) is upgraded."""
-    cfg = tomlkit.parse("config_version = 1\n[model_inputs]\ntrain = 1\n")
-
-    with warnings.catch_warnings(record=True) as caught, caplog.at_level(logging.WARNING):
-        warnings.simplefilter("always")
-        migrated = migrate_config(cfg)
-
-    assert "model_inputs" not in migrated
-    assert migrated["data_request"]["train"] == 1
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-
-    assert any(
-        issubclass(w.category, DeprecationWarning) and "model_inputs" in str(w.message) for w in caught
-    )
-    assert "model_inputs" in caplog.text
-
-
-def test_migrate_config_current_version_is_noop():
-    """A clean current-version config is stamped through migrate_config unchanged."""
-    cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION}\n[data_request]\ntrain = 1\n")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        migrated = migrate_config(cfg)
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert migrated["data_request"]["train"] == 1
-    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
-
-
-def test_migrate_config_moves_data_loader_shuffle_to_train():
-    """A v2 config moves global data_loader.shuffle to train.shuffle."""
-    cfg = tomlkit.parse("config_version = 2\n[data_loader]\nshuffle = false\nbatch_size = 8\n")
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert "shuffle" not in migrated["data_loader"]
-    assert migrated["data_loader"]["batch_size"] == 8
-    assert migrated["train"]["shuffle"] is False
-
-
-def test_migrate_config_without_data_loader_shuffle_keeps_existing_train_shuffle():
-    """The shuffle migration is a no-op when the legacy key is absent."""
-    cfg = tomlkit.parse("config_version = 2\n[train]\nshuffle = true\n[data_loader]\nbatch_size = 8\n")
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert migrated["train"]["shuffle"] is True
-    assert "shuffle" not in migrated["data_loader"]
-
-
 def test_migrate_config_future_version_raises():
     """A config from a newer Hyrax is refused with an upgrade hint."""
+    from hyrax.config_migrations import CURRENT_CONFIG_VERSION
+
     cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION + 5}\n")
     with pytest.raises(RuntimeError, match=r"pip install -U hyrax"):
         migrate_config(cfg)
@@ -180,8 +146,23 @@ def test_migrate_config_empty_document_is_passthrough():
     assert len(migrated) == 0
 
 
+def test_migrate_config_current_version_is_noop():
+    """A clean current-version config is stamped through migrate_config unchanged."""
+    from hyrax.config_migrations import CURRENT_CONFIG_VERSION
+
+    cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION}\n[data_request]\ntrain = 1\n")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        migrated = migrate_config(cfg)
+    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
+    assert migrated["data_request"]["train"] == 1
+    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
+
+
 def test_migrate_config_is_idempotent():
     """Running migrate_config twice is safe and does not re-warn."""
+    from hyrax.config_migrations import CURRENT_CONFIG_VERSION
+
     cfg = tomlkit.parse("config_version=1\n[model_inputs]\ntrain = 1\n")
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
@@ -214,6 +195,8 @@ def test_config_manager_runs_migration_on_load(tmp_path):
     emits a DeprecationWarning. The final merged config contains data_request
     and no longer references model_inputs.
     """
+    from hyrax.config_utils import ConfigManager
+
     user_config = tmp_path / "legacy.toml"
     user_config.write_text(
         """
@@ -250,31 +233,14 @@ dev_mode = false
 
 
 # ---------------------------------------------------------------------------
-# MigrationStep and DEPRECATED_KEY_NAMES
-# ---------------------------------------------------------------------------
-
-
-def test_deprecated_key_names_derived_from_migrations():
-    """DEPRECATED_KEY_NAMES is automatically built from MigrationStep.key_renames."""
-    assert "model_inputs" in DEPRECATED_KEY_NAMES
-    assert DEPRECATED_KEY_NAMES["model_inputs"] == "data_request"
-    assert "data_loader.shuffle" in DEPRECATED_KEY_NAMES
-    assert DEPRECATED_KEY_NAMES["data_loader.shuffle"] == "train.shuffle"
-
-
-def test_migration_step_without_key_renames():
-    """A MigrationStep with no renames still works as a migration."""
-    step = MigrationStep(func=lambda c: c)
-    assert step.key_renames == {}
-
-
-# ---------------------------------------------------------------------------
 # set_config: deprecated key warnings
 # ---------------------------------------------------------------------------
 
 
 def test_set_config_deprecated_key_warns(tmp_path):
     """set_config with a deprecated top-level key emits a DeprecationWarning."""
+    from hyrax.config_utils import ConfigManager
+
     user_config = tmp_path / "user.toml"
     user_config.write_text("[general]\ndev_mode = true\n")
 
@@ -302,6 +268,8 @@ def test_set_config_deprecated_key_warns(tmp_path):
 
 def test_set_config_deprecated_nested_key_warns(tmp_path):
     """set_config with a deprecated nested key emits a DeprecationWarning."""
+    from hyrax.config_utils import ConfigManager
+
     user_config = tmp_path / "user.toml"
     user_config.write_text("[general]\ndev_mode = true\n")
 
@@ -332,6 +300,8 @@ def test_set_config_deprecated_nested_key_warns(tmp_path):
 
 def test_set_config_current_key_no_warn(tmp_path):
     """set_config with the current key name does not emit a DeprecationWarning."""
+    from hyrax.config_utils import ConfigManager
+
     user_config = tmp_path / "user.toml"
     user_config.write_text("[general]\ndev_mode = true\n")
 
@@ -350,115 +320,3 @@ def test_set_config_current_key_no_warn(tmp_path):
         cm._set_config("data_request", {"train": {"data": "test"}})
 
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
-
-
-# ---------------------------------------------------------------------------
-# Migration 003: move split_fraction → [split]
-# ---------------------------------------------------------------------------
-
-
-def test_migrate_config_003_moves_split_fraction_to_split():
-    """A v3 config with split_fraction in data_request moves the value to [split]."""
-    cfg = tomlkit.parse(
-        "config_version = 3\n"
-        "[data_request.train.data]\n"
-        'dataset_class = "HyraxRandomDataset"\n'
-        "split_fraction = 0.7\n"
-        "[data_request.validate.data]\n"
-        'dataset_class = "HyraxRandomDataset"\n'
-        "split_fraction = 0.3\n"
-    )
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    # split_fraction should be gone from data_request
-    assert "split_fraction" not in migrated["data_request"]["train"]["data"]
-    assert "split_fraction" not in migrated["data_request"]["validate"]["data"]
-    # Values should be promoted to the [split] table
-    assert migrated["split"]["train"] == pytest.approx(0.7)
-    assert migrated["split"]["validate"] == pytest.approx(0.3)
-
-
-def test_migrate_config_003_noop_when_no_split_fraction():
-    """A v4 config with no split_fraction anywhere is returned unchanged."""
-    cfg = tomlkit.parse(
-        f"config_version = {CURRENT_CONFIG_VERSION}\n"
-        "[data_request.train.data]\n"
-        'dataset_class = "HyraxRandomDataset"\n'
-        "[split]\n"
-        "train = 1.0\n"
-    )
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert "split_fraction" not in migrated.get("data_request", {}).get("train", {}).get("data", {})
-    assert migrated["split"]["train"] == pytest.approx(1.0)
-    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
-
-
-# ---------------------------------------------------------------------------
-# Migration 004: preload_cache/preload_threads → data_loader.num_workers
-# ---------------------------------------------------------------------------
-
-
-def test_migrate_004_custom_preload_threads_becomes_num_workers():
-    """A user who set preload_threads to a non-default value gets num_workers."""
-    cfg = tomlkit.parse("config_version = 4\n[data_set]\npreload_cache = true\npreload_threads = 8\n")
-
-    migrated = migrate_config(cfg)
-
-    assert "preload_cache" not in migrated["data_set"]
-    assert "preload_threads" not in migrated["data_set"]
-    assert migrated["data_loader"]["num_workers"] == 8
-
-
-def test_migrate_004_custom_threads_adds_to_existing_num_workers():
-    """preload_threads is added to an already-set num_workers."""
-    cfg = tomlkit.parse(
-        "config_version = 4\n"
-        "[data_set]\n"
-        "preload_cache = true\n"
-        "preload_threads = 4\n"
-        "[data_loader]\n"
-        "num_workers = 2\n"
-    )
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["data_loader"]["num_workers"] == 6
-
-
-def test_migrate_004_default_50_threads_dropped():
-    """The old HPC-tuned default of 50 is treated as unset and not migrated."""
-    cfg = tomlkit.parse("config_version = 4\n[data_set]\npreload_cache = true\npreload_threads = 50\n")
-
-    migrated = migrate_config(cfg)
-
-    assert "preload_cache" not in migrated["data_set"]
-    assert "preload_threads" not in migrated["data_set"]
-    assert "data_loader" not in migrated or "num_workers" not in migrated.get("data_loader", {})
-
-
-def test_migrate_004_preload_cache_false_dropped():
-    """When preload_cache was off, both keys are just removed."""
-    cfg = tomlkit.parse("config_version = 4\n[data_set]\npreload_cache = false\npreload_threads = 8\n")
-
-    migrated = migrate_config(cfg)
-
-    assert "preload_cache" not in migrated["data_set"]
-    assert "preload_threads" not in migrated["data_set"]
-    assert "data_loader" not in migrated or "num_workers" not in migrated.get("data_loader", {})
-
-
-def test_migrate_004_no_preload_keys_is_noop():
-    """A v4 config without preload keys passes through cleanly."""
-    cfg = tomlkit.parse("config_version = 4\n[data_set]\nseed = 42\n")
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["data_set"]["seed"] == 42
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION

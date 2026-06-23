@@ -412,24 +412,29 @@ vector_size = 64
 inference_dir = false
 
 
-[umap]
-# Number of data points used to fit the umap transform.
-fit_sample_size = 1024
+[reduce]
+# Name of the reduction algorithm to use
+algorithm = "umap"
 
-# Save the fitted umap as a pickle file 
-save_fit_umap = true
+# Save the fitted reducer model as a pickle file 
+save_fit_model = true
+
+# The number of data points to use when transforming with reduction algorithm at once
+batch_size = 1024
+
+# Use multiprocessing during transforming with redudction algorithm (More memory intensive)
+parallel = false
+
+
+[reduce.umap]
+# Number of data points used to fit the umap model.
+fit_sample_size = 1024
 
 # Path to a pre-existing umap reducer model
 model_path = false
 
-# Use multiprocessing during transforming to umap space (More memory intensive)
-parallel = false
 
-# Name of the umap implementation to use
-name = "umap.UMAP"
-
-
-[umap.UMAP]
+[reduce.umap.kwargs]
 # Specify any parameter accepted by https://umap-learn.readthedocs.io/en/latest/api.html#umap
 # Dimension of the embedded space
 n_components = 2
@@ -437,6 +442,34 @@ n_components = 2
 # Controls how UMAP balances local versus global structure in the data.
 # See official documentation for details.
 n_neighbors = 15
+
+
+[reduce.tsne]
+# Placeholder for config values of tsne model
+
+
+[reduce.tsne.kwargs]
+# Specify any parameter accepted by https://scikit-learn.org/stable/modules/generated/sklearn.manifold.TSNE.html
+# Dimension of the embedded space
+n_components = 2
+
+# Number of nearest neighbors that is used in other manifold learning algorithms
+# See official documentation for details.
+perplexity = 30.0
+
+
+[reduce.pca]
+# Number of data points used to fit the pca model.
+fit_sample_size = 1024
+
+# Path to a pre-existing pca reducer model
+model_path = false
+
+
+[reduce.pca.kwargs]
+# Specify any parameter accepted by https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html#
+# Dimension of the embedded space
+n_components=2
 
 
 [visualize]

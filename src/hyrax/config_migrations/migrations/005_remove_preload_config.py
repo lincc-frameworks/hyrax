@@ -1,4 +1,4 @@
-"""Config migration: version 4 → version 5.
+"""Config migration: version 5 → version 6.
 
 Migrates the deprecated ``preload_cache`` and ``preload_threads`` keys from
 ``[data_set]`` into ``[data_loader].num_workers``.  Cache preloading has been
@@ -21,7 +21,7 @@ from hyrax.config_migrations.migration_utils import migration_step
 _OLD_DEFAULT_PRELOAD_THREADS = 50
 
 
-@migration_step(from_version=4)
+@migration_step(from_version=5)
 def remove_preload_config(cfg: TOMLDocument) -> TOMLDocument:
     """Migrate preload config to ``[data_loader].num_workers``."""
     data_set = cfg.get("data_set")
