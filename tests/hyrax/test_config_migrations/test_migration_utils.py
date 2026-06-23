@@ -1,6 +1,5 @@
 """Tests for migration helper functions and registry metadata."""
 
-import logging
 import warnings
 
 import pytest
