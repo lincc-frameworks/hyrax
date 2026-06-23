@@ -691,6 +691,96 @@ def test_augment_field_preserved_in_as_dict():
     assert cfg.as_dict()["augment"] is True
 
 
+def test_augment_list_on_train_group_passes_validation():
+    """augment as a list on a train group passes DataRequestDefinition validation."""
+    definition = DataRequestDefinition(
+        {
+            "train": {
+                "data": {
+                    "dataset_class": "DS",
+                    "data_location": "/tmp",
+                    "primary_id_field": "id",
+                    "fields": ["image", "label"],
+                    "augment": ["image"],
+                }
+            }
+        }
+    )
+    assert definition["train"]["data"].augment == ["image"]
+
+
+def test_augment_list_preserved_in_as_dict():
+    """augment list round-trips through as_dict."""
+    cfg = DataRequestConfig(
+        dataset_class="DS",
+        data_location="/tmp",
+        primary_id_field="id",
+        fields=["image", "label"],
+        augment=["image"],
+    )
+    assert cfg.as_dict()["augment"] == ["image"]
+
+
+def test_augment_list_rejects_primary_id_field():
+    """augment list containing primary_id_field raises ValidationError."""
+    with pytest.raises(ValidationError, match="primary_id_field"):
+        DataRequestConfig(
+            dataset_class="DS",
+            data_location="/tmp",
+            primary_id_field="id",
+            fields=["image"],
+            augment=["image", "id"],
+        )
+
+
+def test_augment_list_rejects_extra_fields():
+    """augment list with fields not in 'fields' raises ValidationError."""
+    with pytest.raises(ValidationError, match="not in 'fields'"):
+        DataRequestConfig(
+            dataset_class="DS",
+            data_location="/tmp",
+            primary_id_field="id",
+            fields=["image"],
+            augment=["image", "mask"],
+        )
+
+
+def test_augment_list_on_infer_group_raises_validation_error():
+    """augment list with fields on infer group raises ValidationError."""
+    with pytest.raises(ValidationError, match="Augmentation cannot be enabled on 'infer'"):
+        DataRequestDefinition(
+            {
+                "infer": {
+                    "data": {
+                        "dataset_class": "DS",
+                        "data_location": "/tmp",
+                        "primary_id_field": "id",
+                        "fields": ["image"],
+                        "augment": ["image"],
+                    }
+                }
+            }
+        )
+
+
+def test_augment_empty_list_on_infer_allowed():
+    """augment as an empty list on infer is allowed (no actual augmentation)."""
+    definition = DataRequestDefinition(
+        {
+            "infer": {
+                "data": {
+                    "dataset_class": "DS",
+                    "data_location": "/tmp",
+                    "primary_id_field": "id",
+                    "fields": ["image"],
+                    "augment": [],
+                }
+            }
+        }
+    )
+    assert definition["infer"]["data"].augment == []
+
+
 def test_issue_817_single_named_source_no_extra_data_nesting():
     """Regression test for issue #817.
 

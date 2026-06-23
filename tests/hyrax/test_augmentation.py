@@ -2,6 +2,7 @@
 """Tests for the augmentation feature."""
 
 import numpy as np
+import pytest
 
 import hyrax
 from hyrax.datasets.data_provider import DataProvider
@@ -25,7 +26,7 @@ class AugmentedRandomDataset(HyraxRandomDataset):
 
     def __init__(self, config, data_location):
         super().__init__(config, data_location)
-        self.get_image_call_count = 0
+        self.image_getter_call_count = 0
         self.augment_image_calls: list[tuple[int, int]] = []
         self.epoch_start_count = 0
         self.last_verb: str | None = None
@@ -35,7 +36,7 @@ class AugmentedRandomDataset(HyraxRandomDataset):
         self.last_verb = verb
 
     def get_image(self, idx):
-        self.get_image_call_count += 1
+        self.image_getter_call_count += 1
         return super().get_image(idx)
 
     def augment_image(self, data, idx, rng_seed):
@@ -128,7 +129,7 @@ def test_augment_disabled_uses_only_getters(tmp_path):
     dataset_instance = dp.prepped_datasets["data"]
 
     result = dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
     assert len(dataset_instance.augment_image_calls) == 0
     assert np.all(result["data"]["image"] >= 0)
 
@@ -140,7 +141,7 @@ def test_augment_absent_uses_only_getters(tmp_path):
     dataset_instance = dp.prepped_datasets["data"]
 
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
     assert len(dataset_instance.augment_image_calls) == 0
 
 
@@ -246,13 +247,81 @@ def test_augment_cache_get_field_cached_augment_reruns(tmp_path):
     dataset_instance = dp.prepped_datasets["data"]
 
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
     assert len(dataset_instance.augment_image_calls) == 1
 
     # Second call: cache hit — get_image NOT called again, augment_image IS called again
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
     assert len(dataset_instance.augment_image_calls) == 2
+
+
+def test_augment_list_dispatches_per_field(tmp_path):
+    """augment list selectively enables augmentation per field."""
+    config = _make_hyrax_config()
+    dp = _make_dp(
+        config,
+        "AugmentedRandomDataset",
+        tmp_path,
+        augment=["image"],
+        fields=["image", "label"],
+    )
+    dataset_instance = dp.prepped_datasets["data"]
+
+    result = dp.resolve_data(0)
+    # image was augmented (negated)
+    assert len(dataset_instance.augment_image_calls) == 1
+    assert np.all(result["data"]["image"] <= 0)
+    # label was NOT augmented
+    assert result["data"]["label"] == dataset_instance.get_label(0)
+
+
+def test_augment_empty_list_no_augmentation(tmp_path):
+    """augment as an empty list performs no augmentation."""
+    config = _make_hyrax_config()
+    dp = _make_dp(
+        config,
+        "AugmentedRandomDataset",
+        tmp_path,
+        augment=[],
+        fields=["image"],
+    )
+    dataset_instance = dp.prepped_datasets["data"]
+
+    result = dp.resolve_data(0)
+    assert len(dataset_instance.augment_image_calls) == 0
+    assert np.all(result["data"]["image"] >= 0)
+
+
+def test_augment_list_missing_method_raises_runtime_error(tmp_path):
+    """augment list naming a field without augment_<field> raises RuntimeError."""
+    config = _make_hyrax_config()
+    # AugmentedRandomDataset has augment_image but NOT augment_label
+    with pytest.raises(RuntimeError, match="augment_label"):
+        _make_dp(
+            config,
+            "AugmentedRandomDataset",
+            tmp_path,
+            augment=["image", "label"],
+            fields=["image", "label"],
+        )
+
+
+def test_augment_list_rng_seed_same_within_row(tmp_path):
+    """List-mode augmentation still passes the same rng_seed to all augment calls in a row."""
+    config = _make_hyrax_config()
+    dp = _make_dp(
+        config,
+        "SeedTrackingDataset",
+        tmp_path,
+        augment=["image", "label"],
+        fields=["image", "label"],
+    )
+    dataset_instance = dp.prepped_datasets["data"]
+
+    dp.resolve_data(0)
+    seeds = dataset_instance.seeds_by_idx[0]
+    assert seeds["image"] == seeds["label"]
 
 
 def test_no_augment_caching_unchanged(tmp_path):
@@ -263,8 +332,44 @@ def test_no_augment_caching_unchanged(tmp_path):
 
     dp.resolve_data(0)
     dp.resolve_data(0)
-    assert dataset_instance.get_image_call_count == 1
+    assert dataset_instance.image_getter_call_count == 1
     assert len(dataset_instance.augment_image_calls) == 0
+
+
+# ---------------------------------------------------------------------------
+# Augment list with fields not specified (implicit all-fields)
+# ---------------------------------------------------------------------------
+
+
+def test_augment_list_without_fields_happy_path(tmp_path):
+    """augment list works when fields is not specified (all fields auto-discovered)."""
+    config = _make_hyrax_config()
+    # No fields= argument — all get_* methods are discovered automatically.
+    dp = _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=["image"])
+    dataset_instance = dp.prepped_datasets["data"]
+
+    result = dp.resolve_data(0)
+    # image was augmented (negated)
+    assert len(dataset_instance.augment_image_calls) == 1
+    assert np.all(result["data"]["image"] <= 0)
+    # label was NOT augmented — uses get_label
+    assert result["data"]["label"] == dataset_instance.get_label(0)
+
+
+def test_augment_list_without_fields_no_augment_method(tmp_path):
+    """augment list naming a field with no augment method raises RuntimeError when fields is omitted."""
+    config = _make_hyrax_config()
+    # AugmentedRandomDataset has get_label but NOT augment_label
+    with pytest.raises(RuntimeError, match="augment_label"):
+        _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=["label"])
+
+
+def test_augment_list_without_fields_field_not_in_dataset(tmp_path):
+    """augment list naming a nonexistent field raises RuntimeError when fields is omitted."""
+    config = _make_hyrax_config()
+    # "nonexistent" has no get_ or augment_ method on the dataset
+    with pytest.raises(RuntimeError, match="not a field"):
+        _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=["nonexistent"])
 
 
 # ---------------------------------------------------------------------------
