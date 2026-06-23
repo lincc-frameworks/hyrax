@@ -1,17 +1,20 @@
 """Tests for migration helper functions and registry metadata."""
 
+import logging
 import warnings
 
 import pytest
 import tomlkit
 
 from hyrax.config_migrations import (
+    CURRENT_CONFIG_VERSION,
     DEPRECATED_KEY_NAMES,
     MigrationStep,
     migrate_config,
     move_key,
     rename_table,
 )
+from hyrax.config_utils import ConfigManager
 
 # ---------------------------------------------------------------------------
 # rename_table helper
@@ -71,33 +74,23 @@ def test_move_key_missing_source_is_noop():
 
 
 # ---------------------------------------------------------------------------
-# MigrationStep and DEPRECATED_KEY_NAMES
-# ---------------------------------------------------------------------------
-
-
-def test_deprecated_key_names_derived_from_migrations():
-    """DEPRECATED_KEY_NAMES is automatically built from MigrationStep.key_renames."""
-    assert "model_inputs" in DEPRECATED_KEY_NAMES
-    assert DEPRECATED_KEY_NAMES["model_inputs"] == "data_request"
-    assert "data_loader.shuffle" in DEPRECATED_KEY_NAMES
-    assert DEPRECATED_KEY_NAMES["data_loader.shuffle"] == "train.shuffle"
-
-
-def test_migration_step_without_key_renames():
-    """A MigrationStep with no renames still works as a migration."""
-    step = MigrationStep(func=lambda c: c)
-    assert step.key_renames == {}
-
-
-# ---------------------------------------------------------------------------
 # migrate_config: version detection and chain
 # ---------------------------------------------------------------------------
 
 
+def test_migrate_config_current_version_is_noop():
+    """A clean current-version config is stamped through migrate_config unchanged."""
+    cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION}\n[data_request]\ntrain = 1\n")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        migrated = migrate_config(cfg)
+    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
+    assert migrated["data_request"]["train"] == 1
+    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
+
+
 def test_migrate_config_future_version_raises():
     """A config from a newer Hyrax is refused with an upgrade hint."""
-    from hyrax.config_migrations import CURRENT_CONFIG_VERSION
-
     cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION + 5}\n")
     with pytest.raises(RuntimeError, match=r"pip install -U hyrax"):
         migrate_config(cfg)
@@ -146,23 +139,8 @@ def test_migrate_config_empty_document_is_passthrough():
     assert len(migrated) == 0
 
 
-def test_migrate_config_current_version_is_noop():
-    """A clean current-version config is stamped through migrate_config unchanged."""
-    from hyrax.config_migrations import CURRENT_CONFIG_VERSION
-
-    cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION}\n[data_request]\ntrain = 1\n")
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        migrated = migrate_config(cfg)
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert migrated["data_request"]["train"] == 1
-    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
-
-
 def test_migrate_config_is_idempotent():
     """Running migrate_config twice is safe and does not re-warn."""
-    from hyrax.config_migrations import CURRENT_CONFIG_VERSION
-
     cfg = tomlkit.parse("config_version=1\n[model_inputs]\ntrain = 1\n")
     with warnings.catch_warnings(record=True):
         warnings.simplefilter("always")
@@ -195,8 +173,6 @@ def test_config_manager_runs_migration_on_load(tmp_path):
     emits a DeprecationWarning. The final merged config contains data_request
     and no longer references model_inputs.
     """
-    from hyrax.config_utils import ConfigManager
-
     user_config = tmp_path / "legacy.toml"
     user_config.write_text(
         """
@@ -233,14 +209,31 @@ dev_mode = false
 
 
 # ---------------------------------------------------------------------------
+# MigrationStep and DEPRECATED_KEY_NAMES
+# ---------------------------------------------------------------------------
+
+
+def test_deprecated_key_names_derived_from_migrations():
+    """DEPRECATED_KEY_NAMES is automatically built from MigrationStep.key_renames."""
+    assert "model_inputs" in DEPRECATED_KEY_NAMES
+    assert DEPRECATED_KEY_NAMES["model_inputs"] == "data_request"
+    assert "data_loader.shuffle" in DEPRECATED_KEY_NAMES
+    assert DEPRECATED_KEY_NAMES["data_loader.shuffle"] == "train.shuffle"
+
+
+def test_migration_step_without_key_renames():
+    """A MigrationStep with no renames still works as a migration."""
+    step = MigrationStep(func=lambda c: c)
+    assert step.key_renames == {}
+
+
+# ---------------------------------------------------------------------------
 # set_config: deprecated key warnings
 # ---------------------------------------------------------------------------
 
 
 def test_set_config_deprecated_key_warns(tmp_path):
     """set_config with a deprecated top-level key emits a DeprecationWarning."""
-    from hyrax.config_utils import ConfigManager
-
     user_config = tmp_path / "user.toml"
     user_config.write_text("[general]\ndev_mode = true\n")
 
@@ -268,8 +261,6 @@ def test_set_config_deprecated_key_warns(tmp_path):
 
 def test_set_config_deprecated_nested_key_warns(tmp_path):
     """set_config with a deprecated nested key emits a DeprecationWarning."""
-    from hyrax.config_utils import ConfigManager
-
     user_config = tmp_path / "user.toml"
     user_config.write_text("[general]\ndev_mode = true\n")
 
@@ -300,8 +291,6 @@ def test_set_config_deprecated_nested_key_warns(tmp_path):
 
 def test_set_config_current_key_no_warn(tmp_path):
     """set_config with the current key name does not emit a DeprecationWarning."""
-    from hyrax.config_utils import ConfigManager
-
     user_config = tmp_path / "user.toml"
     user_config.write_text("[general]\ndev_mode = true\n")
 
