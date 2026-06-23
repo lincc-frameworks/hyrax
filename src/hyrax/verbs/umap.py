@@ -77,9 +77,5 @@ class Umap(Verb):
 
     def _run(self, input_dir: Union[Path, str] | None = None, model_path: Union[Path, str] | None = None):
         """See run()"""
-        warnings.warn(
-            "The `umap` verb is deprecated. Use `reduce_dimensions(algorithm='umap')` instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
+        logger.warning("The `umap` verb is deprecated. Use `reduce_dimensions(algorithm='umap')` instead.")
         return ReduceDimensions(self.config).run(algorithm="umap", input_dir=input_dir, model_path=model_path)

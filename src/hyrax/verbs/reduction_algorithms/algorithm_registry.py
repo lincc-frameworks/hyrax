@@ -128,7 +128,7 @@ class ReductionAlgorithm:
             return object
 
     def _transform_batch(self, batch_tuple: tuple):
-        """Private helper to transform a single batch
+        """Private helper to transform a single batch with fitted reducer.
 
         Parameters
         ----------
@@ -142,7 +142,7 @@ class ReductionAlgorithm:
         -------
         tuple
             first element is the ids of the batch as a numpy array
-            second element is the results of running the umap transform on the input as a numpy array.
+            second element is the results of running the transform on the input as a numpy array.
         """
         batch_ids, batch = batch_tuple
         with warnings.catch_warnings():

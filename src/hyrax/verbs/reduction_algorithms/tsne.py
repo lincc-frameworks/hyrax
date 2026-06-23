@@ -15,8 +15,36 @@ class TSNE(ReductionAlgorithm):
         super().__init__(config, reduction_results)
         self.reducer = sklearn_manifold.TSNE(**self.config["reduce"]["tsne"]["kwargs"])
 
+    def save_model(self, _):
+        """
+        TSNE does not support saving the model. This method is a no-op.
+        """
+        logger.warning("TSNE does not support saving the model. Skipping save_model.")
+
+    def load_model(self, _):
+        """
+        TSNE does not support loading a pre-existing model. This method is a no-op.
+        """
+        logger.warning("TSNE does not support loading a pre-existing model. Skipping load_model.")
+
+    def fit(self, _):
+        """
+        TSNE does not support a separate fitting stage. This method is a no-op.
+        """
+        logger.warning("TSNE does not support a separate fitting stage. Skipping fit.")
+
     def transform(self, args: dict, num_batches: int):
-        """Transform and fit the given data."""
+        """
+        Fit and transform data with TSNE model.
+
+        Parameters
+        ----------
+        args : dict
+            A dictionary containing the data to be transformed.
+
+        num_batches : int
+            The total number of batches that the data is split into for transformation.
+        """
         from tqdm.auto import tqdm
 
         if self.config["reduce"]["parallel"]:
@@ -63,7 +91,7 @@ class TSNE(ReductionAlgorithm):
         -------
         tuple
             first element is the ids of the batch as a numpy array
-            second element is the results of running the umap transform on the input as a numpy array.
+            second element is the results of running the tsne transform on the input as a numpy array.
         """
         batch_ids, batch = batch_tuple
         with warnings.catch_warnings():
