@@ -407,12 +407,7 @@ def test_migrate_config_003_noop_when_no_split_fraction():
 
 def test_migrate_004_custom_preload_threads_becomes_num_workers():
     """A user who set preload_threads to a non-default value gets num_workers."""
-    cfg = tomlkit.parse(
-        "config_version = 4\n"
-        "[data_set]\n"
-        "preload_cache = true\n"
-        "preload_threads = 8\n"
-    )
+    cfg = tomlkit.parse("config_version = 4\n[data_set]\npreload_cache = true\npreload_threads = 8\n")
 
     migrated = migrate_config(cfg)
 
@@ -439,12 +434,7 @@ def test_migrate_004_custom_threads_adds_to_existing_num_workers():
 
 def test_migrate_004_default_50_threads_dropped():
     """The old HPC-tuned default of 50 is treated as unset and not migrated."""
-    cfg = tomlkit.parse(
-        "config_version = 4\n"
-        "[data_set]\n"
-        "preload_cache = true\n"
-        "preload_threads = 50\n"
-    )
+    cfg = tomlkit.parse("config_version = 4\n[data_set]\npreload_cache = true\npreload_threads = 50\n")
 
     migrated = migrate_config(cfg)
 
@@ -455,12 +445,7 @@ def test_migrate_004_default_50_threads_dropped():
 
 def test_migrate_004_preload_cache_false_dropped():
     """When preload_cache was off, both keys are just removed."""
-    cfg = tomlkit.parse(
-        "config_version = 4\n"
-        "[data_set]\n"
-        "preload_cache = false\n"
-        "preload_threads = 8\n"
-    )
+    cfg = tomlkit.parse("config_version = 4\n[data_set]\npreload_cache = false\npreload_threads = 8\n")
 
     migrated = migrate_config(cfg)
 
@@ -471,11 +456,7 @@ def test_migrate_004_preload_cache_false_dropped():
 
 def test_migrate_004_no_preload_keys_is_noop():
     """A v4 config without preload keys passes through cleanly."""
-    cfg = tomlkit.parse(
-        "config_version = 4\n"
-        "[data_set]\n"
-        "seed = 42\n"
-    )
+    cfg = tomlkit.parse("config_version = 4\n[data_set]\nseed = 42\n")
 
     migrated = migrate_config(cfg)
 
