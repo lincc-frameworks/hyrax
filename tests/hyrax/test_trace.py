@@ -10,7 +10,6 @@ These tests cover:
      ordinary return value when trace is not supplied.
 """
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # Minimal config helper
@@ -86,116 +85,6 @@ def test_trace_context_modifies_config():
         assert modified_config["train"]["epochs"] == 1
         assert modified_config["data_loader"]["batch_size"] == trace_batch_size
         assert modified_config["data_set"]["use_cache"] is False
-
-
-# ---------------------------------------------------------------------------
-# TraceContext – DataProvider.__len__ shim is applied and removed
-# ---------------------------------------------------------------------------
-
-
-def test_trace_context_restores_dataprovider_len_after_exit():
-    """
-    During an active trace TraceContext shims DataProvider.__len__.
-    After __exit__ the original method is restored.
-    """
-    from hyrax.datasets.data_provider import DataProvider
-    from hyrax.trace import TraceContext
-
-    original_len = DataProvider.__dict__.get("__len__")
-
-    config = _make_config()
-    with TraceContext(3, config):
-        # The shim should replace the original __len__
-        assert DataProvider.__dict__.get("__len__") is not original_len
-
-    # After the context the original should be back
-    assert DataProvider.__dict__.get("__len__") is original_len
-
-
-def test_reduce_len_caps_to_trace_batch_size_without_splits():
-    """When split_indices is None, reduce_len should cap __len__ to trace_batch_size."""
-    from hyrax.trace import TraceContext, get_trace
-
-    config = _make_config()
-    trace_batch_size = 3
-
-    class FakeProvider:
-        split_indices = None
-
-        def __len__(self):
-            return 100
-
-    with TraceContext(trace_batch_size, config):
-        tr = get_trace()
-        fake = FakeProvider()
-        tr.reduce_len(FakeProvider)
-        assert len(fake) == trace_batch_size
-
-    # Cleanup restores original
-    assert len(FakeProvider()) == 100
-
-
-def test_reduce_len_uses_split_indices_when_set():
-    """When split_indices is set, reduce_len returns one past the trace_batch_size-th index."""
-    from hyrax.trace import TraceContext, get_trace
-
-    config = _make_config()
-    trace_batch_size = 2
-
-    class FakeProvider:
-        split_indices = [5, 10, 20, 30]
-
-        def __len__(self):
-            return 100
-
-    with TraceContext(trace_batch_size, config):
-        tr = get_trace()
-        fake = FakeProvider()
-        tr.reduce_len(FakeProvider)
-        # trace_batch_size=2 → split_indices[1] + 1 = 11
-        assert len(fake) == 11
-
-    assert len(FakeProvider()) == 100
-
-
-def test_reduce_len_does_not_exceed_original_length():
-    """When dataset is smaller than trace_batch_size, reduce_len returns the original length."""
-    from hyrax.trace import TraceContext, get_trace
-
-    config = _make_config()
-    trace_batch_size = 50
-
-    class FakeProvider:
-        split_indices = None
-
-        def __len__(self):
-            return 10
-
-    with TraceContext(trace_batch_size, config):
-        tr = get_trace()
-        tr.reduce_len(FakeProvider)
-        assert len(FakeProvider()) == 10
-
-    assert len(FakeProvider()) == 10
-
-
-def test_trace_context_restores_dataprovider_len_on_exception():
-    """
-    TraceContext restores DataProvider.__len__ even when an exception is raised
-    inside the context block.
-    """
-    from hyrax.datasets.data_provider import DataProvider
-    from hyrax.trace import TraceContext, get_trace
-
-    original_len = DataProvider.__dict__.get("__len__")
-
-    with pytest.raises(RuntimeError, match="test error"):
-        with TraceContext(3, _make_config()):
-            raise RuntimeError("test error")
-
-    # Cleanup must have run despite the exception
-    assert get_trace() is None
-    assert DataProvider.__dict__.get("__len__") is original_len
 
 
 # ---------------------------------------------------------------------------

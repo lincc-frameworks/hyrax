@@ -82,7 +82,7 @@ def on_epoch_start(self, verb: str):
 
 This is a plain method with a default no-op implementation — no registration or decorator needed. The `verb` parameter was added during implementation to allow datasets to vary behavior by verb (e.g. skip augmentation bookkeeping during inference).
 
-Note: `row_cache_key` from the spec is **deferred to a future version**. V1 does not add a dataset-level cache key interface. Instead, the existing DataCache caches `get_<field>` results as it does today, and `augment_<field>` is applied post-cache (see Step 3c and Step 4).
+Note: `augment_cache_key` from the spec is **deferred to V3**. V1 does not add a dataset-level cache key interface. Instead, the existing DataCache caches `get_<field>` results as it does today, and `augment_<field>` is applied post-cache (see Step 3c and Step 4). See `specs/augmentation-cache-plan.md` for the V3 implementation.
 
 **Tests:** `tests/hyrax/test_augmentation.py`
 - `on_epoch_start(verb)` is callable (no-op on base class).
@@ -334,10 +334,10 @@ In both cases, DataCache stores and serves the same thing: raw `get_<field>`
 output. The augmentation layer in `resolve_data` consumes DataCache output and
 transforms it — DataCache is not aware augmentation exists.
 
-The `row_cache_key` interface mentioned in `specs/augmentation.md` is **deferred
-to a future version**. V1 does not need it because the existing cache already
-provides the performance benefit (cached I/O), and augmented results do not need
-to be cached (they are cheap to recompute).
+The `augment_cache_key` interface mentioned in `specs/augmentation.md` is **deferred
+to V3** (see `specs/augmentation-cache-plan.md`). V1 does not need it because the
+existing cache already provides the performance benefit (cached I/O), and augmented
+results do not need to be cached (they are cheap to recompute).
 
 **If you find yourself wanting to add conditional logic, new parameters, or
 augmentation awareness to DataCache — stop. That means the `resolve_data` changes
@@ -433,7 +433,7 @@ No changes needed. The `augment` key lives in the `data_request` config (per fri
 
 1. **Epoch-varying rng_seed:** Yes. `rng_seed` varies per epoch via the two-level numpy RNG chain (`_augment_rng` → `_epoch_rng`), so augmented data differs across epochs. This is the right default since a near-future version will not have the same indexes every epoch anyway.
 
-2. **Cache granularity / `row_cache_key`:** Deferred. V1 has no dataset-level cache key interface. The existing DataCache caches `get_<field>` results as today; augmentation is post-cache.
+2. **Cache granularity / `augment_cache_key`:** Deferred to V3. V1 has no dataset-level cache key interface. The existing DataCache caches `get_<field>` results as today; augmentation is post-cache. See `specs/augmentation-cache-plan.md` for V3.
 
 3. **`get_<field>` caching for augmented rows:** Yes — this is the whole point of the design. DataCache caches `get_<field>` results (the expensive I/O). `augment_<field>` runs post-cache on a new output dict with read-only ndarray views, so augmentation benefits from cached base data without polluting the cache with augmented results.
 
