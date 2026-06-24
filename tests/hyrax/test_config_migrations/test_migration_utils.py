@@ -1,6 +1,5 @@
-"""Tests for the versioned config migration system."""
+"""Tests for migration helper functions and registry metadata."""
 
-import logging
 import warnings
 
 import pytest
@@ -78,24 +77,6 @@ def test_move_key_missing_source_is_noop():
 # ---------------------------------------------------------------------------
 
 
-def test_migrate_config_legacy_model_inputs_warns_and_renames(caplog):
-    """A v1-era config (no config_version, uses [model_inputs]) is upgraded."""
-    cfg = tomlkit.parse("config_version = 1\n[model_inputs]\ntrain = 1\n")
-
-    with warnings.catch_warnings(record=True) as caught, caplog.at_level(logging.WARNING):
-        warnings.simplefilter("always")
-        migrated = migrate_config(cfg)
-
-    assert "model_inputs" not in migrated
-    assert migrated["data_request"]["train"] == 1
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-
-    assert any(
-        issubclass(w.category, DeprecationWarning) and "model_inputs" in str(w.message) for w in caught
-    )
-    assert "model_inputs" in caplog.text
-
-
 def test_migrate_config_current_version_is_noop():
     """A clean current-version config is stamped through migrate_config unchanged."""
     cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION}\n[data_request]\ntrain = 1\n")
@@ -105,29 +86,6 @@ def test_migrate_config_current_version_is_noop():
     assert migrated["config_version"] == CURRENT_CONFIG_VERSION
     assert migrated["data_request"]["train"] == 1
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
-
-
-def test_migrate_config_moves_data_loader_shuffle_to_train():
-    """A v2 config moves global data_loader.shuffle to train.shuffle."""
-    cfg = tomlkit.parse("config_version = 2\n[data_loader]\nshuffle = false\nbatch_size = 8\n")
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert "shuffle" not in migrated["data_loader"]
-    assert migrated["data_loader"]["batch_size"] == 8
-    assert migrated["train"]["shuffle"] is False
-
-
-def test_migrate_config_without_data_loader_shuffle_keeps_existing_train_shuffle():
-    """The shuffle migration is a no-op when the legacy key is absent."""
-    cfg = tomlkit.parse("config_version = 2\n[train]\nshuffle = true\n[data_loader]\nbatch_size = 8\n")
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert migrated["train"]["shuffle"] is True
-    assert "shuffle" not in migrated["data_loader"]
 
 
 def test_migrate_config_future_version_raises():
@@ -349,118 +307,4 @@ def test_set_config_current_key_no_warn(tmp_path):
         warnings.simplefilter("always")
         cm._set_config("data_request", {"train": {"data": "test"}})
 
-    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
-
-
-# ---------------------------------------------------------------------------
-# Migration 003: move split_fraction → [split]
-# ---------------------------------------------------------------------------
-
-
-def test_migrate_config_003_moves_split_fraction_to_split():
-    """A v3 config with split_fraction in data_request moves the value to [split]."""
-    cfg = tomlkit.parse(
-        "config_version = 3\n"
-        "[data_request.train.data]\n"
-        'dataset_class = "HyraxRandomDataset"\n'
-        "split_fraction = 0.7\n"
-        "[data_request.validate.data]\n"
-        'dataset_class = "HyraxRandomDataset"\n'
-        "split_fraction = 0.3\n"
-    )
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    # split_fraction should be gone from data_request
-    assert "split_fraction" not in migrated["data_request"]["train"]["data"]
-    assert "split_fraction" not in migrated["data_request"]["validate"]["data"]
-    # Values should be promoted to the [split] table
-    assert migrated["split"]["train"] == pytest.approx(0.7)
-    assert migrated["split"]["validate"] == pytest.approx(0.3)
-
-
-def test_migrate_config_003_noop_when_no_split_fraction():
-    """A v4 config with no split_fraction anywhere is returned unchanged."""
-    cfg = tomlkit.parse(
-        f"config_version = {CURRENT_CONFIG_VERSION}\n"
-        "[data_request.train.data]\n"
-        'dataset_class = "HyraxRandomDataset"\n'
-        "[split]\n"
-        "train = 1.0\n"
-    )
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert "split_fraction" not in migrated.get("data_request", {}).get("train", {}).get("data", {})
-    assert migrated["split"]["train"] == pytest.approx(1.0)
-    assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
-
-
-# ---------------------------------------------------------------------------
-# Migration 004: move umap to reduce
-# ---------------------------------------------------------------------------
-
-
-def test_migrate_config_004_moves_umap_to_reduce():
-    """A v4 config migrates legacy umap sections into [reduce] and adding tsne, pca."""
-    cfg = tomlkit.parse(
-        "config_version = 4\n"
-        "[umap]\n"
-        "fit_sample_size = 1024\n"
-        'model_path = "some_path"\n'
-        "save_fit_umap = true\n"
-        "parallel = false\n"
-        'name = "umap.UMAP"\n'
-        "[umap.UMAP]\n"
-        "n_components = 2\n"
-        "n_neighbors = 15\n"
-    )
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert "umap" not in migrated
-    assert "umap.UMAP" not in migrated
-
-    assert migrated["reduce"]["umap"]["fit_sample_size"] == 1024
-    assert migrated["reduce"]["umap"]["model_path"] == "some_path"
-    assert migrated["reduce"]["umap"]["kwargs"]["n_components"] == 2
-    assert migrated["reduce"]["umap"]["kwargs"]["n_neighbors"] == 15
-    assert migrated["reduce"]["save_fit_model"] is True
-    assert migrated["reduce"]["parallel"] is False
-    assert migrated["reduce"]["algorithm"] == "umap"
-    assert migrated["reduce"]["batch_size"] == 1024
-
-    assert migrated["reduce"]["tsne"]["kwargs"]["n_components"] == 2
-    assert migrated["reduce"]["tsne"]["kwargs"]["perplexity"] == 30.0
-
-    assert migrated["reduce"]["pca"]["fit_sample_size"] == 1024
-    assert migrated["reduce"]["pca"]["model_path"] is False
-    assert migrated["reduce"]["pca"]["kwargs"]["n_components"] == 2
-
-
-def test_migrate_config_004_noop_when_reduce_already_current():
-    """A current config with [reduce] already present is left unchanged."""
-    cfg = tomlkit.parse(
-        f"config_version = {CURRENT_CONFIG_VERSION}\n"
-        "[reduce]\n"
-        'algorithm = "umap"\n'
-        "[reduce.umap]\n"
-        "fit_sample_size = 1024\n"
-        "[reduce.umap.kwargs]\n"
-        "n_components = 2\n"
-    )
-
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert migrated["reduce"]["algorithm"] == "umap"
-    assert migrated["reduce"]["umap"]["fit_sample_size"] == 1024
-    assert migrated["reduce"]["umap"]["kwargs"]["n_components"] == 2
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught)

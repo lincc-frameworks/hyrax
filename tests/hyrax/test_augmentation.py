@@ -60,6 +60,34 @@ class SeedTrackingDataset(HyraxRandomDataset):
         return data
 
 
+class CachingAugmentDataset(HyraxRandomDataset):
+    """Dataset that caches augmented results by including rng_seed in cache key."""
+
+    def augment_image(self, data, idx, rng_seed):
+        return -data
+
+    def augment_cache_key(self, idx, rng_seed):
+        return np.int64(idx * 1_000_000 + (rng_seed % 1_000_000))
+
+
+class NoCacheDataset(HyraxRandomDataset):
+    """Dataset whose augment_cache_key always returns None (never caches augmented data)."""
+
+    def __init__(self, config, data_location):
+        super().__init__(config, data_location)
+        self.image_getter_call_count = 0
+
+    def get_image(self, idx):
+        self.image_getter_call_count += 1
+        return super().get_image(idx)
+
+    def augment_image(self, data, idx, rng_seed):
+        return -data
+
+    def augment_cache_key(self, idx, rng_seed):
+        return None
+
+
 class EpochCountingDataset(HyraxRandomDataset):
     """HyraxRandomDataset that tracks on_epoch_start calls via class-level registry."""
 
@@ -549,3 +577,129 @@ def test_on_epoch_start_called_during_test(tmp_path_factory):
     assert len(EpochCountingDataset._all_instances) >= 1
     assert any(inst.epoch_start_count == 1 for inst in EpochCountingDataset._all_instances)
     assert all(inst.last_verb == "test" for inst in EpochCountingDataset._all_instances)
+
+
+# ---------------------------------------------------------------------------
+# V3 Cache Restructuring: augment_cache_key and per-dataset DataCache
+# ---------------------------------------------------------------------------
+
+
+def test_augment_cache_key_default_returns_none():
+    """Default augment_cache_key returns None (don't cache augmented data)."""
+    d = MinimalHyraxDataset(config={})
+    assert d.augment_cache_key(5, rng_seed=np.int64(42)) is None
+
+
+def test_augment_cache_key_subclass_override():
+    """Subclass override of augment_cache_key is respected."""
+    config = _make_hyrax_config()
+    d = CachingAugmentDataset(config, data_location="/tmp")
+    assert d.augment_cache_key(3, rng_seed=np.int64(42)) == np.int64(3 * 1_000_000 + 42)
+
+
+def test_datacache_per_dataset_try_fetch_and_insert(tmp_path):
+    """DataCache per-dataset insert_base and try_fetch round-trip correctly."""
+    from hyrax.datasets.data_cache import DataCache
+
+    config = _make_hyrax_config()
+    ds = HyraxRandomDataset(config, data_location=str(tmp_path))
+    datasets = {"data": ds}
+    cache = DataCache(config, datasets, augment_active={"data": False})
+
+    data = {"image": np.array([1, 2, 3])}
+    cache.insert_base("data", real_idx=0, data=data)
+
+    fetched, already_aug = cache.try_fetch("data", real_idx=0)
+    assert fetched is data
+    assert already_aug is False
+
+
+def test_datacache_augmented_two_level_lookup(tmp_path):
+    """DataCache two-level lookup: augmented key first, then base key."""
+    from hyrax.datasets.data_cache import DataCache
+
+    config = _make_hyrax_config()
+    ds = CachingAugmentDataset(config, data_location=str(tmp_path))
+    datasets = {"data": ds}
+    cache = DataCache(config, datasets, augment_active={"data": True})
+
+    base_data = {"image": np.array([1, 2, 3])}
+    aug_data = {"image": np.array([-1, -2, -3])}
+
+    cache.insert_base("data", real_idx=0, data=base_data)
+    cache.insert_augmented("data", real_idx=0, rng_seed=np.int64(42), data=aug_data)
+
+    # Augmented key hit
+    fetched, already_aug = cache.try_fetch("data", real_idx=0, rng_seed=np.int64(42))
+    assert fetched is aug_data
+    assert already_aug is True
+
+    # Different rng_seed misses augmented but hits base
+    fetched, already_aug = cache.try_fetch("data", real_idx=0, rng_seed=np.int64(99))
+    assert fetched is base_data
+    assert already_aug is False
+
+
+def test_datacache_augment_cache_key_none_skips_augment_cache(tmp_path):
+    """augment_cache_key returning None means augmented data is not cached."""
+    config = _make_hyrax_config()
+    dp = _make_dp(config, "NoCacheDataset", tmp_path, augment=True, fields=["image"])
+    dataset_instance = dp.prepped_datasets["data"]
+
+    dp.resolve_data(0)
+    assert dataset_instance.image_getter_call_count == 1
+
+    # Base data is cached so get_image is NOT called again, but augment re-runs
+    dp.resolve_data(0)
+    assert dataset_instance.image_getter_call_count == 1
+
+
+def test_augmented_data_not_cached_by_default(tmp_path):
+    """With default augment_cache_key, augmented data is not cached but base data is."""
+    config = _make_hyrax_config()
+    dp = _make_dp(config, "AugmentedRandomDataset", tmp_path, augment=True, fields=["image"])
+    dataset_instance = dp.prepped_datasets["data"]
+
+    dp.resolve_data(0)
+    assert dataset_instance.image_getter_call_count == 1
+    assert len(dataset_instance.augment_image_calls) == 1
+
+    # Second call: base data cached (get_image not called), augment re-runs
+    dp.resolve_data(0)
+    assert dataset_instance.image_getter_call_count == 1
+    assert len(dataset_instance.augment_image_calls) == 2
+
+
+def test_mixed_datasets_augmented_and_not(tmp_path):
+    """One dataset with augmentation, one without — both cache correctly."""
+    config = _make_hyrax_config()
+    dp = DataProvider(
+        config,
+        {
+            "data": {
+                "dataset_class": "AugmentedRandomDataset",
+                "data_location": str(tmp_path),
+                "primary_id_field": "object_id",
+                "augment": True,
+                "fields": ["image"],
+            },
+            "data2": {
+                "dataset_class": "HyraxRandomDataset",
+                "data_location": str(tmp_path),
+                "fields": ["image"],
+            },
+        },
+    )
+
+    result1 = dp.resolve_data(0)
+    assert result1["data"] is not None
+    assert result1["data2"] is not None
+
+    aug_instance = dp.prepped_datasets["data"]
+    assert len(aug_instance.augment_image_calls) == 1
+
+    # Second call: augment re-runs for "data", but "data2" is fully cached
+    result2 = dp.resolve_data(0)
+    assert len(aug_instance.augment_image_calls) == 2
+    # Non-augmented dataset returns same cached data
+    assert np.array_equal(result1["data2"]["image"], result2["data2"]["image"])
