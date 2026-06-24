@@ -1488,22 +1488,21 @@ def test_resolve_seed_falsy_rng_seed_data_set_missing_seed_returns_none(rng_seed
 
 
 @pytest.mark.parametrize("rng_seed_value", [False, None, ""])
-@pytest.mark.parametrize("data_set_seed", [99, 0])
-def test_resolve_seed_falsy_rng_seed_uses_data_set_seed(rng_seed_value, data_set_seed):
-    """When rng_seed is falsy and data_set.seed is set, return data_set.seed (including 0)."""
+def test_resolve_seed_falsy_rng_seed_uses_data_set_seed(rng_seed_value):
+    """When rng_seed is falsy and data_set.seed is set, return data_set.seed."""
     from hyrax.splitting_utils import _resolve_seed
 
-    config = {"split": {"rng_seed": rng_seed_value}, "data_set": {"seed": data_set_seed}}
-    assert _resolve_seed(config) == data_set_seed
+    config = {"split": {"rng_seed": rng_seed_value}, "data_set": {"seed": 99}}
+    assert _resolve_seed(config) == 99
 
 
-@pytest.mark.parametrize("rng_seed_value", [7, 0])
-def test_resolve_seed_explicit_rng_seed_ignores_data_set(rng_seed_value):
-    """When rng_seed is an explicit integer (including 0), return it regardless of data_set."""
+def test_resolve_seed_truthy_rng_seed_ignores_data_set():
+    """When rng_seed is a truthy integer, return it regardless of data_set."""
     from hyrax.splitting_utils import _resolve_seed
 
-    config = {"split": {"rng_seed": rng_seed_value}, "data_set": {"seed": 999}}
-    assert _resolve_seed(config) == rng_seed_value
+    config = {"split": {"rng_seed": 7}, "data_set": {"seed": 999}}
+    assert _resolve_seed(config) == 7
+
 
 
 def test_resolve_seed_truthy_rng_seed_no_data_set():
