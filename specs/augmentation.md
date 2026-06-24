@@ -23,7 +23,7 @@ There are many methods for data augmentation, some of which are too complex or c
 We plan to programmatically extend the Hyrax dataset interface to support an `augment_<field_name>` family of functions in parallel to the existing `get_<field_name>`  
 family of functions. This allows dataset writers to define default augmentations, which can be used simply by configuration as well as for users of dataset classes to easily override the default augmentation method.
 
-We will also be adding a `augmentation` configuration option on the friendly name of a Dataset. In the first version this will be a simple `true`/`false` flag to control whether the `augment_<field_name>` functions are used during sampling. In a future version it could be extended to a dictionary that would allow per-field selection of `augment` or `get` methods, allowing easier selection of augmentation methods on pre-built dataset classes.
+We will also be adding an `augment` configuration option on the friendly name of a Dataset. In the first version this will be a simple `true`/`false` flag to control whether the `augment_<field_name>` functions are used during sampling. In a future version it could be extended to a dictionary that would allow per-field selection of `augment` or `get` methods, allowing easier selection of augmentation methods on pre-built dataset classes.
 
 ## Configuration
 
@@ -45,27 +45,24 @@ If true, oversampling/augmentation is enabled, If this section is missing, no au
 
 When augmentation is enabled, all fields with `augment_<field_name>` member functions defined will be used, and when the `augment_<field_name>` function is not defined, data access will fall back to the `get_<field_name>`
 
-In Version 2 the `augment` config key can optionally be dictionary valued, specifying field-by-field whether or not augmentation is enabled for that field.
+In Version 2 the `augment` config key can optionally be a list of field names to augment, parallel to the `fields` list in the data request.
 
 `"train": { # data group`  
   `"data": { # friendly name`  
     `"dataset_class": "HyraxCifarDataset",`  
     `"fields": ["image", "label"],`  
     `"primary_id_field": "object_id",`  
-    `"augment": {`  
-        `"image": true,`  
-        `"label": false,`  
-    `}`  
+    `"augment": ["image"]`  
   `}`  
 `}`
 
-The dictionary goes from field names to either `true` or `false`. In the case of `false` the `get_<field_name>` methods will be used for the corresponding field. In the case of `true` the `augment_<field name>` methods will be used. In this case the lack of the corresponding method is a hard error, rather than the permissive system in V1.
+Fields listed in `augment` will use `augment_<field_name>` methods. Fields not listed will use `get_<field_name>`. The lack of the corresponding `augment_<field_name>` method for a listed field is a hard error, rather than the permissive system in V1.
 
-The `augment` dictionary must be complete in that all fields that will be fed to the model must be specified as keys. The sole exception is for the field specified as `primary_id_field` in the friendly name config, which is implicitly treated as "repeat" for the purpose of oversampling. Specifying the `primary_id_field` as "augment" in the `field_sample_method` dictionary is a fatal error.
+The `primary_id_field` must not appear in the `augment` list — it is implicitly repeated for oversampling and must not be augmented. Listing the `primary_id_field` in `augment` is a fatal error.
 
-Completeness also means that in the case where no `field` is specified in the friendly name config, then all non-primary-id fields in the underlying dataset must be specified in this dictionary. If this dictionary is not complete, Hyrax will emit an informative error and stop.
+Fields listed in `augment` must be a subset of `fields`. Listing a field for augmentation that is not in the data request is a fatal error.
 
-If a field is specified in this dictionary as `true` and the corresponding `augment_<field_name>` method does not exist on the underlying dataset class, the configuration is invalid and Hyrax must stop and produce an informative error. The detection of this class of error ought to be delayed after config parsing and validation (potentially as late as the first valid call of the `augment_<field_name>` method by `DataProvider`) in order to permit metaprogramming by Dataset authors in their constructors.
+If a field is listed in `augment` and the corresponding `augment_<field_name>` method does not exist on the underlying dataset class, the configuration is invalid and Hyrax must stop and produce an informative error. The detection of this class of error ought to be delayed after config parsing and validation (potentially as late as the first valid call of the `augment_<field_name>` method by `DataProvider`) in order to permit metaprogramming by Dataset authors in their constructors.
 
 ## Dataset Augmentation Interface
 
@@ -80,30 +77,35 @@ Because the return value from the `get_<field_name>` functions are cached, but t
 
 **`index`** is the index of the data in the dataset. This allows authors to implement various index-aware augmentation strategies. See examples below:
 
-**`rng_seed`** is a 64 bit integer which is provided to allow correlation between fields in the same row of augmented data. Hyrax uses its master random seed (`seed` in hyrax config) to generate `rng_seed` values for all augmented indexes.
+**`rng_seed`** is a 64 bit integer which is provided to allow correlation between fields in the same row of augmented data. Hyrax will derive `rng_seed` values from the master random seed (`data_set.seed` in hyrax config) via a two-level numpy RNG chain: a top-level `_augment_rng` advances once per epoch to produce a fresh `_epoch_rng`, which is then drawn from sequentially in `resolve_data` — one integer per call. This means:
+
+- **Single-threaded access** is reproducible by call order within an epoch.
+- **Multi-threaded access** is intentionally non-reproducible (no locks on the hot path).
+- The same `rng_seed` will be passed to all `augment_<field>` calls within a single row, enabling correlated augmentation across fields (e.g. same rotation for image and mask).
 
 The return value from `augment_<field_name>` is the augmented data.
 
 It is important to note that when augmentation is enabled on a field, **every call to that field (whether it is for a class that is oversampled or not)** will use the `augment_<field_name>` codepath. This is to ensure that all data goes through augmentation, not just the data in classes which are underrepresented in the underlying dataset.
 
-Datasets will also get a new callback `on_epoch_start` , which will be called if it exists. This will be implemented by a `pass` implementation in `HyraxDataset` which classes can override. DataProvider will get an `on_epoch_start` which will dispatch calls to all active Dataset Classes in the current run. DataProvider's method will be called from an `Events.EPOCH_STARTED` handler in `pytorch_ignite.py` 
+Datasets will also get a new callback `on_epoch_start(self, verb: str)`, which will be implemented by a `pass` implementation in `HyraxDataset` which classes can override. The `verb` parameter will receive the name of the running verb (e.g. `"train"`, `"infer"`, `"test"`, `"engine"`). DataProvider will get a corresponding `on_epoch_start(self, verb: str)` which will reset the epoch RNG and dispatch calls to all active Dataset instances.
+
+For the `train` verb, DataProvider's `on_epoch_start` will be called via an `Events.EPOCH_STARTED` handler registered in `Train.run()`. For single-pass verbs (`infer`, `test`, `engine`), it will be called once before execution begins.
 
 ## Dataset Caching interface:
 
-By default augmented data is not cached; however, we offer users a method to do row caching on augmented data points if they choose. The key dataset interface is:
+DataCache maintains two separate cache maps per dataset:
 
-`def row_cache_key(self, idx, rng_seed=None):`  
-   
-When a cache lookup happens, this function is called with the parameters that the relevant `get_<field_name>` and `augment_<field_name>` functions would receive, and its return value is used to provide a key for `DataCache`.
+* **Base cache** — keyed directly by `real_idx` (an int). Stores the result of `get_<field>` calls. No dataset method is called to produce the key; the index is used as-is.
+* **Augment cache** — keyed by the return value of `augment_cache_key`. Stores augmented results. Only populated when the dataset opts in.
 
-This function should return a `np.int64` with the desired cache key, or `None` if the relevant data should not be cached. The default implementation is:
+By default augmented data is not cached, which is the standard expectation in ML training where augmentations should produce different results each epoch. Dataset authors who want to cache augmented results (e.g., when augmentation is deterministic and expensive) can override:
 
-`def row_cache_key(self, idx, rng_seed=None):`  
-    `return idx if rng_seed is None else None`
+`def augment_cache_key(self, idx, rng_seed):`  
+    `return None`
 
-This replicates the existing hyrax behavior of only using the idx as a cache key, and not caching augmented data, and is the behavior of caching if the dataset author does not define `row_cache_key`.
+This method is only called when augmentation is active. It receives the dataset-local index and the `rng_seed` that was passed to `augment_<field>`. It should return an `np.int64` cache key, or `None` to skip caching augmented data.
 
-Note that cache key applies to the entire row, not just a particular row+field combination: For a row of data, there will be multiple dispatches to the various `augment_<field>` and `get_<field>` functions corresponding to the various fields in the data request on a cache miss. However, there are only a handful of dispatches to `row_cache_key` for a given `data_request` corresponding to whatever cache keys are necessary for `resolve_data` to assemble the data dictionary with all fields filled out.
+On lookup, DataCache checks the augment cache first (when augmentation is active and an `rng_seed` is present), then falls back to the base cache. This two-level lookup means a base cache hit still avoids calling `get_<field>` even when the augmented result isn't cached — only `augment_<field>` re-runs.
 
 ## Example: Random Rotations
 
@@ -114,11 +116,8 @@ Given an image dataset with a mask layer, object ids and labels the config would
     `"dataset_class": "ExampleAugmentedDataset",`  
     `"fields": ["image", "mask", "label"],`  
     `"primary_id_field": "object_id",`  
-    `"augment": {`  
-        `"image": true,`  
-        `"mask": true,`  
-        `"label": false,`  
-    `} # or "augment": true in v1`  
+    `"augment": ["image", "mask"]`  
+    `# or "augment": true in v1`  
   `}`  
 `}`
 
@@ -150,7 +149,7 @@ Note also that the `ExampleAugmentDataset` class derives from `ExampleDataset` d
 For some data it is desirable to use the underlying data unchanged on first access and augmentation on subsequent access in an epoch. The random rotation dataset class can be extended as follows to achieve this result using a `self.seen` set that is reset in the `on_epoch_start` method.
 
 **`class ExampleAugmentedDataset(ExampleDataset):`**  
-  **`def on_epoch_start(self):`**  
+  **`def on_epoch_start(self, verb):`**  
     **`self.seen = set()`**  
     
   **`def apply_rotation(self, data, idx, rng_seed):`**  
@@ -169,6 +168,34 @@ For some data it is desirable to use the underlying data unchanged on first acce
 
 ## Non-Training Actions
 
-For "infer" data requests defining any augmentation is a hard error, because augmentation/oversampling should never occur in inference on real data.
+For "infer" data requests defining any augmentation is a hard error (enforced by a model validator on `DataRequestDefinition`), because augmentation/oversampling should never occur in inference on real data.
 
 For "validate" and "test" there are valid reasons for wanting to examine performance on purely augmented data (e.g. Test Time Augmentation), so an `augment` configuration is valid on those groups.
+
+## V1 Implementation Details
+
+The following details reflect design decisions for the V1 implementation:
+
+**Memory safety without deepcopy:** Rather than `deepcopy` of cached base data, the augmentation pass will build a new output dict. Non-augmented fields will share references to the cached arrays. For augmented ndarray fields, a read-only view (`value.view()` with `writeable=False`) will be passed to `augment_<field>`, ensuring augmentation functions cannot mutate the cache. Augmentation functions are expected to return new arrays.
+
+**Tensorboard metrics:** Augmentation time will be logged as `augmentation_s` to tensorboard alongside the existing `cache_hit_s` and `cache_miss_s` metrics.
+
+**Join-map handling:** When augmentation is active on a secondary (joined) dataset, the dataset-local index from the join map will be passed to `augment_<field>` rather than the DataProvider-level index.
+
+**Augment caching deferred to V3:** V1 does not cache augmented results — the existing DataCache caches `get_<field>` results as before, and augmentation is applied post-cache.
+
+## V3 Cache Restructuring
+
+Implementation plan: `specs/augmentation-cache-plan.md`
+
+The following decisions were made for the `augment_cache_key` implementation and associated DataCache restructuring:
+
+**Two separate cache maps per dataset:** DataCache maintains a base cache (`dict[int, dict]`) keyed directly by `real_idx`, and an augment cache (`dict[np.int64, dict]`) keyed by `augment_cache_key`. The separate key-spaces make collisions impossible and eliminate method calls on the base-data hot path — the index is used directly as the cache key with no dispatch.
+
+**`augment_cache_key` opt-in:** The default `augment_cache_key` returns `None` (don't cache augmented data). This matches the ML convention that augmented data should vary across epochs. Dataset authors override this only when augmented results are deterministic and expensive to recompute. The method is only called when augmentation is active, so datasets without augmentation pay zero cost.
+
+**Per-dataset cache maps:** DataCache maintains separate base and augment caches per dataset (friendly name). This replaces the single flat map keyed by DataProvider index, supporting different index mappings (joins) and per-dataset augmented-data caching decisions.
+
+**Preload thread removed:** The `preload_cache` and `preload_threads` config keys and the associated `DataCache` preload thread are removed. The preload thread's strategy of sequentially iterating indices 0 through len does not match the access pattern of `WeightedRandomSampler` (used by the balanced sampling feature). Users needing I/O prefetching should use PyTorch DataLoader's `num_workers` and `prefetch_factor` parameters, which are already passed through from Hyrax's `[data_loader]` config and which naturally match whatever access pattern the sampler dictates.
+
+**Augmentation folded into per-dataset loop:** Instead of a separate augmentation sweep over the assembled data dict (the V1 approach), augmentation is applied per-dataset inside the cache lookup loop in `resolve_data`. This eliminates the second pass and allows cache hits on augmented data (when `augment_cache_key` opts in) to skip both the `get_<field>` and `augment_<field>` calls entirely.

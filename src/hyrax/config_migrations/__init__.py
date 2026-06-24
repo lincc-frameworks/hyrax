@@ -21,7 +21,7 @@ Adding a new migration:
    The module is auto-discovered — no import line needed elsewhere.
    ``CURRENT_CONFIG_VERSION`` and ``config_version`` in the default TOML are
    both stamped automatically at runtime.
-2. Add a unit test in ``tests/hyrax/test_config_migrations.py``.
+2. Add a unit test in ``tests/hyrax/test_config_migrations/test_migration_00N.py``.
 """
 
 # ruff: noqa: I001  — import order matters: machinery before migration modules

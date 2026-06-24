@@ -313,7 +313,7 @@ class DataProvider:
 
         # Augmentation support
         self.augment_getters = {}  # friendly_name -> {field_name: augment_func}
-        self.augment_enabled = {}  # friendly_name -> bool
+        self.augment_enabled = {}  # friendly_name -> list[str]
         self._has_any_augmentation = False
         # _augment_rng advances once per epoch (in on_epoch_start) to produce a fresh
         # _epoch_rng for that epoch.  _epoch_rng is drawn from sequentially in
@@ -355,8 +355,8 @@ class DataProvider:
         # Required because of circular import.
         from hyrax.datasets.data_cache import DataCache
 
-        self.data_cache = DataCache(config, self)
-        self.data_cache.start_preload_thread()
+        augment_active = {fn: bool(self.augment_getters.get(fn)) for fn in self.prepped_datasets}
+        self.data_cache = DataCache(config, self.prepped_datasets, augment_active)
 
     def pull_up_primary_dataset_methods(self):
         """If a primary dataset is defined, we will pull up some of its methods
@@ -568,20 +568,6 @@ class DataProvider:
                     "This is likely an error in the dataset class definition."
                 )
 
-            # Discover augment_<field> methods if augmentation is enabled for this dataset.
-            if dataset_definition.get("augment"):
-                self.augment_enabled[friendly_name] = True
-                self._has_any_augmentation = True
-                self.augment_getters[friendly_name] = {}
-                for name in dir(dataset_instance):
-                    if not name.startswith("augment_"):
-                        continue
-                    augment_fn = getattr(dataset_instance, name, None)
-                    if not callable(augment_fn):
-                        continue
-                    field_name = name.removeprefix("augment_")
-                    self.augment_getters[friendly_name][field_name] = augment_fn
-
             # Get all the dataset's metadata fields and store them in
             # `self.all_metadata_fields` dictionary. Modify the name to be
             # <metadata_field_name>_<friendly_name>, i.e. "RA_cifar" or "photoz_hsc".
@@ -609,6 +595,40 @@ class DataProvider:
             # provide slightly faster iteration than lists, which is beneficial
             # for repeated access in `resolve_data`.
             self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
+            # Discover augment_<field> methods if augmentation is enabled for this dataset.
+            augment_cfg = dataset_definition.get("augment")
+            if augment_cfg:
+                self._has_any_augmentation = True
+                self.augment_getters[friendly_name] = {}
+
+                # Normalize bool to a list of requested field names that have augment methods.
+                if augment_cfg is True:
+                    available = {
+                        name.removeprefix("augment_")
+                        for name in dir(dataset_instance)
+                        if name.startswith("augment_") and callable(getattr(dataset_instance, name, None))
+                    }
+                    augment_cfg = [f for f in self.requested_fields[friendly_name] if f in available]
+
+                self.augment_enabled[friendly_name] = augment_cfg
+
+                for field_name in augment_cfg:
+                    if field_name not in self.requested_fields[friendly_name]:
+                        raise RuntimeError(
+                            f"augment list requests augmentation for field '{field_name}' "
+                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                            f"but '{field_name}' is not a field on this dataset."
+                        )
+                    method_name = f"augment_{field_name}"
+                    augment_fn = getattr(dataset_instance, method_name, None)
+                    if augment_fn is None or not callable(augment_fn):
+                        raise RuntimeError(
+                            f"augment list requests augmentation for field '{field_name}' "
+                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                            f"but no callable '{method_name}' method was found."
+                        )
+                    self.augment_getters[friendly_name][field_name] = augment_fn
 
     def _build_join_indices(self):
         """Build reverse-index mappings for datasets that declare a ``join_field``.
@@ -829,6 +849,27 @@ class DataProvider:
         """
         return [self.get_object_id(idx) for idx in range(len(self))]
 
+    def _apply_augmentation(
+        self,
+        friendly_name: str,
+        base_data: dict[str, Any],
+        real_idx: int,
+        rng_seed: np.int64,
+    ) -> dict[str, Any]:
+        """Apply augmentation to base field data for a single dataset.
+
+        Passes read-only ndarray views to augment functions to protect
+        cached base data from mutation.
+        """
+        new_fields: dict[str, Any] = {}
+        for field, value in base_data.items():
+            augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
+            if augment_fn is not None and isinstance(value, np.ndarray):
+                value = value.view()
+                value.flags.writeable = False
+            new_fields[field] = augment_fn(value, real_idx, rng_seed) if augment_fn is not None else value
+        return new_fields
+
     def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str | None]:
         """This method requests the field data from the prepared datasets by index.
 
@@ -853,95 +894,77 @@ class DataProvider:
         """
         start_time = time.monotonic_ns()
         prefix = self.__class__.__name__
-        cached_data = self.data_cache.try_fetch(idx)
-        if cached_data is not None:
-            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
-            if not self._has_any_augmentation:
-                return cached_data
-            base_data = cached_data
+
+        rng_seed = self._augment_rng_seed() if self._has_any_augmentation else None
+
+        # Pre-fetch primary object ID when any joins are configured.
+        if self._join_maps:
+            primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
+            object_id_str = str(primary_id_getter(idx))
         else:
-            # Pre-fetch the primary object ID when any joins are configured.
-            if self._join_maps:
-                primary_id_getter = self.dataset_getters[self.primary_dataset][
-                    self.primary_dataset_id_field_name
-                ]
-                object_id_str = str(primary_id_getter(idx))
-            else:
-                object_id_str = None  # computed lazily below if needed
+            object_id_str = None
 
-            base_data: dict[str, dict[str, Any] | str | None] = {}
+        result: dict[str, dict[str, Any] | str | None] = {}
+        had_any_miss = False
 
-            for friendly_name, fields in self.requested_fields.items():
-                getters = self.dataset_getters[friendly_name]
+        for friendly_name, fields in self.requested_fields.items():
+            getters = self.dataset_getters[friendly_name]
 
-                # Determine the real index for this dataset.
-                if friendly_name in self._join_maps:
-                    real_idx = self._join_maps[friendly_name].get(object_id_str)
-                    if real_idx is None:
-                        # Left outer join: no match in this secondary.
-                        base_data[friendly_name] = None
-                        continue
-                else:
-                    real_idx = idx
-
-                data_dict = {field: getters[field](real_idx) for field in fields}
-                base_data[friendly_name] = data_dict
-
-            # Because there is machinery in the consuming code that expects an "object_id"
-            # key in the returned data, we will add that here if a primary dataset.
-            if self.primary_dataset:
-                # If the primary id field wasn't already requested, we fetch it now.
-                if self.primary_dataset_id_field_name not in base_data.get(self.primary_dataset, {}):
-                    if object_id_str is not None:
-                        object_id = object_id_str
-                    else:
-                        primary_getter = self.dataset_getters[self.primary_dataset]
-                        object_id = str(primary_getter[self.primary_dataset_id_field_name](idx))
-                else:
-                    object_id = base_data[self.primary_dataset][self.primary_dataset_id_field_name]
-
-                base_data["object_id"] = str(object_id)
-
-            self.data_cache.insert_into_cache(idx, base_data)
-            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
-
-        if not self._has_any_augmentation:
-            return base_data
-
-        # Augmentation pass: build a new output dict so the cache is never mutated.
-        # Array references are reused for non-augmented fields; augment_<field> returns
-        # a new array for augmented ones, so no copies are needed here.
-        augment_start = time.monotonic_ns()
-        rng_seed = self._augment_rng_seed()
-        augmented_data: dict[str, dict[str, Any] | str | None] = {}
-        for friendly_name, fields_data in base_data.items():
-            if friendly_name == "object_id":
-                augmented_data[friendly_name] = fields_data
-                continue
-            if not self.augment_enabled.get(friendly_name, False):
-                augmented_data[friendly_name] = fields_data
-                continue
-            if fields_data is None:  # left outer join miss
-                augmented_data[friendly_name] = None
-                continue
-
-            # Use dataset-local indices for join-map secondaries.
-            dataset_idx = idx
+            # Determine real index (join mapping).
             if friendly_name in self._join_maps:
-                dataset_idx = self._join_maps[friendly_name].get(base_data["object_id"])
+                real_idx = self._join_maps[friendly_name].get(object_id_str)
+                if real_idx is None:
+                    result[friendly_name] = None
+                    continue
+            else:
+                real_idx = idx
 
-            new_fields: dict[str, Any] = {}
-            for field, value in fields_data.items():
-                augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
-                if augment_fn is not None and isinstance(value, np.ndarray):
-                    value = value.view()
-                    value.flags.writeable = False
-                new_fields[field] = (
-                    augment_fn(value, dataset_idx, rng_seed) if augment_fn is not None else value
-                )
-            augmented_data[friendly_name] = new_fields
-        tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
-        return augmented_data
+            # Determine effective rng_seed for this dataset.
+            effective_rng = rng_seed if self.augment_enabled.get(friendly_name) else None
+
+            cached_data, already_augmented = self.data_cache.try_fetch(friendly_name, real_idx, effective_rng)
+
+            if cached_data is not None and (already_augmented or effective_rng is None):
+                result[friendly_name] = cached_data
+            elif cached_data is not None:
+                augment_start = time.monotonic_ns()
+                augmented = self._apply_augmentation(friendly_name, cached_data, real_idx, rng_seed)
+                tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
+                self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
+                result[friendly_name] = augmented
+            else:
+                had_any_miss = True
+                base_data = {field: getters[field](real_idx) for field in fields}
+                self.data_cache.insert_base(friendly_name, real_idx, base_data)
+
+                if effective_rng is not None:
+                    augment_start = time.monotonic_ns()
+                    augmented = self._apply_augmentation(friendly_name, base_data, real_idx, rng_seed)
+                    tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
+                    self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
+                    result[friendly_name] = augmented
+                else:
+                    result[friendly_name] = base_data
+
+        # Add object_id.
+        if self.primary_dataset:
+            if self.primary_dataset_id_field_name not in result.get(self.primary_dataset, {}):
+                if object_id_str is not None:
+                    object_id = object_id_str
+                else:
+                    primary_getter = self.dataset_getters[self.primary_dataset]
+                    object_id = str(primary_getter[self.primary_dataset_id_field_name](idx))
+            else:
+                object_id = result[self.primary_dataset][self.primary_dataset_id_field_name]
+            result["object_id"] = str(object_id)
+
+        # Timing metrics.
+        if had_any_miss:
+            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
+        else:
+            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
+
+        return result
 
     # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
     # ^ we should be able to remove most or all of this method and the metadata_fields method.

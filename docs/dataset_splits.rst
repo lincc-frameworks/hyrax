@@ -5,15 +5,17 @@ Data set splits (subsets)
 
 Datasets used in machine learning are typically split in order to avoid overfitting a particular dataset of
 interest, and to perform various sorts of checking that the model is learning what the researcher intends.
-In Hyrax, splits are defined via ``split_fraction`` in the ``data_request`` configuration.
+In Hyrax, splits are defined in the top-level ``[split]`` configuration table, keyed by the group names
+declared in ``data_request``.
 
 Splits in training
 ------------------
 
 To split a dataset between training and validation, define named groups in the ``data_request`` that point
-to the **same** ``data_location`` and assign each group a ``split_fraction``. Hyrax will partition the
-dataset so that each group receives a non-overlapping subset of the data proportional to its fraction.
-The fractions for all groups sharing a ``data_location`` must sum to ``<= 1.0``.
+to the **same** ``data_location``, then assign each group a fraction in the ``[split]`` table. Hyrax will
+partition the dataset so that each group receives a non-overlapping subset of the data proportional to its
+fraction. The fractions for all groups sharing a ``data_location`` must sum to ``<= 1.0``. Groups omitted
+from ``[split]`` default to ``1.0`` (the full dataset).
 
 For example, to use 80% of the data for training and 20% for validation:
 
@@ -32,7 +34,6 @@ For example, to use 80% of the data for training and 20% for validation:
                         "dataset_class": "HyraxCifarDataset",
                         "data_location": "./all_data",
                         "primary_id_field": "object_id",
-                        "split_fraction": 0.8,
                     }
                 },
                 "validate": {
@@ -40,11 +41,16 @@ For example, to use 80% of the data for training and 20% for validation:
                         "dataset_class": "HyraxCifarDataset",
                         "data_location": "./all_data",
                         "primary_id_field": "object_id",
-                        "split_fraction": 0.2,
                     }
                 },
             }
             h.set_config("data_request", data_request)
+
+            split = {
+                "train": 0.8,
+                "validate": 0.2,
+            }
+            h.set_config("split", split)
 
     .. tab-item:: CLI
 
@@ -54,13 +60,15 @@ For example, to use 80% of the data for training and 20% for validation:
             dataset_class = "HyraxCifarDataset"
             data_location = "./all_data"
             primary_id_field = "object_id"
-            split_fraction = 0.8
 
             [data_request.validate.my_data]
             dataset_class = "HyraxCifarDataset"
             data_location = "./all_data"
             primary_id_field = "object_id"
-            split_fraction = 0.2
+
+            [split]
+            train = 0.8
+            validate = 0.2
 
 The ``train`` :doc:`verb </verbs>` trains on the ``train`` group and, when present, computes a
 validation loss each epoch using the ``validate`` group. Adding a ``test`` group is supported
@@ -72,9 +80,10 @@ For more detail on data requests, including how to use separate directories for 
 Randomness in splits
 --------------------
 
-When ``split_fraction`` is used, Hyrax randomly assigns indices to each group. By default,
-system entropy seeds the random number generator. For reproducible splits, set the ``seed``
-key in ``[data_set]``:
+When ``[split]`` fractions are used, Hyrax randomly assigns indices to each group. By default,
+system entropy seeds the random number generator. For reproducible splits, set the ``rng_seed``
+key in ``[split]`` to any integer. If ``rng_seed`` is omitted or set to ``false``, 
+Hyrax will fall back to using ``data_set.seed`` if it is set, or system entropy if not.:
 
 .. tab-set::
 
@@ -84,11 +93,11 @@ key in ``[data_set]``:
 
             from hyrax import Hyrax
             h = Hyrax()
-            h.config["data_set"]["seed"] = 1
+            h.config["split"]["rng_seed"] = 1
 
     .. tab-item:: CLI
 
         .. code-block:: toml
 
-            [data_set]
-            seed = 1
+            [split]
+            rng_seed = 1

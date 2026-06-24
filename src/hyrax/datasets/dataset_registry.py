@@ -4,6 +4,7 @@ from collections.abc import Callable
 from types import MethodType
 from typing import Any
 
+import numpy as np
 import numpy.typing as npt
 
 from hyrax.plugin_utils import get_or_load_class, update_registry
@@ -131,16 +132,42 @@ class HyraxDataset:
         """
         return [] if self._metadata_table is None else list(self._metadata_table.colnames)
 
+    def augment_cache_key(self, idx: int, rng_seed: np.int64) -> np.int64 | None:
+        """Return a cache key for augmented data, or None to skip caching.
+
+        Base (non-augmented) data is always cached by index. This method is
+        only called when augmentation is active, to decide whether the
+        augmented result should also be cached. The default returns ``None``
+        (augmented data is regenerated each access), which is the standard
+        expectation in ML training.
+
+        Override this when augmented results are deterministic and expensive
+        to recompute.
+
+        Parameters
+        ----------
+        idx : int
+            The dataset-local index.
+        rng_seed : np.int64
+            The rng_seed passed to ``augment_<field>`` methods.
+
+        Returns
+        -------
+        np.int64 | None
+            Cache key, or ``None`` to skip caching augmented data.
+        """
+        return None
+
     def on_epoch_start(self, verb: str):
         """Called at the beginning of each epoch (or once for single-pass verbs).
+
+        Override in subclasses to respond to epoch-level lifecycle events.
 
         Parameters
         ----------
         verb : str
             Name of the verb that is running, e.g. ``"train"``, ``"infer"``,
             ``"test"``, or ``"engine"``.
-
-        Override in subclasses to respond to epoch-level lifecycle events.
         """
         pass
 

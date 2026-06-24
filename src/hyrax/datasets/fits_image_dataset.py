@@ -49,13 +49,11 @@ name for your catalog file. ``h.config["data_set"]["filter_column_name"]`` and
 ``h.config["data_set"]["filename_column_name"]`` work in a corresponding manner.
 
 If your dataset does not fit in memory on your system, we recommend setting
-``h.config["data_set"]["use_cache"]`` and ``h.config["data_set"]["preload_cache"]`` to ``False``.
-Both are ``True`` by default. The former caches all tensors read during an epoch into system RAM, with the
-intent of speeding up later epochs of training if your disk has low bandwidth. The latter begins this process
-of caching all tensors into system RAM in a background thread as soon as the ``FitsImageDataset`` is
-constructed, front-running the ``train`` or ``infer`` verb requesting tensors. The intent of this optimization
-is to speed up the first epoch of training in the case where your disk has high latency. Both will result in
-crashes if there is not enough room in your system RAM for the entire dataset.
+``h.config["data_set"]["use_cache"]`` to ``False``.
+This caches all tensors read during an epoch into system RAM, with the
+intent of speeding up later epochs of training if your disk has low bandwidth.
+This will result in crashes if there is not enough room in your system RAM
+for the entire dataset.
 
 If you need to truncate your dataset to fit in RAM, the easiest way is to select a small number of rows
 from your original catalog file. FitsImageDataset will only attempt to load images that exist in the catalog.
@@ -132,7 +130,7 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
         metadata = self._prepare_metadata()
         super().__init__(config, metadata)
 
-        self._before_preload()
+        self._post_init_hook()
 
     def _init_from_path(self, path: Union[Path, str]):
         """__init__ helper. Initialize an HSC data set from a path. This involves several filesystem scan
@@ -258,10 +256,7 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
         return filter_catalog
 
-    def _before_preload(self) -> None:
-        # Provided so subclasses can make edits to the class after full initialization
-        # but before the cache preload thread starts iterating over the datastructure and
-        # fetching
+    def _post_init_hook(self) -> None:
         pass
 
     def _prepare_metadata(self):
@@ -537,13 +532,6 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
         tensorboardx_logger.log_duration_ts(f"{prefix}/object_convert_tensor_time_s", start_time)
         return data_transformed_numpy
 
-    # TODO: Performance Change when files are read/cache pytorch tensors?
-    #
-    # This function loads from a file every time __getitem__ is called
-    # Do we want to pre-cache these into memory in init?
-    # Do we want to memoize them on first __getitem__ call?
-    #
-    # For now we just do it the naive way
     def _load_tensor_for_cache(self, object_id: str):
         """Implementation of TensorCacheMixin abstract method."""
         return self._read_object_id(object_id)

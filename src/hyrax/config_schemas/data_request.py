@@ -43,9 +43,16 @@ class DataRequestConfig(BaseConfigModel):
         description="Dataset-specific configuration as a free-form dictionary.",
     )
 
-    augment: bool | None = Field(
+    augment: bool | list[str] | None = Field(
         None,
-        description="Enable augmentation for this dataset. When true, augment_<field> methods are used.",
+        description=(
+            "Enable augmentation for this dataset. When True (boolean), all "
+            "augment_<field> methods found on the dataset class are used, with "
+            "fallback to get_<field> for fields without an augment method. "
+            "When a list of field names, only the listed fields are augmented "
+            "(each must have an augment_<field> method — hard error if missing) "
+            "and unlisted fields use get_<field>."
+        ),
     )
 
     @field_validator("data_location")
@@ -66,6 +73,26 @@ class DataRequestConfig(BaseConfigModel):
                 "'join_field' and 'primary_id_field' are mutually exclusive. "
                 "'join_field' is for secondary datasets that join to the primary."
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_augment_list(self) -> DataRequestConfig:
+        """Validate the list form of augment against fields and primary_id_field."""
+        if not isinstance(self.augment, list):
+            return self
+
+        if self.primary_id_field is not None and self.primary_id_field in self.augment:
+            raise ValueError(
+                f"Cannot enable augmentation on primary_id_field '{self.primary_id_field}'. "
+                f"The primary ID field is implicitly repeated and must not be augmented."
+            )
+
+        if self.fields is not None:
+            allowed = set(self.fields)
+            extra = set(self.augment) - allowed
+            if extra:
+                raise ValueError(f"augment list contains fields not in 'fields': {sorted(extra)}")
+
         return self
 
     def as_dict(self, *, exclude_unset: bool = False) -> dict[str, Any]:
@@ -191,7 +218,10 @@ class DataRequestDefinition(RootModel[dict[str, DatasetGroupValue]]):
         for group_name, group_value in self.root.items():
             if group_name == "infer":
                 for friendly_name, cfg in group_value.items():
-                    if cfg.augment:
+                    has_augment = cfg.augment is True or (
+                        isinstance(cfg.augment, list) and len(cfg.augment) > 0
+                    )
+                    if has_augment:
                         raise ValueError(
                             f"Augmentation cannot be enabled on 'infer' data group "
                             f"(dataset '{friendly_name}'). Augmentation is only valid for "
