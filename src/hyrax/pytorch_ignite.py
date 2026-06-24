@@ -83,7 +83,7 @@ def setup_dataset(
         raise RuntimeError(
             f"Legacy split configuration keys found in [data_set]: {found}\n\n"
             "The train_size/validate_size/test_size configuration style has been removed.\n"
-            "Please migrate to split_fraction in your [data_request] groups.\n\n"
+            "Please migrate your split configuration to [split].\n\n"
             "Example:\n"
             "  [data_request.train.data]\n"
             "  dataset_class = 'YourDataset'\n"

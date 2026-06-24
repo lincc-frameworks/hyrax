@@ -101,6 +101,12 @@ at the official site: https://www.cs.toronto.edu/~kriz/cifar.html
 
     h.set_config("data_request", data_request_definition)
 
+    split = {
+      "train": 1.0
+   }
+
+   h.set_config("split", split)
+
 This may appear overwhelming, especially for a simple case, but being explicit
 about the dataset configuration will allow for greater flexibility when working
 with more complex data. In Hyrax, the ``data_request`` defines what data each

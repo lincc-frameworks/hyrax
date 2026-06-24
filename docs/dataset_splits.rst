@@ -45,7 +45,12 @@ For example, to use 80% of the data for training and 20% for validation:
                 },
             }
             h.set_config("data_request", data_request)
-            h.set_config("split", {"train": 0.8, "validate": 0.2})
+
+            split = {
+                "train": 0.8,
+                "validate": 0.2,
+            }
+            h.set_config("split", split)
 
     .. tab-item:: CLI
 
@@ -76,8 +81,9 @@ Randomness in splits
 --------------------
 
 When ``[split]`` fractions are used, Hyrax randomly assigns indices to each group. By default,
-system entropy seeds the random number generator. For reproducible splits, set the ``seed``
-key in ``[data_set]``:
+system entropy seeds the random number generator. For reproducible splits, set the ``rng_seed``
+key in ``[split]`` to any integer. If ``rng_seed`` is omitted or set to ``false``, 
+Hyrax will fall back to using ``data_set.seed`` if it is set, or system entropy if not.:
 
 .. tab-set::
 
@@ -87,15 +93,11 @@ key in ``[data_set]``:
 
             from hyrax import Hyrax
             h = Hyrax()
-            h.config["data_set"]["seed"] = 1
+            h.config["split"]["rng_seed"] = 1
 
     .. tab-item:: CLI
 
         .. code-block:: toml
 
-            [data_set]
-            seed = 1
-
-Alternatively, set ``rng_seed`` in ``[split]`` to seed the split RNG independently of
-``data_set.seed``. When ``split.rng_seed`` is ``false`` (the default), Hyrax falls back to
-``data_set.seed``.
+            [split]
+            rng_seed = 1
