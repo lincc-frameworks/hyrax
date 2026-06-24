@@ -1,8 +1,6 @@
-import os
 from pathlib import Path
 
 import pooch
-import psutil
 
 from hyrax import Hyrax
 
@@ -12,7 +10,7 @@ HSC1K_ARCHIVE_HASH = "md5:1be05a6b49505054de441a7262a09671"
 
 
 class DataCacheBenchmarks:
-    """Timing benchmarks for preloading the data cache with the HSC1k dataset."""
+    """Timing benchmarks for per-dataset caching with the HSC1k dataset."""
 
     def setup_cache(self):
         """Download the HSC1k dataset only once."""
@@ -43,37 +41,60 @@ class DataCacheBenchmarks:
             },
         }
         self.h.config["data_set"]["use_cache"] = True
-        self.h.config["data_set"]["preload_cache"] = False
         self.data_provider = self.h.prepare()["train"]
 
     def setup(self):
-        """
-        Prepare for benchmark by defining and setting up the same dataset.
-        Despite calling setup_cache this should not trigger another HSC1k download.
-        """
+        """Prepare for benchmark by setting up the dataset."""
         self.setup_cache()
-        self.h.config["data_set"]["preload_cache"] = True
 
-    def time_preload_cache_hsc1k(self):
-        """Benchmark the amount of time needed to preload the cache of all data"""
-        try:
-            from hyrax.datasets.data_cache import DataCache
-        except ImportError as e:
-            raise NotImplementedError("No DataCache in this version") from e
-        self.data_cache = DataCache(self.h.config, self.data_provider)
-        self.data_cache.start_preload_thread()
-        self.data_cache._preload_thread.join()
+    def time_cache_fill_hsc1k(self):
+        """Benchmark the time to fill the cache through normal access."""
+        for i in range(len(self.data_provider)):
+            self.data_provider[i]
 
-    def track_cache_hsc1k_hyrax_size_undercount(self):
-        """Benchmark the amount of memory needed to preload the cache with HSC1k data"""
-        initial = psutil.Process(os.getpid()).memory_info().rss
 
-        self.time_preload_cache_hsc1k()
+class DataCacheHitBenchmarks:
+    """Benchmarks for cache-hit performance with a pre-filled cache."""
 
-        final = psutil.Process(os.getpid()).memory_info().rss
-        os_size = final - initial
-        hyrax_size = self.data_cache._data_size_bytes
-        hyrax_undercount = os_size - hyrax_size
-        return (hyrax_undercount / os_size) * 100
+    def setup_cache(self):
+        """Download the HSC1k dataset only once."""
+        data_dir = Path("./hsc1k").resolve()
+        data_dir.mkdir(exist_ok=True)
+        hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
+        if not hsc_data_dir.exists():
+            pooch.retrieve(
+                url=HSC1K_ARCHIVE_URL,
+                known_hash=HSC1K_ARCHIVE_HASH,
+                fname="hsc_demo_data.zip",
+                path=data_dir,
+                processor=pooch.Unzip(extract_dir="."),
+            )
 
-    track_cache_hsc1k_hyrax_size_undercount.units = "percent"
+    def setup(self):
+        """Build a DataProvider and fill its cache before each timing run."""
+        data_dir = Path("./hsc1k").resolve()
+        hsc_data_dir = data_dir / HSC1K_EXTRACTED_DIRNAME
+
+        h = Hyrax()
+        h.config["general"]["results_dir"] = str(data_dir)
+        h.config["data_request"] = {
+            "train": {
+                "data": {
+                    "dataset_class": "HSCDataset",
+                    "data_location": str(hsc_data_dir),
+                    "fields": ["image"],
+                    "primary_id_field": "object_id",
+                }
+            },
+        }
+        h.config["data_set"]["use_cache"] = True
+        self.data_provider = h.prepare()["train"]
+
+        # Fill the cache — this cost is excluded from timing.
+        for i in range(len(self.data_provider)):
+            self.data_provider[i]
+
+    def time_cache_hit_hsc1k(self):
+        """Benchmark cache-hit performance after the cache is filled."""
+        for i in range(len(self.data_provider)):
+            self.data_provider[i]

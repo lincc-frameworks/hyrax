@@ -302,9 +302,6 @@ class TraceResult(TracePrintable):
                         self.instrument_class_data_handler(model_cls, trace_def)
 
         # Drop the length of the dataprovider so we end train/inference/test/engine runs early
-        from hyrax.datasets.data_provider import DataProvider
-
-        self.reduce_len(DataProvider)
 
         # Clear our representation of calls.
         self.reset()
@@ -326,31 +323,6 @@ class TraceResult(TracePrintable):
 
     def _valid_keys(self):
         return list(self.stages.keys())
-
-    def reduce_len(self, cls):
-        """
-        Inserts a len method which reduces the length of the passed in class in order to
-        accommodate early return in trace mode.
-
-        This is necessary because hyrax does not control the main loop of inference/training
-        for most ML verbs, so the layer that does control it must get an appropriate stop condition
-        from Hyrax's data structures
-        """
-        raw_func = cls.__dict__.get("__len__")
-
-        def new_len(obj):
-            # We actually need the length to be one-past-the-end of whever split index we will
-            # encounter at the end of the first (and only) batch
-            #
-            # This accommodates the situation where there is a split_fraction defined in the data
-            # definition.
-            if obj.split_indices is not None:
-                return obj.split_indices[self.trace_batch_size - 1] + 1
-
-            return min(self.trace_batch_size, raw_func(obj))
-
-        cls.__len__ = new_len
-        self.shimmed_funcs.append((cls, "__len__", raw_func))
 
     def remove_class_level_shims(self):
         """

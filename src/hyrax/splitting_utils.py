@@ -28,7 +28,7 @@ def _resolve_seed(config: dict) -> int | None:
     config['data_set']['seed']."""
     rng_seed = config["split"]["rng_seed"] if config["split"]["rng_seed"] else None
     if not rng_seed:
-        raw = config["data_set"]["seed"]
+        raw = config.get("data_set", {}).get("seed")
         return raw if raw else None
     return rng_seed
 
@@ -87,10 +87,20 @@ def _compute_weights(
         uniform = 1.0 / num_classes
         target_c = {label: uniform for label in count_c}
 
-    return np.array(
+    # Use Float32 for compatibility with mps.
+    #
+    # Note that the minimum representable positive number in Float32 is about 10^-38
+    # (without using subnormals).
+    #
+    # The maximum int64 is about 2*10^19, and The maximum int128 is 3*10^38.
+    #
+    # Even if there is only 1 member of a class, we are probably fine with Float32 unless you need an
+    # int128 to describe your indexes.
+    weights = np.array(
         [target_c.get(index_to_label[idx], 0) / count_c[index_to_label[idx]] for idx in indices],
-        dtype=np.float64,
+        dtype=np.float32,
     )
+    return weights
 
 
 # ── Validation ─────────────────────────────────────────────────────────────────
@@ -385,7 +395,6 @@ def _compute_splits(config: dict, datasets: dict[str, DataProvider]) -> dict[str
                     "indexes": np.array(indices_list, dtype=np.int64),
                     "weights": weights,
                 }
-
     return result
 
 
