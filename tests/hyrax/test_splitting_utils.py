@@ -1463,6 +1463,79 @@ def test_create_splits_rng_seed_false_uses_data_set_seed(tmp_path):
     assert ds_a["train"].split_indices != ds_c["train"].split_indices
 
 
+# ---------------------------------------------------------------------------
+# Test 25a: _resolve_seed — exhaustive unit tests for the fix
+# Regression for: config.get("data_set", {}).get("seed") instead of direct access
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("rng_seed_value", [False, None, ""])
+def test_resolve_seed_falsy_rng_seed_no_data_set_returns_none(rng_seed_value):
+    """When rng_seed is falsy and data_set is absent entirely, return None (not KeyError)."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": rng_seed_value}}
+    assert _resolve_seed(config) is None
+
+
+@pytest.mark.parametrize("rng_seed_value", [False, None, ""])
+def test_resolve_seed_falsy_rng_seed_data_set_missing_seed_returns_none(rng_seed_value):
+    """When rng_seed is falsy and data_set has no 'seed' key, return None."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": rng_seed_value}, "data_set": {}}
+    assert _resolve_seed(config) is None
+
+
+@pytest.mark.parametrize("rng_seed_value", [False, None, ""])
+def test_resolve_seed_falsy_rng_seed_uses_data_set_seed(rng_seed_value):
+    """When rng_seed is falsy and data_set.seed is set, return data_set.seed."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": rng_seed_value}, "data_set": {"seed": 99}}
+    assert _resolve_seed(config) == 99
+
+
+def test_resolve_seed_truthy_rng_seed_ignores_data_set():
+    """When rng_seed is a truthy integer, return it regardless of data_set."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": 7}, "data_set": {"seed": 999}}
+    assert _resolve_seed(config) == 7
+
+
+def test_resolve_seed_truthy_rng_seed_no_data_set():
+    """When rng_seed is set, data_set being absent does not matter."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": 42}}
+    assert _resolve_seed(config) == 42
+
+
+def test_configs_equivalent_no_data_set_key_does_not_raise():
+    """configs_equivalent must not crash when either config lacks a data_set key."""
+    from hyrax.splitting_utils import configs_equivalent
+
+    base = {
+        "split": {"rng_seed": 5, "train": 0.8},
+        "balance": {"field": False, "groups": [], "distribution": {}},
+        "data_request": {
+            "train": {
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "data_location": "/loc",
+                    "primary_id_field": "object_id",
+                }
+            }
+        },
+    }
+    other = {**base, "split": {**base["split"], "rng_seed": 5}}
+
+    equivalent, diffs = configs_equivalent(base, other)
+    assert equivalent
+    assert diffs == []
+
+
 def test_create_splits_string_rng_seed_raises(tmp_path):
     """A non-empty string rng_seed is rejected (must be an integer or false)."""
     from hyrax.splitting_utils import create_splits

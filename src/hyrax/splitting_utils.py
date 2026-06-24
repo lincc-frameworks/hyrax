@@ -28,7 +28,7 @@ def _resolve_seed(config: dict) -> int | None:
     config['data_set']['seed']."""
     rng_seed = config["split"]["rng_seed"] if config["split"]["rng_seed"] else None
     if not rng_seed:
-        raw = config["data_set"]["seed"]
+        raw = config.get("data_set", {}).get("seed")
         return raw if raw else None
     return rng_seed
 
