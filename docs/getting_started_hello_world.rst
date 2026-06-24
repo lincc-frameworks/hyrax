@@ -95,12 +95,17 @@ at the official site: https://www.cs.toronto.edu/~kriz/cifar.html
                 "data_location": "./data",
                 "fields": ["image", "label"],
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
             },
         }
     }
 
     h.set_config("data_request", data_request_definition)
+
+    split = {
+      "train": 1.0
+   }
+
+   h.set_config("split", split)
 
 This may appear overwhelming, especially for a simple case, but being explicit
 about the dataset configuration will allow for greater flexibility when working
