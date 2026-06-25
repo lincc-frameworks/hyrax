@@ -26,7 +26,6 @@ def loopback_hyrax_nan(tmp_path_factory, request):
                 "dataset_class": request.param,
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
             },
         },
         "infer": {
@@ -37,6 +36,7 @@ def loopback_hyrax_nan(tmp_path_factory, request):
             },
         },
     }
+    h.config["split"] = {"train": 1.0}
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
