@@ -76,12 +76,14 @@ Returns a ``ResultDataset`` in a notebook context.
            $ hyrax test
 
 
-``umap``
+``reduce_dimensions``
 --------
-Run `UMAP <https://umap-learn.readthedocs.io>`_ on the output of inference
-to reduce high-dimensional embeddings to 2D (or 3D) for visualization. By
-default, Hyrax uses the most recent inference output. See the
-:doc:`UMAP notebook </pre_executed/using_umap>` for configuration options.
+Run dimensionality-reduction algorithm `UMAP <https://umap-learn.readthedocs.io>`_ ,
+`t-SNE <https://scikit-learn.org/stable/modules/generated/sklearn.manifold.TSNE.html>`_,
+or `PCA <https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html>`_
+on the output of inference to reduce high-dimensional embeddings to 2D (or 3D) for visualization.
+By default, Hyrax uses the most recent inference output. See the
+:doc:`reduce_dimensions notebook </pre_executed/using_umap>` for configuration options.
 
 Returns a ``ResultDataset`` containing the reduced embeddings.
 
@@ -91,13 +93,13 @@ Returns a ``ResultDataset`` containing the reduced embeddings.
 
         .. code-block:: python
 
-           h.umap()
+           h.reduce_dimensions()
 
     .. tab-item:: CLI
 
         .. code-block:: bash
 
-           $ hyrax umap [-i <path_to_inference_output>]
+           $ hyrax reduce_dimensions [-i <path_to_inference_output>]
 
 
 ``visualize``
