@@ -77,7 +77,7 @@ Returns a ``ResultDataset`` in a notebook context.
 
 
 ``reduce_dimensions``
---------
+---------------------
 Run dimensionality-reduction algorithm `UMAP <https://umap-learn.readthedocs.io>`_ ,
 `t-SNE <https://scikit-learn.org/stable/modules/generated/sklearn.manifold.TSNE.html>`_,
 or `PCA <https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html>`_
