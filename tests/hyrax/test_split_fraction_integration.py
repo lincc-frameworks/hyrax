@@ -197,8 +197,8 @@ class TestSplitConfigFlow:
         with pytest.raises(RuntimeError, match="sum to"):
             validate_split_config(config, datasets)
 
-    def test_error_when_split_fraction_missing_for_shared_location(self, tmp_path):
-        """Missing split fraction for one group at a shared location raises RuntimeError.
+    def test_error_when_split_definition_missing_for_shared_location(self, tmp_path):
+        """Missing split definition for one group at a shared location raises RuntimeError.
 
         When a group has no entry in config['split'] it defaults to 1.0 (full dataset).
         Combined with any explicit fraction from another group at the same location,
