@@ -22,7 +22,6 @@ def test_hyrax_small_dataset_hscstars(request):
                 "dataset_class": "FitsImageDataset",
                 "data_location": str(catalog_file.parent),
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
             },
         },
         "infer": {
@@ -33,6 +32,7 @@ def test_hyrax_small_dataset_hscstars(request):
             },
         },
     }
+    h.config["split"] = {"train": 1.0}
     h.config["data_set"]["filter_catalog"] = str(catalog_file)
     h.config["data_set"]["crop_to"] = [20, 20]
 

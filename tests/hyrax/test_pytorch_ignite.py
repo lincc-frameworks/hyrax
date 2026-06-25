@@ -87,7 +87,6 @@ class TestSetupDataset:
         # Use a real class (not MagicMock) so isinstance() in setup_dataset doesn't TypeError.
         # __new__ intercepts construction and returns our sentinel instance.
         sentinel = MagicMock()
-        sentinel.split_fraction = None
         provider_calls = []
 
         class MockDataProvider:
@@ -127,7 +126,6 @@ class TestSetupDataset:
 
         # Use a real class (not MagicMock) so isinstance() in setup_dataset doesn't TypeError.
         sentinel = MagicMock()
-        sentinel.split_fraction = None
         provider_calls = []
 
         class MockDataProvider:

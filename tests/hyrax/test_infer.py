@@ -76,7 +76,7 @@ def test_infer_order(loopback_hyrax, train_shuffle):
         assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]))
 
 
-def test_infer_split_fraction_preserves_underlying_dataset_order(loopback_hyrax):
+def test_infer_split_definition_preserves_underlying_dataset_order(loopback_hyrax):
     """Inference with split config should restrict the dataset to a deterministic
     subset whose indices match the first N indices of the underlying dataset.
     """
@@ -86,7 +86,6 @@ def test_infer_split_fraction_preserves_underlying_dataset_order(loopback_hyrax)
     h, _ = loopback_hyrax
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 1000
     h.config["data_loader"]["batch_size"] = 3
-    # Use the new [split] table instead of the removed split_fraction field.
     h.config["split"] = {"infer": 0.01}
 
     dataset_dict = setup_dataset(h.config, splits=("infer",), shuffle=False)
