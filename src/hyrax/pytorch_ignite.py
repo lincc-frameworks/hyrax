@@ -313,7 +313,6 @@ def extract_model_method(model, method_name):
     if method_name == "train_batch" and wrapped:
       train_batch_fn = getattr(model.module, method_name)
       def wrap_train_batch(batch):
-        print("wrap_train_batch called")
         return train_batch_fn(model, batch)
       
       return wrap_train_batch
@@ -595,7 +594,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     model.train()
     wrapped_model = idist.auto_model(model)
     
-    # wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
+    wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
     
     # # # Check to see if the model has the requested method
     # if wrapped:
@@ -605,12 +604,12 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     # #             wrapped_model.__dict__[k] = wrapped_model.module.__dict__[k]
     #     # print(wrapped_model.module.__dict__)
     #     # print("hyrax_data_parallel:", wrapped_model.module._hyrax_data_parallel)
-    #     # wrapped_model.module._hyrax_data_parallel = model_wrapper(wrapped_model)
+        # wrapped_model.module._hyrax_data_parallel = wrapped_model.forward
     #     # print(wrapped_model.module._hyrax_data_parallel)
-    #     wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
-    #     wrapped_model.optimizer = model.optimizer
-    #     wrapped_model.scheduler = model.scheduler
-    #     wrapped_model.criterion = model.criterion
+        # wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
+        # wrapped_model.optimizer = model.optimizer
+        # wrapped_model.scheduler = model.scheduler
+        # wrapped_model.criterion = model.criterion
     
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
