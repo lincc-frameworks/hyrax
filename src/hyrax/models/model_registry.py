@@ -202,43 +202,62 @@ def hyrax_model(cls):
     original_init = cls.__init__
 
     def wrapped_init(self, config, *args, **kwargs):
+        import ignite.distributed as idist
+        
         original_init(self, config, *args, **kwargs)
+        # self._hyrax_data_parallel = None
 
-        if not hasattr(self, "optimizer"):
-            self.optimizer = _torch_optimizer(self)
-        else:
-            if config["optimizer"]["name"]:
-                logger.warning(
-                    "Both model and config define an optimizer. "
-                    "Hyrax will use self.optimizer defined in the model."
-                )
-            opt_name = f"{type(self.optimizer).__module__}.{type(self.optimizer).__qualname__}"
-            logger.info(f"Using self.optimizer defined in model: {opt_name}")
+        # if not hasattr(self, "optimizer"):
+        #     # self.optimizer = idist.auto_optim(_torch_optimizer(self))
+        #     # self.optimizer = _torch_optimizer(self)
+        # else:
+        #     if config["optimizer"]["name"]:
+        #         logger.warning(
+        #             "Both model and config define an optimizer. "
+        #             "Hyrax will use self.optimizer defined in the model."
+        #         )
+        #     opt_name = f"{type(self.optimizer).__module__}.{type(self.optimizer).__qualname__}"
+        #     logger.info(f"Using self.optimizer defined in model: {opt_name}")
 
-        if not hasattr(self, "criterion"):
-            self.criterion = _torch_criterion(self)
-        else:
-            if config["criterion"]["name"]:
-                logger.warning(
-                    "Both model and config define a criterion. "
-                    "Hyrax will use self.criterion defined in the model."
-                )
-            crit_name = f"{type(self.criterion).__module__}.{type(self.criterion).__qualname__}"
-            logger.info(f"Using self.criterion defined in model: {crit_name}")
+        # if not hasattr(self, "criterion"):
+        #     self.criterion = _torch_criterion(self)
+        # else:
+        #     if config["criterion"]["name"]:
+        #         logger.warning(
+        #             "Both model and config define a criterion. "
+        #             "Hyrax will use self.criterion defined in the model."
+        #         )
+        #     crit_name = f"{type(self.criterion).__module__}.{type(self.criterion).__qualname__}"
+        #     logger.info(f"Using self.criterion defined in model: {crit_name}")
 
-        if not hasattr(self, "scheduler"):
-            self.scheduler = _torch_schedulers(self)
-        else:
-            if config["scheduler"]["name"]:
-                logger.warning(
-                    "Both model and config define a scheduler. "
-                    "Hyrax will use self.scheduler defined in the model."
-                )
+        # if not hasattr(self, "scheduler"):
+        #     self.scheduler = _torch_schedulers(self)
+        # else:
+        #     if config["scheduler"]["name"]:
+        #         logger.warning(
+        #             "Both model and config define a scheduler. "
+        #             "Hyrax will use self.scheduler defined in the model."
+        #         )
 
-            sched_name = f"{type(self.scheduler).__module__}.{type(self.scheduler).__qualname__}"
-            logger.info(f"Using self.scheduler defined in model: {sched_name}")
+        #     sched_name = f"{type(self.scheduler).__module__}.{type(self.scheduler).__qualname__}"
+        #     logger.info(f"Using self.scheduler defined in model: {sched_name}")
 
     cls.__init__ = wrapped_init
+    
+    # original_forward = cls.forward
+    # def wrapped_forward(self, *args, **kwargs):
+    #     # print(self._hyrax_data_parallel)
+    #     if self._hyrax_data_parallel:
+    #         if (kwargs.get("use_original_forward", False)):
+    #             print("wrapped forward, use original forward")
+    #             del kwargs["use_original_forward"]
+    #         else:
+    #             print("calling DP forward")
+    #             kwargs["use_original_forward"] = True
+    #             return self._hyrax_data_parallel.model(*args, **kwargs)
+    #     return original_forward(self, *args, **kwargs)
+    
+    # cls.forward = wrapped_forward
 
     def default_prepare_inputs(data_dict):
         """Extract image and label arrays from the batch dictionary.

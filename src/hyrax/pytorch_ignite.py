@@ -305,7 +305,18 @@ def extract_model_method(model, method_name):
     Callable
         The method extracted from the model
     """
+    print("method_name:", method_name)
+
+      
     wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
+    
+    if method_name == "train_batch" and wrapped:
+      train_batch_fn = getattr(model.module, method_name)
+      def wrap_train_batch(batch):
+        print("wrap_train_batch called")
+        return train_batch_fn(model, batch)
+      
+      return wrap_train_batch
 
     # Check to see if the model has the requested method
     if not hasattr(model.module if wrapped else model, method_name):
@@ -583,10 +594,28 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     device = idist.device()
     model.train()
     wrapped_model = idist.auto_model(model)
+    
+    # wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
+    
+    # # # Check to see if the model has the requested method
+    # if wrapped:
+    # #     # wrapped_model.__dict__.update(wrapped_model.module.__dict__)
+    # #     for k in wrapped_model.module.__dict__:
+    # #         if k not in wrapped_model.__dict__:
+    # #             wrapped_model.__dict__[k] = wrapped_model.module.__dict__[k]
+    #     # print(wrapped_model.module.__dict__)
+    #     # print("hyrax_data_parallel:", wrapped_model.module._hyrax_data_parallel)
+    #     # wrapped_model.module._hyrax_data_parallel = model_wrapper(wrapped_model)
+    #     # print(wrapped_model.module._hyrax_data_parallel)
+    #     wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
+    #     wrapped_model.optimizer = model.optimizer
+    #     wrapped_model.scheduler = model.scheduler
+    #     wrapped_model.criterion = model.criterion
+    
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
-
+  
     to_save = {
         "model": wrapped_model,
         "optimizer": model.optimizer,
@@ -610,6 +639,10 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
         # This is different from loading just model weights, which would use weights_only=True.
         prev_checkpoint = torch.load(config["train"]["resume"], map_location=device, weights_only=False)
         Checkpoint.load_objects(to_load=to_save, checkpoint=prev_checkpoint)
+        
+    # @trainer.on(Events.EXCEPTION_RAISED)
+    # def log_error_raised(trainer):
+    #     print("ERROR FOUND")
 
     @trainer.on(Events.STARTED)
     def log_training_start(trainer):

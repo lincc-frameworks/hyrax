@@ -7,6 +7,8 @@ from hyrax.trace import trace_verb_data
 
 from .verb_registry import Verb, hyrax_verb
 
+import ignite.distributed as idist
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,89 +88,96 @@ class Train(Verb):
         )
         create_splits(config, dataset, results_dir=results_dir, persist=True)
         model = setup_model(config, dataset["train"])
-        logger.info(
-            f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
-            f"{model.__class__.__name__}"
-        )
-        logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}")
-
-        # If a pre-trained weights file is specified, load it before creating the trainer.
-        # This must happen before create_trainer() wraps the model with idist.auto_model
-        # (the distributed wrapper) to avoid parameter key name mismatches.
-        if config["train"]["model_weights_file"]:
-            from hyrax.models.model_utils import load_model_weights
-
-            load_model_weights(config, model, "train")
+        
+        def training(rank):            
             logger.info(
-                f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Loading pre-trained weights:"
-                f"{Style.RESET_ALL} {config['train']['model_weights_file']}"
+                f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
+                f"{model.__class__.__name__}"
             )
-            logger.info(
-                f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Fine-tuning mode:{Style.RESET_ALL} "
-                "Training will start from epoch 1 with a fresh optimizer."
-            )
+            logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}")
 
-        train_shuffle = config["train"]["shuffle"]
+            # If a pre-trained weights file is specified, load it before creating the trainer.
+            # This must happen before create_trainer() wraps the model with idist.auto_model
+            # (the distributed wrapper) to avoid parameter key name mismatches.
+            if config["train"]["model_weights_file"]:
+                from hyrax.models.model_utils import load_model_weights
 
-        dataset_splits = [s for s in Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS if s in dataset]
+                load_model_weights(config, model, "train")
+                logger.info(
+                    f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Loading pre-trained weights:"
+                    f"{Style.RESET_ALL} {config['train']['model_weights_file']}"
+                )
+                logger.info(
+                    f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Fine-tuning mode:{Style.RESET_ALL} "
+                    "Training will start from epoch 1 with a fresh optimizer."
+                )
 
-        data_loaders = {}
-        for split_name in dataset_splits:
-            data_loaders[split_name] = dist_data_loader(
-                dataset[split_name],
-                config,
-                shuffle=split_name == "train" and train_shuffle,
-            )
+            train_shuffle = config["train"]["shuffle"]
 
-        train_data_loader = data_loaders["train"]
-        validation_data_loader = data_loaders.get("validate")
+            dataset_splits = [s for s in Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS if s in dataset]
 
-        # Create trainer, a pytorch-ignite `Engine` object
-        trainer = create_trainer(model, config, results_dir)
+            data_loaders: dict[str, tuple] = {}
+            for split_name in dataset_splits:
+                data_loaders[split_name] = dist_data_loader(
+                    dataset[split_name],
+                    config,
+                    shuffle=split_name == "train" and train_shuffle,
+                )
 
-        # Dispatch on_epoch_start to all DataProviders at the start of each epoch.
-        @trainer.on(Events.EPOCH_STARTED)
-        def dispatch_epoch_start(engine):
-            for provider in dataset.values():
-                provider.on_epoch_start("train")
+            train_data_loader = data_loaders["train"]
+            validation_data_loader = data_loaders.get("validate")
 
-        # Create a validator if a validation data loader is available
-        if validation_data_loader is not None:
-            validator = create_validator(model, config, validation_data_loader, trainer)
-            attach_best_checkpoint(validator, model, trainer, results_dir)
-        else:
-            attach_best_checkpoint(trainer, model, trainer, results_dir)
+            # Create trainer, a pytorch-ignite `Engine` object
+            trainer = create_trainer(model, config, results_dir)
 
-        monitor = GpuMonitor()
+            # Dispatch on_epoch_start to all DataProviders at the start of each epoch.
+            @trainer.on(Events.EPOCH_STARTED)
+            def dispatch_epoch_start(engine):
+                for provider in dataset.values():
+                    provider.on_epoch_start("train")
 
-        # Go up to the parent of the results dir so all mlflow results show up in the same directory.
-        results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-        (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
-        mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
+            # Create a validator if a validation data loader is available
+            if validation_data_loader is not None:
+                validator = create_validator(model, config, validation_data_loader, trainer)
+                attach_best_checkpoint(validator, model, trainer, results_dir)
+            else:
+                attach_best_checkpoint(trainer, model, trainer, results_dir)
 
-        # Get experiment_name and cast to string (it's a tomlkit.string by default)
-        experiment_name = str(config["train"]["experiment_name"])
+            monitor = GpuMonitor()
 
-        # This will create the experiment if it doesn't exist
-        mlflow.set_experiment(experiment_name)
+            # Go up to the parent of the results dir so all mlflow results show up in the same directory.
+            results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
+            (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
+            mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
 
-        # If run_name is not `false` in the config, use it as the MLFlow run name in
-        # this experiment. Otherwise use the name of the results directory
-        run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
+            # Get experiment_name and cast to string (it's a tomlkit.string by default)
+            experiment_name = str(config["train"]["experiment_name"])
 
-        with mlflow.start_run(log_system_metrics=True, run_name=run_name):
-            Train._log_params(config, results_dir)
+            # This will create the experiment if it doesn't exist
+            mlflow.set_experiment(experiment_name)
 
-            # Run the training process
-            trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
+            # If run_name is not `false` in the config, use it as the MLFlow run name in
+            # this experiment. Otherwise use the name of the results directory
+            run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
 
-        # Save the trained model
-        model.save(results_dir / config["train"]["weights_filename"])
-        monitor.stop()
+            with mlflow.start_run(log_system_metrics=True, run_name=run_name):
+                Train._log_params(config, results_dir)
 
-        logger.info("Finished Training")
-        close_tensorboard_logger()
+                # Run the training process
+                trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
 
+            # Save the trained model
+            model.save(results_dir / config["train"]["weights_filename"])
+            monitor.stop()
+
+            logger.info("Finished Training")
+            close_tensorboard_logger()
+        
+        # print("DEVICES:", idist.)
+        with idist.Parallel(backend="gloo", nproc_per_node=2) as parallel:
+            parallel.run(training)
+          
+        # training(0)
         return model
 
     @staticmethod
