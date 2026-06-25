@@ -170,9 +170,9 @@ def setup_model_from_sample(config: dict, sample_batch: dict) -> torch.nn.Module
 
     model_cls = fetch_model_class(config)
     prepared_sample = model_cls.prepare_inputs(sample_batch)
-    retval = model_cls(config=config, data_sample=prepared_sample)
+    model_instance = model_cls(config=config, data_sample=prepared_sample)
     reset_trace()
-    return retval
+    return model_instance
 
 
 def dist_data_loader(
@@ -305,6 +305,7 @@ def create_process_func(funcname, device, model, config):
 
 
 # Keep the old private name as an alias so any external callers are unaffected.
+# TODO: I think we can simply rename this function. It's only used here.
 _create_process_func = create_process_func
 
 

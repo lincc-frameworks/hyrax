@@ -81,7 +81,7 @@ class InferStream(Verb):
         model.eval()
 
         device = idist_device()
-        torch.set_default_device(device.type)
+        torch.set_default_device(device.type)  # TODO: I don't think this line is needed
         model = auto_model(model)
 
         load_model_weights(config, model, "infer_stream")
@@ -94,6 +94,8 @@ class InferStream(Verb):
         process_func = create_process_func("infer_batch", device, model, config)
 
         # Create the Lance writer callback (reused across all .process() calls)
+        # TODO: Unclear if this is actually useful. Perhaps this becomes a config
+        # TODO: option to save results or simply return them.
         save_batch_callback = create_save_batch_callback(results_dir)
 
         return InferStreamSession(
