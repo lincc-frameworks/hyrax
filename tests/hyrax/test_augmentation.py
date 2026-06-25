@@ -434,7 +434,6 @@ def test_on_epoch_start_called_during_training(tmp_path_factory):
                 "data_location": str(data_dir),
                 "primary_id_field": "object_id",
                 "augment": True,
-                "split_fraction": 0.8,
             }
         },
         "validate": {
@@ -442,10 +441,10 @@ def test_on_epoch_start_called_during_training(tmp_path_factory):
                 "dataset_class": "EpochCountingDataset",
                 "data_location": str(val_dir),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.2,
             }
         },
     }
+    h.config["split"] = {"train": 0.8, "validate": 0.2}
 
     h.train()
 
@@ -538,7 +537,6 @@ def test_on_epoch_start_called_during_test(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(train_dir),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.8,
             }
         },
         "validate": {
@@ -546,7 +544,6 @@ def test_on_epoch_start_called_during_test(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(val_dir),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.2,
             }
         },
         "test": {
@@ -564,6 +561,7 @@ def test_on_epoch_start_called_during_test(tmp_path_factory):
             }
         },
     }
+    h.config["split"] = {"train": 0.8, "validate": 0.2}
 
     h.train()
 
