@@ -81,7 +81,7 @@ class InferStream(Verb):
         model.eval()
 
         device = idist_device()
-        torch.set_default_device(device.type)  # TODO: I don't think this line is needed
+        # torch.set_default_device(device.type)  # TODO: I don't think this line is needed
         model = auto_model(model)
 
         load_model_weights(config, model, "infer_stream")
@@ -94,8 +94,6 @@ class InferStream(Verb):
         process_func = create_process_func("infer_batch", device, model, config)
 
         # Create the Lance writer callback (reused across all .process() calls)
-        # TODO: Unclear if this is actually useful. Perhaps this becomes a config
-        # TODO: option to save results or simply return them.
         save_batch_callback = create_save_batch_callback(results_dir)
 
         return InferStreamSession(
@@ -138,7 +136,7 @@ class InferStreamSession:
 
         Returns
         -------
-        torch.Tensor
+        np.ndarray
             Model output on CPU, detached from the computation graph.
 
         Raises
@@ -152,8 +150,9 @@ class InferStreamSession:
         with torch.no_grad():
             result = self._process_func(None, batch)
 
-        self._save_batch(batch, result)
-        return result.detach().cpu()
+        if self._config["infer_stream"]["save_model_output"]:
+            self._save_batch(batch, result)
+        return result.detach().cpu().numpy()
 
     def close(self):
         """Commit results and return the result dataset.
@@ -166,11 +165,15 @@ class InferStreamSession:
         if self._closed:
             return self._load_dataset(self._config, self._results_dir)
 
-        self._save_batch.data_writer.commit()
+        if self._config["infer_stream"]["save_model_output"]:
+            self._save_batch.data_writer.commit()
         self._closed = True
         self._close_logger()
         logger.info("InferStream session closed.")
-        return self._load_dataset(self._config, self._results_dir)
+
+        if self._config["infer_stream"]["save_model_output"]:
+            return self._load_dataset(self._config, self._results_dir)
+        return None
 
     def __enter__(self):
         return self

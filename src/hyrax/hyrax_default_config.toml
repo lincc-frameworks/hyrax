@@ -381,6 +381,9 @@ model_weights_file = false
 # The data_set split to use for inference. Use `false` for entire dataset.
 split = "infer"
 
+# Save the results of inference in the timestamped result directory.
+save_model_output = false
+
 
 [vector_db]
 # The type of vector db to use. Use "false" to disable vector database.
