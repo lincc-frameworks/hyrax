@@ -83,7 +83,7 @@ Run dimensionality-reduction algorithm `UMAP <https://umap-learn.readthedocs.io>
 or `PCA <https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html>`_
 on the output of inference to reduce high-dimensional embeddings to 2D (or 3D) for visualization.
 By default, Hyrax uses the most recent inference output. See the
-:doc:`reduce_dimensions notebook </pre_executed/using_umap>` for configuration options.
+:doc:`reduce_dimensions notebook </pre_executed/using_reduce_dimensions>` for configuration options.
 
 Returns a ``ResultDataset`` containing the reduced embeddings.
 
