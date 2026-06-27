@@ -334,6 +334,9 @@ class DataProvider:
         self.split_indices = None
         self.split_weights = None
 
+        # Getitem mode: friendly names of datasets using __getitem__ instead of get_* methods.
+        self._getitem_datasets: set[str] = set()
+
         # Join support: populated by _build_join_indices after prepare_datasets.
         # Maps friendly_name → join_field name for datasets that use joining.
         self._join_fields: dict[str, str] = {}
@@ -522,113 +525,198 @@ class DataProvider:
             # Store the prepared dataset instance in the `self.prepped_datasets`
             self.prepped_datasets[friendly_name] = dataset_instance
 
-            # If no fields were specifically requested, we'll assume that the user
-            # wants _all_ the available fields - user defined and dynamically created!
-            if not dataset_definition.get("fields", []):
-                dataset_definition["fields"] = [
-                    method[4:] for method in dir(dataset_instance) if method.startswith("get_")
-                ]
+            # Detect dataset mode: __getitem__ vs get_* methods.
+            has_getitem = hasattr(dataset_instance, "__getitem__")
+            has_getters = any(m.startswith("get_") for m in dir(dataset_instance))
 
-            self.field_collate_functions[friendly_name] = {}
-            for field in dataset_definition.get("fields", []):
-                if not hasattr(dataset_instance, f"get_{field}"):
-                    logger.error(
-                        f"No `get_{field}` method for requested field, '{field}' "
-                        f"was found in dataset {dataset_class}."
-                    )
-                field_collate_fn = getattr(dataset_instance, f"collate_{field}", None)
-
-                # error if dataset collate is defined along with field dependent collate
-                if callable(field_collate_fn):
-                    if friendly_name in self.custom_collate_functions:
-                        raise RuntimeError(
-                            f"Dataset '{friendly_name}' declares both global collate function\n"
-                            f"and field-dependent collate function for field '{field}'.\n"
-                            "Hyrax expects either a dataset collate function which handles all\n"
-                            "desired fields OR custom collate functions on each field, resorting\n"
-                            "to default collation behavior on fields for which a collate\n"
-                            "function is not defined. For more information see documentation at\n"
-                            "https://hyrax.readthedocs.io/en/stable/notebooks/custom_dataset_collation.html"
-                        )
-                    self.field_collate_functions[friendly_name][field] = field_collate_fn
-                else:
-                    self.field_collate_functions[friendly_name][field] = None
-
-            # Cache all of the `get_<field_name>` methods in the dataset instance
-            # so that we don't have to look them up each time we call `resolve_data`.
-            self.dataset_getters[friendly_name] = {}
-            for method in dir(dataset_instance):
-                if method.startswith("get_"):
-                    field_name = method[4:]  # Remove the "get_" prefix
-                    self.dataset_getters[friendly_name][field_name] = getattr(dataset_instance, method)
-
-            if len(self.dataset_getters[friendly_name]) == 0:
-                logger.error(
-                    f"No `get_*` methods were found in the class: {dataset_class}. "
-                    "This is likely an error in the dataset class definition."
+            if has_getitem and has_getters:
+                raise RuntimeError(
+                    f"Dataset '{dataset_class}' (friendly name '{friendly_name}') defines both "
+                    f"__getitem__ and get_* methods. A dataset must use one interface or the other. "
+                    f"Use get_<field>/augment_<field> methods OR __getitem__, not both."
                 )
 
-            # Get all the dataset's metadata fields and store them in
-            # `self.all_metadata_fields` dictionary. Modify the name to be
-            # <metadata_field_name>_<friendly_name>, i.e. "RA_cifar" or "photoz_hsc".
-            if dataset_instance._metadata_table:
-                columns = [f"{col}_{friendly_name}" for col in dataset_instance._metadata_table.colnames]
-                self.all_metadata_fields[friendly_name] = columns
+            if has_getitem:
+                self._getitem_datasets.add(friendly_name)
+                self._prepare_getitem_dataset(friendly_name, dataset_definition, dataset_instance)
             else:
-                self.all_metadata_fields[friendly_name] = []
+                self._prepare_getter_dataset(
+                    friendly_name, dataset_definition, dataset_instance, dataset_class
+                )
 
-            # If this dataset is marked as the primary dataset, store that
-            # information for later use.
-            primary_id_field = dataset_definition.get("primary_id_field")
-            if primary_id_field not in (None, False):
-                self.primary_dataset = friendly_name
-                self.primary_dataset_id_field_name = primary_id_field
+    def _prepare_getitem_dataset(self, friendly_name, dataset_definition, dataset_instance):
+        """Set up a dataset that uses __getitem__ mode."""
+        # Field discovery: call __getitem__(0) if no fields specified.
+        if not dataset_definition.get("fields", []):
+            sample = dataset_instance[0]
+            dataset_definition["fields"] = list(sample.keys())
 
-                self.primary_data_location = dataset_definition.get("data_location", None)
+        # Communicate requested fields to the dataset instance.
+        dataset_instance.requested_fields = tuple(dataset_definition.get("fields", []))
 
-            # Record join_field for secondary datasets that join by key.
-            if dataset_definition.get("join_field"):
-                self._join_fields[friendly_name] = dataset_definition["join_field"]
+        # Discover collate functions (orthogonal to fetch mode).
+        self.field_collate_functions[friendly_name] = {}
+        for field in dataset_definition.get("fields", []):
+            field_collate_fn = getattr(dataset_instance, f"collate_{field}", None)
 
-            # Cache the requested fields for each dataset as a tuple.
-            # Tuples are immutable (preventing accidental modification) and can
-            # provide slightly faster iteration than lists, which is beneficial
-            # for repeated access in `resolve_data`.
-            self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+            if callable(field_collate_fn):
+                if friendly_name in self.custom_collate_functions:
+                    raise RuntimeError(
+                        f"Dataset '{friendly_name}' declares both global collate function\n"
+                        f"and field-dependent collate function for field '{field}'.\n"
+                        "Hyrax expects either a dataset collate function which handles all\n"
+                        "desired fields OR custom collate functions on each field, resorting\n"
+                        "to default collation behavior on fields for which a collate\n"
+                        "function is not defined. For more information see documentation at\n"
+                        "https://hyrax.readthedocs.io/en/stable/notebooks/custom_dataset_collation.html"
+                    )
+                self.field_collate_functions[friendly_name][field] = field_collate_fn
+            else:
+                self.field_collate_functions[friendly_name][field] = None
 
-            # Discover augment_<field> methods if augmentation is enabled for this dataset.
-            augment_cfg = dataset_definition.get("augment")
-            if augment_cfg:
-                self._has_any_augmentation = True
-                self.augment_getters[friendly_name] = {}
+        # No per-field getters for getitem mode; leave dataset_getters empty.
+        self.dataset_getters[friendly_name] = {}
 
-                # Normalize bool to a list of requested field names that have augment methods.
-                if augment_cfg is True:
-                    available = {
-                        name.removeprefix("augment_")
-                        for name in dir(dataset_instance)
-                        if name.startswith("augment_") and callable(getattr(dataset_instance, name, None))
-                    }
-                    augment_cfg = [f for f in self.requested_fields[friendly_name] if f in available]
+        # Metadata table support.
+        if dataset_instance._metadata_table:
+            columns = [f"{col}_{friendly_name}" for col in dataset_instance._metadata_table.colnames]
+            self.all_metadata_fields[friendly_name] = columns
+        else:
+            self.all_metadata_fields[friendly_name] = []
 
-                self.augment_enabled[friendly_name] = augment_cfg
+        # Primary dataset tracking.
+        primary_id_field = dataset_definition.get("primary_id_field")
+        if primary_id_field not in (None, False):
+            self.primary_dataset = friendly_name
+            self.primary_dataset_id_field_name = primary_id_field
+            self.primary_data_location = dataset_definition.get("data_location", None)
 
-                for field_name in augment_cfg:
-                    if field_name not in self.requested_fields[friendly_name]:
-                        raise RuntimeError(
-                            f"augment list requests augmentation for field '{field_name}' "
-                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
-                            f"but '{field_name}' is not a field on this dataset."
-                        )
-                    method_name = f"augment_{field_name}"
-                    augment_fn = getattr(dataset_instance, method_name, None)
-                    if augment_fn is None or not callable(augment_fn):
-                        raise RuntimeError(
-                            f"augment list requests augmentation for field '{field_name}' "
-                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
-                            f"but no callable '{method_name}' method was found."
-                        )
-                    self.augment_getters[friendly_name][field_name] = augment_fn
+        # Join field tracking.
+        if dataset_definition.get("join_field"):
+            self._join_fields[friendly_name] = dataset_definition["join_field"]
+
+        # Cache the requested fields.
+        self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
+        # Augmentation is not supported for getitem-mode datasets.
+        augment_cfg = dataset_definition.get("augment")
+        if augment_cfg:
+            raise RuntimeError(
+                f"Augmentation is not supported for __getitem__-mode datasets. "
+                f"Dataset '{friendly_name}' (class {type(dataset_instance).__name__}) "
+                f"uses __getitem__ but has augment={augment_cfg!r} configured. "
+                f"Handle augmentation inside __getitem__ instead."
+            )
+
+    def _prepare_getter_dataset(self, friendly_name, dataset_definition, dataset_instance, dataset_class):
+        """Set up a dataset that uses get_<field> mode (the original interface)."""
+        # If no fields were specifically requested, we'll assume that the user
+        # wants _all_ the available fields - user defined and dynamically created!
+        if not dataset_definition.get("fields", []):
+            dataset_definition["fields"] = [
+                method[4:] for method in dir(dataset_instance) if method.startswith("get_")
+            ]
+
+        self.field_collate_functions[friendly_name] = {}
+        for field in dataset_definition.get("fields", []):
+            if not hasattr(dataset_instance, f"get_{field}"):
+                logger.error(
+                    f"No `get_{field}` method for requested field, '{field}' "
+                    f"was found in dataset {dataset_class}."
+                )
+            field_collate_fn = getattr(dataset_instance, f"collate_{field}", None)
+
+            # error if dataset collate is defined along with field dependent collate
+            if callable(field_collate_fn):
+                if friendly_name in self.custom_collate_functions:
+                    raise RuntimeError(
+                        f"Dataset '{friendly_name}' declares both global collate function\n"
+                        f"and field-dependent collate function for field '{field}'.\n"
+                        "Hyrax expects either a dataset collate function which handles all\n"
+                        "desired fields OR custom collate functions on each field, resorting\n"
+                        "to default collation behavior on fields for which a collate\n"
+                        "function is not defined. For more information see documentation at\n"
+                        "https://hyrax.readthedocs.io/en/stable/notebooks/custom_dataset_collation.html"
+                    )
+                self.field_collate_functions[friendly_name][field] = field_collate_fn
+            else:
+                self.field_collate_functions[friendly_name][field] = None
+
+        # Cache all of the `get_<field_name>` methods in the dataset instance
+        # so that we don't have to look them up each time we call `resolve_data`.
+        self.dataset_getters[friendly_name] = {}
+        for method in dir(dataset_instance):
+            if method.startswith("get_"):
+                field_name = method[4:]  # Remove the "get_" prefix
+                self.dataset_getters[friendly_name][field_name] = getattr(dataset_instance, method)
+
+        if len(self.dataset_getters[friendly_name]) == 0:
+            logger.error(
+                f"No `get_*` methods were found in the class: {dataset_class}. "
+                "This is likely an error in the dataset class definition."
+            )
+
+        # Get all the dataset's metadata fields and store them in
+        # `self.all_metadata_fields` dictionary. Modify the name to be
+        # <metadata_field_name>_<friendly_name>, i.e. "RA_cifar" or "photoz_hsc".
+        if dataset_instance._metadata_table:
+            columns = [f"{col}_{friendly_name}" for col in dataset_instance._metadata_table.colnames]
+            self.all_metadata_fields[friendly_name] = columns
+        else:
+            self.all_metadata_fields[friendly_name] = []
+
+        # If this dataset is marked as the primary dataset, store that
+        # information for later use.
+        primary_id_field = dataset_definition.get("primary_id_field")
+        if primary_id_field not in (None, False):
+            self.primary_dataset = friendly_name
+            self.primary_dataset_id_field_name = primary_id_field
+
+            self.primary_data_location = dataset_definition.get("data_location", None)
+
+        # Record join_field for secondary datasets that join by key.
+        if dataset_definition.get("join_field"):
+            self._join_fields[friendly_name] = dataset_definition["join_field"]
+
+        # Cache the requested fields for each dataset as a tuple.
+        # Tuples are immutable (preventing accidental modification) and can
+        # provide slightly faster iteration than lists, which is beneficial
+        # for repeated access in `resolve_data`.
+        self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
+        # Discover augment_<field> methods if augmentation is enabled for this dataset.
+        augment_cfg = dataset_definition.get("augment")
+        if augment_cfg:
+            self._has_any_augmentation = True
+            self.augment_getters[friendly_name] = {}
+
+            # Normalize bool to a list of requested field names that have augment methods.
+            if augment_cfg is True:
+                available = {
+                    name.removeprefix("augment_")
+                    for name in dir(dataset_instance)
+                    if name.startswith("augment_") and callable(getattr(dataset_instance, name, None))
+                }
+                augment_cfg = [f for f in self.requested_fields[friendly_name] if f in available]
+
+            self.augment_enabled[friendly_name] = augment_cfg
+
+            for field_name in augment_cfg:
+                if field_name not in self.requested_fields[friendly_name]:
+                    raise RuntimeError(
+                        f"augment list requests augmentation for field '{field_name}' "
+                        f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                        f"but '{field_name}' is not a field on this dataset."
+                    )
+                method_name = f"augment_{field_name}"
+                augment_fn = getattr(dataset_instance, method_name, None)
+                if augment_fn is None or not callable(augment_fn):
+                    raise RuntimeError(
+                        f"augment list requests augmentation for field '{field_name}' "
+                        f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                        f"but no callable '{method_name}' method was found."
+                    )
+                self.augment_getters[friendly_name][field_name] = augment_fn
 
     def _build_join_indices(self):
         """Build reverse-index mappings for datasets that declare a ``join_field``.
@@ -648,18 +736,31 @@ class DataProvider:
         """
         # Validate that all join_field getters exist before launching threads.
         for friendly_name, join_field in self._join_fields.items():
-            getter = self.dataset_getters[friendly_name].get(join_field)
-            if getter is None:
-                raise RuntimeError(
-                    f"Dataset '{friendly_name}' declares join_field='{join_field}' "
-                    f"but has no 'get_{join_field}' method."
-                )
+            if friendly_name in self._getitem_datasets:
+                sample = self.prepped_datasets[friendly_name][0]
+                if join_field not in sample:
+                    raise RuntimeError(
+                        f"Dataset '{friendly_name}' declares join_field='{join_field}' "
+                        f"but __getitem__ does not return a '{join_field}' key."
+                    )
+            else:
+                getter = self.dataset_getters[friendly_name].get(join_field)
+                if getter is None:
+                    raise RuntimeError(
+                        f"Dataset '{friendly_name}' declares join_field='{join_field}' "
+                        f"but has no 'get_{join_field}' method."
+                    )
 
         # Build reverse maps — one per joined secondary, in parallel.
         def _build_one_map(friendly_name: str) -> tuple[str, dict[str, int]]:
             join_field = self._join_fields[friendly_name]
             secondary = self.prepped_datasets[friendly_name]
-            getter = self.dataset_getters[friendly_name][join_field]
+            if friendly_name in self._getitem_datasets:
+
+                def getter(idx):
+                    return secondary[idx][join_field]
+            else:
+                getter = self.dataset_getters[friendly_name][join_field]
             data_location = self.data_request[friendly_name].get("data_location")
 
             # Try loading from persistent cache first.
@@ -835,6 +936,9 @@ class DataProvider:
 
         IDs are provided by the primary dataset's primary ID column.
         """
+        if self.primary_dataset in self._getitem_datasets:
+            sample = self.prepped_datasets[self.primary_dataset][idx]
+            return str(sample[self.primary_dataset_id_field_name])
         primary_dataset = self.dataset_getters[self.primary_dataset]
         primary_dataset_object_id = primary_dataset[self.primary_dataset_id_field_name](idx)
         return str(primary_dataset_object_id)
@@ -899,8 +1003,14 @@ class DataProvider:
 
         # Pre-fetch primary object ID when any joins are configured.
         if self._join_maps:
-            primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
-            object_id_str = str(primary_id_getter(idx))
+            if self.primary_dataset in self._getitem_datasets:
+                primary_sample = self.prepped_datasets[self.primary_dataset][idx]
+                object_id_str = str(primary_sample[self.primary_dataset_id_field_name])
+            else:
+                primary_id_getter = self.dataset_getters[self.primary_dataset][
+                    self.primary_dataset_id_field_name
+                ]
+                object_id_str = str(primary_id_getter(idx))
         else:
             object_id_str = None
 
@@ -934,7 +1044,11 @@ class DataProvider:
                 result[friendly_name] = augmented
             else:
                 had_any_miss = True
-                base_data = {field: getters[field](real_idx) for field in fields}
+                if friendly_name in self._getitem_datasets:
+                    raw = self.prepped_datasets[friendly_name][real_idx]
+                    base_data = {field: raw[field] for field in fields}
+                else:
+                    base_data = {field: getters[field](real_idx) for field in fields}
                 self.data_cache.insert_base(friendly_name, real_idx, base_data)
 
                 if effective_rng is not None:
@@ -951,6 +1065,9 @@ class DataProvider:
             if self.primary_dataset_id_field_name not in result.get(self.primary_dataset, {}):
                 if object_id_str is not None:
                     object_id = object_id_str
+                elif self.primary_dataset in self._getitem_datasets:
+                    primary_sample = self.prepped_datasets[self.primary_dataset][idx]
+                    object_id = str(primary_sample[self.primary_dataset_id_field_name])
                 else:
                     primary_getter = self.dataset_getters[self.primary_dataset]
                     object_id = str(primary_getter[self.primary_dataset_id_field_name](idx))

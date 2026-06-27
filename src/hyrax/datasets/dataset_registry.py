@@ -87,6 +87,7 @@ class HyraxDataset:
 
         self._config = config
         self._metadata_table = metadata_table
+        self.requested_fields = ()
 
         # Pull up all metadata fields as HyraxQL getters.
         if self._metadata_table is not None:

@@ -1250,3 +1250,263 @@ def test_join_parallel_build():
             assert sample["primary"]["value"] == 3
             assert sample["sec_a"]["value"] == 30
             assert sample["sec_b"]["value"] == 300
+
+
+# ---------------------------------------------------------------------------
+# Getitem mode tests
+# ---------------------------------------------------------------------------
+
+
+class _GetitemDataset(HyraxDataset):
+    """Test dataset using __getitem__ mode."""
+
+    def __init__(self, config, data_location=None):
+        import numpy as np
+
+        rng = np.random.default_rng(42)
+        self._images = rng.random((10, 3, 8, 8), dtype=np.float32)
+        self._labels = rng.integers(0, 5, size=10)
+        self._ids = [f"id-{i}" for i in range(10)]
+        super().__init__(config)
+
+    def __len__(self):
+        return 10
+
+    def __getitem__(self, idx):
+        return {
+            "image": self._images[idx],
+            "label": self._labels[idx],
+            "object_id": self._ids[idx],
+        }
+
+
+class _ConflictDataset(HyraxDataset):
+    """Dataset that defines both __getitem__ and get_* (should be rejected)."""
+
+    def __init__(self, config, data_location=None):
+        super().__init__(config)
+
+    def __len__(self):
+        return 1
+
+    def __getitem__(self, idx):
+        return {"value": 1}
+
+    def get_value(self, idx):
+        return 1
+
+
+def _make_getitem_provider(fields=None, extra_request_keys=None):
+    """Helper to build a DataProvider with a _GetitemDataset."""
+    h = Hyrax()
+    request_entry = {
+        "dataset_class": "_GetitemDataset",
+        "data_location": "./in_memory",
+        "primary_id_field": "object_id",
+    }
+    if fields is not None:
+        request_entry["fields"] = fields
+    if extra_request_keys:
+        request_entry.update(extra_request_keys)
+
+    request = {"data": request_entry}
+    h.config["data_request"] = {"train": request}
+    return DataProvider(h.config, request)
+
+
+def test_getitem_mode_detected():
+    """A __getitem__-mode dataset should be detected as such."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+    assert "data" in dp._getitem_datasets
+
+
+def test_getter_mode_not_in_getitem_set(data_provider):
+    """A getter-mode dataset should NOT appear in _getitem_datasets."""
+    dp = data_provider
+    assert "random_0" not in dp._getitem_datasets
+    assert "random_1" not in dp._getitem_datasets
+
+
+def test_getitem_conflict_raises():
+    """Defining both __getitem__ and get_* methods raises RuntimeError."""
+    h = Hyrax()
+    request = {
+        "data": {
+            "dataset_class": "_ConflictDataset",
+            "data_location": "./in_memory",
+            "primary_id_field": "object_id",
+        },
+    }
+    h.config["data_request"] = {"train": request}
+    with pytest.raises(RuntimeError, match="defines both __getitem__ and get_\\*"):
+        DataProvider(h.config, request)
+
+
+def test_getitem_resolve_data():
+    """resolve_data returns correct structure for a getitem-mode dataset."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+    sample = dp.resolve_data(0)
+
+    assert "data" in sample
+    assert "object_id" in sample
+    assert isinstance(sample["data"], dict)
+    assert "image" in sample["data"]
+    assert "object_id" in sample["data"]
+    assert sample["object_id"] == "id-0"
+
+
+def test_getitem_len():
+    """DataProvider.__len__ works with getitem-mode datasets."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+    assert len(dp) == 10
+
+
+def test_getitem_ids():
+    """DataProvider.ids() works with getitem-mode datasets."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+    ids = dp.ids()
+    assert len(ids) == 10
+    assert ids[0] == "id-0"
+    assert ids[9] == "id-9"
+
+
+def test_getitem_sample_data():
+    """sample_data() works with getitem-mode datasets."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+    sample = dp.sample_data()
+    assert "data" in sample
+    assert "image" in sample["data"]
+
+
+def test_getitem_collate():
+    """Collation works with getitem-mode datasets."""
+    import numpy as np
+
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+
+    batch = [dp[i] for i in range(3)]
+    collated = dp.collate(batch)
+
+    assert "data" in collated
+    assert "image" in collated["data"]
+    assert collated["data"]["image"].shape[0] == 3
+    assert isinstance(collated["object_id"], np.ndarray)
+    assert len(collated["object_id"]) == 3
+
+
+def test_getitem_field_discovery():
+    """When no fields specified, fields are discovered from __getitem__(0)."""
+    dp = _make_getitem_provider(fields=None)
+    discovered_fields = dp.requested_fields["data"]
+    assert "image" in discovered_fields
+    assert "label" in discovered_fields
+    assert "object_id" in discovered_fields
+
+
+def test_getitem_field_filtering():
+    """DataProvider returns only requested fields, even if __getitem__ returns more."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+    sample = dp.resolve_data(0)
+    assert "label" not in sample["data"]
+    assert "image" in sample["data"]
+    assert "object_id" in sample["data"]
+
+
+def test_getitem_requested_fields_set():
+    """requested_fields is set correctly on the dataset instance."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+    dataset_instance = dp.prepped_datasets["data"]
+    assert dataset_instance.requested_fields == ("image", "object_id")
+
+
+def test_getitem_primary_id_not_in_fields():
+    """primary_id_field is fetched even when not in fields list."""
+    dp = _make_getitem_provider(fields=["image"])
+    sample = dp.resolve_data(0)
+    assert "object_id" in sample
+    assert sample["object_id"] == "id-0"
+    assert "object_id" not in sample["data"]
+
+
+def test_getitem_augment_rejected():
+    """Augmentation is rejected for getitem-mode datasets."""
+    h = Hyrax()
+    request = {
+        "data": {
+            "dataset_class": "_GetitemDataset",
+            "data_location": "./in_memory",
+            "fields": ["image", "object_id"],
+            "primary_id_field": "object_id",
+            "augment": True,
+        },
+    }
+    h.config["data_request"] = {"train": request}
+    with pytest.raises(RuntimeError, match="Augmentation is not supported for __getitem__-mode"):
+        DataProvider(h.config, request)
+
+
+def test_getitem_multimodal_with_getter():
+    """A getitem-mode dataset works alongside a getter-mode dataset."""
+    h = Hyrax()
+    request = {
+        "getitem_ds": {
+            "dataset_class": "_GetitemDataset",
+            "data_location": "./in_memory",
+            "fields": ["image", "object_id"],
+            "primary_id_field": "object_id",
+        },
+        "getter_ds": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": "./in_memory_getter",
+            "fields": ["image"],
+            "dataset_config": {
+                "HyraxRandomDataset": {
+                    "size": 10,
+                    "shape": [3, 8, 8],
+                },
+            },
+        },
+    }
+    h.config["data_request"] = {"train": request}
+    dp = DataProvider(h.config, request)
+
+    assert "getitem_ds" in dp._getitem_datasets
+    assert "getter_ds" not in dp._getitem_datasets
+
+    sample = dp.resolve_data(0)
+    assert "getitem_ds" in sample
+    assert "getter_ds" in sample
+    assert "object_id" in sample
+    assert "image" in sample["getitem_ds"]
+    assert "image" in sample["getter_ds"]
+
+
+def test_getitem_caching():
+    """Data caching works correctly for getitem-mode datasets."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+
+    sample_0a = dp.resolve_data(0)
+    sample_0b = dp.resolve_data(0)
+
+    assert sample_0a["data"]["object_id"] == sample_0b["data"]["object_id"]
+    assert sample_0a["object_id"] == sample_0b["object_id"]
+
+
+def test_getitem_different_indices():
+    """Different indices return different data for getitem-mode datasets."""
+    dp = _make_getitem_provider(fields=["image", "object_id"])
+
+    sample_0 = dp[0]
+    sample_1 = dp[1]
+
+    assert sample_0["object_id"] != sample_1["object_id"]
+    assert sample_0["data"]["image"][0][0][0] != sample_1["data"]["image"][0][0][0]
+
+
+def test_getter_mode_requested_fields_default():
+    """A getter-mode dataset has requested_fields == () after construction."""
+    h = Hyrax()
+    from hyrax.datasets.random.hyrax_random_dataset import HyraxRandomDataset
+
+    ds = HyraxRandomDataset(config=h.config, data_location=None)
+    assert ds.requested_fields == ()
