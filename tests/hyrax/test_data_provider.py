@@ -1,6 +1,3 @@
-import builtins
-from unittest.mock import patch
-
 import pytest
 
 from hyrax import Hyrax
@@ -52,15 +49,14 @@ def test_data_provider(data_provider):
     assert "random_0" in dp.prepped_datasets
     assert "random_1" in dp.prepped_datasets
 
-    # There should be 2 dataset_getters dicts with subdicts of different sizes
-    assert len(dp.dataset_getters) == 2
-    assert len(dp.dataset_getters["random_0"]) == 5
-    assert len(dp.dataset_getters["random_1"]) == 5
+    # Each dataset instance should have discovered field getters
+    assert len(dp.prepped_datasets["random_0"]._field_getters) == 5
+    assert len(dp.prepped_datasets["random_1"]._field_getters) == 5
 
     data_request = dp.data_request
     for friendly_name in data_request:
         for field in data_request[friendly_name]["fields"]:
-            assert field in dp.dataset_getters[friendly_name]
+            assert field in dp.prepped_datasets[friendly_name]._field_getters
 
     data_request = dp.data_request
     for friendly_name in data_request:
@@ -110,23 +106,16 @@ def test_validate_request_bad_field(multimodal_config, caplog):
     assert "No `get_no_such_field` method" in caplog.text
 
 
-def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
-    """Basic test to see that validation works correctly when a dataset is
-    missing all getters."""
-
+def test_validate_request_missing_field_getter(multimodal_config, caplog):
+    """Requesting a field without a matching get_* method logs an error."""
     h = Hyrax()
     c = multimodal_config
-    c["train"]["random_0"].pop("fields", None)
+    c["train"]["random_0"]["fields"] = ["nonexistent_field"]
     h.config["data_request"] = c
+    with caplog.at_level("ERROR"):
+        DataProvider(h.config, c["train"])
 
-    # Fake methods to return from `dir`, none of which start with `get_*`.
-    fake_methods = ["fake_one", "fake_two", "fake_three"]
-
-    with patch.object(builtins, "dir", return_value=fake_methods):
-        with caplog.at_level("ERROR"):
-            DataProvider(h.config, c["train"])
-
-    assert "No `get_*` methods were found" in caplog.text
+    assert "No `get_nonexistent_field` method" in caplog.text
 
 
 def test_apply_configurations(multimodal_config):
@@ -615,23 +604,16 @@ def test_primary_id_field_fetched_when_not_in_fields():
     # Create DataProvider
     dp = DataProvider(h.config, data_request)
 
-    # Verify the primary_id_field was NOT added to the fields list
-    test_dataset_def = dp.data_request["test_dataset"]
-    assert "object_id" not in test_dataset_def["fields"]
-    expected_fields = ["image", "label"]
-    assert test_dataset_def["fields"] == expected_fields
-
-    # Verify DataProvider was properly configured
+    # primary_id_field is automatically added to internal fields
     assert dp.primary_dataset == "test_dataset"
     assert dp.primary_dataset_id_field_name == "object_id"
+    assert "object_id" in dp.requested_fields["test_dataset"]
 
-    # This should now work without KeyError - the key test
-    # The object_id should be fetched on-demand and added to the top level
     data = dp.resolve_data(0)
     assert "object_id" in data  # Top-level object_id should be present
     assert "test_dataset" in data
-    # object_id should NOT be in dataset data since it wasn't requested in fields
-    assert "object_id" not in data["test_dataset"]
+    # object_id IS in dataset data since it's auto-added for primary datasets
+    assert "object_id" in data["test_dataset"]
 
     # Verify the dataset_config overrides took effect (default shape is [2, 5, 5])
     assert data["test_dataset"]["image"].shape == (2, 3, 3)
@@ -682,9 +664,10 @@ def test_primary_id_field_reused_when_already_in_fields():
     assert test_dataset_def["fields"] == expected_fields
 
     # Create a mock for the get_object_id method to track calls
-    original_get_object_id = dp.dataset_getters["test_dataset"]["object_id"]
+    dataset_instance = dp.prepped_datasets["test_dataset"]
+    original_get_object_id = dataset_instance._field_getters["object_id"]
     mock_get_object_id = MagicMock(side_effect=original_get_object_id)
-    dp.dataset_getters["test_dataset"]["object_id"] = mock_get_object_id
+    dataset_instance._field_getters["object_id"] = mock_get_object_id
 
     # This should work and reuse the existing object_id value
     # The get_object_id should be called exactly once during field resolution,
@@ -1280,22 +1263,6 @@ class _GetitemDataset(HyraxDataset):
         }
 
 
-class _ConflictDataset(HyraxDataset):
-    """Dataset that defines both __getitem__ and get_* (should be rejected)."""
-
-    def __init__(self, config, data_location=None):
-        super().__init__(config)
-
-    def __len__(self):
-        return 1
-
-    def __getitem__(self, idx):
-        return {"value": 1}
-
-    def get_value(self, idx):
-        return 1
-
-
 def _make_getitem_provider(fields=None, extra_request_keys=None):
     """Helper to build a DataProvider with a _GetitemDataset."""
     h = Hyrax()
@@ -1315,31 +1282,10 @@ def _make_getitem_provider(fields=None, extra_request_keys=None):
 
 
 def test_getitem_mode_detected():
-    """A __getitem__-mode dataset should be detected as such."""
+    """A custom __getitem__ dataset works through DataProvider."""
     dp = _make_getitem_provider(fields=["image", "object_id"])
-    assert "data" in dp._getitem_datasets
-
-
-def test_getter_mode_not_in_getitem_set(data_provider):
-    """A getter-mode dataset should NOT appear in _getitem_datasets."""
-    dp = data_provider
-    assert "random_0" not in dp._getitem_datasets
-    assert "random_1" not in dp._getitem_datasets
-
-
-def test_getitem_conflict_raises():
-    """Defining both __getitem__ and get_* methods raises RuntimeError."""
-    h = Hyrax()
-    request = {
-        "data": {
-            "dataset_class": "_ConflictDataset",
-            "data_location": "./in_memory",
-            "primary_id_field": "object_id",
-        },
-    }
-    h.config["data_request"] = {"train": request}
-    with pytest.raises(RuntimeError, match="defines both __getitem__ and get_\\*"):
-        DataProvider(h.config, request)
+    assert len(dp.prepped_datasets) == 1
+    assert dp.prepped_datasets["data"]._field_getters == {}
 
 
 def test_getitem_resolve_data():
@@ -1420,29 +1366,13 @@ def test_getitem_requested_fields_set():
 
 
 def test_getitem_primary_id_not_in_fields():
-    """primary_id_field is fetched even when not in fields list."""
+    """primary_id_field is added to internal fields automatically."""
     dp = _make_getitem_provider(fields=["image"])
     sample = dp.resolve_data(0)
     assert "object_id" in sample
     assert sample["object_id"] == "id-0"
-    assert "object_id" not in sample["data"]
-
-
-def test_getitem_augment_rejected():
-    """Augmentation is rejected for getitem-mode datasets."""
-    h = Hyrax()
-    request = {
-        "data": {
-            "dataset_class": "_GetitemDataset",
-            "data_location": "./in_memory",
-            "fields": ["image", "object_id"],
-            "primary_id_field": "object_id",
-            "augment": True,
-        },
-    }
-    h.config["data_request"] = {"train": request}
-    with pytest.raises(RuntimeError, match="Augmentation is not supported for __getitem__-mode"):
-        DataProvider(h.config, request)
+    # primary_id_field is automatically added to internal fields
+    assert "object_id" in dp.requested_fields["data"]
 
 
 def test_getitem_multimodal_with_getter():
@@ -1470,8 +1400,9 @@ def test_getitem_multimodal_with_getter():
     h.config["data_request"] = {"train": request}
     dp = DataProvider(h.config, request)
 
-    assert "getitem_ds" in dp._getitem_datasets
-    assert "getter_ds" not in dp._getitem_datasets
+    # getitem_ds has no get_* methods, getter_ds has them
+    assert dp.prepped_datasets["getitem_ds"]._field_getters == {}
+    assert len(dp.prepped_datasets["getter_ds"]._field_getters) > 0
 
     sample = dp.resolve_data(0)
     assert "getitem_ds" in sample
