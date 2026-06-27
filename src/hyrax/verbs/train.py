@@ -173,10 +173,10 @@ class Train(Verb):
             logger.info("Finished Training")
             close_tensorboard_logger()
         
-        # print("DEVICES:", idist.)
         with idist.Parallel(backend="gloo", nproc_per_node=2) as parallel:
             parallel.run(training)
-          
+        
+  
         # training(0)
         return model
 
