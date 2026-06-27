@@ -9,6 +9,8 @@ import numpy.typing as npt
 
 from hyrax.plugin_utils import get_or_load_class, update_registry
 
+_AUGMENT_EXCLUDE = frozenset({"augment_cache_key"})
+
 logger = logging.getLogger(__name__)
 DATASET_REGISTRY: dict[str, type["HyraxDataset"]] = {}
 
@@ -87,6 +89,7 @@ class HyraxDataset:
 
         self._config = config
         self._metadata_table = metadata_table
+        self.requested_fields = ()
 
         # Pull up all metadata fields as HyraxQL getters.
         if self._metadata_table is not None:
@@ -101,6 +104,22 @@ class HyraxDataset:
                 method_name = f"get_{col}"
                 if not hasattr(self, method_name):
                     setattr(self, method_name, MethodType(_make_getter(col), self))
+
+        # Auto-discover get_* and augment_* methods (after metadata table
+        # processing so dynamically-created getters are included).
+        self._field_getters: dict[str, Callable] = {
+            m[4:]: getattr(self, m) for m in dir(self) if m.startswith("get_") and callable(getattr(self, m))
+        }
+        self._augment_getters: dict[str, Callable] = {
+            m[8:]: getattr(self, m)
+            for m in dir(self)
+            if m.startswith("augment_") and callable(getattr(self, m)) and m not in _AUGMENT_EXCLUDE
+        }
+
+        # Set by DataProvider before __getitem__ calls.
+        self._rng_seed: np.int64 | None = None
+        self._augment_fields: list[str] = []
+        self._cache = None
 
     @property
     def config(self):
@@ -157,6 +176,57 @@ class HyraxDataset:
             Cache key, or ``None`` to skip caching augmented data.
         """
         return None
+
+    def __getitem__(self, idx: int) -> dict[str, Any]:
+        """Return a dict of ``{field: value}`` for the given index.
+
+        The default implementation calls ``get_<field>`` methods for each
+        field in ``self.requested_fields`` (or all discovered fields when
+        ``requested_fields`` is empty).  Caching and augmentation are
+        applied when configured by DataProvider.
+
+        Subclasses may override this to provide data without ``get_*``
+        methods.
+        """
+        fields = self.requested_fields or tuple(self._field_getters.keys())
+
+        if self._cache is not None:
+            rng_seed = self._rng_seed if self._augment_fields else None
+            cached, already_augmented = self._cache.try_fetch(idx, rng_seed)
+            if cached is not None and (already_augmented or not self._augment_fields):
+                return cached
+            if cached is not None:
+                augmented = self._apply_augmentation(cached, idx)
+                self._cache.insert_augmented(idx, self._rng_seed, augmented)
+                return augmented
+
+        base_data = {field: self._field_getters[field](idx) for field in fields}
+
+        if self._cache is not None:
+            self._cache.insert_base(idx, base_data)
+
+        if self._augment_fields and self._rng_seed is not None:
+            augmented = self._apply_augmentation(base_data, idx)
+            if self._cache is not None:
+                self._cache.insert_augmented(idx, self._rng_seed, augmented)
+            return augmented
+
+        return base_data
+
+    def _apply_augmentation(self, base_data: dict[str, Any], idx: int) -> dict[str, Any]:
+        """Apply augmentation to base field data.
+
+        Passes read-only ndarray views to augment functions to protect
+        cached base data from mutation.
+        """
+        new_fields: dict[str, Any] = {}
+        for field, value in base_data.items():
+            augment_fn = self._augment_getters.get(field) if field in self._augment_fields else None
+            if augment_fn is not None and isinstance(value, np.ndarray):
+                value = value.view()
+                value.flags.writeable = False
+            new_fields[field] = augment_fn(value, idx, self._rng_seed) if augment_fn is not None else value
+        return new_fields
 
     def on_epoch_start(self, verb: str):
         """Called at the beginning of each epoch (or once for single-pass verbs).

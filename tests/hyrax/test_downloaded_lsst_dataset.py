@@ -73,7 +73,7 @@ def test_init(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
 
         # Test fetching a cutout via the butler.
         data_record = dataset[0]
-        cutout = data_record["data"]["image"]
+        cutout = data_record["image"]
 
         # Verify cutout is a tensor
         assert isinstance(cutout, np.ndarray)
@@ -116,7 +116,7 @@ def test_download(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
 
     # Test fetching a cutout with the butler unavailable.
     data_record = dataset[0]
-    cutout = data_record["data"]["image"]
+    cutout = data_record["image"]
 
     # Verify cutout is a tensor
     assert isinstance(cutout, np.ndarray)
@@ -152,7 +152,7 @@ def test_download_band_filtering(mock_lsst_environment, lsst_config, tmp_path): 
 
     # Test fetching a cutout with the butler unavailable.
     data_record = dataset[0]
-    cutout = data_record["data"]["image"]
+    cutout = data_record["image"]
 
     # Verify cutout is a tensor
     assert isinstance(cutout, np.ndarray)
@@ -199,7 +199,7 @@ def test_interrupted_download(mock_lsst_environment, lsst_config, tmp_path):  # 
 
     # Test fetching a cutout we downloaded with the butler unavailable.
     data_record = dataset[2]
-    cutout = data_record["data"]["image"]
+    cutout = data_record["image"]
 
     # Verify cutout is a tensor
     assert isinstance(cutout, np.ndarray)
@@ -243,7 +243,7 @@ def test_interrupted_download_completes(mock_lsst_environment, lsst_config, tmp_
 
     # Test fetching the last cutout we downloaded with the butler unavailable.
     data_record = dataset[mocks.SAMPLE_CATALOG_LENGTH - 1]
-    cutout = data_record["data"]["image"]
+    cutout = data_record["image"]
 
     # Verify cutout is a tensor
     assert isinstance(cutout, np.ndarray)
@@ -291,7 +291,7 @@ def test_failed_download(mock_lsst_environment, lsst_config, tmp_path):  # noqa:
 
     # Test fetching a cutout we downloaded with the butler unavailable.
     data_record = dataset[2]
-    cutout = data_record["data"]["image"]
+    cutout = data_record["image"]
 
     # Verify cutout is a tensor
     assert isinstance(cutout, np.ndarray)
@@ -336,7 +336,7 @@ def test_failed_download_completes(mock_lsst_environment, lsst_config, tmp_path)
 
     # Test fetching a cutout we downloaded with the butler unavailable.
     data_record = dataset[mocks.SAMPLE_CATALOG_LENGTH - 1]
-    cutout = data_record["data"]["image"]
+    cutout = data_record["image"]
 
     # Verify cutout is a tensor
     assert isinstance(cutout, np.ndarray)
@@ -378,7 +378,7 @@ def test_failed_download_completes_on_reset(mock_lsst_environment, lsst_config, 
 
     # Test fetching a cutout we downloaded with the butler unavailable.
     data_record = dataset[mocks.SAMPLE_CATALOG_LENGTH - 1]
-    cutout = data_record["data"]["image"]
+    cutout = data_record["image"]
 
     # Verify cutout is a tensor
     assert isinstance(cutout, np.ndarray)
@@ -411,7 +411,7 @@ def test_failed_band_download(mock_lsst_environment, lsst_config, tmp_path):  # 
 
     # Test fetching a cutout where the G band is missing
     data_record = dataset[11]
-    cutout = data_record["data"]["image"]
+    cutout = data_record["image"]
 
     # Verify cutout is a tensor
     assert isinstance(cutout, np.ndarray)
@@ -525,7 +525,7 @@ def test_catalog_ordering(mock_lsst_environment, lsst_config, tmp_path, sample_c
     for index, value in enumerate(catalog_permutation):
         # index indexes the filtered dataset
         # value is the index in the original dataset
-        assert (filtered_dataset[index]["data"]["image"] == dataset[value]["data"]["image"]).all()
+        assert (filtered_dataset[index]["image"] == dataset[value]["image"]).all()
         assert (
             filtered_dataset.metadata([index], ["object_id"])[0][0]
             == dataset.metadata([value], ["object_id"])[0][0]
