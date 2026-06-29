@@ -70,6 +70,15 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
     def __init__(self, config: dict, data_location=None):
         ds_config = config["data_set"]["KafkaStreamDataset"]
 
+        # We could use the data_location here to consolidate a lot of the configs.
+        # "data_location": "kafka://<host>:<port>/<topic>" would be a nice.
+        #
+        # from urllib.parse import urlparse
+        # uri = "kafka://broker.example.org:9092/lsst_topic"
+        # parsed = urlparse(uri)
+        # host_port = parsed.netloc # "broker.example.org:9092"
+        # topic = parsed.path.lstrip("/")  # "lsst_topic"
+
         topic = ds_config["topic"]
         if not topic:
             raise ValueError(
