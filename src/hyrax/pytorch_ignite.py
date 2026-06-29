@@ -19,7 +19,7 @@ from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler, Subset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
 
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
@@ -101,7 +101,29 @@ def setup_dataset(
 
     data_request = generate_data_request_from_config(config)
     keys = splits if splits is not None else tuple(data_request.keys())
-    return {k: DataProvider(config, data_request[k]) for k in keys if k in data_request}
+    return {k: _build_data_provider(config, data_request[k]) for k in keys if k in data_request}
+
+
+def _build_data_provider(config: dict, request: dict):
+    """Build the right provider for a data-request group.
+
+    Streaming (``IterableDataset``) datasets are wrapped in a
+    :class:`~hyrax.datasets.streaming_data_provider.StreamingDataProvider`; all other
+    (map-style) datasets use :class:`~hyrax.datasets.data_provider.DataProvider`.
+    """
+    from hyrax.datasets.dataset_registry import fetch_dataset_class
+    from hyrax.datasets.streaming_data_provider import StreamingDataProvider
+
+    is_streaming = any(
+        isinstance(definition, dict)
+        and definition.get("dataset_class")
+        and issubclass(fetch_dataset_class(definition["dataset_class"]), IterableDataset)
+        for definition in request.values()
+    )
+
+    if is_streaming:
+        return StreamingDataProvider(config, request)
+    return DataProvider(config, request)
 
 
 def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
@@ -209,6 +231,19 @@ def dist_data_loader(
     DataLoader
         The distributed dataloader.
     """
+
+    # Iterable (streaming) datasets have no length and cannot be indexed, so the
+    # map-style machinery below (len/Subset/samplers) does not apply. Such a dataset
+    # owns its own batching and yields ``list[dict]`` items; disable automatic batching
+    # (``batch_size=None``) so the dataset's ``collate`` is applied to each yielded item.
+    # A single in-process consumer is assumed, so default to ``num_workers=0``.
+    if isinstance(dataset, IterableDataset):
+        stream_kwargs = dict(config["data_loader"])
+        stream_kwargs.pop("shuffle", None)
+        stream_kwargs["batch_size"] = None
+        stream_kwargs["collate_fn"] = dataset.collate
+        stream_kwargs.setdefault("num_workers", 0)
+        return idist.auto_dataloader(dataset, **stream_kwargs)
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader.
     # Hyrax controls ordering through explicit samplers; warn and ignore legacy

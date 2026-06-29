@@ -363,6 +363,26 @@ max_samples = 100
 streaming = true
 
 
+[data_set.KafkaStreamDataset]
+# Comma-separated Kafka broker address(es).
+bootstrap_servers = "localhost:9092"
+
+# Kafka topic to consume. Must be set to a topic name (`false` raises at runtime).
+topic = false
+
+# Kafka consumer group id.
+group_id = "hyrax-infer-stream"
+
+# Where to start consuming when the group has no committed offset: "latest" or "earliest".
+auto_offset_reset = "latest"
+
+# Seconds to block on each Kafka poll while waiting for a message.
+poll_timeout = 1.0
+
+# Maximum seconds to wait before flushing a partial (smaller than batch_size) batch.
+batch_flush_timeout = 5.0
+
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512

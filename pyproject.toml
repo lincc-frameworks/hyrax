@@ -66,6 +66,7 @@ dependencies = [
     "lance-namespace >= 0.7.7, < 0.8.0",
     "pyarrow", # Used by lancedb for data interchange
     "pylance >= 7.0.0, < 8.0.0", # Used by lancedb for Lance dataset access
+    "confluent-kafka", # Kafka consumer used by KafkaStreamDataset
 ]
 
 [project.scripts]
