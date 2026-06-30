@@ -49,7 +49,7 @@ provider is what is passed to the DataLoader; configure it the normal way:
 import json
 import logging
 import threading
-import time
+from urllib.parse import urlparse
 
 import torch
 
@@ -70,23 +70,26 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
     def __init__(self, config: dict, data_location=None):
         ds_config = config["data_set"]["KafkaStreamDataset"]
 
-        # We could use the data_location here to consolidate a lot of the configs.
-        # "data_location": "kafka://<host>:<port>/<topic>" would be a nice.
-        #
-        from urllib.parse import urlparse
+        # ``data_location``, when given, is a Kafka URI of the form
+        # ``kafka://<host>:<port>/<topic>`` supplied inline by the data_request. It takes
+        # precedence over the [data_set.KafkaStreamDataset] config; anything the URI omits
+        # falls back to that config block.
+        host_port = ""
+        topic = ""
+        if data_location:
+            parsed = urlparse(data_location)
+            host_port = parsed.netloc  # "broker.example.org:9092"
+            topic = parsed.path.lstrip("/")  # "lsst_topic"
 
-        # uri = "kafka://broker.example.org:9092/lsst_topic"
-        parsed = urlparse(data_location)
-        host_port = parsed.netloc  # "broker.example.org:9092"
-        topic = parsed.path.lstrip("/")  # "lsst_topic"
+        self.bootstrap_servers = host_port or ds_config["bootstrap_servers"]
+        topic = topic or ds_config["topic"]
 
-        # topic = ds_config["topic"]
+        # `topic` may still be the TOML `false` sentinel ("not set") here.
         if not topic:
             raise ValueError(
                 "config['data_set']['KafkaStreamDataset']['topic'] must be set to the Kafka topic to consume."
             )
 
-        self.bootstrap_servers = host_port
         self.topic = topic
         self.group_id = ds_config["group_id"]
         self.auto_offset_reset = ds_config["auto_offset_reset"]
@@ -198,38 +201,23 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         """Poll Kafka and yield ``list[dict]`` batches with latency-bounded flushing."""
         consumer = self._ensure_consumer()
 
-        # Replay any peeked-but-not-yet-delivered messages into the first batch.
-        batch: list[dict] = list(self._buffered)
+        # Replay any peeked-but-not-yet-delivered messages ahead of the next batch.
+        pending: list[dict] = list(self._buffered)
         self._buffered = []
-        # deadline = time.monotonic() + self.batch_flush_timeout if batch else None
 
         try:
             while not self._stop.is_set():
+                # consume() blocks up to batch_flush_timeout and returns up to batch_size
+                # messages: this is the latency-bounded batching, so inference still
+                # proceeds on a short batch during quiet periods instead of blocking
+                # until the batch fills.
                 messages = consumer.consume(num_messages=self.batch_size, timeout=self.batch_flush_timeout)
 
-                batch = []
+                batch, pending = pending, []
                 for msg in messages:
-                    if msg.key() is not None and msg.error() is None:
-                        decoded = self._decode(msg)
-                        decoded["key"] = msg.key()
-                        batch.append(decoded)
+                    if msg.error() is None:
+                        batch.append(self._decode(msg))
 
-                # msg = consumer.poll(self.poll_timeout)
-                # if msg is not None and msg.error() is None:
-                #     batch.append(self._decode(msg))
-                #     if deadline is None:
-                #         # Start the flush clock from the first message of this batch.
-                #         deadline = time.monotonic() + self.batch_flush_timeout
-                #     if len(batch) >= self.batch_size:
-                #         yield batch
-                #         batch, deadline = [], None
-                # elif batch and time.monotonic() >= deadline:
-                #     # No (usable) message this poll and we have waited long enough:
-                #     # flush whatever has accumulated, even if it is a short batch.
-                #     yield batch
-                #     batch, deadline = [], None
-
-                # Stopped: flush any remaining accumulated messages.
                 if batch:
                     yield batch
         finally:

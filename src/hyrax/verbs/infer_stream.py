@@ -173,7 +173,7 @@ class InferStreamSession:
         self._results_dir = results_dir
         self._close_logger = close_logger_fn
         self._load_dataset = load_dataset_fn
-        self._data_loader = data_loader
+        self.data_loader = data_loader
         self._provider = provider
         self._closed = False
 
@@ -182,7 +182,7 @@ class InferStreamSession:
 
         Yields
         ------
-        tuple[dict, numpy.ndarray]
+        tuple[dict, np.ndarray]
             The collated input ``batch`` and the model ``results`` for it.
 
         Raises
@@ -191,12 +191,12 @@ class InferStreamSession:
             If the session was created without a data source (no
             ``[data_request.infer_stream]`` configuration).
         """
-        if self._data_loader is None:
+        if self.data_loader is None:
             raise RuntimeError(
                 "This InferStreamSession has no data source to iterate. Configure "
                 "[data_request.infer_stream], or feed batches with process(batch)."
             )
-        for batch in self._data_loader:
+        for batch in self.data_loader:
             yield batch, self.process(batch)
 
     def stop(self):

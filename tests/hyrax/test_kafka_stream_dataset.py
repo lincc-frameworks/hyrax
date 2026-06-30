@@ -48,6 +48,15 @@ class FakeConsumer:
             self._on_exhausted()
         return None
 
+    def consume(self, num_messages, timeout):
+        """Drain up to num_messages queued messages; signal exhaustion when empty."""
+        drained = []
+        while self._messages and len(drained) < num_messages:
+            drained.append(self._messages.pop(0))
+        if not drained and self._on_exhausted is not None:
+            self._on_exhausted()
+        return drained
+
     def subscribe(self, topics):
         """No-op subscribe to match the confluent_kafka Consumer interface."""
         pass
