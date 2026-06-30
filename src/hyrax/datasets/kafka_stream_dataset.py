@@ -73,19 +73,20 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         # We could use the data_location here to consolidate a lot of the configs.
         # "data_location": "kafka://<host>:<port>/<topic>" would be a nice.
         #
-        # from urllib.parse import urlparse
-        # uri = "kafka://broker.example.org:9092/lsst_topic"
-        # parsed = urlparse(uri)
-        # host_port = parsed.netloc # "broker.example.org:9092"
-        # topic = parsed.path.lstrip("/")  # "lsst_topic"
+        from urllib.parse import urlparse
 
-        topic = ds_config["topic"]
+        # uri = "kafka://broker.example.org:9092/lsst_topic"
+        parsed = urlparse(data_location)
+        host_port = parsed.netloc  # "broker.example.org:9092"
+        topic = parsed.path.lstrip("/")  # "lsst_topic"
+
+        # topic = ds_config["topic"]
         if not topic:
             raise ValueError(
                 "config['data_set']['KafkaStreamDataset']['topic'] must be set to the Kafka topic to consume."
             )
 
-        self.bootstrap_servers = ds_config["bootstrap_servers"]
+        self.bootstrap_servers = host_port
         self.topic = topic
         self.group_id = ds_config["group_id"]
         self.auto_offset_reset = ds_config["auto_offset_reset"]
@@ -200,28 +201,37 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         # Replay any peeked-but-not-yet-delivered messages into the first batch.
         batch: list[dict] = list(self._buffered)
         self._buffered = []
-        deadline = time.monotonic() + self.batch_flush_timeout if batch else None
+        # deadline = time.monotonic() + self.batch_flush_timeout if batch else None
 
         try:
             while not self._stop.is_set():
-                msg = consumer.poll(self.poll_timeout)
-                if msg is not None and msg.error() is None:
-                    batch.append(self._decode(msg))
-                    if deadline is None:
-                        # Start the flush clock from the first message of this batch.
-                        deadline = time.monotonic() + self.batch_flush_timeout
-                    if len(batch) >= self.batch_size:
-                        yield batch
-                        batch, deadline = [], None
-                elif batch and time.monotonic() >= deadline:
-                    # No (usable) message this poll and we have waited long enough:
-                    # flush whatever has accumulated, even if it is a short batch.
-                    yield batch
-                    batch, deadline = [], None
+                messages = consumer.consume(num_messages=self.batch_size, timeout=self.batch_flush_timeout)
 
-            # Stopped: flush any remaining accumulated messages.
-            if batch:
-                yield batch
+                batch = []
+                for msg in messages:
+                    if msg.key() is not None and msg.error() is None:
+                        decoded = self._decode(msg)
+                        decoded["key"] = msg.key()
+                        batch.append(decoded)
+
+                # msg = consumer.poll(self.poll_timeout)
+                # if msg is not None and msg.error() is None:
+                #     batch.append(self._decode(msg))
+                #     if deadline is None:
+                #         # Start the flush clock from the first message of this batch.
+                #         deadline = time.monotonic() + self.batch_flush_timeout
+                #     if len(batch) >= self.batch_size:
+                #         yield batch
+                #         batch, deadline = [], None
+                # elif batch and time.monotonic() >= deadline:
+                #     # No (usable) message this poll and we have waited long enough:
+                #     # flush whatever has accumulated, even if it is a short batch.
+                #     yield batch
+                #     batch, deadline = [], None
+
+                # Stopped: flush any remaining accumulated messages.
+                if batch:
+                    yield batch
         finally:
             consumer.close()
             self._consumer = None

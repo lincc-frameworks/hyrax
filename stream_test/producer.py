@@ -26,19 +26,19 @@ import json
 import random
 import time
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
+import numpy as np
 from confluent_kafka import Producer
 from confluent_kafka.admin import AdminClient, NewTopic
-
 
 # ── Config defaults ────────────────────────────────────────────────────────────
 
 DEFAULTS = dict(
     broker="localhost:9092",
     topic="my-topic",
-    burst_min=10,   # min messages per burst
-    burst_max=40,   # max messages per burst
+    burst_min=10,  # min messages per burst
+    burst_max=40,  # max messages per burst
     delay_min=10,  # min seconds between bursts
     delay_max=15,  # max seconds between bursts
     num_bursts=3,  # 0 = run forever
@@ -47,13 +47,13 @@ DEFAULTS = dict(
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
+
 def ensure_topic(broker: str, topic: str, partitions: int = 1, replication: int = 1) -> None:
     """Create the topic if it doesn't already exist."""
     admin = AdminClient({"bootstrap.servers": broker})
     existing = admin.list_topics(timeout=5).topics
     if topic not in existing:
-        fs = admin.create_topics([NewTopic(topic, num_partitions=partitions,
-                                           replication_factor=replication)])
+        fs = admin.create_topics([NewTopic(topic, num_partitions=partitions, replication_factor=replication)])
         for t, f in fs.items():
             try:
                 f.result()
@@ -77,11 +77,14 @@ def make_message(index: int) -> dict:
         "id": str(uuid.uuid4()),
         "index": index,
         "value": round(random.uniform(0, 100), 4),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "image": np.random.rand(4, 4).tolist(),
+        "label": np.random.randint(0, 9),
+        "timestamp": datetime.now(UTC).isoformat(),
     }
 
 
 # ── Main ───────────────────────────────────────────────────────────────────────
+
 
 def run(cfg: dict) -> None:
     ensure_topic(cfg["broker"], cfg["topic"])
@@ -91,9 +94,11 @@ def run(cfg: dict) -> None:
     burst_count = 0
 
     print(f"\n[producer] Starting — broker={cfg['broker']}  topic={cfg['topic']}")
-    print(f"           bursts={'∞' if cfg['num_bursts'] == 0 else cfg['num_bursts']}  "
-          f"msgs/burst={cfg['burst_min']}–{cfg['burst_max']}  "
-          f"delay={cfg['delay_min']}–{cfg['delay_max']}s\n")
+    print(
+        f"           bursts={'∞' if cfg['num_bursts'] == 0 else cfg['num_bursts']}  "
+        f"msgs/burst={cfg['burst_min']}–{cfg['burst_max']}  "
+        f"delay={cfg['delay_min']}–{cfg['delay_max']}s\n"
+    )
 
     try:
         while cfg["num_bursts"] == 0 or burst_count < cfg["num_bursts"]:
@@ -130,16 +135,21 @@ def run(cfg: dict) -> None:
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 
+
 def parse_args() -> dict:
     p = argparse.ArgumentParser(description="Kafka burst producer")
-    p.add_argument("--broker",      default=DEFAULTS["broker"])
-    p.add_argument("--topic",       default=DEFAULTS["topic"])
-    p.add_argument("--burst-min",   type=int, default=DEFAULTS["burst_min"])
-    p.add_argument("--burst-max",   type=int, default=DEFAULTS["burst_max"])
-    p.add_argument("--delay-min",   type=float, default=DEFAULTS["delay_min"])
-    p.add_argument("--delay-max",   type=float, default=DEFAULTS["delay_max"])
-    p.add_argument("--num-bursts",  type=int, default=DEFAULTS["num_bursts"],
-                   help="Number of bursts to emit (0 = run forever)")
+    p.add_argument("--broker", default=DEFAULTS["broker"])
+    p.add_argument("--topic", default=DEFAULTS["topic"])
+    p.add_argument("--burst-min", type=int, default=DEFAULTS["burst_min"])
+    p.add_argument("--burst-max", type=int, default=DEFAULTS["burst_max"])
+    p.add_argument("--delay-min", type=float, default=DEFAULTS["delay_min"])
+    p.add_argument("--delay-max", type=float, default=DEFAULTS["delay_max"])
+    p.add_argument(
+        "--num-bursts",
+        type=int,
+        default=DEFAULTS["num_bursts"],
+        help="Number of bursts to emit (0 = run forever)",
+    )
     args = p.parse_args()
     return vars(args)
 
