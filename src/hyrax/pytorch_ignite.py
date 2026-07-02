@@ -306,10 +306,9 @@ def extract_model_method(model, method_name):
         The method extracted from the model
     """
     
-    wrapped = type(model) is DistributedDataParallel
+    wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
     
     if not hasattr(model.module if wrapped else model, method_name):
-        raise RuntimeError(f"{type(model)}, {model}")
         raise RuntimeError(f"Model does not have required method: {method_name}")
     
     return getattr(model if hasattr(model, method_name) else model.module, method_name)
@@ -586,7 +585,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     model.train()
     wrapped_model = idist.auto_model(model)
     
-    wrapped = type(wrapped_model) is DistributedDataParallel
+    wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
     
     if wrapped:
         # bind the train_batch function to the DDP model
