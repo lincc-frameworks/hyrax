@@ -305,12 +305,6 @@ def extract_model_method(model, method_name):
     Callable
         The method extracted from the model
     """
-
-    # # Check to see if the model has the requested method
-    # if not hasattr(model.module if wrapped else model, method_name):
-    #     raise RuntimeError(f"Model does not have required method: {method_name}")
-
-    # return getattr(model.module if wrapped else model, method_name)
     
     wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
     
@@ -587,8 +581,6 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
         Engine object that will be used to train the model.
     """
     
-    # print(f"MODEL WITH TYPE {type(model)} ATTRS IN CREATE_TRAINER: {dir(model)}")
-    
     device = idist.device()
     model.train()
     wrapped_model = idist.auto_model(model)
@@ -630,10 +622,6 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
         # This is different from loading just model weights, which would use weights_only=True.
         prev_checkpoint = torch.load(config["train"]["resume"], map_location=device, weights_only=False)
         Checkpoint.load_objects(to_load=to_save, checkpoint=prev_checkpoint)
-        
-    # @trainer.on(Events.EXCEPTION_RAISED)
-    # def log_error_raised(trainer):
-    #     print("ERROR FOUND")
 
     @trainer.on(Events.STARTED)
     def log_training_start(trainer):

@@ -243,21 +243,6 @@ def hyrax_model(cls):
             logger.info(f"Using self.scheduler defined in model: {sched_name}")
 
     cls.__init__ = wrapped_init
-    
-    # original_forward = cls.forward
-    # def wrapped_forward(self, *args, **kwargs):
-    #     # print(self._hyrax_data_parallel)
-    #     if self._hyrax_data_parallel:
-    #         if (kwargs.get("use_original_forward", False)):
-    #             print("wrapped forward, use original forward")
-    #             del kwargs["use_original_forward"]
-    #         else:
-    #             print("calling DP forward")
-    #             kwargs["use_original_forward"] = True
-    #             return self._hyrax_data_parallel.model(*args, **kwargs)
-    #     return original_forward(self, *args, **kwargs)
-    
-    # cls.forward = wrapped_forward
 
     def default_prepare_inputs(data_dict):
         """Extract image and label arrays from the batch dictionary.

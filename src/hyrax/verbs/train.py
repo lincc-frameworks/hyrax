@@ -5,9 +5,9 @@ from colorama import Back, Fore, Style
 
 from hyrax.trace import trace_verb_data
 
-from .verb_registry import Verb, hyrax_verb
-
 import ignite.distributed as idist
+
+from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
 
