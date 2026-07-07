@@ -7,6 +7,8 @@ from hyrax.trace import trace_verb_data
 
 import ignite.distributed as idist
 
+import torch
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -173,7 +175,7 @@ class Train(Verb):
             logger.info("Finished Training")
             close_tensorboard_logger()
         
-        with idist.Parallel(backend="gloo", nproc_per_node=2) as parallel:
+        with idist.Parallel(backend="nccl", nproc_per_node=torch.cuda.device_count()) as parallel:
             parallel.run(training)
         
   

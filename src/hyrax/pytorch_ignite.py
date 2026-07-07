@@ -581,6 +581,9 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
         Engine object that will be used to train the model.
     """
     
+    if idist.get_nnodes() > 1:
+        raise RuntimeError("Multi-node configurations not supported")
+    
     device = idist.device()
     model.train()
     wrapped_model = idist.auto_model(model)
