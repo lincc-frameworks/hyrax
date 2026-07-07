@@ -105,7 +105,7 @@ dev = [
 [build-system]
 requires = [
     "setuptools>=82.0.1", # Used to build and package the Python project
-    "setuptools_scm>=10.0.5", # Gets release version from git. Makes it available programmatically
+    "setuptools_scm>=10.2.0", # Gets release version from git. Makes it available programmatically
 ]
 build-backend = "setuptools.build_meta"
 
