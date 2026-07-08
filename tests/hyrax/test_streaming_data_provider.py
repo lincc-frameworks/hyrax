@@ -23,7 +23,7 @@ def _build_provider(
     h = hyrax.Hyrax()
     h.config["data_loader"]["batch_size"] = batch_size
     ds_config = h.config["data_set"]["KafkaStreamDataset"]
-    ds_config["topic"] = "test-topic"
+    ds_config["topics"] = "test-topic"
     ds_config["batch_flush_timeout"] = flush
     request = {
         "data": {
@@ -112,7 +112,7 @@ def test_dist_data_loader_end_to_end(monkeypatch):
 def test_requires_single_dataset():
     """A streaming group must contain exactly one dataset (no joins)."""
     h = hyrax.Hyrax()
-    h.config["data_set"]["KafkaStreamDataset"]["topic"] = "t"
+    h.config["data_set"]["KafkaStreamDataset"]["topics"] = "t"
     request = {
         "a": {"dataset_class": "KafkaStreamDataset", "primary_id_field": "object_id"},
         "b": {"dataset_class": "KafkaStreamDataset", "primary_id_field": "object_id"},
@@ -132,7 +132,7 @@ def test_requires_iterable_dataset():
 def test_requires_primary_id_field():
     """The request must declare which field is the object id."""
     h = hyrax.Hyrax()
-    h.config["data_set"]["KafkaStreamDataset"]["topic"] = "t"
+    h.config["data_set"]["KafkaStreamDataset"]["topics"] = "t"
     request = {"data": {"dataset_class": "KafkaStreamDataset"}}
     with pytest.raises(RuntimeError, match="primary_id_field"):
         StreamingDataProvider(h.config, request)
@@ -162,7 +162,7 @@ def test_field_collate_hook_is_honored():
 def test_setup_dataset_routes_streaming_vs_map():
     """setup_dataset picks StreamingDataProvider for iterable datasets, DataProvider otherwise."""
     h = hyrax.Hyrax()
-    h.config["data_set"]["KafkaStreamDataset"]["topic"] = "t"
+    h.config["data_set"]["KafkaStreamDataset"]["topics"] = "t"
     h.config["data_request"] = {
         "stream": {
             "data": {

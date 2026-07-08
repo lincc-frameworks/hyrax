@@ -75,7 +75,7 @@ def _build_dataset(batch_size=5, batch_flush_timeout=100.0):
     h = hyrax.Hyrax()
     h.config["data_loader"]["batch_size"] = batch_size
     ds_config = h.config["data_set"]["KafkaStreamDataset"]
-    ds_config["topic"] = "test-topic"
+    ds_config["topics"] = "test-topic"
     ds_config["batch_flush_timeout"] = batch_flush_timeout
     return KafkaStreamDataset(h.config)
 
@@ -91,9 +91,61 @@ def _patch_consumer(monkeypatch, dataset, messages, stop_when_exhausted=False):
 def test_missing_topic_raises():
     """A topic must be configured; the TOML `false` sentinel is rejected."""
     h = hyrax.Hyrax()
-    h.config["data_set"]["KafkaStreamDataset"]["topic"] = False
-    with pytest.raises(ValueError, match="topic"):
+    h.config["data_set"]["KafkaStreamDataset"]["topics"] = False
+    with pytest.raises(ValueError, match="topics"):
         KafkaStreamDataset(h.config)
+
+    h.config["data_set"]["KafkaStreamDataset"]["topics"] = []
+    with pytest.raises(ValueError, match="topics"):
+        KafkaStreamDataset(h.config)
+
+
+def test_data_location_overrides_bootstrap_and_topics_from_config():
+    """Inline kafka:// URI takes precedence over configured bootstrap/topics."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["bootstrap_servers"] = "config-broker:9092"
+    ds_config["topics"] = ["config-topic"]
+
+    dataset = KafkaStreamDataset(h.config, data_location="kafka://inline-broker:19092/inline-topic")
+
+    assert dataset.bootstrap_servers == "inline-broker:19092"
+    assert dataset.topics == ["inline-topic"]
+
+
+def test_data_location_without_topic_uses_config_topics():
+    """Inline broker override keeps configured topics when URI omits /topic."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["bootstrap_servers"] = "config-broker:9092"
+    ds_config["topics"] = ["config-topic-a", "config-topic-b"]
+
+    dataset = KafkaStreamDataset(h.config, data_location="kafka://inline-broker:19092")
+
+    assert dataset.bootstrap_servers == "inline-broker:19092"
+    assert dataset.topics == ["config-topic-a", "config-topic-b"]
+
+
+def test_topics_accepts_single_string_from_config():
+    """A single configured topic string is normalized to a one-item list."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["topics"] = "single-topic"
+
+    dataset = KafkaStreamDataset(h.config)
+
+    assert dataset.topics == ["single-topic"]
+
+
+def test_topics_accepts_list_from_config():
+    """A configured list of topics is used as-is."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["topics"] = ["topic-1", "topic-2"]
+
+    dataset = KafkaStreamDataset(h.config)
+
+    assert dataset.topics == ["topic-1", "topic-2"]
 
 
 def test_len_raises():
