@@ -94,6 +94,8 @@ class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
             config=dataset_specific_config, data_location=definition.get("data_location")
         )
 
+        self.prepped_datasets = {friendly_name: self._stream}
+
         # Collation wiring consumed by CollationMixin.collate.
         self.custom_collate_functions: dict = {}
         self.field_collate_functions: dict = {friendly_name: {}}

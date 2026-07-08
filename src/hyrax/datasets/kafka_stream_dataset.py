@@ -61,6 +61,11 @@ logger = logging.getLogger(__name__)
 class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
     """Reads JSON messages from a Kafka topic and yields latency-bounded batches.
 
+    The location of the Kafka broker(s) and topic(s) is configured in ``[data_set.KafkaStreamDataset]``.
+    Alternatively, the data_location of the dataset can be specified inline in
+    the data request as the URI ``kafka://<host>:<port>[/<topic>]``.
+    The inline URI takes precedence over the configuration file.
+
     Each Kafka message is expected to be a JSON object. :meth:`_decode` returns it as a
     flat ``dict`` (e.g. ``{"object_id": "...", "image": [...], ...}``); the wrapping
     :class:`~hyrax.datasets.streaming_data_provider.StreamingDataProvider` turns each
@@ -71,26 +76,28 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         ds_config = config["data_set"]["KafkaStreamDataset"]
 
         # ``data_location``, when given, is a Kafka URI of the form
-        # ``kafka://<host>:<port>/<topic>`` supplied inline by the data_request. It takes
+        # ``kafka://<host>:<port>[/<topic>]`` supplied inline by the data_request. It takes
         # precedence over the [data_set.KafkaStreamDataset] config; anything the URI omits
         # falls back to that config block.
         host_port = ""
         topic = ""
         if data_location:
             parsed = urlparse(data_location)
-            host_port = parsed.netloc  # "broker.example.org:9092"
-            topic = parsed.path.lstrip("/")  # "lsst_topic"
+            if parsed.scheme == "kafka":
+                host_port = parsed.netloc  # "broker.example.org:9092"
+                topic = parsed.path.lstrip("/")  # "my-topic"
 
         self.bootstrap_servers = host_port or ds_config["bootstrap_servers"]
-        topic = topic or ds_config["topic"]
+        self.topics = topic or ds_config["topics"]
+        if not isinstance(self.topics, list) and isinstance(self.topics, str):
+            self.topics = [self.topics]  # allow a single topic string for convenience
 
-        # `topic` may still be the TOML `false` sentinel ("not set") here.
-        if not topic:
+        # `topics` may still be the TOML `false` sentinel ("not set") here.
+        if not self.topics:
             raise ValueError(
-                "config['data_set']['KafkaStreamDataset']['topic'] must be set to the Kafka topic to consume."
+                "config['data_set']['KafkaStreamDataset']['topics'] must be set to a list of Kafka topics."
             )
 
-        self.topic = topic
         self.group_id = ds_config["group_id"]
         self.auto_offset_reset = ds_config["auto_offset_reset"]
         self.poll_timeout = float(ds_config["poll_timeout"])
@@ -143,7 +150,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
                 "auto.offset.reset": self.auto_offset_reset,
             }
         )
-        consumer.subscribe([self.topic])
+        consumer.subscribe(self.topics)
         return consumer
 
     def _ensure_consumer(self):
