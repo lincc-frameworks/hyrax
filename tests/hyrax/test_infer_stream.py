@@ -34,7 +34,7 @@ def test_infer_stream_iterates_streaming_dataset(tmp_path, monkeypatch):
     h.config["data_loader"]["batch_size"] = 2
 
     ds_config = h.config["data_set"]["KafkaStreamDataset"]
-    ds_config["topic"] = "test-topic"
+    ds_config["topics"] = "test-topic"
     ds_config["batch_flush_timeout"] = 0.0  # flush partial batches on the first empty poll
 
     h.config["data_request"] = {
