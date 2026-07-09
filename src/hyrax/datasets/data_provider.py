@@ -1128,6 +1128,25 @@ class DataProvider:
 
     @staticmethod
     def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
+        """Default field-level collate function for a single field.
+        
+        Parameters
+        ----------
+        samples : list of dict
+            A list of data samples, where each sample is a dictionary mapping some attribute to one of its values.
+        
+        field : str
+            The name of the field to collate.
+
+        friendly_name : str
+            The friendly name of the dataset.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the collated field values.
+
+        """
         retval = {}
         if field not in samples[0]:
             raise RuntimeError(f"Requested field '{field}' not in dataset '{friendly_name}'")
@@ -1158,6 +1177,27 @@ class DataProvider:
 
     @staticmethod
     def dataset_collate(field_collate_functions: dict, friendly_name: str, samples: list[dict]) -> dict:
+        """Template for dataset-level collate function which Hyrax constructs by binding first two arguments.
+
+        Parameters
+        ----------
+        field_collate_functions : dict
+            A dictionarity mapping field names to user-defined field-level collate functions.
+            Fields for which the user did not define a collate function will have a value of None.
+            
+        friendly_name : str
+            The friendly name of the dataset
+        
+        samples : list of dict
+            A list of data samples, where each sample is a dictionary mapping some attribute to one of its values.
+
+        Returns
+        -------
+        dict
+            A dictionary of the collated data, where the keys include the requested fields
+            as well as fields denoting padding (if applicable), and the values include
+            all values from samples.
+        """
         retval = {}
         for field, field_collate_fcn in field_collate_functions.items():
             if field_collate_fcn is not None:
