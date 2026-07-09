@@ -6,8 +6,8 @@ Starts from the beginning of the topic by default — useful for
 re-reading all messages after a reset.
 
 Usage:
-    python kafka_consumer.py
-    python kafka_consumer.py --topic my-topic --from-beginning
+    python consumer.py
+    python consumer.py --topic my-topic --from-beginning
 """
 
 import argparse
@@ -26,16 +26,17 @@ DEFAULTS = dict(
 def run(cfg: dict) -> None:
     offset_reset = "earliest" if cfg["from_beginning"] else "latest"
 
-    consumer = Consumer({
-        "bootstrap.servers": cfg["broker"],
-        "group.id": cfg["group"],
-        "auto.offset.reset": offset_reset,
-        "enable.auto.commit": True,
-    })
+    consumer = Consumer(
+        {
+            "bootstrap.servers": cfg["broker"],
+            "group.id": cfg["group"],
+            "auto.offset.reset": offset_reset,
+            "enable.auto.commit": True,
+        }
+    )
 
     consumer.subscribe([cfg["topic"]])
-    print(f"[consumer] Subscribed to '{cfg['topic']}'  "
-          f"(offset_reset={offset_reset}, group={cfg['group']})")
+    print(f"[consumer] Subscribed to '{cfg['topic']}'  (offset_reset={offset_reset}, group={cfg['group']})")
     print("           Ctrl-C to stop.\n")
 
     try:
@@ -52,8 +53,10 @@ def run(cfg: dict) -> None:
                 continue
 
             payload = json.loads(msg.value().decode("utf-8"))
-            print(f"offset={msg.offset():>6}  partition={msg.partition()}  "
-                  f"key={msg.key().decode()}  value={payload}")
+            print(
+                f"offset={msg.offset():>6}  partition={msg.partition()}  "
+                f"key={msg.key().decode()}  value={payload}"
+            )
 
     except KeyboardInterrupt:
         print("\n[consumer] Interrupted — closing.")
@@ -63,14 +66,16 @@ def run(cfg: dict) -> None:
 
 def parse_args() -> dict:
     p = argparse.ArgumentParser(description="Kafka consumer")
-    p.add_argument("--broker",         default=DEFAULTS["broker"])
-    p.add_argument("--topic",          default=DEFAULTS["topic"])
-    p.add_argument("--group",          default=DEFAULTS["group"])
-    p.add_argument("--from-beginning", action="store_true",
-                   default=DEFAULTS["from_beginning"],
-                   help="Read from offset 0 (default: True)")
-    p.add_argument("--latest",         dest="from_beginning", action="store_false",
-                   help="Read only new messages")
+    p.add_argument("--broker", default=DEFAULTS["broker"])
+    p.add_argument("--topic", default=DEFAULTS["topic"])
+    p.add_argument("--group", default=DEFAULTS["group"])
+    p.add_argument(
+        "--from-beginning",
+        action="store_true",
+        default=DEFAULTS["from_beginning"],
+        help="Read from offset 0 (default: True)",
+    )
+    p.add_argument("--latest", dest="from_beginning", action="store_false", help="Read only new messages")
     return vars(p.parse_args())
 
 

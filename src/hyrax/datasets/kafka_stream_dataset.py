@@ -138,10 +138,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         try:
             from confluent_kafka import Consumer
         except ImportError as err:
-            raise ImportError(
-                "KafkaStreamDataset requires the 'confluent-kafka' package. "
-                "Install it with the streaming extra: pip install 'hyrax[stream]'."
-            ) from err
+            raise ImportError("KafkaStreamDataset requires the 'confluent-kafka' package. ") from err
 
         consumer = Consumer(
             {

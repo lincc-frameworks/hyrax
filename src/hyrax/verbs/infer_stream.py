@@ -1,6 +1,7 @@
 import logging
 
 import torch
+from numpy import typing as npt
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -108,11 +109,8 @@ class InferStream(Verb):
         else:
             model = setup_model_from_sample(config, sample_batch)
 
+        # set model in eval mode
         model.eval()
-
-        device = idist_device()
-        # torch.set_default_device(device.type)  # TODO: I don't think this line is needed
-        model = auto_model(model)
 
         # Create a timestamped results directory
         results_dir = create_results_dir(config, "infer_stream")
@@ -120,13 +118,17 @@ class InferStream(Verb):
         # Start TensorBoard logger
         init_tensorboard_logger(log_dir=results_dir)
 
-        load_model_weights(config, model, "infer_stream")
         log_runtime_config(config, results_dir)
+
+        # load weights, save the model and place the model on the correct device.
+        load_model_weights(config, model, "infer_stream")
         model.save(results_dir / "inference_weights.pth")
+        model = auto_model(model)
 
         logger.info(f"Saving infer_stream results at: {results_dir}")
 
         # Build the per-batch process function (same partial used by create_engine)
+        device = idist_device
         process_func = create_process_func("infer_batch", device, model, config)
 
         # Create the Lance writer callback (reused across all .process() calls)
@@ -204,7 +206,7 @@ class InferStreamSession:
         if self._provider is not None and hasattr(self._provider, "stop"):
             self._provider.stop()
 
-    def process(self, batch: dict) -> torch.Tensor:
+    def process(self, batch: dict) -> npt.NDArray:
         """Run inference on a single batch and save results.
 
         Parameters

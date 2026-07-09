@@ -121,8 +121,8 @@ class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
         if not self.fields:
             self.fields = [key for key in sample if key != self.primary_id_field]
             self._register_field_collate_hooks()
-
         data = {field: np.asarray(sample[field], dtype=np.float32) for field in self.fields}
+
         return {"object_id": str(sample[self.primary_id_field]), self.friendly_name: data}
 
     def __iter__(self):

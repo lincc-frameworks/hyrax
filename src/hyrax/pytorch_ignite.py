@@ -242,7 +242,13 @@ def dist_data_loader(
         stream_kwargs.pop("shuffle", None)
         stream_kwargs["batch_size"] = None
         stream_kwargs["collate_fn"] = dataset.collate
-        stream_kwargs.setdefault("num_workers", 0)
+        # TODO: Revisit this to determine if we can support num_workers > 0.
+        if stream_kwargs.get("num_workers", 0) != 0:
+            logger.warning(
+                "num_workers > 0 is not supported for streaming datasets. "
+                "Setting num_workers=0 to avoid issues with Kafka consumers."
+            )
+        stream_kwargs["num_workers"] = 0
         return idist.auto_dataloader(dataset, **stream_kwargs)
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader.
@@ -363,7 +369,6 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
     config : dict
         The runtime config in use
     """
-    torch.set_default_device(device.type)
     return Engine(create_process_func(funcname, device, model, config))
 
 

@@ -41,7 +41,7 @@ result_dataset = session.close()
 
 ### 1. New: `src/hyrax/verbs/infer_stream.py`
 
-A `@hyrax_verb`-decorated `InferStream(Verb)` class with `cli_name = "infer_stream"` and `REQUIRED_DATA_GROUPS = ()`.
+A `@hyrax_verb`-decorated `InferStream(Verb)` class with `cli_name = "infer_stream"` and `REQUIRED_DATA_GROUPS = (infer_stream)`.
 
 `run(self, sample_batch: dict | None = None) -> InferStreamSession`:
 1. `create_results_dir(config, "infer_stream")` — timestamped output dir

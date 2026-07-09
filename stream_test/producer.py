@@ -16,8 +16,8 @@ Reset the topic (delete + recreate):
         --bootstrap-server localhost:9092 --create --topic my-topic
 
 Usage:
-    python kafka_producer.py
-    python kafka_producer.py --topic alerts --broker localhost:9092 \
+    python producer.py
+    python producer.py --topic alerts --broker localhost:9092 \
         --burst-min 3 --burst-max 8 --delay-min 5 --delay-max 15
 """
 
