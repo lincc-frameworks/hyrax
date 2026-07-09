@@ -1129,12 +1129,13 @@ class DataProvider:
     @staticmethod
     def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
         """Default field-level collate function for a single field.
-        
+
         Parameters
         ----------
         samples : list of dict
-            A list of data samples, where each sample is a dictionary mapping some attribute to one of its values.
-        
+            A list of data samples, where each sample is a
+            dictionary mapping some attribute to one of its values.
+
         field : str
             The name of the field to collate.
 
@@ -1184,12 +1185,13 @@ class DataProvider:
         field_collate_functions : dict
             A dictionarity mapping field names to user-defined field-level collate functions.
             Fields for which the user did not define a collate function will have a value of None.
-            
+
         friendly_name : str
             The friendly name of the dataset
-        
+
         samples : list of dict
-            A list of data samples, where each sample is a dictionary mapping some attribute to one of its values.
+            A list of data samples, where each sample is a
+            dictionary mapping some attribute to one of its values.
 
         Returns
         -------
