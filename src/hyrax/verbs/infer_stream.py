@@ -243,8 +243,9 @@ class InferStreamSession:
             The accumulated results from all batches processed in this session.
         """
         if self._closed:
-            return self._load_dataset(self._config, self._results_dir)
-
+            if self._config["infer_stream"]["save_model_output"]:
+                return self._load_dataset(self._config, self._results_dir)
+            return None
         # End any in-progress streaming iteration before tearing down.
         self.stop()
 
