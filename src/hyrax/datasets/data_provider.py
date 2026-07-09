@@ -6,6 +6,7 @@ import os
 import pickle
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -1125,6 +1126,88 @@ class DataProvider:
 
         return self.prepped_datasets[dataset_to_use]
 
+    @staticmethod
+    def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
+        """Default field-level collate function for a single field.
+
+        Parameters
+        ----------
+        samples : list of dict
+            A list of data samples, where each sample is a
+            dictionary mapping some attribute to one of its values.
+
+        field : str
+            The name of the field to collate.
+
+        friendly_name : str
+            The friendly name of the dataset.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the collated field values.
+
+        """
+        retval = {}
+        if field not in samples[0]:
+            raise RuntimeError(f"Requested field '{field}' not in dataset '{friendly_name}'")
+
+        values = [s[field] for s in samples]
+
+        if all(isinstance(v, np.ndarray) for v in values):
+            shapes = [v.shape for v in values]
+            if all(s == shapes[0] for s in shapes):
+                try:
+                    retval[field] = np.stack(values, axis=0)
+                    return retval
+                except Exception as err:
+                    logger.warning(
+                        f"Could not stack numpy arrays for field '{field}' "
+                        f"in dataset '{friendly_name}'. Consider implementing "
+                        "a custom collation function for this field."
+                    )
+                    raise RuntimeError(
+                        f"Could not stack numpy arrays for field '{field}' "
+                        f"in dataset '{friendly_name}'. Consider implementing "
+                        "a custom collation function for this field."
+                    ) from err
+
+        # if values is a list of numpy scalars convert to numpy array
+        retval[field] = np.array(values)
+        return retval
+
+    @staticmethod
+    def dataset_collate(field_collate_functions: dict, friendly_name: str, samples: list[dict]) -> dict:
+        """Template for dataset-level collate function which Hyrax constructs by binding first two arguments.
+
+        Parameters
+        ----------
+        field_collate_functions : dict
+            A dictionarity mapping field names to user-defined field-level collate functions.
+            Fields for which the user did not define a collate function will have a value of None.
+
+        friendly_name : str
+            The friendly name of the dataset
+
+        samples : list of dict
+            A list of data samples, where each sample is a
+            dictionary mapping some attribute to one of its values.
+
+        Returns
+        -------
+        dict
+            A dictionary of the collated data, where the keys include the requested fields
+            as well as fields denoting padding (if applicable), and the values include
+            all values from samples.
+        """
+        retval = {}
+        for field, field_collate_fcn in field_collate_functions.items():
+            if field_collate_fcn is not None:
+                retval.update(field_collate_fcn(samples))
+            else:
+                retval.update(DataProvider.default_field_collate(samples, field, friendly_name))
+        return retval
+
     def collate(self, batch: list[dict]) -> dict:
         """Custom collate function to be used outside the context of a PyTorch
         DataLoader.
@@ -1143,35 +1226,6 @@ class DataProvider:
             A dictionary where each key corresponds to a field and the value is
             a list of values for that field across the batch.
         """
-
-        def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
-            retval = {}
-            if field not in samples[0]:
-                raise RuntimeError(f"Requested field '{field}' not in dataset '{friendly_name}'")
-
-            values = [s[field] for s in samples]
-
-            if all(isinstance(v, np.ndarray) for v in values):
-                shapes = [v.shape for v in values]
-                if all(s == shapes[0] for s in shapes):
-                    try:
-                        retval[field] = np.stack(values, axis=0)
-                        return retval
-                    except Exception as err:
-                        logger.warning(
-                            f"Could not stack numpy arrays for field '{field}' "
-                            f"in dataset '{friendly_name}'. Consider implementing "
-                            "a custom collation function for this field."
-                        )
-                        raise RuntimeError(
-                            f"Could not stack numpy arrays for field '{field}' "
-                            f"in dataset '{friendly_name}'. Consider implementing "
-                            "a custom collation function for this field."
-                        ) from err
-
-            # if values is a list of numpy scalars convert to numpy array
-            retval[field] = np.array(values)
-            return retval
 
         batch_dict: dict[str, dict[str, list] | list] = {}
         custom_collate: dict[str, list] = {}
@@ -1212,20 +1266,10 @@ class DataProvider:
                 custom_collate.setdefault(friendly_name, []).append(fields)
                 if friendly_name not in self.custom_collate_functions:
                     # construct the dataset collate function and set it in self.custom_collate_functions
-                    def make_dataset_collate(field_collate_functions: dict, friendly_name: str):
-                        def dataset_collate(samples: list[dict]) -> dict:
-                            retval = {}
-                            for field, field_collate_fcn in field_collate_functions.items():
-                                if field_collate_fcn is not None:
-                                    retval.update(field_collate_fcn(samples))
-                                else:
-                                    retval.update(default_field_collate(samples, field, friendly_name))
-                            return retval
-
-                        return dataset_collate
-
-                    self.custom_collate_functions[friendly_name] = make_dataset_collate(
-                        self.field_collate_functions[friendly_name], friendly_name
+                    self.custom_collate_functions[friendly_name] = partial(
+                        DataProvider.dataset_collate,
+                        self.field_collate_functions[friendly_name],
+                        friendly_name,
                     )
 
         # Pad any none_masks that are shorter than the batch (trailing matches).
