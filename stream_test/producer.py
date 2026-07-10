@@ -65,6 +65,7 @@ def ensure_topic(broker: str, topic: str, partitions: int = 1, replication: int 
 
 
 def delivery_report(err, msg) -> None:
+    """Called once for each message produced to indicate delivery result."""
     if err:
         print(f"  [!] Delivery failed: {err}")
     else:
@@ -87,6 +88,13 @@ def make_message(index: int) -> dict:
 
 
 def run(cfg: dict) -> None:
+    """Runs the producer
+
+    Parameters
+    ----------
+    cfg : dict
+        The configuration parameters.
+    """
     ensure_topic(cfg["broker"], cfg["topic"])
 
     producer = Producer({"bootstrap.servers": cfg["broker"]})
@@ -137,6 +145,7 @@ def run(cfg: dict) -> None:
 
 
 def parse_args() -> dict:
+    """Parse command-line arguments and return a configuration dictionary."""
     p = argparse.ArgumentParser(description="Kafka burst producer")
     p.add_argument("--broker", default=DEFAULTS["broker"])
     p.add_argument("--topic", default=DEFAULTS["topic"])
