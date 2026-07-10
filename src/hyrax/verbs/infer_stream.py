@@ -128,7 +128,7 @@ class InferStream(Verb):
         logger.info(f"Saving infer_stream results at: {results_dir}")
 
         # Build the per-batch process function (same partial used by create_engine)
-        device = idist_device
+        device = idist_device()
         process_func = create_process_func("infer_batch", device, model, config)
 
         # Create the Lance writer callback (reused across all .process() calls)
