@@ -48,9 +48,11 @@ provider is what is passed to the DataLoader; configure it the normal way:
 
 import json
 import logging
+from pathlib import Path
 import threading
 from urllib.parse import urlparse
 
+import toml
 import torch
 
 from .dataset_registry import HyraxDataset
@@ -60,11 +62,6 @@ logger = logging.getLogger(__name__)
 
 class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
     """Reads JSON messages from a Kafka topic and yields latency-bounded batches.
-
-    The location of the Kafka broker(s) and topic(s) is configured in ``[data_set.KafkaStreamDataset]``.
-    Alternatively, the data_location of the dataset can be specified inline in
-    the data request as the URI ``kafka://<host>:<port>[/<topic>]``.
-    The inline URI takes precedence over the configuration file.
 
     Each Kafka message is expected to be a JSON object. :meth:`_decode` returns it as a
     flat ``dict`` (e.g. ``{"object_id": "...", "image": [...], ...}``); the wrapping
@@ -76,28 +73,26 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         ds_config = config["data_set"]["KafkaStreamDataset"]
 
         # ``data_location``, when given, is a Kafka URI of the form
-        # ``kafka://<host>:<port>[/<topic>]`` supplied inline by the data_request. It takes
+        # ``kafka://<host>:<port>/<topic>`` supplied inline by the data_request. It takes
         # precedence over the [data_set.KafkaStreamDataset] config; anything the URI omits
         # falls back to that config block.
         host_port = ""
         topic = ""
         if data_location:
             parsed = urlparse(data_location)
-            if parsed.scheme == "kafka":
-                host_port = parsed.netloc  # "broker.example.org:9092"
-                topic = parsed.path.lstrip("/")  # "my-topic"
+            host_port = parsed.netloc  # "broker.example.org:9092"
+            topic = parsed.path.lstrip("/")  # "lsst_topic"
 
         self.bootstrap_servers = host_port or ds_config["bootstrap_servers"]
-        self.topics = topic or ds_config["topics"]
-        if not isinstance(self.topics, list) and isinstance(self.topics, str):
-            self.topics = [self.topics]  # allow a single topic string for convenience
+        topic = topic or ds_config["topic"]
 
-        # `topics` may still be the TOML `false` sentinel ("not set") here.
-        if not self.topics:
+        # `topic` may still be the TOML `false` sentinel ("not set") here.
+        if not topic:
             raise ValueError(
-                "config['data_set']['KafkaStreamDataset']['topics'] must be set to a list of Kafka topics."
+                "config['data_set']['KafkaStreamDataset']['topic'] must be set to the Kafka topic to consume."
             )
 
+        self.topic = topic
         self.group_id = ds_config["group_id"]
         self.auto_offset_reset = ds_config["auto_offset_reset"]
         self.poll_timeout = float(ds_config["poll_timeout"])
@@ -113,6 +108,19 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         # __iter__ so a peeked message can be replayed into the first batch.
         self._consumer = None
         self._buffered: list[dict] = []
+
+        credentials_file = ds_config.get("credentials_file")
+        credentials_file_path = Path(credentials_file) if credentials_file else None
+
+        self.consumer_config = {
+            "bootstrap.servers": self.bootstrap_servers,
+            "group.id": self.group_id,
+            "auto.offset.reset": self.auto_offset_reset,
+        }
+
+        if credentials_file_path.exists():
+            credentials = toml.load(credentials_file_path)
+            self.consumer_config.update(credentials)
 
         super().__init__(config, metadata_table=None)
 
@@ -138,16 +146,15 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         try:
             from confluent_kafka import Consumer
         except ImportError as err:
-            raise ImportError("KafkaStreamDataset requires the 'confluent-kafka' package. ") from err
+            raise ImportError(
+                "KafkaStreamDataset requires the 'confluent-kafka' package. "
+                "Install it with the streaming extra: pip install 'hyrax[stream]'."
+            ) from err
 
-        consumer = Consumer(
-            {
-                "bootstrap.servers": self.bootstrap_servers,
-                "group.id": self.group_id,
-                "auto.offset.reset": self.auto_offset_reset,
-            }
-        )
-        consumer.subscribe(self.topics)
+        consumer = Consumer(self.consumer_config)
+
+        consumer.subscribe([self.topic])
+
         return consumer
 
     def _ensure_consumer(self):

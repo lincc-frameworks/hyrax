@@ -383,6 +383,14 @@ poll_timeout = 1.0
 # Maximum seconds to wait before flushing a partial (smaller than batch_size) batch.
 batch_flush_timeout = 5.0
 
+# Provided path credentials file for a `confluent_kafka` consumer instance
+# e.g.
+# sasl.username = <USER_NAME>
+# sasl.password = <PASSWORD>
+# security.protocol = "SASL_PLAINTEXT"
+# sasl.mechanism = "SCRAM-SHA-512"
+credentials_file = false
+
 
 [data_loader]
 # The number of data points to load at once.
