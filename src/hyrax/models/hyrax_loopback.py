@@ -55,3 +55,14 @@ class HyraxLoopback(nn.Module):
         """Inference is just a forward pass"""
         logger.debug(f"Batch length: {len(batch)}")
         return self.forward(batch)
+
+    @staticmethod
+    def prepare_inputs(data_dict):
+        """Simple input prep for the loopback model"""
+        import numpy as np
+
+        data = data_dict.get("data")
+        image = data.get("image", np.array([], dtype=np.float32))
+        label = data.get("label", np.array([], dtype=np.float32))
+
+        return (image, label)

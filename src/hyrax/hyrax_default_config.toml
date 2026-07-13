@@ -363,19 +363,43 @@ max_samples = 100
 streaming = true
 
 
+[data_set.KafkaStreamDataset]
+# Kafka bootstrap broker address.
+bootstrap_servers = "localhost:9092"
+
+# List of Kafka topics to consume. Must be set, `[]` raises at runtime. A single
+# topic string is accepted for convenience, and will be converted to a list of one topic.
+topics = []
+
+# Kafka consumer group id.
+group_id = "hyrax-infer-stream"
+
+# Where to start consuming when the group has no committed offset: "latest" or "earliest".
+auto_offset_reset = "earliest"
+
+# Seconds to block on each Kafka poll while waiting for a message.
+poll_timeout = 1.0
+
+# Maximum seconds to wait before flushing a partial (smaller than batch_size) batch.
+batch_flush_timeout = 5.0
+
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
-
 
 
 [infer]
 # The path to the model weights file to use for inference.
 model_weights_file = false
 
-# >>> I believe that we can simply remove this entry <<<<<<<<<<<<<<<<<<<<<<<<<<<
-# The data_set split to use for inference. Use `false` for entire dataset.
-split = "infer"
+
+[infer_stream]
+# Path to model weights. If false, uses the most recent training results.
+model_weights_file = false
+
+# Save the results of inference in the timestamped result directory.
+save_model_output = false
 
 
 [vector_db]
