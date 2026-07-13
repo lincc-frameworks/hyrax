@@ -203,7 +203,7 @@ def hyrax_model(cls):
 
     def wrapped_init(self, config, *args, **kwargs):
         import ignite.distributed as idist
-        
+
         original_init(self, config, *args, **kwargs)
         # self._hyrax_data_parallel = None
 

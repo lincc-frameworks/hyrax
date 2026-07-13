@@ -1,13 +1,11 @@
 import logging
 from pathlib import Path
 
+import ignite.distributed as idist
+import torch
 from colorama import Back, Fore, Style
 
 from hyrax.trace import trace_verb_data
-
-import ignite.distributed as idist
-
-import torch
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -90,13 +88,15 @@ class Train(Verb):
         )
         create_splits(config, dataset, results_dir=results_dir, persist=True)
         model = setup_model(config, dataset["train"])
-        
-        def training(rank):            
+
+        def training(rank):
             logger.info(
                 f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
                 f"{model.__class__.__name__}"
             )
-            logger.info(f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}")
+            logger.info(
+                f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training dataset(s):{Style.RESET_ALL}\n{dataset}"
+            )
 
             # If a pre-trained weights file is specified, load it before creating the trainer.
             # This must happen before create_trainer() wraps the model with idist.auto_model
@@ -116,7 +116,9 @@ class Train(Verb):
 
             train_shuffle = config["train"]["shuffle"]
 
-            dataset_splits = [s for s in Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS if s in dataset]
+            dataset_splits = [
+                s for s in Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS if s in dataset
+            ]
 
             data_loaders: dict[str, tuple] = {}
             for split_name in dataset_splits:
@@ -174,11 +176,10 @@ class Train(Verb):
 
             logger.info("Finished Training")
             close_tensorboard_logger()
-        
+
         with idist.Parallel(backend="nccl", nproc_per_node=torch.cuda.device_count()) as parallel:
             parallel.run(training)
-        
-  
+
         # training(0)
         return model
 

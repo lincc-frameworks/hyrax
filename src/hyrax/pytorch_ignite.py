@@ -305,12 +305,12 @@ def extract_model_method(model, method_name):
     Callable
         The method extracted from the model
     """
-    
+
     wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
-    
+
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
-    
+
     return getattr(model if hasattr(model, method_name) else model.module, method_name)
 
 
@@ -580,29 +580,29 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pytorch-ignite.Engine
         Engine object that will be used to train the model.
     """
-    
+
     if idist.get_nnodes() > 1:
         raise RuntimeError("Multi-node configurations not supported")
-    
+
     device = idist.device()
     model.train()
     wrapped_model = idist.auto_model(model)
-    
+
     wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
-    
+
     if wrapped:
         # bind the train_batch function to the DDP model
         wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
-        
+
         # set the attributes needed for training on the DDP model
-        attrs = ['optimizer', 'criterion', 'grad_clip']
+        attrs = ["optimizer", "criterion", "grad_clip"]
         for attr in attrs:
             setattr(wrapped_model, attr, getattr(model, attr))
-    
+
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
-  
+
     to_save = {
         "model": wrapped_model,
         "optimizer": model.optimizer,
