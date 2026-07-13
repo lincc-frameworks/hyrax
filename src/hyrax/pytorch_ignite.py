@@ -19,11 +19,12 @@ from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler, Subset, SubsetRandomSampler, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, Sampler, Subset, WeightedRandomSampler
 
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
+from hyrax.trace import get_trace
 
 logger = logging.getLogger(__name__)
 
@@ -82,18 +83,19 @@ def setup_dataset(
         raise RuntimeError(
             f"Legacy split configuration keys found in [data_set]: {found}\n\n"
             "The train_size/validate_size/test_size configuration style has been removed.\n"
-            "Please migrate to split_fraction in your [data_request] groups.\n\n"
+            "Please migrate your split configuration to [split].\n\n"
             "Example:\n"
             "  [data_request.train.data]\n"
             "  dataset_class = 'YourDataset'\n"
             "  data_location = '/path/to/data'\n"
-            "  primary_id_field = 'id'\n"
-            "  split_fraction = 0.6\n\n"
+            "  primary_id_field = 'id'\n\n"
             "  [data_request.validate.data]\n"
             "  dataset_class = 'YourDataset'\n"
             "  data_location = '/path/to/data'\n"
-            "  primary_id_field = 'id'\n"
-            "  split_fraction = 0.2\n\n"
+            "  primary_id_field = 'id'\n\n"
+            "  [split]\n"
+            "  train = 0.8\n"
+            "  validate = 0.2\n\n"
             "For more information, see: https://hyrax.readthedocs.io/en/stable/dataset_splits.html"
         )
 
@@ -194,7 +196,8 @@ def dist_data_loader(
     # TODO: Actually DataProvider.collate. Callsites and parameter signature above have not been updated.
     data_loader_kwargs["collate_fn"] = dataset.collate
 
-    torch_rng = torch.Generator(device=idist.device())
+    torch_rng = torch.Generator()
+
     seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
     if seed is not None:
         torch_rng.manual_seed(seed)
@@ -208,24 +211,26 @@ def dist_data_loader(
     sub_dataset = Subset(dataset, indexes)
     n = len(indexes)
 
-    if weights is not None:
-        # WeightedRandomSampler hardcodes torch.double internally.  On MPS,
-        # float64 is unsupported and any active DeviceContext intercepts the
-        # internal torch.as_tensor call and pushes it to MPS.  Fix: push a CPU
-        # context so the weights tensor lands on CPU, and use a matching CPU
-        # generator.  SubsetRandomSampler uses torch.randperm (int64, MPS-safe)
-        # so torch_rng can stay on idist.device().
-        cpu_rng = torch.Generator(device="cpu")
-        if seed is not None:
-            cpu_rng.manual_seed(seed)
-        with torch.device("cpu"):
-            sampler = WeightedRandomSampler(
-                weights=weights, num_samples=n, generator=cpu_rng, replacement=True
-            )
-    elif shuffle:
-        sampler = SubsetRandomSampler(range(n), generator=torch_rng)
-    else:
-        sampler = None
+    # If no weights come from the split, then substitute with the correct number of 1's
+    if weights is None:
+        weights = np.ones(n, dtype=np.float32)
+
+    # If we are in trace mode, the sampler should stop after the batch size
+    # since the batch size has been set to the number of rows the user wanted to trace
+    if get_trace():
+        trace_limit = data_loader_kwargs.get("batch_size", 1)
+        if shuffle:
+            # Limit via WeightedRandomSampler
+            n = trace_limit
+        else:
+            # Limit via Subset
+            sub_dataset = Subset(sub_dataset, list(range(trace_limit)))
+
+    sampler = (
+        WeightedRandomSampler(weights=weights, num_samples=n, generator=torch_rng, replacement=True)
+        if shuffle
+        else None
+    )
 
     return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
@@ -281,7 +286,6 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
     config : dict
         The runtime config in use
     """
-    torch.set_default_device(device.type)
     return Engine(_create_process_func(funcname, device, model, config))
 
 

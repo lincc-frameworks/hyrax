@@ -3,7 +3,6 @@ import sys
 
 import numpy as np
 import pytest
-import torch
 
 import hyrax
 from hyrax.datasets.data_provider import DataProvider
@@ -33,23 +32,6 @@ def pytest_configure(config):
             raise RuntimeError(msg) from e
 
 
-@pytest.fixture(autouse=True)
-def restore_default_device():
-    """Restore the torch default device after every test.
-
-    ``create_engine`` calls ``torch.set_default_device(idist.device())`` and never
-    restores it, leaking global process state (e.g. ``mps`` on Apple Silicon) into
-    later tests. That makes device-sensitive tests order-dependent -- most visibly
-    ``WeightedRandomSampler``, whose ``__init__`` runs ``torch.as_tensor(weights,
-    dtype=torch.double)`` with no device kwarg and fails on MPS (no float64) when a
-    non-CPU default device is active. Snapshotting and restoring here keeps tests
-    isolated regardless of execution order.
-    """
-    prior = torch.get_default_device()
-    yield
-    torch.set_default_device(prior)
-
-
 @pytest.fixture(scope="function")
 def loopback_hyrax(tmp_path_factory, request):
     """This generates a loopback hyrax instance
@@ -71,7 +53,6 @@ def loopback_hyrax(tmp_path_factory, request):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.6,
             },
         },
         "validate": {
@@ -79,7 +60,6 @@ def loopback_hyrax(tmp_path_factory, request):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.2,
             },
         },
         "test": {
@@ -87,7 +67,6 @@ def loopback_hyrax(tmp_path_factory, request):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.2,
             },
         },
         "infer": {
@@ -98,6 +77,7 @@ def loopback_hyrax(tmp_path_factory, request):
             },
         },
     }
+    h.config["split"] = {"train": 0.6, "validate": 0.2, "test": 0.2}
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]

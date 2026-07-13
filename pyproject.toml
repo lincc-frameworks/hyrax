@@ -45,7 +45,8 @@ dependencies = [
     "scipy", # Used in Holoviews visualization prototype
     "cython", # Used in Holoviews visualization prototype
     "mlflow >= 3.7", # Used to log training metrics and compare models
-    "umap-learn", # Used to map latent spaces down to 2d
+    "scikit-learn", # Used to map latent spaces down for t-sne and pca
+    "umap-learn", # Used to map latent spaces down to 2d with umap
     "pooch", # Used to download data files
     "pydantic>=2.13.4,<3.0", # Used for typed configuration schemas
     "onnx", # Used to export models to ONNX format
@@ -58,15 +59,14 @@ dependencies = [
     "nested-pandas", # Used by NestedPandasDataset
     "qdrant-client", # Vector database for similarity search
     "colorama", # Used to color terminal output
-    # Pin to before 0.30.0 because version 0.30.0 does not support NaN values anymore
-    # This issue is NOT noted in release notes (https://github.com/lancedb/lancedb/releases/tag/python-v0.30.0)
-    # We have filed this bug: https://github.com/lancedb/lancedb/issues/3153
-    "lancedb < 0.30.0", # Used for columnar storage of inference results
-    # lance-namespace 0.7 removed CreateEmptyTableRequest and breaks lancedb<0.30 imports.
-    # Track upstream compatibility in lancedb before removing this cap.
-    "lance-namespace < 0.7.0",
+    # LanceDB >= 0.30 rejects NaN values in vector (fixed-size-list) columns on table.add(),
+    # so ResultDataset writes through pylance to preserve both NaNs and the existing fixed-size-list format.
+    "lancedb < 0.34.0", # Used for columnar storage of inference results
+    # pylance 7 supports lance-namespace 0.7, while lancedb<0.30 needed lance-namespace<0.7.
+    # Keep this cap aligned with pylance until pylance supports newer lance-namespace releases.
+    "lance-namespace >= 0.7.7, < 0.8.0",
     "pyarrow", # Used by lancedb for data interchange
-    "pylance", # Used by lancedb for Lance dataset access
+    "pylance >= 7.0.0, < 8.0.0", # Used by lancedb for Lance dataset access
 ]
 
 [project.scripts]
@@ -81,7 +81,7 @@ examples = [
 ]
 
 dev = [
-    "asv[virtualenv]==0.6.5", # Used to compute performance benchmarks
+    "asv[virtualenv]==0.6.6", # Used to compute performance benchmarks
     "jupyter", # Clears output from Jupyter notebooks
     "matplotlib", # For example notebooks
     "pre-commit", # Used to run checks before finalizing a git commit
@@ -105,7 +105,7 @@ dev = [
 [build-system]
 requires = [
     "setuptools>=82.0.1", # Used to build and package the Python project
-    "setuptools_scm>=10.0.5", # Gets release version from git. Makes it available programmatically
+    "setuptools_scm>=10.2.0", # Gets release version from git. Makes it available programmatically
 ]
 build-backend = "setuptools.build_meta"
 

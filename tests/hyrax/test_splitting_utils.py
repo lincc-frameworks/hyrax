@@ -603,87 +603,6 @@ def test_create_splits_equivalency_reuse(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Test 9: dist_data_loader Subset + sampler types
-# ---------------------------------------------------------------------------
-
-
-def test_dist_data_loader_sampler_types(tmp_path):
-    """dist_data_loader creates a Subset restricted to split_indices.
-
-    - WeightedRandomSampler when split_weights is set
-    - SubsetRandomSampler when shuffle=True and no weights
-    - No explicit sampler (sequential) when shuffle=False and no weights
-    """
-    from torch.utils.data import SubsetRandomSampler, WeightedRandomSampler
-
-    from hyrax.pytorch_ignite import dist_data_loader
-    from hyrax.splitting_utils import create_splits
-
-    size = 60
-    shared_loc = str(tmp_path / "shared_data")
-    labels = ["A", "B"]
-
-    # ── weighted sampler ──────────────────────────────────────────────────
-    split_cfg = {"train": 0.7, "validate": 0.3, "rng_seed": 11}
-    balance_cfg = {"field": "label", "groups": ["train"], "distribution": {}}
-    config_w = _make_config(
-        size=size,
-        provided_labels=labels,
-        tmp_path=tmp_path,
-        split=split_cfg,
-        balance=balance_cfg,
-        data_location=shared_loc,
-        groups=("train", "validate"),
-    )
-    datasets_w = _make_providers(config_w, ("train", "validate"))
-    create_splits(config_w, datasets_w)
-
-    loader_weighted = dist_data_loader(datasets_w["train"], config_w, shuffle=True)
-    assert isinstance(loader_weighted.sampler, WeightedRandomSampler), (
-        "Expected WeightedRandomSampler when split_weights is set"
-    )
-
-    # ── SubsetRandomSampler (shuffle, no weights) ─────────────────────────
-    config_s = _make_config(
-        size=size,
-        tmp_path=tmp_path,
-        split={"train": 0.8, "rng_seed": 12},
-        data_location=shared_loc,
-        groups=("train",),
-    )
-    datasets_s = _make_providers(config_s, ("train",))
-    create_splits(config_s, datasets_s)
-
-    loader_shuffle = dist_data_loader(datasets_s["train"], config_s, shuffle=True)
-    assert isinstance(loader_shuffle.sampler, SubsetRandomSampler), (
-        "Expected SubsetRandomSampler when shuffle=True and no weights"
-    )
-
-    # ── sequential (no sampler) ───────────────────────────────────────────
-    config_seq = _make_config(
-        size=size,
-        tmp_path=tmp_path,
-        split={"train": 0.8, "rng_seed": 13},
-        data_location=shared_loc,
-        groups=("train",),
-    )
-    datasets_seq = _make_providers(config_seq, ("train",))
-    create_splits(config_seq, datasets_seq)
-
-    loader_seq = dist_data_loader(datasets_seq["train"], config_seq, shuffle=False)
-    # No sampler → DataLoader uses its own default SequentialSampler over the Subset
-    assert not isinstance(loader_seq.sampler, (WeightedRandomSampler, SubsetRandomSampler)), (
-        "Expected no weighted/random sampler when shuffle=False and no weights"
-    )
-
-    # Verify all loaders reference a Subset dataset
-    from torch.utils.data import Subset
-
-    for loader in (loader_weighted, loader_shuffle, loader_seq):
-        assert isinstance(loader.dataset, Subset), "DataLoader should wrap a Subset"
-
-
-# ---------------------------------------------------------------------------
 # Test 10: Persisted artifacts round-trip
 # ---------------------------------------------------------------------------
 
@@ -1542,6 +1461,79 @@ def test_create_splits_rng_seed_false_uses_data_set_seed(tmp_path):
 
     # Different fallback seed → different shuffle.
     assert ds_a["train"].split_indices != ds_c["train"].split_indices
+
+
+# ---------------------------------------------------------------------------
+# Test 25a: _resolve_seed — exhaustive unit tests for the fix
+# Regression for: config.get("data_set", {}).get("seed") instead of direct access
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("rng_seed_value", [False, None, ""])
+def test_resolve_seed_falsy_rng_seed_no_data_set_returns_none(rng_seed_value):
+    """When rng_seed is falsy and data_set is absent entirely, return None (not KeyError)."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": rng_seed_value}}
+    assert _resolve_seed(config) is None
+
+
+@pytest.mark.parametrize("rng_seed_value", [False, None, ""])
+def test_resolve_seed_falsy_rng_seed_data_set_missing_seed_returns_none(rng_seed_value):
+    """When rng_seed is falsy and data_set has no 'seed' key, return None."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": rng_seed_value}, "data_set": {}}
+    assert _resolve_seed(config) is None
+
+
+@pytest.mark.parametrize("rng_seed_value", [False, None, ""])
+def test_resolve_seed_falsy_rng_seed_uses_data_set_seed(rng_seed_value):
+    """When rng_seed is falsy and data_set.seed is set, return data_set.seed."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": rng_seed_value}, "data_set": {"seed": 99}}
+    assert _resolve_seed(config) == 99
+
+
+def test_resolve_seed_truthy_rng_seed_ignores_data_set():
+    """When rng_seed is a truthy integer, return it regardless of data_set."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": 7}, "data_set": {"seed": 999}}
+    assert _resolve_seed(config) == 7
+
+
+def test_resolve_seed_truthy_rng_seed_no_data_set():
+    """When rng_seed is set, data_set being absent does not matter."""
+    from hyrax.splitting_utils import _resolve_seed
+
+    config = {"split": {"rng_seed": 42}}
+    assert _resolve_seed(config) == 42
+
+
+def test_configs_equivalent_no_data_set_key_does_not_raise():
+    """configs_equivalent must not crash when either config lacks a data_set key."""
+    from hyrax.splitting_utils import configs_equivalent
+
+    base = {
+        "split": {"rng_seed": 5, "train": 0.8},
+        "balance": {"field": False, "groups": [], "distribution": {}},
+        "data_request": {
+            "train": {
+                "data": {
+                    "dataset_class": "HyraxRandomDataset",
+                    "data_location": "/loc",
+                    "primary_id_field": "object_id",
+                }
+            }
+        },
+    }
+    other = {**base, "split": {**base["split"], "rng_seed": 5}}
+
+    equivalent, diffs = configs_equivalent(base, other)
+    assert equivalent
+    assert diffs == []
 
 
 def test_create_splits_string_rng_seed_raises(tmp_path):
