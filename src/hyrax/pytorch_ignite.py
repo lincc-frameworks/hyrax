@@ -157,7 +157,7 @@ def dist_data_loader(
     Parameters
     ----------
     dataset : hyrax.datasets.dataset_registry.HyraxDataset
-        A Hyrax dataset instance.  When *dataset* is a :class:`DataProvider`
+        A Hyrax dataset instance.  When *dataset* is a :class:`hyrax.datasets.data_provider.DataProvider`
         with ``split_indices`` set (by :func:`~hyrax.splitting_utils.create_splits`),
         the loader is restricted to those indices via a :class:`~torch.utils.data.Subset`.
         When ``split_weights`` is also set, a
