@@ -45,7 +45,8 @@ dependencies = [
     "scipy", # Used in Holoviews visualization prototype
     "cython", # Used in Holoviews visualization prototype
     "mlflow >= 3.7", # Used to log training metrics and compare models
-    "umap-learn", # Used to map latent spaces down to 2d
+    "scikit-learn", # Used to map latent spaces down for t-sne and pca
+    "umap-learn", # Used to map latent spaces down to 2d with umap
     "pooch", # Used to download data files
     "pydantic>=2.13.4,<3.0", # Used for typed configuration schemas
     "onnx", # Used to export models to ONNX format
@@ -80,7 +81,7 @@ examples = [
 ]
 
 dev = [
-    "asv[virtualenv]==0.6.5", # Used to compute performance benchmarks
+    "asv[virtualenv]==0.6.6", # Used to compute performance benchmarks
     "jupyter", # Clears output from Jupyter notebooks
     "matplotlib", # For example notebooks
     "pre-commit", # Used to run checks before finalizing a git commit
@@ -104,7 +105,7 @@ dev = [
 [build-system]
 requires = [
     "setuptools>=82.0.1", # Used to build and package the Python project
-    "setuptools_scm>=10.0.5", # Gets release version from git. Makes it available programmatically
+    "setuptools_scm>=10.2.0", # Gets release version from git. Makes it available programmatically
 ]
 build-backend = "setuptools.build_meta"
 

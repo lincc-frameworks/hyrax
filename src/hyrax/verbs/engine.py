@@ -128,7 +128,7 @@ class Engine(Verb):
         self.results_writer = create_results_writer(result_dir)
 
         # Determine which indices to iterate over
-        # If split_fraction is configured, setup_dataset will have already
+        # If a split is configured, setup_dataset will have already
         # computed and assigned split_indices to the DataProvider. We need
         # to respect those indices rather than iterating over the full dataset.
         if isinstance(infer_dataset, DataProvider) and infer_dataset.split_indices is not None:

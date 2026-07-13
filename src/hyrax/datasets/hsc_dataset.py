@@ -129,7 +129,7 @@ class HSCDataset(FitsImageDataset):
         self.cutout_shape = self._check_file_dimensions() if cutout_shape is None else cutout_shape
         self.set_crop_transform(self.cutout_shape)
 
-    def _before_preload(self):
+    def _post_init_hook(self):
         self.filters_ref = (
             list(list(self.files.values())[0]) if self.filters_config is None else self.filters_config
         )

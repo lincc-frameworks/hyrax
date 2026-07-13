@@ -145,7 +145,7 @@ def test_train_resume(loopback_hyrax, tmp_path):
 
 def test_train_legacy_split_keys_raise_error(tmp_path):
     """Setting legacy split keys in [data_set] raises a RuntimeError
-    directing the user to split_fraction in [data_request]."""
+    directing the user to define split fractions in [split]."""
     import hyrax
     from hyrax.pytorch_ignite import setup_dataset
 
@@ -156,7 +156,7 @@ def test_train_legacy_split_keys_raise_error(tmp_path):
         setup_dataset(h.config)
 
 
-def test_train_split_fraction(tmp_path):
+def test_train_with_split_defintion(tmp_path):
     """
     Test training with config['split'] fractions on groups sharing the same data_location.
     The train verb calls create_splits which assigns split_indices to each DataProvider
@@ -227,7 +227,7 @@ def test_train_split_fraction(tmp_path):
     assert train_set | validate_set == set(range(30))
 
 
-def test_train_split_fraction_dataloader_indices_are_disjoint(tmp_path):
+def test_train_with_split_definition_dataloader_indices_are_disjoint(tmp_path):
     """
     Verify that create_splits assigns non-overlapping split_indices to the
     train and validate DataProviders when config['split'] is configured.

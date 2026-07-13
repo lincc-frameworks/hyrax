@@ -67,7 +67,7 @@ search, and interactive exploration.
    h.train()                 # Train any PyTorch model with automatic logging & multi-GPU support
    h.infer()                 # Run inference and store results
    h.save_to_database()      # Index embeddings in a vector database
-   h.umap()                  # Reduce latent vectors to 2D/3D with UMAP
+   h.reduce_dimensions()     # Reduce latent vectors to 2D/3D with dimensionality-reduction algorithm
    h.visualize()             # Interactively explore latent spaces in 2D or 3D
    db = h.database_connection()
    v = ...                   # numpy vector representing the object to search for
