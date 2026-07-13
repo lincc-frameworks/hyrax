@@ -180,10 +180,15 @@ class Train(Verb):
         nproc_per_node = (
             torch.cuda.device_count() if torch.cuda.is_available() else torch.multiprocessing.cpu_count()
         )
-        with idist.Parallel(backend="nccl", nproc_per_node=nproc_per_node) as parallel:
-            parallel.run(training)
 
-        # training(0)
+        if nproc_per_node > 1:
+            logger.info(f"Using {nproc_per_node} processes for distributed training.")
+            with idist.Parallel(backend="nccl", nproc_per_node=nproc_per_node) as parallel:
+                parallel.run(training)
+        else:
+            logger.info("Using a single process for training.")
+            training(0)
+
         return model
 
     @staticmethod
