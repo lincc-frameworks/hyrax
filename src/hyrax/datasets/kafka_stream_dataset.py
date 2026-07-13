@@ -118,7 +118,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
             "auto.offset.reset": self.auto_offset_reset,
         }
 
-        if credentials_file_path.exists():
+        if credentials_file_path and credentials_file_path.exists():
             credentials = toml.load(credentials_file_path)
             self.consumer_config.update(credentials)
 
