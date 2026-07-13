@@ -177,7 +177,11 @@ class Train(Verb):
             logger.info("Finished Training")
             close_tensorboard_logger()
 
-        with idist.Parallel(backend="nccl", nproc_per_node=torch.cuda.device_count()) as parallel:
+        nproc_per_node = (
+            torch.cuda.device_count() if torch.cuda.is_available()
+            else torch.multiprocessing.cpu_count()
+        )
+        with idist.Parallel(backend="nccl", nproc_per_node=nproc_per_node) as parallel:
             parallel.run(training)
 
         # training(0)
