@@ -19,7 +19,7 @@ from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler, Subset, WeightedRandomSampler
+from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
 
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
@@ -101,7 +101,29 @@ def setup_dataset(
 
     data_request = generate_data_request_from_config(config)
     keys = splits if splits is not None else tuple(data_request.keys())
-    return {k: DataProvider(config, data_request[k]) for k in keys if k in data_request}
+    return {k: _build_data_provider(config, data_request[k]) for k in keys if k in data_request}
+
+
+def _build_data_provider(config: dict, request: dict):
+    """Build the right provider for a data-request group.
+
+    Streaming (``IterableDataset``) datasets are wrapped in a
+    :class:`~hyrax.datasets.streaming_data_provider.StreamingDataProvider`; all other
+    (map-style) datasets use :class:`~hyrax.datasets.data_provider.DataProvider`.
+    """
+    from hyrax.datasets.dataset_registry import fetch_dataset_class
+    from hyrax.datasets.streaming_data_provider import StreamingDataProvider
+
+    is_streaming = any(
+        isinstance(definition, dict)
+        and definition.get("dataset_class")
+        and issubclass(fetch_dataset_class(definition["dataset_class"]), IterableDataset)
+        for definition in request.values()
+    )
+
+    if is_streaming:
+        return StreamingDataProvider(config, request)
+    return DataProvider(config, request)
 
 
 def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
@@ -145,6 +167,36 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     return retval
 
 
+def setup_model_from_sample(config: dict, sample_batch: dict) -> torch.nn.Module:
+    """Create a model from a pre-formatted batch dict instead of a DataProvider.
+
+    Like :func:`setup_model` but accepts a batch dict directly, bypassing the
+    DataLoader/DataProvider pipeline.  Used by
+    :class:`~hyrax.verbs.infer_stream.InferStream` to pre-flight model
+    architecture without a dataset.
+
+    Parameters
+    ----------
+    config : dict
+        The runtime configuration.
+    sample_batch : dict
+        A representative batch with the same structure as batches that will be
+        processed later (e.g. ``{"object_id": [...], "data": {...}}``).
+
+    Returns
+    -------
+    torch.nn.Module
+        An instance of the model class specified in the configuration.
+    """
+    from hyrax.trace import reset_trace
+
+    model_cls = fetch_model_class(config)
+    prepared_sample = model_cls.prepare_inputs(sample_batch)
+    model_instance = model_cls(config=config, data_sample=prepared_sample)
+    reset_trace()
+    return model_instance
+
+
 def dist_data_loader(
     dataset: Dataset,
     config: dict,
@@ -179,6 +231,25 @@ def dist_data_loader(
     DataLoader
         The distributed dataloader.
     """
+
+    # Iterable (streaming) datasets have no length and cannot be indexed, so the
+    # map-style machinery below (len/Subset/samplers) does not apply. Such a dataset
+    # owns its own batching and yields ``list[dict]`` items; disable automatic batching
+    # (``batch_size=None``) so the dataset's ``collate`` is applied to each yielded item.
+    # A single in-process consumer is assumed, so default to ``num_workers=0``.
+    if isinstance(dataset, IterableDataset):
+        stream_kwargs = dict(config["data_loader"])
+        stream_kwargs.pop("shuffle", None)
+        stream_kwargs["batch_size"] = None
+        stream_kwargs["collate_fn"] = dataset.collate
+        # TODO: Revisit this to determine if we can support num_workers > 0.
+        if stream_kwargs.get("num_workers", 0) != 0:
+            logger.warning(
+                "num_workers > 0 is not supported for streaming datasets. "
+                "Setting num_workers=0 to avoid issues with Kafka consumers."
+            )
+        stream_kwargs["num_workers"] = 0
+        return idist.auto_dataloader(dataset, **stream_kwargs)
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader.
     # Hyrax controls ordering through explicit samplers; warn and ignore legacy
@@ -260,11 +331,23 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     return func(batch)
 
 
-def _create_process_func(funcname, device, model, config):
+def create_process_func(funcname, device, model, config):
+    """Build the per-batch processing function used by the Ignite engine loop.
+
+    Returns a partial of ``_inner_loop`` with ``func``, ``prepare_inputs``,
+    ``device``, and ``config`` already bound.  The remaining signature is
+    ``(engine, batch)`` — pass ``None`` for *engine* when calling outside an
+    Ignite engine (e.g. from :class:`~hyrax.verbs.infer_stream.InferStreamSession`).
+    """
     inner_step = extract_model_method(model, funcname)
     prepare_inputs = extract_model_method(model, "prepare_inputs")
     inner_loop = functools.partial(_inner_loop, inner_step, prepare_inputs, device, config)
     return inner_loop
+
+
+# Keep the old private name as an alias so any external callers are unaffected.
+# TODO: I think we can simply rename this function. It's only used here.
+_create_process_func = create_process_func
 
 
 def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, config: dict) -> Engine:
@@ -286,7 +369,7 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
     config : dict
         The runtime config in use
     """
-    return Engine(_create_process_func(funcname, device, model, config))
+    return Engine(create_process_func(funcname, device, model, config))
 
 
 def extract_model_method(model, method_name):
