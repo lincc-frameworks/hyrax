@@ -73,15 +73,16 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         ds_config = config["data_set"]["KafkaStreamDataset"]
 
         # ``data_location``, when given, is a Kafka URI of the form
-        # ``kafka://<host>:<port>/<topic>`` supplied inline by the data_request. It takes
+        # ``kafka://<host>:<port>[/<topic>]`` supplied inline by the data_request. It takes
         # precedence over the [data_set.KafkaStreamDataset] config; anything the URI omits
         # falls back to that config block.
         host_port = ""
         topic = ""
         if data_location:
             parsed = urlparse(data_location)
-            host_port = parsed.netloc  # "broker.example.org:9092"
-            topic = parsed.path.lstrip("/")  # "lsst_topic"
+            if parsed.scheme == "kafka":
+                host_port = parsed.netloc  # "broker.example.org:9092"
+                topic = parsed.path.lstrip("/")  # "my-topic"
 
         self.bootstrap_servers = host_port or ds_config["bootstrap_servers"]
         self.topics = topic or ds_config["topics"]
@@ -147,10 +148,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         try:
             from confluent_kafka import Consumer
         except ImportError as err:
-            raise ImportError(
-                "KafkaStreamDataset requires the 'confluent-kafka' package. "
-                "Install it with the streaming extra: pip install 'hyrax[stream]'."
-            ) from err
+            raise ImportError("KafkaStreamDataset requires the 'confluent-kafka' package. ") from err
 
         consumer = Consumer(self.consumer_config)
 
