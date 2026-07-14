@@ -48,8 +48,8 @@ provider is what is passed to the DataLoader; configure it the normal way:
 
 import json
 import logging
-from pathlib import Path
 import threading
+from pathlib import Path
 from urllib.parse import urlparse
 
 import toml
@@ -84,15 +84,16 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
             topic = parsed.path.lstrip("/")  # "lsst_topic"
 
         self.bootstrap_servers = host_port or ds_config["bootstrap_servers"]
-        topic = topic or ds_config["topic"]
+        self.topics = topic or ds_config["topics"]
+        if not isinstance(self.topics, list) and isinstance(self.topics, str):
+            self.topics = [self.topics]  # allow a single topic string for convenience
 
-        # `topic` may still be the TOML `false` sentinel ("not set") here.
-        if not topic:
+        # `topics` may still be the TOML `false` sentinel ("not set") here.
+        if not self.topics:
             raise ValueError(
-                "config['data_set']['KafkaStreamDataset']['topic'] must be set to the Kafka topic to consume."
+                "config['data_set']['KafkaStreamDataset']['topics'] must be set to a list of Kafka topics."
             )
 
-        self.topic = topic
         self.group_id = ds_config["group_id"]
         self.auto_offset_reset = ds_config["auto_offset_reset"]
         self.poll_timeout = float(ds_config["poll_timeout"])
@@ -153,7 +154,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
 
         consumer = Consumer(self.consumer_config)
 
-        consumer.subscribe([self.topic])
+        consumer.subscribe(self.topics)
 
         return consumer
 
