@@ -29,7 +29,11 @@ dependencies = [
     "pytorch-ignite <= 0.5.4", # Used for distributed training, logging, etc.
     "more-itertools", # Used to work around the issue in pytorch-ignite above
     "toml", # Used to load configuration files as dictionaries
-    "tomlkit", # Used to load configuration files as dictionaries and retain comments
+    # NOTE: tomlkit 0.15.0+ has a bug that causes it to parse arrays in an odd way
+    # that prevents them from being immediately converted to torch tensors. See
+    # https://github.com/python-poetry/tomlkit/issues/562 for the report to tomlkit
+    # https://github.com/lincc-frameworks/hyrax/issues/985 for hyrax tracking
+    "tomlkit <= 0.14.0", # Used to load configuration files as dictionaries and retain comments
     "torch >= 2.9.0", # Used for almost all ML evals. 2.9.0 because we need hash_tensor for Trace mode
     "torchvision", # Used in hsc data loader, example autoencoder, and CNN model data set
     "tensorboardX", # Used to log training metrics
@@ -67,6 +71,7 @@ dependencies = [
     "lance-namespace >= 0.8.6, < 0.9.0",
     "pyarrow", # Used by lancedb for data interchange
     "pylance >= 7.0.0, < 8.0.0", # Used by lancedb for Lance dataset access
+    "confluent-kafka", # Kafka consumer used by KafkaStreamDataset
 ]
 
 [project.scripts]
@@ -105,7 +110,7 @@ dev = [
 [build-system]
 requires = [
     "setuptools>=82.0.1", # Used to build and package the Python project
-    "setuptools_scm>=10.0.5", # Gets release version from git. Makes it available programmatically
+    "setuptools_scm>=10.2.0", # Gets release version from git. Makes it available programmatically
 ]
 build-backend = "setuptools.build_meta"
 

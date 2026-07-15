@@ -6,6 +6,7 @@ import os
 import pickle
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -265,7 +266,231 @@ Example configuration:
     return data_request
 
 
-class DataProvider:
+class CollationMixin:
+    """Shared collation behavior for map-style and streaming data providers.
+
+    Provides ``collate`` (``list[dict]`` -> batch ``dict``) and ``handle_nans``.
+    Both rely only on instance attributes (``custom_collate_functions``,
+    ``field_collate_functions``, ``config``), so any class that populates those
+    can reuse this collation logic.  :class:`DataProvider` uses it for map-style
+    datasets; :class:`~hyrax.datasets.streaming_data_provider.StreamingDataProvider`
+    uses it for streaming datasets.
+    """
+
+    @staticmethod
+    def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
+        """Default field-level collate function for a single field.
+
+        Parameters
+        ----------
+        samples : list of dict
+            A list of data samples, where each sample is a
+            dictionary mapping some attribute to one of its values.
+
+        field : str
+            The name of the field to collate.
+
+        friendly_name : str
+            The friendly name of the dataset.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the collated field values.
+
+        """
+        retval = {}
+        if field not in samples[0]:
+            raise RuntimeError(f"Requested field '{field}' not in dataset '{friendly_name}'")
+
+        values = [s[field] for s in samples]
+
+        if all(isinstance(v, np.ndarray) for v in values):
+            shapes = [v.shape for v in values]
+            if all(s == shapes[0] for s in shapes):
+                try:
+                    retval[field] = np.stack(values, axis=0)
+                    return retval
+                except Exception as err:
+                    logger.warning(
+                        f"Could not stack numpy arrays for field '{field}' "
+                        f"in dataset '{friendly_name}'. Consider implementing "
+                        "a custom collation function for this field."
+                    )
+                    raise RuntimeError(
+                        f"Could not stack numpy arrays for field '{field}' "
+                        f"in dataset '{friendly_name}'. Consider implementing "
+                        "a custom collation function for this field."
+                    ) from err
+
+        # if values is a list of numpy scalars convert to numpy array
+        retval[field] = np.array(values)
+        return retval
+
+    @staticmethod
+    def dataset_collate(field_collate_functions: dict, friendly_name: str, samples: list[dict]) -> dict:
+        """Template for dataset-level collate function which Hyrax constructs by binding first two arguments.
+
+        Parameters
+        ----------
+        field_collate_functions : dict
+            A dictionarity mapping field names to user-defined field-level collate functions.
+            Fields for which the user did not define a collate function will have a value of None.
+
+        friendly_name : str
+            The friendly name of the dataset
+
+        samples : list of dict
+            A list of data samples, where each sample is a
+            dictionary mapping some attribute to one of its values.
+
+        Returns
+        -------
+        dict
+            A dictionary of the collated data, where the keys include the requested fields
+            as well as fields denoting padding (if applicable), and the values include
+            all values from samples.
+        """
+        retval = {}
+        for field, field_collate_fcn in field_collate_functions.items():
+            if field_collate_fcn is not None:
+                retval.update(field_collate_fcn(samples))
+            else:
+                retval.update(DataProvider.default_field_collate(samples, field, friendly_name))
+        return retval
+
+    def collate(self, batch: list[dict]) -> dict:
+        """Custom collate function to be used outside the context of a PyTorch
+        DataLoader.
+
+        This function takes a list of data samples (each sample is a dictionary)
+        and combines them into a single batch dictionary.
+
+        Parameters
+        ----------
+        batch : list of dict
+            A list of data samples, where each sample is a dictionary.
+
+        Returns
+        -------
+        dict
+            A dictionary where each key corresponds to a field and the value is
+            a list of values for that field across the batch.
+        """
+
+        batch_dict: dict[str, dict[str, list] | list] = {}
+        custom_collate: dict[str, list] = {}
+
+        # Track which batch positions are None per friendly_name (left outer
+        # join misses).  Only populated for names that have at least one None.
+        none_masks: dict[str, list[bool]] = {}
+
+        # Aggregate values per friendly_name -> field -> list(values)
+        for sample_idx, sample in enumerate(batch):
+            for friendly_name, fields in sample.items():
+                # Special handling for "object_id" for the time being. "object_id"
+                # hangs on the edge of the data dictionary so that it can be consumed
+                # during `infer`, specifically `_save_batch`. Originally it was
+                # there to protect against missing ids. We have much more control
+                # now with DataProvider, and should remove the special logic for
+                # "object_id" from the assorted places it's used.
+                if friendly_name == "object_id":
+                    val = fields[""] if isinstance(fields, dict) and "" in fields else fields
+                    batch_dict.setdefault("object_id", []).append(str(val))
+                    continue
+
+                # Left outer join: None means no match in this secondary.
+                if fields is None:
+                    if friendly_name not in none_masks:
+                        none_masks[friendly_name] = [True] * sample_idx
+                    none_masks[friendly_name].append(False)
+                    continue
+
+                # Track matched position if we're already tracking this name.
+                if friendly_name in none_masks:
+                    none_masks[friendly_name].append(True)
+
+                # If we find that `friendly_name` is not in self.custom_collate_functions
+                # we construct a collate function using
+                # field-level collate functions if provided, using the
+                # defauly field collate function otherwise
+                custom_collate.setdefault(friendly_name, []).append(fields)
+                if friendly_name not in self.custom_collate_functions:
+                    # construct the dataset collate function and set it in self.custom_collate_functions
+                    self.custom_collate_functions[friendly_name] = partial(
+                        DataProvider.dataset_collate,
+                        self.field_collate_functions[friendly_name],
+                        friendly_name,
+                    )
+
+        # Pad any none_masks that are shorter than the batch (trailing matches).
+        batch_size = len(batch)
+        for name in none_masks:
+            while len(none_masks[name]) < batch_size:
+                none_masks[name].append(True)
+
+        # Convert object_id list -> numpy array of strings
+        if "object_id" in batch_dict:
+            batch_dict["object_id"] = np.asarray(batch_dict["object_id"], dtype=str)
+
+        # Handle custom collate functions for datasets that define them.
+        # For joined datasets with None entries, filter out the Nones before
+        # calling the custom function.
+        for friendly_name, samples in custom_collate.items():
+            custom_collate_fn = self.custom_collate_functions[friendly_name]
+
+            try:
+                custom_collated_data = custom_collate_fn(samples)
+            except Exception as err:
+                logger.error(
+                    f"Error occurred while collating batch for dataset '{friendly_name}' "
+                    "using its custom collate function."
+                )
+                raise RuntimeError(
+                    f"Error occurred while collating batch for dataset '{friendly_name}' "
+                    "using its custom collate function."
+                ) from err
+
+            batch_dict[friendly_name] = custom_collated_data
+
+        # Add __matched masks for joined datasets that had any None entries.
+        for friendly_name, mask in none_masks.items():
+            batch_dict[f"{friendly_name}__matched"] = np.array(mask, dtype=bool)
+
+        return self.handle_nans(batch_dict)
+
+    def handle_nans(self, batch_dict):
+        """Apply nan handling to a batch dictionary
+
+        Parameters
+        ----------
+        batch_dict : dict[str, np.ndarray]
+            Dictionary from data column to an entire batch of data in np.ndarray form
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            The same batch dict but with NaNs altered according to the Hyrax configuration.
+        """
+        # Apply NaN handling to all numpy array fields in the batch,
+        # including data produced by custom collate functions.
+        for friendly_name, fields in batch_dict.items():
+            if friendly_name == "object_id":
+                continue
+
+            # Handle dict of fields (normal case)
+            if isinstance(fields, dict):
+                for field, value in fields.items():
+                    if isinstance(value, np.ndarray):
+                        batch_dict[friendly_name][field] = _handle_nans(value, self.config)
+            # Handle direct numpy arrays (e.g., from custom collate that returns arrays directly)
+            elif isinstance(fields, np.ndarray):
+                batch_dict[friendly_name] = _handle_nans(fields, self.config)
+
+        return batch_dict
+
+
+class DataProvider(CollationMixin):
     """This class presents itself as a PyTorch Dataset, but acts like a GraphQL
     gateway that fetches data from multiple datasets based on the `data_request`
     dictionary provided during initialization.
@@ -1124,172 +1349,3 @@ class DataProvider:
         dataset_to_use = self.primary_dataset if self.primary_dataset else keys[0]
 
         return self.prepped_datasets[dataset_to_use]
-
-    def collate(self, batch: list[dict]) -> dict:
-        """Custom collate function to be used outside the context of a PyTorch
-        DataLoader.
-
-        This function takes a list of data samples (each sample is a dictionary)
-        and combines them into a single batch dictionary.
-
-        Parameters
-        ----------
-        batch : list of dict
-            A list of data samples, where each sample is a dictionary.
-
-        Returns
-        -------
-        dict
-            A dictionary where each key corresponds to a field and the value is
-            a list of values for that field across the batch.
-        """
-
-        def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
-            retval = {}
-            if field not in samples[0]:
-                raise RuntimeError(f"Requested field '{field}' not in dataset '{friendly_name}'")
-
-            values = [s[field] for s in samples]
-
-            if all(isinstance(v, np.ndarray) for v in values):
-                shapes = [v.shape for v in values]
-                if all(s == shapes[0] for s in shapes):
-                    try:
-                        retval[field] = np.stack(values, axis=0)
-                        return retval
-                    except Exception as err:
-                        logger.warning(
-                            f"Could not stack numpy arrays for field '{field}' "
-                            f"in dataset '{friendly_name}'. Consider implementing "
-                            "a custom collation function for this field."
-                        )
-                        raise RuntimeError(
-                            f"Could not stack numpy arrays for field '{field}' "
-                            f"in dataset '{friendly_name}'. Consider implementing "
-                            "a custom collation function for this field."
-                        ) from err
-
-            # if values is a list of numpy scalars convert to numpy array
-            retval[field] = np.array(values)
-            return retval
-
-        batch_dict: dict[str, dict[str, list] | list] = {}
-        custom_collate: dict[str, list] = {}
-
-        # Track which batch positions are None per friendly_name (left outer
-        # join misses).  Only populated for names that have at least one None.
-        none_masks: dict[str, list[bool]] = {}
-
-        # Aggregate values per friendly_name -> field -> list(values)
-        for sample_idx, sample in enumerate(batch):
-            for friendly_name, fields in sample.items():
-                # Special handling for "object_id" for the time being. "object_id"
-                # hangs on the edge of the data dictionary so that it can be consumed
-                # during `infer`, specifically `_save_batch`. Originally it was
-                # there to protect against missing ids. We have much more control
-                # now with DataProvider, and should remove the special logic for
-                # "object_id" from the assorted places it's used.
-                if friendly_name == "object_id":
-                    val = fields[""] if isinstance(fields, dict) and "" in fields else fields
-                    batch_dict.setdefault("object_id", []).append(str(val))
-                    continue
-
-                # Left outer join: None means no match in this secondary.
-                if fields is None:
-                    if friendly_name not in none_masks:
-                        none_masks[friendly_name] = [True] * sample_idx
-                    none_masks[friendly_name].append(False)
-                    continue
-
-                # Track matched position if we're already tracking this name.
-                if friendly_name in none_masks:
-                    none_masks[friendly_name].append(True)
-
-                # If we find that `friendly_name` is not in self.custom_collate_functions
-                # we construct a collate function using
-                # field-level collate functions if provided, using the
-                # defauly field collate function otherwise
-                custom_collate.setdefault(friendly_name, []).append(fields)
-                if friendly_name not in self.custom_collate_functions:
-                    # construct the dataset collate function and set it in self.custom_collate_functions
-                    def make_dataset_collate(field_collate_functions: dict, friendly_name: str):
-                        def dataset_collate(samples: list[dict]) -> dict:
-                            retval = {}
-                            for field, field_collate_fcn in field_collate_functions.items():
-                                if field_collate_fcn is not None:
-                                    retval.update(field_collate_fcn(samples))
-                                else:
-                                    retval.update(default_field_collate(samples, field, friendly_name))
-                            return retval
-
-                        return dataset_collate
-
-                    self.custom_collate_functions[friendly_name] = make_dataset_collate(
-                        self.field_collate_functions[friendly_name], friendly_name
-                    )
-
-        # Pad any none_masks that are shorter than the batch (trailing matches).
-        batch_size = len(batch)
-        for name in none_masks:
-            while len(none_masks[name]) < batch_size:
-                none_masks[name].append(True)
-
-        # Convert object_id list -> numpy array of strings
-        if "object_id" in batch_dict:
-            batch_dict["object_id"] = np.asarray(batch_dict["object_id"], dtype=str)
-
-        # Handle custom collate functions for datasets that define them.
-        # For joined datasets with None entries, filter out the Nones before
-        # calling the custom function.
-        for friendly_name, samples in custom_collate.items():
-            custom_collate_fn = self.custom_collate_functions[friendly_name]
-
-            try:
-                custom_collated_data = custom_collate_fn(samples)
-            except Exception as err:
-                logger.error(
-                    f"Error occurred while collating batch for dataset '{friendly_name}' "
-                    "using its custom collate function."
-                )
-                raise RuntimeError(
-                    f"Error occurred while collating batch for dataset '{friendly_name}' "
-                    "using its custom collate function."
-                ) from err
-
-            batch_dict[friendly_name] = custom_collated_data
-
-        # Add __matched masks for joined datasets that had any None entries.
-        for friendly_name, mask in none_masks.items():
-            batch_dict[f"{friendly_name}__matched"] = np.array(mask, dtype=bool)
-
-        return self.handle_nans(batch_dict)
-
-    def handle_nans(self, batch_dict):
-        """Apply nan handling to a batch dictionary
-
-        Parameters
-        ----------
-        batch_dict : dict[str, np.ndarray]
-            Dictionary from data column to an entire batch of data in np.ndarray form
-
-        Returns
-        -------
-        dict[str, np.ndarray]
-            The same batch dict but with NaNs altered according to the Hyrax configuration.
-        """
-        # Apply NaN handling to all numpy array fields in the batch,
-        # including data produced by custom collate functions.
-        for friendly_name, fields in batch_dict.items():
-            if friendly_name == "object_id":
-                continue
-
-            # Handle dict of fields (normal case)
-            if isinstance(fields, dict):
-                for field, value in fields.items():
-                    if isinstance(value, np.ndarray):
-                        batch_dict[friendly_name][field] = _handle_nans(value, self.config)
-            # Handle direct numpy arrays (e.g., from custom collate that returns arrays directly)
-            elif isinstance(fields, np.ndarray):
-                batch_dict[friendly_name] = _handle_nans(fields, self.config)
-
-        return batch_dict
