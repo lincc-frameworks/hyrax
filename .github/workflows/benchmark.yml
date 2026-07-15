@@ -1,0 +1,37 @@
+# This workflow will setup the environment and run th benchmarking test.
+
+name: Runtime Benchmark
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  benchmark:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Activate benchmark environment
+        run: |
+          source /astro/store/shiren/wqy37/miniforge3/etc/profile.d/conda.sh
+          conda activate hyrax-bench
+
+          python --version
+          which python
+          python -c "import torch; print(torch.__version__)"
+          python -c "import torch; print(torch.cuda.is_available())"
+
+      - name: Install Hyrax
+        run: |
+          source /astro/store/shiren/wqy37/miniforge3/etc/profile.d/conda.sh
+          conda activate hyrax-bench
+          pip install -e .
+
+      - name: Run benchmark
+        run: |
+          /astro/store/shiren/wqy37/miniforge3/envs/hyrax-bench/bin/python \
+          benchmarks/run_timebench.py
