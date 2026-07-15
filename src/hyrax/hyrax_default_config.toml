@@ -402,6 +402,28 @@ model_weights_file = false
 save_model_output = false
 
 
+[train_stream]
+# Path to warm-start weights to fine-tune from. If false, train from scratch.
+model_weights_file = false
+
+# Filename for saved weights within the timestamped results directory.
+weights_filename = "example_model.pth"
+
+# Persist weights every N processed batches (checkpointing for open-ended streams).
+# If false, weights are saved only on session close.
+save_weights_every = false
+
+# MLflow experiment name (mirrors [train]).
+experiment_name = "notebook"
+
+# MLflow run name; if false, falls back to the results-directory name (mirrors [train]).
+run_name = false
+
+# Skip streaming batches with fewer than this many samples (e.g. tiny timeout batches).
+# If false, every non-empty batch is trained on.
+min_batch_size = false
+
+
 [vector_db]
 # The type of vector db to use. Use "false" to disable vector database.
 name = "chromadb"
