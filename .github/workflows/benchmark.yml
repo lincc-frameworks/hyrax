@@ -33,5 +33,9 @@ jobs:
 
       - name: Run benchmark
         run: |
-          /astro/store/shiren/wqy37/miniforge3/envs/hyrax-bench/bin/python \
-          benchmarks/run_timebench.py
+          source /astro/store/shiren/wqy37/miniforge3/etc/profile.d/conda.sh
+          conda activate hyrax-bench
+
+          export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
+
+          python benchmarks/run_timebench.py
