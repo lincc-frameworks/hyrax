@@ -65,6 +65,117 @@ def test_writer_multiple_batches(tmp_path):
     assert len(dataset) == 5
 
 
+def test_writer_multiple_batches_preserves_nan_and_inf(tmp_path):
+    """Test that append writes preserve special floating-point values."""
+    writer = ResultDatasetWriter(tmp_path)
+
+    writer.write_batch(
+        np.array(["obj_0", "obj_1"]),
+        [
+            np.array([0.0, 1.0], dtype=np.float32),
+            np.array([2.0, 3.0], dtype=np.float32),
+        ],
+    )
+    expected_second_batch = [
+        np.array([np.nan, np.inf], dtype=np.float32),
+        np.array([-np.inf, -0.0], dtype=np.float32),
+    ]
+    writer.write_batch(np.array(["obj_2", "obj_3"]), expected_second_batch)
+    writer.commit()
+
+    h = hyrax.Hyrax()
+    dataset = ResultDataset(h.config, tmp_path)
+
+    np.testing.assert_array_equal(dataset[2], expected_second_batch[0])
+    np.testing.assert_array_equal(dataset[3], expected_second_batch[1])
+
+
+def test_schema_remains_fixed_size_list_after_append_and_commit(tmp_path):
+    """Test that append writes preserve the fixed-size-list storage schema."""
+    writer = ResultDatasetWriter(tmp_path)
+    writer.write_batch(
+        np.array(["obj_0", "obj_1"]),
+        [
+            np.array([1.0, 2.0], dtype=np.float32),
+            np.array([3.0, 4.0], dtype=np.float32),
+        ],
+    )
+    writer.write_batch(
+        np.array(["obj_2"]),
+        [np.array([np.nan, np.inf], dtype=np.float32)],
+    )
+    writer.commit()
+
+    h = hyrax.Hyrax()
+    dataset = ResultDataset(h.config, tmp_path)
+    data_type = dataset.table.schema.field("data").type
+
+    assert pa.types.is_fixed_size_list(data_type)
+    assert data_type.list_size == 2
+
+
+def test_tensor_metadata_survives_append_and_reopen(tmp_path, multidim_data):
+    """Test that tensor metadata persists across append writes and reopen."""
+    object_ids, data = multidim_data
+
+    writer = ResultDatasetWriter(tmp_path)
+    writer.write_batch(object_ids[:2], data[:2])
+    writer.write_batch(object_ids[2:], data[2:])
+    writer.commit()
+
+    h = hyrax.Hyrax()
+    dataset = ResultDataset(h.config, tmp_path)
+
+    assert dataset.tensor_shape == [2, 2]
+    assert dataset.tensor_dtype == np.dtype(np.float32)
+    np.testing.assert_array_equal(dataset[2], data[2])
+
+
+def test___get_all___preserves_special_values_and_dtype(tmp_path):
+    """Test the bulk-read path preserves dtype and special float values."""
+    object_ids = np.array(["obj_0", "obj_1", "obj_2"])
+    data = [
+        np.array([0.0, np.nan], dtype=np.float32),
+        np.array([np.inf, -np.inf], dtype=np.float32),
+        np.array([-0.0, 5.0], dtype=np.float32),
+    ]
+
+    writer = ResultDatasetWriter(tmp_path)
+    writer.write_batch(object_ids, data)
+    writer.commit()
+
+    h = hyrax.Hyrax()
+    dataset = ResultDataset(h.config, tmp_path)
+    all_data = dataset.__get_all__()
+
+    assert all_data.dtype == np.float32
+    assert all_data.shape == (3, 2)
+    np.testing.assert_array_equal(all_data, np.stack(data))
+
+
+def test_appended_batches_preserve_row_order_with_special_values(tmp_path):
+    """Test append writes preserve row ordering for IDs and tensors."""
+    writer = ResultDatasetWriter(tmp_path)
+    expected_ids = np.array(["obj_0", "obj_1", "obj_2", "obj_3"])
+    expected_data = [
+        np.array([1.0, 2.0], dtype=np.float32),
+        np.array([3.0, 4.0], dtype=np.float32),
+        np.array([np.nan, 6.0], dtype=np.float32),
+        np.array([7.0, -0.0], dtype=np.float32),
+    ]
+
+    writer.write_batch(expected_ids[:2], expected_data[:2])
+    writer.write_batch(expected_ids[2:], expected_data[2:])
+    writer.commit()
+
+    h = hyrax.Hyrax()
+    dataset = ResultDataset(h.config, tmp_path)
+
+    assert list(dataset.ids()) == expected_ids.tolist()
+    for idx, expected in enumerate(expected_data):
+        np.testing.assert_array_equal(dataset[idx], expected)
+
+
 def test_writer_multidim_tensors(tmp_path, multidim_data):
     """Test writing multi-dimensional tensors."""
     object_ids, data = multidim_data
