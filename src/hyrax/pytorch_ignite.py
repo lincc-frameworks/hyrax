@@ -675,13 +675,20 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
 
     if wrapped:
+        print(f"{wrapped_model}")
         # bind the train_batch function to the DDP model
         wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
 
         # set the attributes needed for training on the DDP model
-        attrs = ["optimizer", "criterion", "grad_clip"]
+
+        # we need a good way to identify and move necessary attributes up from the model
+        # to the DDP model. Having an explicit list of potential attributes
+        # and detecting them to move up is not good.
+        attrs = ["optimizer", "criterion", "grad_clip", "scheduler"]
+
         for attr in attrs:
-            setattr(wrapped_model, attr, getattr(model, attr))
+            if hasattr(model, attr):
+                setattr(wrapped_model, attr, getattr(model, attr))
 
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
