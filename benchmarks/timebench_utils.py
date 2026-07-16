@@ -1,3 +1,4 @@
+import os
 import time
 import pickle
 import numpy as np
@@ -31,7 +32,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
         "train": {
             "data": {
                 "dataset_class": "HyraxCifarDataset",
-                "data_location": "./data",
+                "data_location": os.environ.get("CIFAR_DIR", "./data"),
                 "fields": ["image", "label"],
                 "primary_id_field": "object_id",
             },
@@ -39,7 +40,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
         "infer": {
             "data": {
                 "dataset_class": "HyraxCifarDataset",
-                "data_location": "./data",
+                "data_location": os.environ.get("CIFAR_DIR", "./data"),
                 "fields": ["image"],
                 "primary_id_field": "object_id",
                 "dataset_config": {
@@ -72,7 +73,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     for i, result in enumerate(inference_results):
         predicted_classes[i] = np.argmax(result)
 
-    with open("./data/cifar-10-batches-py/test_batch", "rb") as f_in:
+    with open(f"{os.environ.get("CIFAR_DIR", "./data")}/cifar-10-batches-py/test_batch", "rb") as f_in:
         test_data = pickle.load(f_in, encoding="bytes")
 
     y_true = test_data[b"labels"]
@@ -113,7 +114,7 @@ def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
     )
 
     train_dataset = torchvision.datasets.CIFAR10(
-        root="./data",
+        root=os.environ.get("CIFAR_DIR", "./data"),
         train=True,
         download=True,
         transform=transform,
@@ -128,7 +129,7 @@ def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
                               shuffle=True, num_workers=num_workers)
 
     test_dataset = torchvision.datasets.CIFAR10(
-        root="./data",
+        root=os.environ.get("CIFAR_DIR", "./data"),
         train=False,
         download=True,
         transform=transform,

@@ -7,6 +7,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
 jobs:
@@ -32,9 +33,14 @@ jobs:
       - name: Install dependencies
         run: |
           source .venv/bin/activate
-          uv pip install --python .venv/bin/python -e ".[dev]"
+          uv pip install -e .[dev]
+          if [ -f requirements.txt ]; then uv pip install -r requirements.txt; fi
 
       - name: Run benchmark
         run: |
           source .venv/bin/activate
+
+          # path to downloaded cifar dataset
+          export CIFAR_DIR="/astro/store/shiren/wqy37/datasets"
+
           python benchmarks/run_timebench.py
