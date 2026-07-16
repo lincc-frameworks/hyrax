@@ -29,7 +29,11 @@ dependencies = [
     "pytorch-ignite <= 0.5.4", # Used for distributed training, logging, etc.
     "more-itertools", # Used to work around the issue in pytorch-ignite above
     "toml", # Used to load configuration files as dictionaries
-    "tomlkit", # Used to load configuration files as dictionaries and retain comments
+    # NOTE: tomlkit 0.15.0+ has a bug that causes it to parse arrays in an odd way
+    # that prevents them from being immediately converted to torch tensors. See
+    # https://github.com/python-poetry/tomlkit/issues/562 for the report to tomlkit
+    # https://github.com/lincc-frameworks/hyrax/issues/985 for hyrax tracking
+    "tomlkit <= 0.14.0", # Used to load configuration files as dictionaries and retain comments
     "torch >= 2.9.0", # Used for almost all ML evals. 2.9.0 because we need hash_tensor for Trace mode
     "torchvision", # Used in hsc data loader, example autoencoder, and CNN model data set
     "tensorboardX", # Used to log training metrics
@@ -59,14 +63,10 @@ dependencies = [
     "nested-pandas", # Used by NestedPandasDataset
     "qdrant-client", # Vector database for similarity search
     "colorama", # Used to color terminal output
-    # LanceDB >= 0.30 rejects NaN values in vector (fixed-size-list) columns on table.add(),
-    # so ResultDataset writes through pylance to preserve both NaNs and the existing fixed-size-list format.
-    "lancedb < 0.34.0", # Used for columnar storage of inference results
-    # pylance 7 supports lance-namespace 0.7, while lancedb<0.30 needed lance-namespace<0.7.
-    # Keep this cap aligned with pylance until pylance supports newer lance-namespace releases.
-    "lance-namespace >= 0.7.7, < 0.8.0",
+    "lancedb", # Used for columnar storage of inference results
+    "lance-namespace",
     "pyarrow", # Used by lancedb for data interchange
-    "pylance >= 7.0.0, < 8.0.0", # Used by lancedb for Lance dataset access
+    "pylance", # Used by lancedb for Lance dataset access
     "confluent-kafka", # Kafka consumer used by KafkaStreamDataset
 ]
 
