@@ -1,4 +1,4 @@
-# This workflow will setup the environment and run th benchmarking test.
+# This workflow will setup the environment and run the benchmarking test.
 
 name: Runtime Benchmark
 
@@ -7,6 +7,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   benchmark:
@@ -15,27 +16,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Activate benchmark environment
-        run: |
-          source /astro/store/shiren/wqy37/miniforge3/etc/profile.d/conda.sh
-          conda activate hyrax-bench
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
-          python --version
-          which python
-          python -c "import torch; print(torch.__version__)"
-          python -c "import torch; print(torch.cuda.is_available())"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
 
-      - name: Install Hyrax
+      - name: Create fresh virtual environment
         run: |
-          source /astro/store/shiren/wqy37/miniforge3/etc/profile.d/conda.sh
-          conda activate hyrax-bench
-          pip install -e .
+          uv venv .venv --python 3.12
+
+      - name: Install dependencies
+        run: |
+          source .venv/bin/activate
+          uv pip install --python .venv/bin/python -e ".[dev]"
 
       - name: Run benchmark
         run: |
-          source /astro/store/shiren/wqy37/miniforge3/etc/profile.d/conda.sh
-          conda activate hyrax-bench
-
-          export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-
+          source .venv/bin/activate
           python benchmarks/run_timebench.py

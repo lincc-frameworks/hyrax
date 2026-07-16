@@ -13,7 +13,7 @@ from torch.utils.data import DataLoader, Subset
 
 from hyrax import Hyrax
 
-DATA_ROOT = "/astro/store/shiren/wqy37/datasets"
+# DATA_PATH = "/astro/store/shiren/wqy37/datasets"
 
 # hyrax bench 
 def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0, lr=0.01):
@@ -31,7 +31,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
         "train": {
             "data": {
                 "dataset_class": "HyraxCifarDataset",
-                "data_location": DATA_ROOT,
+                "data_location": "./data",
                 "fields": ["image", "label"],
                 "primary_id_field": "object_id",
             },
@@ -39,7 +39,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
         "infer": {
             "data": {
                 "dataset_class": "HyraxCifarDataset",
-                "data_location": DATA_ROOT,
+                "data_location": "./data",
                 "fields": ["image"],
                 "primary_id_field": "object_id",
                 "dataset_config": {
@@ -72,7 +72,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     for i, result in enumerate(inference_results):
         predicted_classes[i] = np.argmax(result)
 
-    with open(f"{DATA_ROOT}/cifar-10-batches-py/test_batch", "rb") as f_in:
+    with open("./data/cifar-10-batches-py/test_batch", "rb") as f_in:
         test_data = pickle.load(f_in, encoding="bytes")
 
     y_true = test_data[b"labels"]
@@ -113,7 +113,7 @@ def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
     )
 
     train_dataset = torchvision.datasets.CIFAR10(
-        root=DATA_ROOT,
+        root="./data",
         train=True,
         download=True,
         transform=transform,
@@ -128,7 +128,7 @@ def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
                               shuffle=True, num_workers=num_workers)
 
     test_dataset = torchvision.datasets.CIFAR10(
-        root=DATA_ROOT,
+        root="./data",
         train=False,
         download=True,
         transform=transform,
