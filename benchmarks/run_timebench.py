@@ -1,12 +1,10 @@
 import datetime
 import json
-import subprocess
 import platform
 from pathlib import Path
 
 import torch
 import hyrax
-import pandas as pd
 
 from timebench_utils import benchmark_repeated
 
