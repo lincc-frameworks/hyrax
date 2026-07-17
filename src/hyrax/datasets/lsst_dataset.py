@@ -70,7 +70,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             else self._detect_object_id_column_name()
         )
 
-        super().__init__(config)
+        super().__init__(config, metadata_table=self.catalog)
 
         self.set_function_transform()
         self.set_crop_transform()

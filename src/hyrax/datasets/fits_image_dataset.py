@@ -126,7 +126,9 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
         # Relies on self.filters_ref and self.filter_catalog_table which are both determined
         # inside _init_from_path()
-        super().__init__(config)
+        logger.debug("Preparing Metadata")
+        metadata = self._prepare_metadata()
+        super().__init__(config, metadata_table=metadata)
 
         self._post_init_hook()
 

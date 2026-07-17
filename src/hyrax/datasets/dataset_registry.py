@@ -1,6 +1,7 @@
 # ruff: noqa: D102, B027
 import logging
 from collections.abc import Callable
+from types import MethodType
 from typing import Any
 
 import numpy as np
@@ -31,7 +32,7 @@ class HyraxDataset:
 
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, metadata_table=None):
         """
         .. py:method:: __init__
 
@@ -52,9 +53,25 @@ class HyraxDataset:
         ----------
         config : dict
             The runtime configuration for hyrax
+        metadata_table : optional
+            An Astropy Table whose columns are auto-registered as
+            ``get_<column>`` getter methods on the instance.
         """
 
         self._config = config
+
+        if metadata_table is not None:
+
+            def _make_getter(column):
+                def getter(self, idx, _col=column):
+                    return metadata_table[_col][idx]
+
+                return getter
+
+            for col in metadata_table.colnames:
+                method_name = f"get_{col}"
+                if not hasattr(self, method_name):
+                    setattr(self, method_name, MethodType(_make_getter(col), self))
 
     @property
     def config(self):
