@@ -22,7 +22,7 @@ jobs:
 
       - name: Create fresh virtual environment
         run: |
-          # clean up venv to test without uv cache
+          # clean up venv
           rm -rf .venv
           uv venv .venv --python 3.12
 
@@ -37,5 +37,8 @@ jobs:
 
           # path to downloaded cifar dataset
           export CIFAR_DIR="/astro/store/shiren/wqy37/datasets"
+
+          # path for saving the result
+          export RESULT_PATH="/astro/store/shiren/wqy37/results"
 
           python benchmarks/run_timebench.py

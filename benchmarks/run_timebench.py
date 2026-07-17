@@ -1,3 +1,4 @@
+import os
 import datetime
 import json
 import platform
@@ -15,7 +16,7 @@ CONFIG = {
     "batch_size": 512,
     "num_workers": 0,
     "lr": 0.01,
-    "repeats": 1,
+    "repeats": 5,
 }
 
 
@@ -77,6 +78,24 @@ def main():
             indent=2,
         )
     )
+
+    # save the result to json file
+    output_dir = Path(os.environ.get("RESULT_PATH", "benchmarks/results"))
+    # make sure the directory exist
+    output_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    with open(
+        output_dir / f"{result["timestamp"]}.json",
+        "w",
+    ) as f:
+        json.dump(
+            result,
+            f,
+            indent=2,
+        )
 
 
 if __name__ == "__main__":
