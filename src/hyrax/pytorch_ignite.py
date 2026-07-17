@@ -695,12 +695,9 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     model.train()
     wrapped_model = idist.auto_model(model)
 
-    if type(wrapped_model) is DataParallel:
-        raise RuntimeError(
-            "Model unexpectedly wrapped in DataParallel; should be DistributedDataParallel or not wrapped"
-        )
-
-    wrapped = type(wrapped_model) is DistributedDataParallel
+    # in the future, write our own auto_model function which will not use DataParallel.
+    # remove all instances of DataParallel from code at that point.
+    wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
 
     if wrapped:
         # bind the train_batch function to the DDP model
