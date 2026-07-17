@@ -13,11 +13,13 @@ with warnings.catch_warnings():
     import mlflow
 
 from collections.abc import Iterator, Sequence
+from typing import Union
 
 import torch
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
+from torch import Module, Tensor
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
 
@@ -29,6 +31,31 @@ from hyrax.trace import get_trace
 logger = logging.getLogger(__name__)
 
 _LEGACY_SPLIT_KEYS = ("train_size", "validate_size", "test_size")
+
+
+# This is a near copy-paste of the __getattr__ method on torch.nn.module
+# with the addition of returning getattr(self.module, name) if possible.
+# This is necessary so that any attributes used by train_batch which are not
+# on the DDP model can be pulled from the original model
+def _new__getattr__(self, name: str) -> Union[Tensor, "Module"]:
+    if "_parameters" in self.__dict__:
+        _parameters = self.__dict__["_parameters"]
+        if name in _parameters:
+            return _parameters[name]
+    if "_buffers" in self.__dict__:
+        _buffers = self.__dict__["_buffers"]
+        if name in _buffers:
+            return _buffers[name]
+    if "_modules" in self.__dict__:
+        modules = self.__dict__["_modules"]
+        if name in modules:
+            return modules[name]
+    if hasattr(self.module, name):
+        return getattr(self.module, name)
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+
+DistributedDataParallel.__getattr__ = _new__getattr__
 
 
 class SubsetSequentialSampler(Sampler[int]):
@@ -675,20 +702,8 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
 
     if wrapped:
-        print(f"{wrapped_model}")
         # bind the train_batch function to the DDP model
         wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
-
-        # set the attributes needed for training on the DDP model
-
-        # we need a good way to identify and move necessary attributes up from the model
-        # to the DDP model. Having an explicit list of potential attributes
-        # and detecting them to move up is not good.
-        attrs = ["optimizer", "criterion", "grad_clip", "scheduler"]
-
-        for attr in attrs:
-            if hasattr(model, attr):
-                setattr(wrapped_model, attr, getattr(model, attr))
 
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
