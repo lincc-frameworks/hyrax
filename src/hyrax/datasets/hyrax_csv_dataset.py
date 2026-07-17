@@ -64,10 +64,6 @@ class HyraxCSVDataset(HyraxDataset):
 
         super().__init__(config)
 
-    def __getitem__(self, idx):
-        """Currently required by Hyrax machinery, but likely to be phased out."""
-        return {}
-
     def __len__(self) -> int:
         """Return the number of records in the CSV."""
         return len(self.mem_mapped_csv)

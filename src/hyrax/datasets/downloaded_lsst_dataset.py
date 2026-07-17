@@ -777,25 +777,6 @@ class DownloadedLSSTDataset(LSSTDataset):
 
         return cutouts
 
-    # TODO: Could remove in lieu of LSSTDataset __getitem__ if butler gets are
-    # a mixin
-    def __getitem__(self, idxs) -> dict:
-        """Modified to pass index for saving cutouts.
-
-        Parameters:
-        -----------
-        idxs: int or slice or list
-            Index or indices to fetch.
-
-        Returns:
-        --------
-        dict:
-            Dictionary with key 'data' containing another dict of default data fields
-            to return. Currently only 'image' is supported.
-        """
-
-        return {"data": {"image": self.get_image(idxs)}}
-
     def download_cutouts(self, indices=None, sync_filesystem=True, max_workers=None, force_retry=False):
         """Download cutouts using multiple threads with caching.
 

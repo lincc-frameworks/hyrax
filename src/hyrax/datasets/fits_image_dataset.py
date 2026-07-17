@@ -68,7 +68,6 @@ from typing import Union
 
 import numpy as np
 import numpy.typing as npt
-from torch.utils.data import Dataset
 
 from hyrax.tensorboardx_logger import get_tensorboard_logger
 
@@ -80,7 +79,7 @@ tensorboardx_logger = get_tensorboard_logger()
 files_dict = dict[str, dict[str, str]]
 
 
-class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
+class FitsImageDataset(HyraxDataset, HyraxImageDataset):
     """
     Dataset for Fits Images, typically cutouts.
     """
@@ -354,21 +353,6 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
         """
         object_id = self.get_object_id(idx)
         return self._read_object_id(object_id)
-
-    def __getitem__(self, idx: int):
-        if idx >= len(self.files) or idx < 0:
-            raise IndexError
-
-        object_id = self.get_object_id(idx)
-
-        return {
-            "data": {
-                "object_id": object_id,
-                "image": self.get_image(idx),
-                "index": idx,
-            },
-            "object_id": object_id,
-        }
 
     def __contains__(self, object_id: str) -> bool:
         """Allows you to do `object_id in dataset` queries. Used by testing code.

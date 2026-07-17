@@ -2,20 +2,22 @@ import logging
 from collections.abc import Generator
 from multiprocessing import get_context
 from pathlib import Path
-from typing import Union
+from typing import TYPE_CHECKING, Union
 
 import numpy as np
 import numpy.typing as npt
-from torch.utils.data import Dataset
 
 from .dataset_registry import HyraxDataset
+
+if TYPE_CHECKING:
+    from hyrax.datasets.data_provider import DataProvider
 
 logger = logging.getLogger(__name__)
 
 ORIGINAL_DATASET_CONFIG_FILENAME = "original_dataset_config.toml"
 
 
-class InferenceDataset(HyraxDataset, Dataset):
+class InferenceDataset(HyraxDataset):
     """This is a dataset class to represent the situations where we wish to treat the output of inference
     as a dataset. e.g. when performing umap/visualization operations"""
 
@@ -293,7 +295,7 @@ class InferenceDatasetWriter:
     manipulate the filesystem directly as their primary effect.
     """
 
-    def __init__(self, original_dataset: Dataset, result_dir: Union[str, Path]):
+    def __init__(self, original_dataset: "DataProvider | InferenceDataset", result_dir: Union[str, Path]):
         """
         .. py:method:: __init__
 

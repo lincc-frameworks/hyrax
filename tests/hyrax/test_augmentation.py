@@ -601,13 +601,12 @@ def test_datacache_per_dataset_try_fetch_and_insert(tmp_path):
 
     config = _make_hyrax_config()
     ds = HyraxRandomDataset(config, data_location=str(tmp_path))
-    datasets = {"data": ds}
-    cache = DataCache(config, datasets, augment_active={"data": False})
+    cache = DataCache(config, ds, augment_active=False)
 
     data = {"image": np.array([1, 2, 3])}
-    cache.insert_base("data", real_idx=0, data=data)
+    cache.insert_base(real_idx=0, data=data)
 
-    fetched, already_aug = cache.try_fetch("data", real_idx=0)
+    fetched, already_aug = cache.try_fetch(real_idx=0)
     assert fetched is data
     assert already_aug is False
 
@@ -618,22 +617,21 @@ def test_datacache_augmented_two_level_lookup(tmp_path):
 
     config = _make_hyrax_config()
     ds = CachingAugmentDataset(config, data_location=str(tmp_path))
-    datasets = {"data": ds}
-    cache = DataCache(config, datasets, augment_active={"data": True})
+    cache = DataCache(config, ds, augment_active=True)
 
     base_data = {"image": np.array([1, 2, 3])}
     aug_data = {"image": np.array([-1, -2, -3])}
 
-    cache.insert_base("data", real_idx=0, data=base_data)
-    cache.insert_augmented("data", real_idx=0, rng_seed=np.int64(42), data=aug_data)
+    cache.insert_base(real_idx=0, data=base_data)
+    cache.insert_augmented(real_idx=0, rng_seed=np.int64(42), data=aug_data)
 
     # Augmented key hit
-    fetched, already_aug = cache.try_fetch("data", real_idx=0, rng_seed=np.int64(42))
+    fetched, already_aug = cache.try_fetch(real_idx=0, rng_seed=np.int64(42))
     assert fetched is aug_data
     assert already_aug is True
 
     # Different rng_seed misses augmented but hits base
-    fetched, already_aug = cache.try_fetch("data", real_idx=0, rng_seed=np.int64(99))
+    fetched, already_aug = cache.try_fetch(real_idx=0, rng_seed=np.int64(99))
     assert fetched is base_data
     assert already_aug is False
 
