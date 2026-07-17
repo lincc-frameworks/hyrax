@@ -114,7 +114,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         self._consumer = None
         self._buffered: list[dict] = []
 
-        super().__init__(config, metadata_table=None)
+        super().__init__(config)
 
     def stop(self):
         """Signal :meth:`__iter__` to flush any pending batch and stop iterating."""

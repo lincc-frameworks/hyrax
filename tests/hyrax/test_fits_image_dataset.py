@@ -59,10 +59,10 @@ def test_prepare(test_hyrax_small_dataset_hscstars):
         for d in a:
             assert d["data"]["image"].shape == Size([1, 20, 20])
 
-        # Selected columns in the original catalog exist
-        assert "ira" in a.metadata_fields("data")
-        assert "idec" in a.metadata_fields("data")
-        assert "SNR" in a.metadata_fields("data")
+        # Core fields are available
+        available_fields = a.fields()["data"]
+        assert "image" in available_fields
+        assert "object_id" in available_fields
 
         # IDs are correct and in the correct order
         assert a.ids() == [
