@@ -13,13 +13,11 @@ with warnings.catch_warnings():
     import mlflow
 
 from collections.abc import Iterator, Sequence
-from typing import Union
 
 import torch
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
-from torch import Tensor
 from torch.nn import Module
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
@@ -34,25 +32,21 @@ logger = logging.getLogger(__name__)
 _LEGACY_SPLIT_KEYS = ("train_size", "validate_size", "test_size")
 
 
-# This is a near copy-paste of the __getattr__ method on torch.nn.module
-# with the addition of returning getattr(self.module, name) if possible.
-# This is necessary so that any attributes used by train_batch which are not
-# on the DDP model can be pulled from the original model
-def _new__getattr__(self, name: str) -> Union[Tensor, "Module"]:
-    if "_parameters" in self.__dict__:
-        _parameters = self.__dict__["_parameters"]
-        if name in _parameters:
-            return _parameters[name]
-    if "_buffers" in self.__dict__:
-        _buffers = self.__dict__["_buffers"]
-        if name in _buffers:
-            return _buffers[name]
-    if "_modules" in self.__dict__:
-        modules = self.__dict__["_modules"]
-        if name in modules:
-            return modules[name]
-    if hasattr(self.module, name):
-        return getattr(self.module, name)
+# We define a custom __getattr__ method on DistributedDataParallel so that
+# functions like train_batch can access required attributes without
+# explicitly copying them from the original module to the DDP instance.
+# DDP simply uses the torch.nn.Module.__getattr__ method, so we define a new
+# one that returns an attribute from DistributedDataParallel.module should
+# the existing __getattr__ fail.
+_old__getattr__ = Module.__getattr__
+
+
+def _new__getattr__(self, name: str):
+    try:
+        return _old__getattr__(self, name)
+    except AttributeError:
+        if hasattr(self.module, name):
+            return getattr(self.module, name)
     raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
 
@@ -693,6 +687,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
         Engine object that will be used to train the model.
     """
 
+    # remove in future when adding support for multi-node configurations
     if idist.get_nnodes() > 1:
         raise RuntimeError("Multi-node configurations not supported")
 
@@ -700,7 +695,12 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     model.train()
     wrapped_model = idist.auto_model(model)
 
-    wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
+    if type(wrapped_model) is DataParallel:
+        raise RuntimeError(
+            "Model unexpectedly wrapped in DataParallel; should be DistributedDataParallel or not wrapped"
+        )
+
+    wrapped = type(wrapped_model) is DistributedDataParallel
 
     if wrapped:
         # bind the train_batch function to the DDP model
