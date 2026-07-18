@@ -133,7 +133,7 @@ class Train(Verb):
 
         dataset_splits = [s for s in Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS if s in dataset]
 
-        data_loaders: dict[str, tuple] = {}
+        data_loaders = {}
         for split_name in dataset_splits:
             data_loaders[split_name] = dist_data_loader(
                 dataset[split_name],
