@@ -203,7 +203,6 @@ def hyrax_model(cls):
 
     def wrapped_init(self, config, *args, **kwargs):
         original_init(self, config, *args, **kwargs)
-        # self._hyrax_data_parallel = None
 
         if not hasattr(self, "optimizer"):
             self.optimizer = idist.auto_optim(_torch_optimizer(self))
