@@ -102,33 +102,33 @@ jobs:
       with:
         name: benchmark-results
         path: ${{env.WORKING_DIR}}/_results
-    - name: Notify Slack on success
-      if: success() && steps.benchmark-run.outputs.regression != 'true'
-      uses: slackapi/slack-github-action@v3
-      with:
-        webhook: ${{secrets.SLACK_WEBHOOK_URL}}
-        webhook-type: incoming-webhook
-        payload: |
-          {
-            "text": "✅ Hyrax nightly benchmarks succeeded on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
-          }
-    - name: Notify Slack on benchmark regression
-      if: success() && steps.benchmark-run.outputs.regression == 'true'
-      uses: slackapi/slack-github-action@v3
-      with:
-        webhook: ${{secrets.SLACK_WEBHOOK_URL}}
-        webhook-type: incoming-webhook
-        payload: |
-          {
-            "text": "⚠️ Hyrax nightly benchmarks detected regressions on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
-          }
-    - name: Notify Slack on failure
-      if: failure()
-      uses: slackapi/slack-github-action@v3
-      with:
-        webhook: ${{secrets.SLACK_WEBHOOK_URL}}
-        webhook-type: incoming-webhook
-        payload: |
-          {
-            "text": "❌ Hyrax nightly benchmarks failed on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
-          }
+    # - name: Notify Slack on success
+    #   if: success() && steps.benchmark-run.outputs.regression != 'true'
+    #   uses: slackapi/slack-github-action@v3
+    #   with:
+    #     webhook: ${{secrets.SLACK_WEBHOOK_URL}}
+    #     webhook-type: incoming-webhook
+    #     payload: |
+    #       {
+    #         "text": "✅ Hyrax nightly benchmarks succeeded on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
+    #       }
+    # - name: Notify Slack on benchmark regression
+    #   if: success() && steps.benchmark-run.outputs.regression == 'true'
+    #   uses: slackapi/slack-github-action@v3
+    #   with:
+    #     webhook: ${{secrets.SLACK_WEBHOOK_URL}}
+    #     webhook-type: incoming-webhook
+    #     payload: |
+    #       {
+    #         "text": "⚠️ Hyrax nightly benchmarks detected regressions on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
+    #       }
+    # - name: Notify Slack on failure
+    #   if: failure()
+    #   uses: slackapi/slack-github-action@v3
+    #   with:
+    #     webhook: ${{secrets.SLACK_WEBHOOK_URL}}
+    #     webhook-type: incoming-webhook
+    #     payload: |
+    #       {
+    #         "text": "❌ Hyrax nightly benchmarks failed on ${{steps.nightly-dates.outputs.today}}. View run: https://github.com/${{github.repository}}/actions/runs/${{github.run_id}}"
+    #       }
