@@ -82,21 +82,18 @@ def main():
     # save the result to json file
     output_dir = Path(os.environ.get("RESULT_PATH", "benchmarks/results"))
     # make sure the directory exist
-    output_dir.mkdir(
-        parents=True,
-        exist_ok=True,
-    )
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(
-        output_dir / f"{result["timestamp"]}.json",
-        "w",
-    ) as f:
+    result_file = output_dir / f"{result["timestamp"]}.json"
+
+    with open(result_file, "w") as f:
         json.dump(
             result,
             f,
             indent=2,
         )
 
+    print(f"RESULT_FILE={result_file.resolve()}")
 
 if __name__ == "__main__":
     main()

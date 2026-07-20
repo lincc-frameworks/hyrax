@@ -19,6 +19,8 @@ jobs:
     steps:
       - name: Checkout main branch of the repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - name: Install uv
         uses: astral-sh/setup-uv@v7
@@ -35,6 +37,7 @@ jobs:
           if [ -f requirements.txt ]; then uv pip install --python .venv/bin/python -r requirements.txt; fi
 
       - name: Run benchmark
+        id: benchmark
         run: |
           source .venv/bin/activate
 
@@ -44,7 +47,9 @@ jobs:
           # path for saving the result
           export RESULT_PATH="/astro/store/shiren/wqy37/results"
 
-          python benchmarks/run_timebench.py
+          OUTPUT=$(python benchmarks/run_timebench.py)
+          RESULT_FILE=$(echo "$OUTPUT" | grep '^RESULT_FILE=' | cut -d= -f2-)
+          echo "result_file=$RESULT_FILE" >> "$GITHUB_OUTPUT"
 
       - name: Configure git
         run: |
@@ -54,16 +59,14 @@ jobs:
       - name: Checkout benchmarks branch
         run: |
           if git ls-remote --exit-code origin benchmarks >/dev/null 2>&1; then
-            git fetch origin
-            git checkout benchmarks origin/benchmarks
+            git fetch origin benchmarks:refs/remotes/origin/benchmarks
+            git checkout -B benchmarks origin/benchmarks
           fi
 
       - name: Publish benchmark results to benchmarks branch
         run: |
           mkdir -p gondor_results
-          find /astro/store/shiren/wqy37/results -maxdepth 1 -type f -name '*.json' -print | sort | while read -r result_file; do
-            cp "$result_file" gondor_results/
-          done
+          cp "${{ steps.benchmark.outputs.result_file }}" gondor_results/
 
           # check if copied any files
           if [ -z "$(find gondor_results -maxdepth 1 -type f -name '*.json' 2>/dev/null)" ]; then
