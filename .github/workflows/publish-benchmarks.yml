@@ -24,7 +24,7 @@ jobs:
         run_id: ${{ github.event.workflow_run.id }}
         path: benchmarks
     - name: Deploy dashboard to GitHub Pages
-      if: ${{ hashFiles('benchmarks/_html/**') != '' }}
+      if: ${{ hashFiles('benchmarks/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
       with:
         branch: gh-pages
@@ -37,7 +37,7 @@ jobs:
         run_id: ${{ github.event.workflow_run.id }}
         path: benchmarks
     - name: Submit new results to "benchmarks" branch
-      if: ${{ hashFiles('benchmarks/_results/**') != '' }}
+      if: ${{ hashFiles('benchmarks/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
       with:
         branch: benchmarks
