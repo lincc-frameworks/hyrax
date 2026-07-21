@@ -12,7 +12,7 @@ on:
 jobs:
   publish-benchmarks-nightly:
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    # if: github.event.workflow_run.conclusion == 'success'
     permissions:
       actions: read
       contents: write
@@ -24,6 +24,11 @@ jobs:
         name: benchmark-html
         run_id: ${{ github.event.workflow_run.id }}
         path: benchmarks
+    - name: Debug benchmark directory
+      run: |
+        pwd
+        ls -la
+        find . -maxdepth 2 -type d
     - name: Deploy dashboard to GitHub Pages
       if: ${{ hashFiles('benchmarks/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
