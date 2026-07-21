@@ -266,7 +266,8 @@ def _compute_splits(config: dict, datasets: dict[str, DataProvider]) -> dict[str
 
     Returns
     -------
-    dict mapping group_name → {"indexes": np.ndarray[int64], "weights": np.ndarray[float64] | None}
+    dict mapping group_name → {``indexes``: numpy.ndarray[numpy.int64],
+      ``weights``: numpy.ndarray[numpy.float64] | None}
     """
     split_cfg = config["split"]
     balance_cfg = config["balance"]
@@ -431,7 +432,7 @@ def load_split_files(paths: dict[str, Path]) -> dict[str, dict]:
 
     Returns
     -------
-    dict mapping group_name → {"indexes": ndarray, "weights": ndarray | None}
+    dict mapping group_name → {``indexes``: numpy.ndarray, ``weights``: numpy.ndarray | None}
     """
     result: dict[str, dict] = {}
     for group, path in paths.items():
@@ -466,9 +467,10 @@ def configs_equivalent(prev: dict, cur: dict) -> tuple[bool, list[str]]:
 
     Returns
     -------
-    (equivalent, diffs)
-        *equivalent* is True only when all compared fields match.
-        *diffs* is a human-readable list of differences (empty when equivalent).
+      tuple[bool, list[str]]
+
+      first item notes equivalency. It is True only when all compared fields match.
+      second item is a list of human-readable differences (empty when equivalent).
     """
     diffs: list[str] = []
 
@@ -593,7 +595,8 @@ def create_splits(
 
     Returns
     -------
-    dict mapping group_name → {"indexes": ndarray[int64], "weights": ndarray[float64] | None}
+    dict mapping group_name → {``indexes``: numpy.ndarray[numpy.int64],
+      ``weights``: numpy.ndarray[numpy.float64] | None}
     """
     validate_split_config(config, datasets)
     validate_balance_config(config, datasets)
