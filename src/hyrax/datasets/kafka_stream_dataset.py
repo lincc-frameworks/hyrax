@@ -203,8 +203,18 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
             msg = consumer.poll(self.poll_timeout)
             if msg is not None and msg.error() is None:
                 sample = self._decode(msg)
-                self._buffered.append(sample)
-                return sample
+
+                # check if pre_filter is defined and apply it to the sample
+                if hasattr(self, "pre_filter"):
+                    sample = self.pre_filter([sample])
+                if sample:
+                    sample = sample[0] if isinstance(sample, list) else sample
+                    self._buffered.append(sample)
+                    # check if pre_process is defined and apply it to the sample
+                    if hasattr(self, "pre_process"):
+                        sample = self.pre_process([sample])
+                    return sample[0] if isinstance(sample, list) else sample
+
         raise RuntimeError("KafkaStreamDataset.peek_sample() stopped before a message arrived.")
 
     def __iter__(self):
