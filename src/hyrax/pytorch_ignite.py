@@ -60,11 +60,10 @@ def _auto_model(model: torch.nn.Module, sync_bn: bool = False, **kwargs: Any) ->
 
     Args:
         model: model to adapt.
-        sync_bn: if True, applies `torch.nn.SyncBatchNorm.convert_sync_batchnorm`_
-            to the model for native torch distributed only.
+        sync_bn: if True, applies `convert_sync_batchnorm` to the model for native torch distributed only.
             Default, False. Note, if using Nvidia/Apex, batchnorm conversion should be
             applied before calling ``amp.initialize``.
-        kwargs: kwargs to model's wrapping class (`torch.nn.DistributedDataParallel`_ )if applicable.
+        kwargs: kwargs to model's wrapping class (`DistributedDataParallel`)if applicable.
             Please, make sure to use acceptable kwargs for given backend.
 
     Returns:
