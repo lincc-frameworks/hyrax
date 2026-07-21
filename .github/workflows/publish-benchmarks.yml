@@ -7,6 +7,7 @@ on:
   workflow_run:
     workflows: ["Run benchmarks nightly job"]
     types: [completed]
+  workflow_dispatch:
 
 jobs:
   publish-benchmarks-nightly:
