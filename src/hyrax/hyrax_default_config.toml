@@ -13,9 +13,12 @@ log_level = "info"
 # Directory where data is stored.
 data_dir = "./data"
 
-#Top level directory for writing results.
+# Top level directory for writing results.
 results_dir = "./results"
 
+# Use multiple GPUs if available
+# Set to `false` by default for development purposes for now
+distributed = false
 
 [download]
 # Cut out width in arcseconds.
