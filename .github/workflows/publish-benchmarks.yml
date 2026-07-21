@@ -22,7 +22,7 @@ jobs:
       uses: dawidd6/action-download-artifact@v21
       with:
         name: benchmark-html
-        run_id: ${{ github.event.workflow_run.id }}
+        run_id: 110501134
         path: benchmarks
     - name: Debug benchmark directory
       run: |
@@ -40,7 +40,7 @@ jobs:
       uses: dawidd6/action-download-artifact@v21
       with:
         name: benchmark-results
-        run_id: ${{ github.event.workflow_run.id }}
+        run_id: 110501134
         path: benchmarks
     - name: Submit new results to "benchmarks" branch
       if: ${{ hashFiles('benchmarks/**') != '' }}
