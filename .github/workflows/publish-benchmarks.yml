@@ -28,7 +28,7 @@ jobs:
       run: |
         pwd
         ls -la
-        find . -maxdepth 2 -type d
+        find benchmarks -maxdepth 3
     - name: Deploy dashboard to GitHub Pages
       if: ${{ hashFiles('benchmarks/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
