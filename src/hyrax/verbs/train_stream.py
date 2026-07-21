@@ -1,4 +1,7 @@
 import logging
+from pathlib import Path
+
+from hyrax.pytorch_ignite import create_trainer
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -130,15 +133,13 @@ class TrainStream(Verb):
         init_tensorboard_logger(log_dir=results_dir)
         log_runtime_config(config, results_dir)
 
-        logger.info(f"Saving train_stream results at: {results_dir}")
-
         # Wrap for (possibly distributed) execution, but keep the unwrapped model around so
         # we can call `.save()` and reference `.optimizer`. On a single device auto_model is
         # a no-op, so both names refer to the same object.
         wrapped_model = auto_model(model)
         device = idist_device()
         process_func = create_process_func("train_batch", device, wrapped_model, config)
-
+        trainer = create_trainer(model, config, results_dir)
         # Start an MLflow run that spans the whole session. A stream has no fixed end, so we
         # cannot wrap the training loop in a `with mlflow.start_run()` block the way batch
         # train does; the run stays open across the session and is ended in `close()`.
@@ -162,6 +163,7 @@ class TrainStream(Verb):
             close_tensorboard_logger,
             data_loader=data_loader,
             provider=provider,
+            trainer=trainer,
         )
 
     @staticmethod
@@ -210,6 +212,7 @@ class TrainStreamSession:
         close_logger_fn,
         data_loader=None,
         provider=None,
+        trainer=None,
     ):
         from hyrax.tensorboardx_logger import get_tensorboard_logger
 
@@ -223,6 +226,8 @@ class TrainStreamSession:
         self._closed = False
         self._batch_count = 0
         self._tb_logger = get_tensorboard_logger()
+        self._best_loss = None
+        self._trainer = trainer
 
     def __iter__(self):
         """Iterate the configured data source, training on each batch as it arrives.
@@ -254,6 +259,15 @@ class TrainStreamSession:
             if object_id is not None:
                 return len(object_id)
         return None
+
+    def getter_batcher(self):
+        """Simple generator yields batches from the data loader for Ignite trainer."""
+        for batch in self.data_loader:
+            yield batch
+
+    def process_with_trainer(self):
+        """Driver function to run the Ignite trainer on the data loader."""
+        self._trainer.run(self.getter_batcher())
 
     def process(self, batch: dict) -> dict | None:
         """Run one training step on a single batch.
@@ -322,9 +336,12 @@ class TrainStreamSession:
             if active:
                 mlflow.log_metrics({f"training/{metric}": value}, step=self._batch_count)
 
-    def save_weights(self) -> None:
+    def save_weights(self, file_name_suffix="") -> None:
         """Persist the current model weights to the results directory."""
-        self._model.save(self._results_dir / self._config["train_stream"]["weights_filename"])
+        file_name = Path(self._config["train_stream"]["weights_filename"])
+        if file_name_suffix:
+            file_name = f"{file_name.stem}_{file_name_suffix}{file_name.suffix}"
+        self._model.save(self._results_dir / file_name)
         logger.debug(f"Saved weights after {self._batch_count} batches.")
 
     def stop(self):
@@ -345,7 +362,7 @@ class TrainStreamSession:
 
         # End any in-progress streaming iteration before tearing down.
         self.stop()
-        self.save_weights()
+        self.checkpoint()
         self._closed = True
 
         import mlflow
@@ -356,6 +373,28 @@ class TrainStreamSession:
         self._close_logger()
         logger.info("TrainStream session closed.")
         return self._model
+
+    def checkpoint(self, model_metrics=None) -> None:
+        """Save the current model weights if loss is lower than the previous best.
+
+        Parameters
+        ----------
+        model_metrics : dict | None
+            Dictionary containing model metrics. If ``None``, the checkpoint is always saved.
+        """
+        if model_metrics is not None and model_metrics.get("loss") is not None:
+            current_loss = model_metrics["loss"]
+            if self._best_loss and current_loss >= self._best_loss:
+                logger.info(
+                    f"Checkpoint skipped: current loss {current_loss} >= previous best {self._best_loss}."
+                )
+                return
+            self._best_loss = current_loss
+
+            self.save_weights(file_name_suffix=f"checkpoint_loss_{self._best_loss}")
+            logger.info(f"Checkpoint saved at batch {self._batch_count} with loss {self._best_loss}.")
+        else:
+            self.save_weights()
 
     def __enter__(self):
         return self
