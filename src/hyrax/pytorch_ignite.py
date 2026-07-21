@@ -53,6 +53,31 @@ def _new__getattr__(self, name: str):
 DistributedDataParallel.__getattr__ = _new__getattr__
 
 
+def _auto_model(model: torch.nn.Module, sync_bn: bool = False, **kwargs: Any) -> torch.nn.Module:
+    """Helper method to wrap a model in DistributedDataParallel if needed.
+    Uses idist.auto_model to do the wrapping, then ignore the result if it is a DataParallel instance.
+    For more info, see https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_model.html
+
+    Args:
+        model: model to adapt.
+        sync_bn: if True, applies `torch convert_sync_batchnorm`_ to the model for native torch
+            distributed only. Default, False. Note, if using Nvidia/Apex, batchnorm conversion should be
+            applied before calling ``amp.initialize``.
+        kwargs: kwargs to model's wrapping class: `torch DistributedDataParallel`_ or `torch DataParallel`_
+            if applicable. Please, make sure to use acceptable kwargs for given backend.
+
+    Returns:
+        torch.nn.Module
+    """
+    wrapped_model = idist.auto_model(model, sync_bn=sync_bn, **kwargs)
+    if type(wrapped_model) is DataParallel:
+        logger.info(
+            'Ignore previous message "Apply torch DataParallel on model". Hyrax does not use DataParallel'
+        )
+        return model
+    return wrapped_model
+
+
 class SubsetSequentialSampler(Sampler[int]):
     r"""Samples elements sequentially from a given list of indices, without replacement.
 
@@ -395,13 +420,13 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
 
 
 def extract_model_method(model, method_name):
-    """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-    or DataParallel object. For instance, method_name could be `train_batch` or
+    """Extract a method from a model, which may be wrapped in DistributedDataParallel.
+     For instance, method_name could be `train_batch` or
     `infer_batch`.
 
     Parameters
     ----------
-    model : nn.Module, DistributedDataParallel, or DataParallel
+    model : nn.Module
         The model to extract the method from
     method_name : str
         Name of the method to extract
@@ -412,7 +437,7 @@ def extract_model_method(model, method_name):
         The method extracted from the model
     """
 
-    wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
+    wrapped = type(model) is DistributedDataParallel
 
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
@@ -445,7 +470,7 @@ def create_evaluator(
     """
     device = idist.device()
     model.eval()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     evaluator = create_engine("infer_batch", device, wrapped_model, config)
 
     @evaluator.on(Events.STARTED)
@@ -499,7 +524,7 @@ def create_validator(
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
@@ -554,7 +579,7 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     tester = create_engine("test_batch", device, wrapped_model, config)
@@ -632,7 +657,7 @@ def attach_best_checkpoint(
     results_directory : Path
         Directory where checkpoint files are written.
     """
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
     to_save = {
         "model": wrapped_model,
@@ -693,11 +718,9 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     device = idist.device()
     model.train()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
-    # in the future, write our own auto_model function which will not use DataParallel.
-    # remove all instances of DataParallel from code at that point.
-    wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
+    wrapped = type(wrapped_model) is DistributedDataParallel
 
     if wrapped:
         # bind the train_batch function to the DDP model
