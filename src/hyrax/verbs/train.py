@@ -94,7 +94,7 @@ class Train(Verb):
         #    Case separation here guarantees that we will only ever use
         #    idist.Parallel when there are multiple GPUs.
         nproc_per_node = torch.cuda.device_count()
-        if nproc_per_node > 1:
+        if config["general"]["distributed"] and nproc_per_node > 1:
             logger.info(f"Using {nproc_per_node} processes for distributed training.")
             with idist.Parallel(backend="nccl", nproc_per_node=nproc_per_node) as parallel:
                 parallel.run(Train._training, model, dataset, config, results_dir)
