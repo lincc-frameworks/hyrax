@@ -205,8 +205,9 @@ def hyrax_model(cls):
         original_init(self, config, *args, **kwargs)
 
         if not hasattr(self, "optimizer"):
+            # auto_optim is no-op for non-distributed and torch native distributed configuration.
+            # more info at https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_optim.html
             self.optimizer = idist.auto_optim(_torch_optimizer(self))
-            self.optimizer = _torch_optimizer(self)
         else:
             if config["optimizer"]["name"]:
                 logger.warning(
