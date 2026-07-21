@@ -23,7 +23,7 @@ jobs:
       with:
         name: benchmark-html
         run_id: 29868560196
-        path: benchmarks
+        path: benchmarks/_html
     - name: Debug benchmark directory
       run: |
         pwd
@@ -41,7 +41,7 @@ jobs:
       with:
         name: benchmark-results
         run_id: 29868560196
-        path: benchmarks
+        path: benchmarks/_results
     - name: Submit new results to "benchmarks" branch
       if: ${{ hashFiles('benchmarks/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
