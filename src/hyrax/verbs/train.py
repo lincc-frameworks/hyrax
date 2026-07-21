@@ -1,8 +1,24 @@
 import logging
 from pathlib import Path
 
+import ignite.distributed as idist
+import mlflow
+import torch
 from colorama import Back, Fore, Style
 
+from hyrax.config_utils import create_results_dir, log_runtime_config
+from hyrax.gpu_monitor import GpuMonitor
+from hyrax.pytorch_ignite import (
+    Events,
+    attach_best_checkpoint,
+    create_trainer,
+    create_validator,
+    dist_data_loader,
+    setup_dataset,
+    setup_model,
+)
+from hyrax.splitting_utils import create_splits
+from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 from hyrax.trace import trace_verb_data
 
 from .verb_registry import Verb, hyrax_verb
@@ -43,22 +59,6 @@ class Train(Verb):
 
         """
 
-        import mlflow
-
-        from hyrax.config_utils import create_results_dir, log_runtime_config
-        from hyrax.gpu_monitor import GpuMonitor
-        from hyrax.pytorch_ignite import (
-            Events,
-            attach_best_checkpoint,
-            create_trainer,
-            create_validator,
-            dist_data_loader,
-            setup_dataset,
-            setup_model,
-        )
-        from hyrax.splitting_utils import create_splits
-        from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
-
         config = self.config
 
         # Validate that the user hasn't set both `resume` and `model_weights_file`.
@@ -86,6 +86,27 @@ class Train(Verb):
         )
         create_splits(config, dataset, results_dir=results_dir, persist=True)
         model = setup_model(config, dataset["train"])
+
+        # we separate out the cases here for two reasons:
+        # 1. GitHub merge checks don't pass with idist.Parallel
+        # 2. idist.Parallel doesn't play nice with mps;
+        #    there are lots of pickling errors including possibly from user code.
+        #    Case separation here guarantees that we will only ever use
+        #    idist.Parallel when there are multiple GPUs.
+        nproc_per_node = torch.cuda.device_count()
+        if config["general"]["distributed"] and nproc_per_node > 1:
+            logger.info(f"Using {nproc_per_node} processes for distributed training.")
+            with idist.Parallel(backend="nccl", nproc_per_node=nproc_per_node) as parallel:
+                parallel.run(Train._training, model, dataset, config, results_dir)
+        else:
+            logger.info("Using a single process for training.")
+            Train._training(0, model, dataset, config, results_dir)
+
+        return model
+
+    # this used to be a nested method inside run() without any args except rank (needed for idist.Parallel)
+    @staticmethod
+    def _training(rank, model, dataset, config, results_dir):
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"
@@ -168,8 +189,6 @@ class Train(Verb):
 
         logger.info("Finished Training")
         close_tensorboard_logger()
-
-        return model
 
     @staticmethod
     def _log_params(config, results_dir):

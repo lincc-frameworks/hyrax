@@ -18,6 +18,7 @@ import torch
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
+from torch.nn import Module
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
 
@@ -29,6 +30,27 @@ from hyrax.trace import get_trace
 logger = logging.getLogger(__name__)
 
 _LEGACY_SPLIT_KEYS = ("train_size", "validate_size", "test_size")
+
+
+# We define a custom __getattr__ method on DistributedDataParallel so that
+# functions like train_batch can access required attributes without
+# explicitly copying them from the original module to the DDP instance.
+# DDP simply uses the torch.nn.Module.__getattr__ method, so we define a new
+# one that returns an attribute from DistributedDataParallel.module should
+# the existing __getattr__ fail.
+_old__getattr__ = Module.__getattr__
+
+
+def _new__getattr__(self, name: str):
+    try:
+        return _old__getattr__(self, name)
+    except AttributeError:
+        if hasattr(self.module, name):
+            return getattr(self.module, name)
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+
+DistributedDataParallel.__getattr__ = _new__getattr__
 
 
 class SubsetSequentialSampler(Sampler[int]):
@@ -209,7 +231,7 @@ def dist_data_loader(
     Parameters
     ----------
     dataset : hyrax.datasets.dataset_registry.HyraxDataset
-        A Hyrax dataset instance.  When *dataset* is a :class:`DataProvider`
+        A Hyrax dataset instance.  When *dataset* is a :class:`hyrax.datasets.data_provider.DataProvider`
         with ``split_indices`` set (by :func:`~hyrax.splitting_utils.create_splits`),
         the loader is restricted to those indices via a :class:`~torch.utils.data.Subset`.
         When ``split_weights`` is also set, a
@@ -389,13 +411,13 @@ def extract_model_method(model, method_name):
     Callable
         The method extracted from the model
     """
+
     wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
 
-    # Check to see if the model has the requested method
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
 
-    return getattr(model.module if wrapped else model, method_name)
+    return getattr(model if hasattr(model, method_name) else model.module, method_name)
 
 
 def create_evaluator(
@@ -664,9 +686,23 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pytorch-ignite.Engine
         Engine object that will be used to train the model.
     """
+
+    # remove in future when adding support for multi-node configurations
+    if idist.get_nnodes() > 1:
+        raise RuntimeError("Multi-node configurations not supported")
+
     device = idist.device()
     model.train()
     wrapped_model = idist.auto_model(model)
+
+    # in the future, write our own auto_model function which will not use DataParallel.
+    # remove all instances of DataParallel from code at that point.
+    wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
+
+    if wrapped:
+        # bind the train_batch function to the DDP model
+        wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
+
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
