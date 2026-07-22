@@ -409,9 +409,8 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
 
 
 def extract_model_method(model, method_name):
-    """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-    or DataParallel object. For instance, method_name could be `train_batch` or
-    `infer_batch`.
+    """Extract a method from a model, which may be wrapped in DistributedDataParallel.
+    For instance, method_name could be `train_batch` or `infer_batch`.
 
     Parameters
     ----------
