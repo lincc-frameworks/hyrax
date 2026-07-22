@@ -124,7 +124,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
             credentials = toml.load(credentials_file_path)
             self.consumer_config.update(credentials)
 
-        super().__init__(config, metadata_table=None)
+        super().__init__(config)
 
     def stop(self):
         """Signal :meth:`__iter__` to flush any pending batch and stop iterating."""

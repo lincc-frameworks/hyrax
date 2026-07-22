@@ -70,8 +70,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             else self._detect_object_id_column_name()
         )
 
-        # TODO: Metadata from the catalog
-        super().__init__(config, self.catalog, self.oid_column_name)
+        super().__init__(config, metadata_table=self.catalog)
 
         self.set_function_transform()
         self.set_crop_transform()
@@ -185,6 +184,10 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
 
     def __len__(self):
         return len(self.catalog)
+
+    def get_object_id(self, idx):
+        """Get the object ID at the given index."""
+        return str(self.catalog[self.oid_column_name][idx])
 
     def get_image(self, idxs):
         """Get image cutouts for the given indices.
