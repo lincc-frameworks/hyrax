@@ -7,7 +7,6 @@ on:
   workflow_run:
     workflows: ["Run benchmarks nightly job"]
     types: [completed]
-  workflow_dispatch:
 
 jobs:
   publish-benchmarks-nightly:
@@ -17,15 +16,19 @@ jobs:
       actions: read
       contents: write
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v7
+      with:
+        fetch-depth: 0
     - name: Download benchmark HTML artifact
       continue-on-error: true
       uses: dawidd6/action-download-artifact@v21
       with:
         name: benchmark-html
         run_id: ${{ github.event.workflow_run.id }}
-        path: benchmarks
+        path: benchmarks/_html
     - name: Deploy dashboard to GitHub Pages
-      if: ${{ hashFiles('benchmarks/**') != '' }}
+      if: ${{ hashFiles('benchmarks/_html/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
       with:
         branch: gh-pages
@@ -36,9 +39,9 @@ jobs:
       with:
         name: benchmark-results
         run_id: ${{ github.event.workflow_run.id }}
-        path: benchmarks
+        path: benchmarks/_results
     - name: Submit new results to "benchmarks" branch
-      if: ${{ hashFiles('benchmarks/**') != '' }}
+      if: ${{ hashFiles('benchmarks/_results/**') != '' }}
       uses: JamesIves/github-pages-deploy-action@v4
       with:
         branch: benchmarks
