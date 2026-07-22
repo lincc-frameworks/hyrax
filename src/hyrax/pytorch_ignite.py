@@ -409,13 +409,13 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
 
 
 def extract_model_method(model, method_name):
-    """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-    or DataParallel object. For instance, method_name could be `train_batch` or
+    """Extract a method from a model, which may be wrapped in DistributedDataParallel.
+     For instance, method_name could be `train_batch` or
     `infer_batch`.
 
     Parameters
     ----------
-    model : nn.Module, DistributedDataParallel, or DataParallel
+    model : nn.Module
         The model to extract the method from
     method_name : str
         Name of the method to extract
@@ -426,7 +426,7 @@ def extract_model_method(model, method_name):
         The method extracted from the model
     """
 
-    wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
+    wrapped = type(model) is DistributedDataParallel
 
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
@@ -459,7 +459,7 @@ def create_evaluator(
     """
     device = idist.device()
     model.eval()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     evaluator = create_engine("infer_batch", device, wrapped_model, config)
 
     @evaluator.on(Events.STARTED)
@@ -513,7 +513,7 @@ def create_validator(
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
@@ -568,7 +568,7 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     tester = create_engine("test_batch", device, wrapped_model, config)
@@ -646,7 +646,7 @@ def attach_best_checkpoint(
     results_directory : Path
         Directory where checkpoint files are written.
     """
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
     to_save = {
         "model": wrapped_model,
@@ -707,11 +707,9 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     device = idist.device()
     model.train()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
-    # in the future, write our own auto_model function which will not use DataParallel.
-    # remove all instances of DataParallel from code at that point.
-    wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
+    wrapped = type(wrapped_model) is DistributedDataParallel
 
     if wrapped:
         # bind the train_batch function to the DDP model
