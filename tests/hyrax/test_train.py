@@ -389,12 +389,14 @@ def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
 
 def test_training_info_returned_on_model(loopback_hyrax):
     """
-    Test that scheduler works correctly when model is wrapped in DataParallel.
+    Test that scheduler works correctly when model is wrapped in DistributedDataParallel.
     This test validates the fix for PR #652 AttributeError bug.
+    This test was updated as part of PR #996. It validates the overwriting
+    of __getattr__ for DistributedDataParallel which was done in PR #974.
     """
     from unittest.mock import patch
 
-    from torch.nn.parallel import DataParallel
+    from torch.nn.parallel import DistributedDataParallel
 
     h, _ = loopback_hyrax
     gamma = 0.5
@@ -403,17 +405,18 @@ def test_training_info_returned_on_model(loopback_hyrax):
     h.config["train"]["epochs"] = 2
     initial_lr = 64
     h.config[h.config["optimizer"]["name"]]["lr"] = initial_lr
+    h.config["general"]["distributed"] = True
 
-    # Mock idist.auto_model to wrap the model in DataParallel
+    # Mock idist.auto_model to wrap the model in DistributedDataParallel
     # This simulates what happens in distributed training environments
 
     def mock_auto_model(model):
-        # Wrap the model in DataParallel to test the fix
-        return DataParallel(model)
+        # Wrap the model in DistributedDataParallel to test the fix
+        return DistributedDataParallel(model)
 
-    # Patch idist.auto_model in the pytorch_ignite module
-    with patch("hyrax.pytorch_ignite.idist.auto_model", side_effect=mock_auto_model):
-        # This should not raise AttributeError: 'DataParallel' object has no attribute 'scheduler'
+    # Patch _auto_model in the pytorch_ignite module
+    with patch("hyrax.pytorch_ignite._auto_model", side_effect=mock_auto_model):
+        # This should not raise AttributeError: 'DistributedDataParallel' object has no attribute 'scheduler'
         model = h.train()
 
     # Verify the scheduler worked correctly
