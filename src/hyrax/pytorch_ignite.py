@@ -53,22 +53,11 @@ def _new__getattr__(self, name: str):
 DistributedDataParallel.__getattr__ = _new__getattr__
 
 
+# Helper method to wrap a model in DistributedDataParallel if needed.
+# Uses idist.auto_model to do the wrapping, then ignore the result if it is a DataParallel instance.
+# For more info, see https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_model.html.
+# Arguments are identical to idist.auto_model.
 def _auto_model(model: torch.nn.Module, sync_bn: bool = False, **kwargs: Any) -> torch.nn.Module:
-    """Helper method to wrap a model in DistributedDataParallel if needed.
-    Uses idist.auto_model to do the wrapping, then ignore the result if it is a DataParallel instance.
-    For more info, see https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_model.html
-
-    Args:
-        model: model to adapt.
-        sync_bn: if True, applies `convert_sync_batchnorm` to the model for native torch distributed only.
-            Default, False. Note, if using Nvidia/Apex, batchnorm conversion should be
-            applied before calling ``amp.initialize``.
-        kwargs: kwargs to model's wrapping class (`DistributedDataParallel`)if applicable.
-            Please, make sure to use acceptable kwargs for given backend.
-
-    Returns:
-        torch.nn.Module
-    """
     wrapped_model = idist.auto_model(model, sync_bn=sync_bn, **kwargs)
     if type(wrapped_model) is DataParallel:
         logger.info(
