@@ -415,7 +415,7 @@ def extract_model_method(model, method_name):
 
     Parameters
     ----------
-    model : nn.Module, DistributedDataParallel, or DataParallel
+    model : nn.Module
         The model to extract the method from
     method_name : str
         Name of the method to extract
