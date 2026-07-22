@@ -53,6 +53,20 @@ def _new__getattr__(self, name: str):
 DistributedDataParallel.__getattr__ = _new__getattr__
 
 
+# Helper method to wrap a model in DistributedDataParallel if needed.
+# Uses idist.auto_model to do the wrapping, then ignore the result if it is a DataParallel instance.
+# For more info, see https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_model.html.
+# Arguments are identical to idist.auto_model.
+def _auto_model(model: torch.nn.Module, sync_bn: bool = False, **kwargs: Any) -> torch.nn.Module:
+    wrapped_model = idist.auto_model(model, sync_bn=sync_bn, **kwargs)
+    if type(wrapped_model) is DataParallel:
+        logger.info(
+            'Ignore previous message "Apply torch DataParallel on model". Hyrax does not use DataParallel'
+        )
+        return model
+    return wrapped_model
+
+
 class SubsetSequentialSampler(Sampler[int]):
     r"""Samples elements sequentially from a given list of indices, without replacement.
 
