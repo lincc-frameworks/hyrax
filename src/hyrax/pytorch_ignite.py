@@ -41,6 +41,10 @@ _LEGACY_SPLIT_KEYS = ("train_size", "validate_size", "test_size")
 _old__getattr__ = Module.__getattr__
 
 
+# There is an identical version of this function used in
+# test_train.py::test_training_info_returned_on_model.
+# If this method is ever updated, make sure to update the version
+# there too.
 def _new__getattr__(self, name: str):
     try:
         return _old__getattr__(self, name)
