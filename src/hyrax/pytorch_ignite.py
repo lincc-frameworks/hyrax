@@ -458,7 +458,7 @@ def create_evaluator(
     """
     device = idist.device()
     model.eval()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     evaluator = create_engine("infer_batch", device, wrapped_model, config)
 
     @evaluator.on(Events.STARTED)
@@ -512,7 +512,7 @@ def create_validator(
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
@@ -567,7 +567,7 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     tester = create_engine("test_batch", device, wrapped_model, config)
@@ -645,7 +645,7 @@ def attach_best_checkpoint(
     results_directory : Path
         Directory where checkpoint files are written.
     """
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
     to_save = {
         "model": wrapped_model,
@@ -706,7 +706,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     device = idist.device()
     model.train()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
     # in the future, write our own auto_model function which will not use DataParallel.
     # remove all instances of DataParallel from code at that point.
