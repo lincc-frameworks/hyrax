@@ -396,7 +396,7 @@ def test_training_info_returned_on_model(loopback_hyrax):
     """
     from unittest.mock import patch
 
-    from torch.nn.parallel import DistributedDataParallel
+    from torch import nn
 
     h, _ = loopback_hyrax
     gamma = 0.5
@@ -405,14 +405,33 @@ def test_training_info_returned_on_model(loopback_hyrax):
     h.config["train"]["epochs"] = 2
     initial_lr = 64
     h.config[h.config["optimizer"]["name"]]["lr"] = initial_lr
-    h.config["general"]["distributed"] = True
+
+    _old__getattr__ = nn.Module.__getattr__
+
+    class FakeDDP(nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+
+        # This is an identical version of the _new__getattr__ function
+        # in pytorch_ignite. It should always match that version.
+        def __getattr__(self, name):
+            try:
+                return _old__getattr__(self, name)
+            except AttributeError:
+                if hasattr(self.module, name):
+                    return getattr(self.module, name)
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     # Mock idist.auto_model to wrap the model in DistributedDataParallel
     # This simulates what happens in distributed training environments
+    # Using the real DDP class leads to issues with running the test on
+    # non-CUDA environments and ForkingPickling errors with HyraxLoopback
+    # even on CUDA environments
 
     def mock_auto_model(model):
         # Wrap the model in DistributedDataParallel to test the fix
-        return DistributedDataParallel(model)
+        return FakeDDP(model)
 
     # Patch _auto_model in the pytorch_ignite module
     with patch("hyrax.pytorch_ignite._auto_model", side_effect=mock_auto_model):
