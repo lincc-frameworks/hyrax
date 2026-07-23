@@ -46,8 +46,7 @@ jobs:
 
           # path for saving the result
           export RESULT_PATH="/astro/store/shiren/wqy37/results"
-
-          OUTPUT=$(python benchmarks/run_timebench.py)
+          OUTPUT=$(python benchmarks/time_pipeline_benchmarks.py)
           RESULT_FILE=$(echo "$OUTPUT" | grep '^RESULT_FILE=' | cut -d= -f2-)
           echo "result_file=$RESULT_FILE" >> "$GITHUB_OUTPUT"
 

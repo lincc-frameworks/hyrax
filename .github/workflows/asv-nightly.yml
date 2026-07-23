@@ -43,7 +43,7 @@ jobs:
           git merge origin/benchmarks \
             --allow-unrelated-histories \
             --no-commit
-          mv ../_results .
+          mv ../_results ../gondor_results .
         fi
     - name: Get nightly dates under comparison
       id: nightly-dates
