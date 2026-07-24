@@ -347,7 +347,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
             tract_info.getId(),
             patch_info.sequential_index,
             self._get_butler_thread_safe(),
-            self.config["data_set"]["skymap"],
+            self._butler_config["skymap"],
             tuple(LSSTDataset.BANDS),
         )
 
