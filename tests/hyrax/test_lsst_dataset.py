@@ -58,7 +58,7 @@ def test_lsst_dataset_band_failures(mock_lsst_environment, lsst_config, tmp_path
     fills missing bands with NaN
     """
 
-    with mock_lsst_environment(fail_prob=0.1):
+    with mock_lsst_environment(band_fail_prob={"g": 1.0}):
         # Import after patching
         from hyrax.datasets.lsst_dataset import LSSTDataset
 
