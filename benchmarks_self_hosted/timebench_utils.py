@@ -1,23 +1,41 @@
 import os
-import time
 import pickle
-import numpy as np
+import time
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
-
 from torch.utils.data import DataLoader, Subset
 
 from hyrax import Hyrax
 
-# DATA_PATH = "/astro/store/shiren/wqy37/datasets"
 
-# hyrax bench 
 def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0, lr=0.01):
+    """
+    Benchmark the Hyrax framework on the CIFAR-10 dataset with CNN model with the specified parameters.
+
+    Parameters
+    ----------
+    train_fraction : float
+        Fraction of the training dataset to use for training.
+    epochs : int
+        Number of training epochs.
+    batch_size : int
+        Batch size for training and inference.
+    num_workers : int
+        Number of worker threads for data loading.
+    lr : float
+        Learning rate for the optimizer.
+
+    Returns
+    -------
+    dictionary
+        A dictionary containing the benchmarking results
+    """
     # setup
     h = Hyrax()
     h.set_config("model.name", "HyraxCNN")
@@ -53,14 +71,12 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     }
     h.set_config("data_request", data_request_definition)
 
-    split = {
-        "train": train_fraction
-    }
+    split = {"train": train_fraction}
     h.set_config("split", split)
 
     # train
     start_train = time.perf_counter()
-    trained_model = h.train()
+    h.train()
     end_train = time.perf_counter()
 
     # infer
@@ -73,7 +89,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     for i, result in enumerate(inference_results):
         predicted_classes[i] = np.argmax(result)
 
-    with open(f"{os.environ.get("CIFAR_DIR", "./data")}/cifar-10-batches-py/test_batch", "rb") as f_in:
+    with open(f"{os.environ.get('CIFAR_DIR', './data')}/cifar-10-batches-py/test_batch", "rb") as f_in:
         test_data = pickle.load(f_in, encoding="bytes")
 
     y_true = test_data[b"labels"]
@@ -104,10 +120,26 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     }
 
 
-# pytorch bench 
 def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
+    """
+    Build the CIFAR-10 data loaders for PyTorch training and testing.
+
+    Parameters
+    ----------
+    train_fraction : float
+        Fraction of the training dataset to use for training.
+    batch_size : int
+        Batch size for training and inference.
+    num_workers : int
+        Number of worker threads for data loading.
+
+    Returns
+    -------
+        tuple
+        A tuple containing the training and testing data loaders."""
     # Match the hyrax implementation
-    transform = transforms.Compose([
+    transform = transforms.Compose(
+        [
             transforms.ToTensor(),
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ]
@@ -125,8 +157,7 @@ def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
     indices = torch.randperm(len(train_dataset))[:n_train]
     train_subset = Subset(train_dataset, indices)
 
-    train_loader = DataLoader(train_subset, batch_size=batch_size, 
-                              shuffle=True, num_workers=num_workers)
+    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
 
     test_dataset = torchvision.datasets.CIFAR10(
         root=os.environ.get("CIFAR_DIR", "./data"),
@@ -134,12 +165,15 @@ def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
         download=True,
         transform=transform,
     )
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, 
-                             shuffle=False, num_workers=num_workers)
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
     return train_loader, test_loader
 
 
 class Net(nn.Module):
+    """
+    A simple PyTorch CNN model for CIFAR-10 classification.
+    """
+
     def __init__(self):
         super().__init__()
         self.conv1 = nn.Conv2d(3, 6, 5)
@@ -150,6 +184,9 @@ class Net(nn.Module):
         self.fc3 = nn.Linear(84, 10)
 
     def forward(self, x):
+        """
+        Forward pass of the CNN model.
+        """
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
         x = torch.flatten(x, 1)
@@ -160,10 +197,35 @@ class Net(nn.Module):
 
 
 def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0, lr=0.01):
-    train_loader, test_loader = build_cifar_loader(train_fraction=train_fraction, batch_size=batch_size, num_workers=num_workers)
+    """
+    Benchmark the PyTorch on the CIFAR-10 dataset with CNN model with the specified parameters.
+
+    Parameters
+    ----------
+    train_fraction : float
+        Fraction of the training dataset to use for training.
+    epochs : int
+        Number of training epochs.
+    batch_size : int
+        Batch size for training and inference.
+    num_workers : int
+        Number of worker threads for data loading.
+    lr : float
+        Learning rate for the optimizer.
+
+    Returns
+    -------
+    dictionary
+        A dictionary containing the benchmarking results
+    """
+    train_loader, test_loader = build_cifar_loader(
+        train_fraction=train_fraction, batch_size=batch_size, num_workers=num_workers
+    )
     net = Net()
     device = next(net.parameters()).device
-    device = torch.device(torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else 'cpu')
+    device = torch.device(
+        torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+    )
     net.to(device)
 
     print("Model running on:", next(net.parameters()).device)
@@ -173,8 +235,8 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
 
     # train
     start_train = time.perf_counter()
-    for epoch in range(epochs):
-        for i, data in enumerate(train_loader, 0):
+    for _ in range(epochs):
+        for _, data in enumerate(train_loader, 0):
             # get the inputs; data is a list of [inputs, labels]
             inputs, labels = data
             inputs = inputs.to(device)
@@ -222,8 +284,36 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
         "accuracy": accuracy,
     }
 
-# trail function
-def benchmark_repeated(framework, train_fraction=1.0, epochs=10, batch_size=512, num_workers=0, lr=0.01, repeats=3):
+
+def benchmark_repeated(
+    framework, train_fraction=1.0, epochs=10, batch_size=512, num_workers=0, lr=0.01, repeats=3
+):
+    """
+    Run the benchmarking for the specified framework (Hyrax or PyTorch) multiple times
+    and return the summary of results.
+
+    Parameters
+    ----------
+    framework : str
+        The framework to benchmark, either "hyrax" or "pytorch".
+    train_fraction : float
+        Fraction of the training dataset to use for training.
+    epochs : int
+        Number of training epochs.
+    batch_size : int
+        Batch size for training and inference.
+    num_workers : int
+        Number of worker threads for data loading.
+    lr : float
+        Learning rate for the optimizer.
+    repeats : int
+        Number of times to repeat the benchmarking.
+
+    Returns
+    -------
+    dictionary
+        A dictionary containing the summary of benchmarking results.
+    """
     if framework == "hyrax":
         runner = benchmark_hyrax
     elif framework == "pytorch":

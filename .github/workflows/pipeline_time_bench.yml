@@ -1,12 +1,11 @@
-# This workflow will setup the environment and run the benchmarking test.
-
+# This workflow will setup the environment and run the full pipeline benchmarking test.
 name: Runtime Benchmark
 
 on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+  # push:
+  #   branches: [ main ]
+  # pull_request:
+  #   branches: [ main ]
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
@@ -46,6 +45,7 @@ jobs:
 
           # path for saving the result
           export RESULT_PATH="/astro/store/shiren/wqy37/results"
+
           OUTPUT=$(python benchmarks_self_hosted/run_timebench.py)
           RESULT_FILE=$(echo "$OUTPUT" | grep '^RESULT_FILE=' | cut -d= -f2-)
           echo "result_file=$RESULT_FILE" >> "$GITHUB_OUTPUT"

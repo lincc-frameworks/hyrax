@@ -1,14 +1,14 @@
-import os
 import datetime
 import json
+import os
 import platform
+import subprocess
 from pathlib import Path
 
 import torch
-import hyrax
-
 from timebench_utils import benchmark_repeated
 
+import hyrax
 
 CONFIG = {
     "train_fraction": 1.0,
@@ -20,7 +20,13 @@ CONFIG = {
 }
 
 
+def get_git_commit():
+    """Get the current git commit hash of the repository."""
+    return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode().strip()
+
+
 def get_device():
+    """Get the current device being used for computation."""
     if torch.backends.mps.is_available():
         return "mps"
 
@@ -31,6 +37,11 @@ def get_device():
 
 
 def main():
+    """
+    Run the benchmarking for both PyTorch and Hyrax and save the results to a JSON file.
+    JSON file will be saved to ./<commit>.json. If the environment variable RESULT_PATH is set,
+    the file will be saved to that directory instead of default `benchmarks/results`.
+    """
     pytorch_res = benchmark_repeated(
         "pytorch",
         **CONFIG,
@@ -43,34 +54,29 @@ def main():
 
     result = {
         "timestamp": datetime.datetime.now(datetime.UTC).isoformat(),
+        "commit": get_git_commit(),
         "python_version": platform.python_version(),
         "torch_version": torch.__version__,
         "hyrax_version": hyrax.__version__,
         "device": get_device(),
-
         **CONFIG,
-
         "hyrax_train_time": hyrax_res["train_time_mean"],
         "hyrax_train_std": hyrax_res["train_time_std"],
-
         "hyrax_infer_time": hyrax_res["infer_time_mean"],
         "hyrax_infer_std": hyrax_res["infer_time_std"],
-
         "hyrax_accuracy": hyrax_res["accuracy_mean"],
-
         "pytorch_train_time": pytorch_res["train_time_mean"],
         "pytorch_train_std": pytorch_res["train_time_std"],
-
         "pytorch_infer_time": pytorch_res["infer_time_mean"],
         "pytorch_infer_std": pytorch_res["infer_time_std"],
-
         "pytorch_accuracy": pytorch_res["accuracy_mean"],
     }
 
-    result["train_slowdown"] = (result["hyrax_train_time"] / result["pytorch_train_time"])
-    result["infer_slowdown"] = (result["hyrax_infer_time"] / result["pytorch_infer_time"])
-    result["total_slowdown"] = ((result["hyrax_train_time"] + result["hyrax_infer_time"]) 
-                              / (result["pytorch_train_time"] + result["pytorch_infer_time"]))
+    result["train_slowdown"] = result["hyrax_train_time"] / result["pytorch_train_time"]
+    result["infer_slowdown"] = result["hyrax_infer_time"] / result["pytorch_infer_time"]
+    result["total_slowdown"] = (result["hyrax_train_time"] + result["hyrax_infer_time"]) / (
+        result["pytorch_train_time"] + result["pytorch_infer_time"]
+    )
 
     print(
         json.dumps(
@@ -84,7 +90,7 @@ def main():
     # make sure the directory exist
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    result_file = output_dir / f"{result["timestamp"]}.json"
+    result_file = output_dir / f"{result['commit']}.json"
 
     with open(result_file, "w") as f:
         json.dump(
@@ -94,6 +100,7 @@ def main():
         )
 
     print(f"RESULT_FILE={result_file.resolve()}")
+
 
 if __name__ == "__main__":
     main()
