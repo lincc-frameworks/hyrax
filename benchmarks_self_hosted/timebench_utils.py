@@ -38,12 +38,15 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     """
     # setup
     h = Hyrax()
+    # TODO: make sure Hyrax version and the pytorch version to use
+    # exactly the same model architecture; could be out of sync
     h.set_config("model.name", "HyraxCNN")
     h.set_config("data_loader.batch_size", batch_size)
     h.set_config("train.epochs", epochs)
     h.set_config("data_loader.num_workers", num_workers)
 
     # Match the plain PyTorch optimizer settings so the comparison is more fair.
+    # TODO: pull out momentum; as either arg or constant
     h.config["torch.optim.SGD"] = {"lr": lr, "momentum": 0.9}
 
     data_request_definition = {
@@ -231,6 +234,7 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
     print("Model running on:", next(net.parameters()).device)
 
     criterion = nn.CrossEntropyLoss()
+    # TODO: pull out momentum; as either arg or constant
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9)
 
     # train

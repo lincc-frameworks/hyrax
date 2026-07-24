@@ -41,9 +41,11 @@ jobs:
           source .venv/bin/activate
 
           # path to downloaded cifar dataset
+          # currently gondor-specific path, should be changed for other environments
           export CIFAR_DIR="/astro/store/shiren/wqy37/datasets"
 
           # path for saving the result
+          # currently gondor-specific path, should be changed for other environments
           export RESULT_PATH="/astro/store/shiren/wqy37/results"
 
           OUTPUT=$(python benchmarks_self_hosted/run_timebench.py)
