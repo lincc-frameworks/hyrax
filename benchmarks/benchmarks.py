@@ -7,6 +7,10 @@ import subprocess
 
 import hyrax
 
+def track_test_bench():
+    """This test function should be able to detect by asv and run along for saving results"""
+    return(55555555555500)
+
 
 def time_import():
     """

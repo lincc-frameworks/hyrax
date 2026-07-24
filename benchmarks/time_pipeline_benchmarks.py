@@ -5,5 +5,5 @@ def track_test():
     if Path("./gondor_results").is_dir():
         return(10000000000000)
     else:
-        return(99999999999990)
+        return(77777777777777)
 

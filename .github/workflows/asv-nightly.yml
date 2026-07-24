@@ -86,6 +86,10 @@ jobs:
       with:
         path: ${{env.WORKING_DIR}}
         key: nightly-results-${{steps.nightly-dates.outputs.today}}
+    - name: Debug custom data upload
+      run: |
+        find benchmarks/_results -name "*.json"
+        grep -R "track_test" benchmarks/_results
     - name: Generate dashboard HTML
       run: |
         asv publish
