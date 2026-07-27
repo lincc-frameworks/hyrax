@@ -45,6 +45,15 @@ jobs:
             --no-commit
           mv ../_results ../gondor_results .
         fi
+    - name: DEBUG - Check if gondor_results exists
+      run: |
+        if [ -d "$GITHUB_WORKSPACE/benchmarks/gondor_results" ]; then
+          echo "gondor_results exists"
+          ls -la "$GITHUB_WORKSPACE/benchmarks/gondor_results"
+        else
+          echo "gondor_results not found"
+          exit 1
+        fi
     - name: Get nightly dates under comparison
       id: nightly-dates
       run: |
