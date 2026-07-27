@@ -2,10 +2,7 @@ import logging
 import time
 from numbers import Number
 from sys import getsizeof
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from hyrax.datasets.dataset_registry import HyraxDataset
+from typing import Any
 
 import numpy as np
 
@@ -16,18 +13,15 @@ tensorboardx_logger = get_tensorboard_logger()
 
 
 class DataCache:
-    """Per-dataset caching layer for DataProvider.
+    """Per-dataset caching layer.
 
-    Each dataset (friendly name) gets two cache maps:
+    Each ``DataCache`` instance belongs to a single dataset and manages two
+    cache maps:
 
-    * **base cache** — keyed by ``real_idx`` (an int), stores the result of
-      ``get_<field>`` calls.  No dataset method is called to produce the key.
-    * **augment cache** — keyed by the return value of the dataset's
-      ``augment_cache_key`` method, stores augmented results.  Only populated
-      when the dataset opts in by returning a non-None key.
-
-    ``try_fetch`` checks the augment cache first (when applicable), then falls
-    back to the base cache.
+    * **base cache** — keyed by ``idx`` (an int), stores the result of
+      ``get_<field>`` calls.
+    * **augment cache** — keyed by a caller-provided key (typically from
+      ``augment_cache_key``), stores augmented results.
 
     One config controls this functionality:
 
@@ -35,133 +29,84 @@ class DataCache:
     after the first access so subsequent accesses are served from memory.
     """
 
-    def __init__(
-        self,
-        config: dict,
-        datasets: dict[str, "HyraxDataset"],
-        augment_active: dict[str, bool],
-    ):
+    def __init__(self, use_cache: bool):
         """Initialize the DataCache.
 
         Parameters
         ----------
-        config : dict
-            The Hyrax configuration.
-        datasets : dict[str, HyraxDataset]
-            Mapping of friendly_name to dataset instance. Used to call
-            ``augment_cache_key`` for augmented data caching.
-        augment_active : dict[str, bool]
-            Mapping of friendly_name to whether augmentation is active
-            for that dataset. When True, ``try_fetch`` will check the
-            augment cache before falling back to the base cache.
+        use_cache : bool
+            Whether caching is enabled.
         """
-        self._use_cache = config["data_set"]["use_cache"]
-        self._datasets = datasets
-        self._augment_active = augment_active
+        self._use_cache = use_cache
 
         self._data_size_bytes = 0
         self._insert_count = 0
         self.logging_interval = 1000
 
-        self._base_cache: dict[str, dict[int, dict]] = {name: {} for name in datasets}
-        self._augment_cache: dict[str, dict[np.int64, dict]] = {name: {} for name in datasets}
+        self._base_cache: dict[int, dict] = {}
+        self._augment_cache: dict[Any, dict] = {}
 
-    def try_fetch(
-        self,
-        friendly_name: str,
-        real_idx: int,
-        rng_seed: np.int64 | None = None,
-    ) -> tuple[dict | None, bool]:
-        """Try to fetch cached data for a single dataset.
-
-        When augmentation is active and ``rng_seed`` is provided, this checks
-        the augment cache first.  On miss it falls back to the base cache.
+    def try_fetch_base(self, idx: int) -> dict | None:
+        """Try to fetch base (non-augmented) cached data.
 
         Parameters
         ----------
-        friendly_name : str
-            The dataset friendly name.
-        real_idx : int
+        idx : int
             The dataset-local index.
-        rng_seed : np.int64 | None
-            The augmentation RNG seed, or None for non-augmented access.
 
         Returns
         -------
-        tuple[dict | None, bool]
-            ``(data, already_augmented)`` where ``data`` is the cached
-            field dict or ``None`` on miss, and ``already_augmented``
-            indicates whether the cached data includes augmentation.
+        dict | None
+            The cached field dict, or ``None`` on miss.
         """
         if not self._use_cache:
-            return None, False
+            return None
+        return self._base_cache.get(idx)
 
-        # When augmentation is active, try augment cache first
-        if self._augment_active.get(friendly_name, False) and rng_seed is not None:
-            aug_key = self._datasets[friendly_name].augment_cache_key(real_idx, rng_seed)
-            if aug_key is not None:
-                cached = self._augment_cache[friendly_name].get(aug_key)
-                if cached is not None:
-                    return cached, True
+    def try_fetch_augmented(self, key) -> dict | None:
+        """Try to fetch augmented cached data.
 
-        # Try base cache — keyed directly by index, no method call
-        cached = self._base_cache[friendly_name].get(real_idx)
-        if cached is not None:
-            return cached, False
+        Parameters
+        ----------
+        key
+            The augment cache key (from ``augment_cache_key``).
 
-        return None, False
+        Returns
+        -------
+        dict | None
+            The cached augmented field dict, or ``None`` on miss.
+        """
+        if not self._use_cache:
+            return None
+        return self._augment_cache.get(key)
 
-    def insert_base(
-        self,
-        friendly_name: str,
-        real_idx: int,
-        data: dict[str, Any],
-    ):
+    def insert_base(self, idx: int, data: dict[str, Any]):
         """Insert base (non-augmented) field data into the cache.
 
         Parameters
         ----------
-        friendly_name : str
-            The dataset friendly name.
-        real_idx : int
-            The dataset-local index (used directly as cache key).
+        idx : int
+            The dataset-local index.
         data : dict[str, Any]
             The field data dict to cache.
         """
         if not self._use_cache:
             return
-        self._do_insert(self._base_cache[friendly_name], real_idx, data)
+        self._do_insert(self._base_cache, idx, data)
 
-    def insert_augmented(
-        self,
-        friendly_name: str,
-        real_idx: int,
-        rng_seed: np.int64,
-        data: dict[str, Any],
-    ):
+    def insert_augmented(self, key, data: dict[str, Any]):
         """Insert augmented field data into the cache.
-
-        Calls ``augment_cache_key`` to determine the cache key. If the key
-        is ``None``, this is a no-op (the dataset opted out of caching
-        augmented data).
 
         Parameters
         ----------
-        friendly_name : str
-            The dataset friendly name.
-        real_idx : int
-            The dataset-local index.
-        rng_seed : np.int64
-            The augmentation RNG seed.
+        key
+            The augment cache key (from ``augment_cache_key``).
         data : dict[str, Any]
             The augmented field data dict to cache.
         """
         if not self._use_cache:
             return
-        cache_key = self._datasets[friendly_name].augment_cache_key(real_idx, rng_seed)
-        if cache_key is None:
-            return
-        self._do_insert(self._augment_cache[friendly_name], cache_key, data)
+        self._do_insert(self._augment_cache, key, data)
 
     def _do_insert(self, cache_map: dict, cache_key, data: dict[str, Any]):
         start_time = time.monotonic_ns()

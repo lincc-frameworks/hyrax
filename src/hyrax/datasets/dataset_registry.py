@@ -73,9 +73,83 @@ class HyraxDataset:
                 if not hasattr(self, method_name):
                     setattr(self, method_name, MethodType(_make_getter(col), self))
 
+        self._field_getters: dict[str, Callable] = {}
+        self._augment_getters: dict[str, Callable] = {}
+
+        for name in dir(self):
+            if name.startswith("get_") and callable(getattr(self, name, None)):
+                self._field_getters[name[4:]] = getattr(self, name)
+            elif (
+                name.startswith("augment_")
+                and name != "augment_cache_key"
+                and callable(getattr(self, name, None))
+            ):
+                self._augment_getters[name[8:]] = getattr(self, name)
+
+        self.requested_fields: tuple[str, ...] = ()
+        self._epoch: int = 0
+        self._augment_enabled: bool = False
+
+        from hyrax.datasets.data_cache import DataCache
+
+        use_cache = config.get("data_set", {}).get("use_cache", False)
+        self._data_cache = DataCache(use_cache=use_cache)
+
     @property
     def config(self):
         return self._config
+
+    def __getitem__(self, idx: int) -> dict[str, Any]:
+        """Return a dict of field values for the given index.
+
+        Uses discovered ``get_<field>`` methods. When augmentation is enabled,
+        applies ``augment_<field>`` methods with a deterministic per-epoch RNG seed.
+        Results are cached via the dataset's :class:`DataCache`.
+
+        Subclasses may override this for fully custom data loading, but custom
+        ``__getitem__`` is incompatible with the ``augment`` config (a RuntimeError
+        will be raised at preparation time).
+        """
+        fields = self.requested_fields or tuple(self._field_getters.keys())
+
+        cached = self._data_cache.try_fetch_base(idx)
+        if cached is not None and not self._augment_enabled:
+            return cached
+
+        if cached is not None:
+            base_data = cached
+        else:
+            base_data = {field: self._field_getters[field](idx) for field in fields}
+            self._data_cache.insert_base(idx, base_data)
+
+        if not self._augment_enabled:
+            return base_data
+
+        import torch
+
+        rng_seed = np.int64(hash((torch.initial_seed(), self._epoch, idx)) % (2**63 - 1))
+
+        aug_key = self.augment_cache_key(idx, rng_seed)
+        if aug_key is not None:
+            aug_cached = self._data_cache.try_fetch_augmented(aug_key)
+            if aug_cached is not None:
+                return aug_cached
+
+        result = {}
+        for field, value in base_data.items():
+            augment_fn = self._augment_getters.get(field)
+            if augment_fn is not None:
+                if isinstance(value, np.ndarray):
+                    value = value.copy()
+                    value.flags.writeable = False
+                result[field] = augment_fn(value, idx, rng_seed)
+            else:
+                result[field] = value
+
+        if aug_key is not None:
+            self._data_cache.insert_augmented(aug_key, result)
+
+        return result
 
     def __init_subclass__(cls):
         from abc import ABC
@@ -129,7 +203,7 @@ class HyraxDataset:
             Name of the verb that is running, e.g. ``"train"``, ``"infer"``,
             ``"test"``, or ``"engine"``.
         """
-        pass
+        self._epoch += 1
 
 
 def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:

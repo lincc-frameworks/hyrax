@@ -596,46 +596,44 @@ def test_augment_cache_key_subclass_override():
 
 
 def test_datacache_per_dataset_try_fetch_and_insert(tmp_path):
-    """DataCache per-dataset insert_base and try_fetch round-trip correctly."""
+    """DataCache per-dataset insert_base and try_fetch_base round-trip correctly."""
     from hyrax.datasets.data_cache import DataCache
 
-    config = _make_hyrax_config()
-    ds = HyraxRandomDataset(config, data_location=str(tmp_path))
-    datasets = {"data": ds}
-    cache = DataCache(config, datasets, augment_active={"data": False})
+    cache = DataCache(use_cache=True)
 
     data = {"image": np.array([1, 2, 3])}
-    cache.insert_base("data", real_idx=0, data=data)
+    cache.insert_base(idx=0, data=data)
 
-    fetched, already_aug = cache.try_fetch("data", real_idx=0)
+    fetched = cache.try_fetch_base(idx=0)
     assert fetched is data
-    assert already_aug is False
+
+    assert cache.try_fetch_base(idx=999) is None
 
 
 def test_datacache_augmented_two_level_lookup(tmp_path):
     """DataCache two-level lookup: augmented key first, then base key."""
     from hyrax.datasets.data_cache import DataCache
 
-    config = _make_hyrax_config()
-    ds = CachingAugmentDataset(config, data_location=str(tmp_path))
-    datasets = {"data": ds}
-    cache = DataCache(config, datasets, augment_active={"data": True})
+    cache = DataCache(use_cache=True)
 
     base_data = {"image": np.array([1, 2, 3])}
     aug_data = {"image": np.array([-1, -2, -3])}
 
-    cache.insert_base("data", real_idx=0, data=base_data)
-    cache.insert_augmented("data", real_idx=0, rng_seed=np.int64(42), data=aug_data)
+    cache.insert_base(idx=0, data=base_data)
+    aug_key = np.int64(0 * 1_000_000 + 42)
+    cache.insert_augmented(key=aug_key, data=aug_data)
 
     # Augmented key hit
-    fetched, already_aug = cache.try_fetch("data", real_idx=0, rng_seed=np.int64(42))
+    fetched = cache.try_fetch_augmented(aug_key)
     assert fetched is aug_data
-    assert already_aug is True
 
-    # Different rng_seed misses augmented but hits base
-    fetched, already_aug = cache.try_fetch("data", real_idx=0, rng_seed=np.int64(99))
-    assert fetched is base_data
-    assert already_aug is False
+    # Different key misses augmented cache
+    other_key = np.int64(0 * 1_000_000 + 99)
+    assert cache.try_fetch_augmented(other_key) is None
+
+    # Base cache still works
+    fetched_base = cache.try_fetch_base(idx=0)
+    assert fetched_base is base_data
 
 
 def test_datacache_augment_cache_key_none_skips_augment_cache(tmp_path):

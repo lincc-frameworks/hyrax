@@ -576,12 +576,6 @@ class DataProvider(CollationMixin):
 
         self.pull_up_primary_dataset_methods()
 
-        # Required because of circular import.
-        from hyrax.datasets.data_cache import DataCache
-
-        augment_active = {fn: bool(self.augment_getters.get(fn)) for fn in self.prepped_datasets}
-        self.data_cache = DataCache(config, self.prepped_datasets, augment_active)
-
     def pull_up_primary_dataset_methods(self):
         """If a primary dataset is defined, we will pull up some of its methods
         to the DataProvider level so that they can be called directly on the
@@ -1124,6 +1118,8 @@ class DataProvider(CollationMixin):
 
         for friendly_name, fields in self.requested_fields.items():
             getters = self.dataset_getters[friendly_name]
+            dataset = self.prepped_datasets[friendly_name]
+            cache = dataset._data_cache
 
             # Determine real index (join mapping).
             if friendly_name in self._join_maps:
@@ -1137,26 +1133,38 @@ class DataProvider(CollationMixin):
             # Determine effective rng_seed for this dataset.
             effective_rng = rng_seed if self.augment_enabled.get(friendly_name) else None
 
-            cached_data, already_augmented = self.data_cache.try_fetch(friendly_name, real_idx, effective_rng)
+            # Check augment cache first when augmentation is active.
+            aug_key = None
+            if effective_rng is not None:
+                aug_key = dataset.augment_cache_key(real_idx, effective_rng)
+                if aug_key is not None:
+                    aug_cached = cache.try_fetch_augmented(aug_key)
+                    if aug_cached is not None:
+                        result[friendly_name] = aug_cached
+                        continue
 
-            if cached_data is not None and (already_augmented or effective_rng is None):
-                result[friendly_name] = cached_data
-            elif cached_data is not None:
+            cached_base = cache.try_fetch_base(real_idx)
+
+            if cached_base is not None and effective_rng is None:
+                result[friendly_name] = cached_base
+            elif cached_base is not None:
                 augment_start = time.monotonic_ns()
-                augmented = self._apply_augmentation(friendly_name, cached_data, real_idx, rng_seed)
+                augmented = self._apply_augmentation(friendly_name, cached_base, real_idx, rng_seed)
                 tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
-                self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
+                if aug_key is not None:
+                    cache.insert_augmented(aug_key, augmented)
                 result[friendly_name] = augmented
             else:
                 had_any_miss = True
                 base_data = {field: getters[field](real_idx) for field in fields}
-                self.data_cache.insert_base(friendly_name, real_idx, base_data)
+                cache.insert_base(real_idx, base_data)
 
                 if effective_rng is not None:
                     augment_start = time.monotonic_ns()
                     augmented = self._apply_augmentation(friendly_name, base_data, real_idx, rng_seed)
                     tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
-                    self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
+                    if aug_key is not None:
+                        cache.insert_augmented(aug_key, augmented)
                     result[friendly_name] = augmented
                 else:
                     result[friendly_name] = base_data
