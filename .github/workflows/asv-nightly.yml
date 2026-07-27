@@ -49,7 +49,9 @@ jobs:
       run: |
         if [ -d "$GITHUB_WORKSPACE/benchmarks/gondor_results" ]; then
           echo "gondor_results exists"
+          pwd
           ls -la "$GITHUB_WORKSPACE/benchmarks/gondor_results"
+          cat "$GITHUB_WORKSPACE/benchmarks/benchmarks/track_pipeline_benchmarks.py"
         else
           echo "gondor_results not found"
           exit 1
