@@ -15,7 +15,7 @@ def collate_as_1d_light_curve(samples: list[dict], field: str) -> dict:
     Returns
     --------
     dict
-        Contains three keys: `<field>`, `<field>_length`, and `<field>_mask`
+        Contains three keys: `<field>`, `<field>_lengths`, and `<field>_mask`
         `field` - float32 array (batch, max_len) containing the padded light curves
         `<field>_lengths` - int64 array (batch) of true light curve lengths
         `<field>_mask` - int64 array (batch, max_len) of masks denoting light-curve data vs. padding
