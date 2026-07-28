@@ -44,6 +44,8 @@ jobs:
             --allow-unrelated-histories \
             --no-commit
           mv ../_results .
+          # move results from self-hosted runner to current working dir
+          mv ../gondor_results .
         fi
     - name: Get nightly dates under comparison
       id: nightly-dates
