@@ -74,6 +74,7 @@ from .hats_dataset import HyraxHATSDataset
 from .mmu_dataset import MultimodalUniverseDataset
 from .nested_pandas_dataset import NestedPandasDataset
 from .lancedb_dataset import LanceDBDataset
+from .kafka_stream_dataset import KafkaStreamDataset
 from .data_cache import DataCache
 
 __all__ = [
@@ -95,5 +96,6 @@ __all__ = [
     "MultimodalUniverseDataset",
     "NestedPandasDataset",
     "LanceDBDataset",
+    "KafkaStreamDataset",
     "DataCache",
 ]

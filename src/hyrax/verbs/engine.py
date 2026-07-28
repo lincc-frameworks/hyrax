@@ -41,7 +41,7 @@ class Engine(Verb):
         - Prepare all the datasets requested
         - Implement a simple strategy for reading in batches of data samples
         - Process the samples with any custom collate functions as well as a default collate function
-        - Pass the collated batch to the appropriate to_tensor function
+        - Pass the collated batch to the prepare_inputs function
         - Send that output to the ONNX-ified model
         - Persist the results of inference
 
@@ -61,7 +61,7 @@ class Engine(Verb):
         )
         from hyrax.datasets.data_provider import DataProvider
         from hyrax.datasets.result_factories import create_results_writer
-        from hyrax.plugin_utils import load_prepare_inputs, load_to_tensor
+        from hyrax.plugin_utils import load_prepare_inputs
         from hyrax.pytorch_ignite import setup_dataset
         from hyrax.splitting_utils import create_splits
 
@@ -84,22 +84,13 @@ class Engine(Verb):
                 logger.error("No previous training results directory found for ONNX export.")
                 return
 
-        # Here we load the appropriate prepare_inputs function from onnx output.
-        # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
+        # Here we load the prepare_inputs function from onnx output.
         prepare_inputs_fn = load_prepare_inputs(input_directory)
-        to_tensor_fn = load_to_tensor(input_directory)
 
         if prepare_inputs_fn:
             logger.debug("Using prepare_inputs function from model directory.")
-        elif to_tensor_fn:
-            # Backward compatibility: use to_tensor if prepare_inputs is not found
-            logger.warning(
-                "Using deprecated to_tensor function. "
-                "Please update to prepare_inputs for future compatibility."
-            )
-            prepare_inputs_fn = to_tensor_fn
         else:
-            logger.error("No prepare_inputs or to_tensor function found in the model directory.")
+            logger.error("No prepare_inputs function found in the model directory.")
             return
 
         # Setup tracing on all data handling functions for this verb (noop if tracing not enabled.)

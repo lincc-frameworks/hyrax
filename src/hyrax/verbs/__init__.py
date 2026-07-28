@@ -4,6 +4,7 @@
 from hyrax.verbs.database_connection import DatabaseConnection
 from hyrax.verbs.umap import Umap
 from hyrax.verbs.infer import Infer
+from hyrax.verbs.infer_stream import InferStream
 from hyrax.verbs.train import Train
 from hyrax.verbs.test import Test
 from hyrax.verbs.visualize import Visualize
@@ -30,6 +31,7 @@ __all__ = [
     "Visualize",
     "VisualizeV2",
     "Infer",
+    "InferStream",
     "Train",
     "Test",
     "SaveToDatabase",
