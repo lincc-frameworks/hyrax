@@ -45,20 +45,6 @@ jobs:
             --no-commit
           mv ../_results ../gondor_results .
         fi
-    - name: DEBUG - Check if gondor_results exists
-      run: |
-        if [ -d "$GITHUB_WORKSPACE/benchmarks/gondor_results" ]; then
-          echo "gondor_results exists"
-          pwd
-          ls -la "$GITHUB_WORKSPACE/benchmarks/gondor_results"
-          cat "$GITHUB_WORKSPACE/benchmarks/track_pipeline_benchmarks.py"
-        else
-          echo "gondor_results not found"
-          exit 1
-        fi
-    - name: DEBUG - Run track function
-      run: |
-        python track_pipeline_benchmarks.py
     - name: Get nightly dates under comparison
       id: nightly-dates
       run: |

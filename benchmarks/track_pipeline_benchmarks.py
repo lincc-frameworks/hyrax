@@ -53,11 +53,11 @@ def track_test():
 
     return payload.get("train_slowdown")
 
-if __name__ == "__main__":
-    result = track_test()
-    print(f"Returned from track_test: {result}")
+# if __name__ == "__main__":
+#     result = track_test()
+#     print(f"Returned from track_test: {result}")
 
-    tracker = PipelineBenchmarkTracker()
-    print(tracker.track_train_slowdown())
-    print(tracker.track_infer_slowdown())
-    print(tracker.track_total_slowdown())
+#     tracker = PipelineBenchmarkTracker()
+#     print(tracker.track_train_slowdown())
+#     print(tracker.track_infer_slowdown())
+#     print(tracker.track_total_slowdown())
