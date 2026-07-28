@@ -19,4 +19,6 @@ def track_test():
     with json_path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
+    print(f"Loaded benchmark results from {json_path}: {payload}")
+    print(f"Train slowdown: {payload.get('train_slowdown')}")
     return payload.get("train_slowdown")
