@@ -22,3 +22,7 @@ def track_test():
     print(f"Loaded benchmark results from {json_path}: {payload}")
     print(f"Train slowdown: {payload.get('train_slowdown')}")
     return payload.get("train_slowdown")
+
+if __name__ == "__main__":
+    result = track_test()
+    print(f"Returned: {result}")
