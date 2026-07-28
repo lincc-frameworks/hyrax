@@ -56,6 +56,9 @@ jobs:
           echo "gondor_results not found"
           exit 1
         fi
+    - name: DEBUG - Run track function
+      run: |
+        python track_pipeline_benchmarks.py
     - name: Get nightly dates under comparison
       id: nightly-dates
       run: |
