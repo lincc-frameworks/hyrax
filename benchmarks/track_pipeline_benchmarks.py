@@ -2,21 +2,19 @@ import json
 import os
 from pathlib import Path
 
-"""This module is used to track the performance of the full pipeline with asv."""
-
-
 class PipelineBenchmarkTracker:
-    """Loads benchmark results once and exposes metrics for ASV."""
+    """Loads benchmark results once and return metrics for ASV."""
 
-    def __init__(self):
+    def setup_cache(self):
+        """
+        Setup for loading self-hosted benchmark results. Opens the json file and save it as payload.
+        """
+        # TODO: "gondor_results" is the directory to store results from self-hosted runner on gondor
         base_dir = Path(__file__).resolve().parent / "gondor_results"
+        # TODO: currently hard coded to tesy file loading only
         self.json_path = base_dir / "2026-07-24T22:08:39.409085+00:00.json"
 
         self.payload = None
-        self._load_results()
-
-    def _load_results(self):
-        """Load the benchmark JSON once."""
         if not self.json_path.exists():
             print(f"Benchmark results not found: {self.json_path}")
             self.payload = {}
@@ -39,11 +37,13 @@ class PipelineBenchmarkTracker:
 
 def track_test():
     """
+    Trial function, kept for testing.
     Load benchmark results from a JSON file under the ASV results directory and
     return the requested slowdown metric.
+    Should behave the same as `track_train_slowdown` above.
     """
+    # Hard-coded path
     base_dir = Path(__file__).resolve().parent / "gondor_results"
-
     json_path = base_dir / "2026-07-24T22:08:39.409085+00:00.json"
     if not json_path.exists():
         return 11111111111111
@@ -51,13 +51,11 @@ def track_test():
     with json_path.open("r", encoding="utf-8") as handle:
         payload = json.load(handle)
 
-    print(f"Loaded benchmark results from {json_path}: {payload}")
-    print(f"Train slowdown: {payload.get('train_slowdown')}")
     return payload.get("train_slowdown")
 
 if __name__ == "__main__":
     result = track_test()
-    print(f"Returned: {result}")
+    print(f"Returned from track_test: {result}")
 
     tracker = PipelineBenchmarkTracker()
     print(tracker.track_train_slowdown())
