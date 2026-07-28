@@ -43,7 +43,9 @@ jobs:
           git merge origin/benchmarks \
             --allow-unrelated-histories \
             --no-commit
-          mv ../_results ../gondor_results .
+          mv ../_results .
+          # move results from self-hosted runner to current working dir
+          mv ../gondor_results .
         fi
     - name: Get nightly dates under comparison
       id: nightly-dates
@@ -64,8 +66,7 @@ jobs:
         if [ -f $HASH_FILE ]; then
           PREV_HASH=$(cat $HASH_FILE)
           set +e
-          # currently only run the benchmarks tha has `track` in their name, to avoid running time_ functions
-          asv continuous $PREV_HASH $CURRENT_HASH --verbose --bench track
+          asv continuous $PREV_HASH $CURRENT_HASH --verbose
           asv_continuous_exit_code=$?
           set -e
           case $asv_continuous_exit_code in
