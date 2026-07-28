@@ -1,6 +1,6 @@
 import json
-import os
 from pathlib import Path
+
 
 class PipelineBenchmarkTracker:
     """Loads benchmark results once and return metrics for ASV."""
@@ -27,13 +27,24 @@ class PipelineBenchmarkTracker:
         print(self.payload)
 
     def track_train_slowdown(self):
+        """
+        Track and return the train slowdown factor between Hyrax and PyTorch.
+        """
         return self.payload.get("train_slowdown")
 
     def track_infer_slowdown(self):
+        """
+        Track and return the infer performance slowdown factor between Hyrax and PyTorch.
+        """
         return self.payload.get("infer_slowdown")
 
     def track_total_slowdown(self):
+        """
+        Track and return the overall performance slowdown factor between Hyrax and PyTorch.
+        The metric combines training and inference time for both frameworks.
+        """
         return self.payload.get("total_slowdown")
+
 
 def track_test():
     """
@@ -52,6 +63,7 @@ def track_test():
         payload = json.load(handle)
 
     return payload.get("train_slowdown")
+
 
 # if __name__ == "__main__":
 #     result = track_test()
