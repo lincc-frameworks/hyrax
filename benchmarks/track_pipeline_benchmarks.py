@@ -21,7 +21,6 @@ class PipelineBenchmarkTracker:
         with self.json_path.open("r", encoding="utf-8") as handle:
             return json.load(handle)
 
-
     def track_train_slowdown(self, payload):
         """
         Track and return the train slowdown factor between Hyrax and PyTorch.
