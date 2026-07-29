@@ -14,36 +14,32 @@ class PipelineBenchmarkTracker:
         # TODO: currently hard coded to tesy file loading only
         self.json_path = base_dir / "2026-07-24T22:08:39.409085+00:00.json"
 
-        self.payload = None
         if not self.json_path.exists():
             print(f"Benchmark results not found: {self.json_path}")
-            self.payload = {}
-            return
+            return {}
 
         with self.json_path.open("r", encoding="utf-8") as handle:
-            self.payload = json.load(handle)
+            return json.load(handle)
 
-        print(f"Loaded benchmark results from {self.json_path}")
-        print(self.payload)
 
-    def track_train_slowdown(self):
+    def track_train_slowdown(self, payload):
         """
         Track and return the train slowdown factor between Hyrax and PyTorch.
         """
-        return self.payload.get("train_slowdown")
+        return payload.get("train_slowdown")
 
-    def track_infer_slowdown(self):
+    def track_infer_slowdown(self, payload):
         """
         Track and return the infer performance slowdown factor between Hyrax and PyTorch.
         """
-        return self.payload.get("infer_slowdown")
+        return payload.get("infer_slowdown")
 
-    def track_total_slowdown(self):
+    def track_total_slowdown(self, payload):
         """
         Track and return the overall performance slowdown factor between Hyrax and PyTorch.
         The metric combines training and inference time for both frameworks.
         """
-        return self.payload.get("total_slowdown")
+        return payload.get("total_slowdown")
 
 
 def track_test():
@@ -63,13 +59,3 @@ def track_test():
         payload = json.load(handle)
 
     return payload.get("train_slowdown")
-
-
-# if __name__ == "__main__":
-#     result = track_test()
-#     print(f"Returned from track_test: {result}")
-
-#     tracker = PipelineBenchmarkTracker()
-#     print(tracker.track_train_slowdown())
-#     print(tracker.track_infer_slowdown())
-#     print(tracker.track_total_slowdown())
