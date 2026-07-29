@@ -51,12 +51,9 @@ jobs:
       uses: actions/cache/restore@v6
       with:
         path: ${{env.WORKING_DIR}}
-        # Exact match should always be a cache miss, there is no cache for current commit.
+        # Exact match should be a cache miss.
         # Search for prefix partial matches, it will get the most recent one from cache.
-        key: nightly-results-${{ github.sha }}
-        # `restore-keys` provided for safety
-        restore-keys: |
-          nightly-results-
+        key: nightly-results-
     - name: Run comparison of main against last nightly build
       id: benchmark-run
       run: |
