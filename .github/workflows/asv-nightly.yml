@@ -47,16 +47,16 @@ jobs:
           # move results from self-hosted runner to current working dir
           mv ../gondor_results .
         fi
-    - name: Get nightly dates under comparison
-      id: nightly-dates
-      run: |
-        echo "yesterday=$(date -d yesterday +'%Y-%m-%d')" >> $GITHUB_OUTPUT
-        echo "today=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
     - name: Use last nightly commit hash from cache
-      uses: actions/cache@v6
+      uses: actions/cache/restore@v6
       with:
         path: ${{env.WORKING_DIR}}
-        key: nightly-results-${{steps.nightly-dates.outputs.yesterday}}
+        # Exact match should always be a cache miss, there is no cache for current commit.
+        # Search for prefix partial matches, it will get the most recent one from cache.
+        key: nightly-results-${{ github.sha }}
+        # `restore-keys` provided for safety
+        restore-keys: |
+          nightly-results-
     - name: Run comparison of main against last nightly build
       id: benchmark-run
       run: |
@@ -84,10 +84,10 @@ jobs:
         echo $CURRENT_HASH > $HASH_FILE
         echo "regression=$REGRESSION" >> $GITHUB_OUTPUT
     - name: Update last nightly hash in cache
-      uses: actions/cache@v6
+      uses: actions/cache/save@v6
       with:
         path: ${{env.WORKING_DIR}}
-        key: nightly-results-${{steps.nightly-dates.outputs.today}}
+        key: nightly-results-${{github.sha}}
     - name: Generate dashboard HTML
       run: |
         asv publish
