@@ -65,7 +65,7 @@ jobs:
         echo "Current commit:"
         git rev-parse HEAD
         echo "Previous hash:"
-        cat ${{env.NIGHTLY_HASH_FILE}}
+        cat ${{env.NIGHTLY_HASH_FILE}} || true
         cat track_pipeline_benchmarks.py
         echo "Searching track functions:"
         grep "PipelineBenchmarkTracker" track_pipeline_benchmarks.py || true
