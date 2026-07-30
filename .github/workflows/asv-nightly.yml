@@ -54,9 +54,7 @@ jobs:
     - name: Use last nightly commit hash from cache
       uses: actions/cache/restore@v6
       with:
-        path: |
-          ${{env.WORKING_DIR}}/_results
-          ${{env.WORKING_DIR}}/gondor_results
+        path: ${{env.WORKING_DIR}}
         # Exact match should be a cache miss.
         # Search for prefix partial matches, it will get the most recent one from cache.
         key: nightly-results-
