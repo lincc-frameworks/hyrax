@@ -429,7 +429,7 @@ def extract_model_method(model, method_name):
         The method extracted from the model
     """
 
-    wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
+    wrapped = type(model) is DistributedDataParallel
 
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
@@ -517,9 +517,15 @@ def create_validator(
 
     device = idist.device()
     wrapped_model = _auto_model(model)
-    tensorboardx_logger = get_tensorboard_logger()
+
+    wrapped = type(wrapped_model) is DistributedDataParallel
+
+    if wrapped:
+        # bind the validate_batch function to the DDP model
+        wrapped_model.validate_batch = model.validate_batch.__get__(wrapped_model)
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
+    tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(validator)
 
     @validator.on(Events.STARTED)
@@ -712,9 +718,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     model.train()
     wrapped_model = _auto_model(model)
 
-    # in the future, write our own auto_model function which will not use DataParallel.
-    # remove all instances of DataParallel from code at that point.
-    wrapped = type(wrapped_model) is DistributedDataParallel or type(wrapped_model) is DataParallel
+    wrapped = type(wrapped_model) is DistributedDataParallel
 
     if wrapped:
         # bind the train_batch function to the DDP model
