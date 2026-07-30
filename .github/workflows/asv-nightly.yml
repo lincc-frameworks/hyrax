@@ -37,10 +37,6 @@ jobs:
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
     - name: Create ASV machine config file
       run: asv machine --machine gh-runner --yes
-    - name: DEBUG - Before merge
-      run: |
-        cat track_pipeline_benchmarks.py
-        grep "PipelineBenchmarkTracker" track_pipeline_benchmarks.py || true
     - name: Fetch previous results from the "benchmarks" branch
       run: |
         if git ls-remote --exit-code origin benchmarks > /dev/null 2>&1; then
@@ -58,7 +54,9 @@ jobs:
     - name: Use last nightly commit hash from cache
       uses: actions/cache/restore@v6
       with:
-        path: ${{env.WORKING_DIR}}
+        path: |
+          ${{env.WORKING_DIR}}/_results
+          ${{env.WORKING_DIR}}/gondor_results
         # Exact match should be a cache miss.
         # Search for prefix partial matches, it will get the most recent one from cache.
         key: nightly-results-
