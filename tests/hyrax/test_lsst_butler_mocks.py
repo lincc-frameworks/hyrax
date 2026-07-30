@@ -86,6 +86,7 @@ def test_mock_butler_basic_operations(mock_lsst_environment):
     """Test that mock Butler performs basic operations correctly."""
     # Create a mock butler
     butler = MockButler(repo="/fake/repo", collections="fake_collection")
+    butler.reset()
 
     # Test getting a skymap
     skymap = butler.get("skyMap", {"skymap": "test_skymap"})
