@@ -61,7 +61,8 @@ jobs:
         echo "Previous hash:"
         cat ${{env.NIGHTLY_HASH_FILE}}
         echo "Searching track functions:"
-        grep -R "track_.*slowdown" track_pipeline_benchmarks.py
+        cat track_pipeline_benchmarks.py
+        grep -R "track_" track_pipeline_benchmarks.py
         asv discover benchmarks /tmp/discover.json
         grep track_pipeline /tmp/discover.json
     - name: Run comparison of main against last nightly build
