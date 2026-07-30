@@ -109,7 +109,7 @@ class HyraxAutoencoder(nn.Module):
         return x
 
     def forward(self, batch):
-        return self.forward(batch)
+        return self._eval_encoder(batch)
 
     def train_batch(self, batch):
         """This function contains the logic for a single training step. i.e. the
