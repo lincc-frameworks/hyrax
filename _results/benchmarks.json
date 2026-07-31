@@ -256,44 +256,14 @@
         "version": "4a854e1e0e3e229014dfb93897461a6ec7d17065e5d28b41c632d45283179a8a",
         "warmup_time": -1
     },
-    "track_pipeline_benchmarks.PipelineBenchmarkTracker.track_infer_slowdown": {
-        "code": "class PipelineBenchmarkTracker:\n    def track_infer_slowdown(self, payload):\n        \"\"\"\n        Track and return the infer performance slowdown factor between Hyrax and PyTorch.\n        \"\"\"\n        return payload.get(\"infer_slowdown\")\n\n    def setup_cache(self):\n        \"\"\"\n        Setup for loading self-hosted benchmark results. Opens the json file and save it as payload.\n        \"\"\"\n        # TODO: \"gondor_results\" is the directory to store results from self-hosted runner on gondor\n        base_dir = Path(__file__).resolve().parent / \"gondor_results\"\n        # TODO: currently hard coded to tesy file loading only\n        self.json_path = base_dir / \"2026-07-24T22:08:39.409085+00:00.json\"\n    \n        if not self.json_path.exists():\n            print(f\"Benchmark results not found: {self.json_path}\")\n            return {}\n    \n        with self.json_path.open(\"r\", encoding=\"utf-8\") as handle:\n            return json.load(handle)",
-        "name": "track_pipeline_benchmarks.PipelineBenchmarkTracker.track_infer_slowdown",
-        "param_names": [],
-        "params": [],
-        "setup_cache_key": "track_pipeline_benchmarks:8",
-        "type": "track",
-        "unit": "unit",
-        "version": "be37cf833d23a470c9e2d47f8b53b26132a8f978ccaee02368d427f45c9ba5b8"
-    },
-    "track_pipeline_benchmarks.PipelineBenchmarkTracker.track_total_slowdown": {
-        "code": "class PipelineBenchmarkTracker:\n    def track_total_slowdown(self, payload):\n        \"\"\"\n        Track and return the overall performance slowdown factor between Hyrax and PyTorch.\n        The metric combines training and inference time for both frameworks.\n        \"\"\"\n        return payload.get(\"total_slowdown\")\n\n    def setup_cache(self):\n        \"\"\"\n        Setup for loading self-hosted benchmark results. Opens the json file and save it as payload.\n        \"\"\"\n        # TODO: \"gondor_results\" is the directory to store results from self-hosted runner on gondor\n        base_dir = Path(__file__).resolve().parent / \"gondor_results\"\n        # TODO: currently hard coded to tesy file loading only\n        self.json_path = base_dir / \"2026-07-24T22:08:39.409085+00:00.json\"\n    \n        if not self.json_path.exists():\n            print(f\"Benchmark results not found: {self.json_path}\")\n            return {}\n    \n        with self.json_path.open(\"r\", encoding=\"utf-8\") as handle:\n            return json.load(handle)",
-        "name": "track_pipeline_benchmarks.PipelineBenchmarkTracker.track_total_slowdown",
-        "param_names": [],
-        "params": [],
-        "setup_cache_key": "track_pipeline_benchmarks:8",
-        "type": "track",
-        "unit": "unit",
-        "version": "4e3e5bc5a91e83c8c6f9ef62336fa4f9832c00e629494f29056c1285ff9e8fed"
-    },
-    "track_pipeline_benchmarks.PipelineBenchmarkTracker.track_train_slowdown": {
-        "code": "class PipelineBenchmarkTracker:\n    def track_train_slowdown(self, payload):\n        \"\"\"\n        Track and return the train slowdown factor between Hyrax and PyTorch.\n        \"\"\"\n        return payload.get(\"train_slowdown\")\n\n    def setup_cache(self):\n        \"\"\"\n        Setup for loading self-hosted benchmark results. Opens the json file and save it as payload.\n        \"\"\"\n        # TODO: \"gondor_results\" is the directory to store results from self-hosted runner on gondor\n        base_dir = Path(__file__).resolve().parent / \"gondor_results\"\n        # TODO: currently hard coded to tesy file loading only\n        self.json_path = base_dir / \"2026-07-24T22:08:39.409085+00:00.json\"\n    \n        if not self.json_path.exists():\n            print(f\"Benchmark results not found: {self.json_path}\")\n            return {}\n    \n        with self.json_path.open(\"r\", encoding=\"utf-8\") as handle:\n            return json.load(handle)",
-        "name": "track_pipeline_benchmarks.PipelineBenchmarkTracker.track_train_slowdown",
-        "param_names": [],
-        "params": [],
-        "setup_cache_key": "track_pipeline_benchmarks:8",
-        "type": "track",
-        "unit": "unit",
-        "version": "0dcf92d4ac96b59c7860e16c947273beab977cbd0ebce3d5fa9fcfe86392754d"
-    },
     "track_pipeline_benchmarks.track_test": {
-        "code": "def track_test():\n    \"\"\"\n    Trial function, kept for testing.\n    Load benchmark results from a JSON file under the ASV results directory and\n    return the requested slowdown metric.\n    Should behave the same as `track_train_slowdown` above.\n    \"\"\"\n    # Hard-coded path\n    base_dir = Path(__file__).resolve().parent / \"gondor_results\"\n    json_path = base_dir / \"2026-07-24T22:08:39.409085+00:00.json\"\n    if not json_path.exists():\n        return 11111111111111\n\n    with json_path.open(\"r\", encoding=\"utf-8\") as handle:\n        payload = json.load(handle)\n\n    return payload.get(\"train_slowdown\")",
+        "code": "def track_test():\n    \"\"\"This test function should be able to detect by asv and run along for saving results\"\"\"\n    return 55555555555555",
         "name": "track_pipeline_benchmarks.track_test",
         "param_names": [],
         "params": [],
         "type": "track",
         "unit": "unit",
-        "version": "12d678b0a27aaf144f5342112e8530d2187efc99500c0535843c605605dd2cde"
+        "version": "3f0f75e24c310ac95593bee1b71b4fd79ef3dc922b41df120907d48228473bfa"
     },
     "vector_db_benchmarks.VectorDBInsertBenchmarks.peakmem_load_vector_db": {
         "code": "class VectorDBInsertBenchmarks:\n    def peakmem_load_vector_db(self, vector_length, vector_db_implementation):\n        \"\"\"Memory benchmark for loading a vector database.\"\"\"\n        with tempfile.TemporaryDirectory() as tmp_dir:\n            self.h.save_to_database(output_dir=Path(tmp_dir))\n\n    def setup(self, vector_length, vector_db_implementation):\n        \"\"\"Set up for vector database benchmarks. Create a temporary directory,\n        configure Hyrax with a loopback model, and generate a random dataset, run\n        inference to create the result files for insertion into the vector database.\"\"\"\n        self.tmp_dir = tempfile.TemporaryDirectory()\n        self.input_dir = Path(self.tmp_dir.name)\n    \n        self.h = Hyrax()\n        self.h.config[\"general\"][\"results_dir\"] = str(self.input_dir)\n        self.h.config[\"data_request\"] = {\n            \"train\": {\n                \"data\": {\n                    \"dataset_class\": \"HyraxRandomDataset\",\n                    \"data_location\": \"./data\",\n                    \"fields\": [\"image\", \"label\", \"object_id\"],\n                    \"primary_id_field\": \"object_id\",\n                },\n            },\n            \"infer\": {\n                \"data\": {\n                    \"dataset_class\": \"HyraxRandomDataset\",\n                    \"data_location\": \"./data\",\n                    \"fields\": [\"image\", \"label\", \"object_id\"],\n                    \"primary_id_field\": \"object_id\",\n                },\n            },\n        }\n        self.h.config[\"model\"][\"name\"] = \"HyraxLoopback\"\n    \n        # Default inference batch size is 512, so this should result in 4 batch files\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"size\"] = 2048\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"seed\"] = 0\n        self.h.config[\"data_set\"][\"HyraxRandomDataset\"][\"shape\"] = [vector_length]\n    \n        # Qdrant requires the vector size in order to create its collections\n        self.h.config[\"vector_db\"][\"qdrant\"][\"vector_size\"] = vector_length\n    \n        weights_file = self.input_dir / \"fakeweights\"\n        with open(weights_file, \"a\"):\n            pass\n        self.h.config[\"infer\"][\"model_weights_file\"] = str(weights_file)\n    \n        self.h.config[\"vector_db\"][\"name\"] = vector_db_implementation\n    \n        self.h.infer()",
