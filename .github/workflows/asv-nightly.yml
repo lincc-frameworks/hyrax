@@ -102,8 +102,8 @@ jobs:
       run: |
         echo "current working dir: "
         ls -la
-        echo "inside env: "
-        ls -la nightly-hash
+        echo "inside nightly-hash: "
+        ls -la -R nightly-hash
     - name: Update last nightly hash in cache
       uses: actions/cache/save@v6
       with:
