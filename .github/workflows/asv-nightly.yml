@@ -103,7 +103,7 @@ jobs:
         echo "current working dir: "
         ls -la
         echo "inside env: "
-        ls -la env
+        ls -la nightly-hash
     - name: Update last nightly hash in cache
       uses: actions/cache/save@v6
       with:
