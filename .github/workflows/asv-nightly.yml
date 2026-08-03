@@ -98,6 +98,12 @@ jobs:
         fi
         echo $CURRENT_HASH > $HASH_FILE
         echo "regression=$REGRESSION" >> $GITHUB_OUTPUT
+    - name: DEBUG - Check ASV environment
+      run: |
+        echo "current working dir: "
+        ls -la
+        echo "inside env: "
+        ls -la env
     - name: Update last nightly hash in cache
       uses: actions/cache/save@v6
       with:
