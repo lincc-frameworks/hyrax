@@ -47,18 +47,21 @@ jobs:
           # move results from self-hosted runner to current working dir
           mv ../gondor_results .
         fi
-    - name: DEBUG - After merge
+    - name: DEBUG - Before cache
       run: |
         cat track_pipeline_benchmarks.py
         grep "PipelineBenchmarkTracker" track_pipeline_benchmarks.py || true
+        echo "current working dir: "
+        ls -al
     - name: Use last nightly commit hash from cache
       uses: actions/cache/restore@v6
       with:
-        path: ${{env.WORKING_DIR}}
+        # restore only the env for asv
+        path: ${{env.WORKING_DIR}}/env
         # Exact match should be a cache miss.
         # Search for prefix partial matches, it will get the most recent one from cache.
         key: nightly-results-
-    - name: DEBUG - benchmark discovery
+    - name: DEBUG - After cache
       run: |
         echo "Current commit:"
         git rev-parse HEAD
@@ -67,6 +70,8 @@ jobs:
         cat track_pipeline_benchmarks.py
         echo "Searching track functions:"
         grep "PipelineBenchmarkTracker" track_pipeline_benchmarks.py || true
+        echo "current working dir: "
+        ls -al
     - name: Run comparison of main against last nightly build
       id: benchmark-run
       run: |
@@ -96,7 +101,8 @@ jobs:
     - name: Update last nightly hash in cache
       uses: actions/cache/save@v6
       with:
-        path: ${{env.WORKING_DIR}}
+        # save only the env for asv
+        path: ${{env.WORKING_DIR}}/env
         key: nightly-results-${{github.sha}}
     - name: Generate dashboard HTML
       run: |
