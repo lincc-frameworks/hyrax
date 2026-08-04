@@ -162,30 +162,32 @@ class Train(Verb):
 
         monitor = GpuMonitor()
 
-        # Go up to the parent of the results dir so all mlflow results show up in the same directory.
-        results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-        (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
-        mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
+        try:
+            # Go up to the parent of the results dir so all mlflow results show up in the same directory.
+            results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
+            (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
+            mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
 
-        # Get experiment_name and cast to string (it's a tomlkit.string by default)
-        experiment_name = str(config["train"]["experiment_name"])
+            # Get experiment_name and cast to string (it's a tomlkit.string by default)
+            experiment_name = str(config["train"]["experiment_name"])
 
-        # This will create the experiment if it doesn't exist
-        mlflow.set_experiment(experiment_name)
+            # This will create the experiment if it doesn't exist
+            mlflow.set_experiment(experiment_name)
 
-        # If run_name is not `false` in the config, use it as the MLFlow run name in
-        # this experiment. Otherwise use the name of the results directory
-        run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
+            # If run_name is not `false` in the config, use it as the MLFlow run name in
+            # this experiment. Otherwise use the name of the results directory
+            run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
 
-        with mlflow.start_run(log_system_metrics=True, run_name=run_name):
-            Train._log_params(config, results_dir)
+            with mlflow.start_run(log_system_metrics=True, run_name=run_name):
+                Train._log_params(config, results_dir)
 
-            # Run the training process
-            trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
+                # Run the training process
+                trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
 
-        # Save the trained model
-        model.save(results_dir / config["train"]["weights_filename"])
-        monitor.stop()
+            # Save the trained model
+            model.save(results_dir / config["train"]["weights_filename"])
+        finally:
+            monitor.stop()
 
         logger.info("Finished Training")
         close_tensorboard_logger()
