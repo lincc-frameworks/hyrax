@@ -86,11 +86,13 @@ def main():
     )
 
     # save the result to json file
-    output_dir = Path(os.environ.get("RESULT_PATH", "benchmarks/results"))
+    output_dir = Path(os.environ.get("RESULT_PATH", "benchmarks_self_hosted/results"))
     # make sure the directory exist
     output_dir.mkdir(parents=True, exist_ok=True)
-
-    result_file = output_dir / f"{result['commit']}.json"
+    timestamp = datetime.datetime.fromisoformat(result["timestamp"])
+    # filename format: <short_commit>_<YYYYMMDD_HHMMSS>.json
+    filename = f"{result['commit'][:8]}_{timestamp.strftime('%Y%m%d_%H%M%S')}.json"
+    result_file = output_dir / filename
 
     with open(result_file, "w") as f:
         json.dump(

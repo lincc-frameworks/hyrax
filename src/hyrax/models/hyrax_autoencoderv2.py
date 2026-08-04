@@ -151,7 +151,7 @@ class HyraxAutoencoderV2(nn.Module):
             Dictionary containing the loss value for the current batch.
         """
         x = batch
-        z = self._eval_encoder(x)
+        z = self.forward(x)
         x_hat = self._eval_decoder(z)
 
         # The loss averaging strategy here is different from v1 which averages
@@ -199,7 +199,7 @@ class HyraxAutoencoderV2(nn.Module):
             Dictionary containing the loss value for the current batch.
         """
         x = batch
-        z = self._eval_encoder(x)
+        z = self.forward(x)
         x_hat = self._eval_decoder(z)
 
         if self.band_reduction == "sum":
@@ -233,7 +233,7 @@ class HyraxAutoencoderV2(nn.Module):
             Dictionary containing the loss value for the current batch.
         """
         x = batch
-        z = self._eval_encoder(x)
+        z = self.forward(x)
         x_hat = self._eval_decoder(z)
 
         if self.band_reduction == "sum":

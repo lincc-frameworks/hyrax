@@ -95,7 +95,7 @@ class HSCDCAE(nn.Module):
         x1 = self.activation(self.encoder1(data))
         x2 = self.activation(self.encoder2(self.pool(x1)))
         x3 = self.activation(self.encoder3(self.pool(x2)))
-        x4 = self.activation(self.encoder4(self.pool(x3)))
+        x4 = self.forward(data)
 
         # Decoder with skip connections
         x = self.activation(self.decoder4(x4) + x3)
@@ -133,7 +133,7 @@ class HSCDCAE(nn.Module):
         x1 = self.activation(self.encoder1(data))
         x2 = self.activation(self.encoder2(self.pool(x1)))
         x3 = self.activation(self.encoder3(self.pool(x2)))
-        x4 = self.activation(self.encoder4(self.pool(x3)))
+        x4 = self.forward(data)
 
         # Decoder with skip connections
         x = self.activation(self.decoder4(x4) + x3)
@@ -169,7 +169,7 @@ class HSCDCAE(nn.Module):
         x1 = self.activation(self.encoder1(data))
         x2 = self.activation(self.encoder2(self.pool(x1)))
         x3 = self.activation(self.encoder3(self.pool(x2)))
-        x4 = self.activation(self.encoder4(self.pool(x3)))
+        x4 = self.forward(data)
 
         # Decoder with skip connections
         x = self.activation(self.decoder4(x4) + x3)
