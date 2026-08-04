@@ -743,6 +743,17 @@ class TraceCall(TracePrintable):
         # careful with names given to TraceDef() calls.
         return list(self.params.keys()) + list(self.retval.keys())
 
+    @staticmethod
+    def _hash_tensor(tensor):
+        if hasattr(tensor, "hash_tensor"):
+            return tensor.hash_tensor()
+        import hashlib
+
+        arr = tensor.detach().numpy(force=False)
+        h = hashlib.sha256()
+        h.update(arr)
+        return hash(h.digest())
+
     def _repr_value(self, param_value):
         import numpy as np
         import torch
@@ -789,7 +800,7 @@ class TraceCall(TracePrintable):
                 # Have to pull to CPU to perform hash calc
                 as_torch = param_value.to("cpu")
 
-            hash_val = as_torch.hash_tensor()
+            hash_val = self._hash_tensor(as_torch)
 
             shape = tuple(param_value.shape)
             # type_name = type(param_value).__name__
