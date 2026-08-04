@@ -13,7 +13,9 @@ class GpuMonitor(Thread):
     """
 
     def __init__(self, interval_seconds=1):
-        super().__init__()
+        # daemon=True so this thread can never block interpreter shutdown if
+        # `stop()` is skipped (e.g. an exception during training).
+        super().__init__(daemon=True)
         self.stopped = False
         self.delay = interval_seconds  # Seconds between calls to GPUtil
         self.start_time = time.time()
