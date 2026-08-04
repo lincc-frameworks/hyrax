@@ -126,7 +126,7 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        z = self._eval_encoder(batch)
+        z = self.forward(batch)
         x_hat = self._eval_decoder(z)
         loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
@@ -155,7 +155,7 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        z = self._eval_encoder(batch)
+        z = self.forward(batch)
         x_hat = self._eval_decoder(z)
         loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
@@ -178,7 +178,7 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        z = self._eval_encoder(batch)
+        z = self.forward(batch)
         x_hat = self._eval_decoder(z)
         loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
