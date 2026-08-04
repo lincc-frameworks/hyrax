@@ -26,7 +26,7 @@ from hyrax.verbs.engine import Engine
 # ---------------------------------------------------------------------------
 
 
-def _train_and_export_onnx(tmp_path, *, split=None, size=20, batch_size=4, seed=0, shape=(2, 3)):
+def _train_and_export_onnx(tmp_path, *, split=None, size=20, batch_size=4, seed=24601, shape=(2, 3)):
     """Train HyraxLoopback on HyraxRandomDataset and export it to ONNX.
 
     Returns (hyrax_instance, onnx_dir, data_location) so callers can both
