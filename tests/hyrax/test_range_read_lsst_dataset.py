@@ -34,17 +34,24 @@ def _write_mock_fits_files(fits_dir, bands, tract_ids, patch_ids):
 
 
 @pytest.fixture
-def fits_dir_with_data(tmp_path):
+def fits_dir_with_data(tmp_path, monkeypatch):
     """Create a directory with mock FITS files matching the mock skymap's tract/patch IDs.
 
     MockTractInfo.findPatch always returns patch_id=42, so we only need files
     for each tract_id with patch_id=42.
+
+    Note: we limit the number of mock tracts here to keep disk usage and runtime reasonable.
     """
     fits_dir = tmp_path / "fits_data"
     fits_dir.mkdir()
 
+    # Limit mock tracts for this test module to reduce the number of large FITS files.
+    small_ids = MockSkyMap.ids[:3]
+    monkeypatch.setattr(MockSkyMap, "ids", small_ids)
+    MockSkyMap.id_index = 0
+
     bands = ["g", "r", "i"]
-    tract_ids = [info["tract_id"] for info in MockSkyMap.ids]
+    tract_ids = [info["tract_id"] for info in small_ids]
     _write_mock_fits_files(fits_dir, bands, tract_ids, [42])
 
     return fits_dir
