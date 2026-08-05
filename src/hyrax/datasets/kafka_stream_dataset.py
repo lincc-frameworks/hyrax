@@ -49,8 +49,10 @@ provider is what is passed to the DataLoader; configure it the normal way:
 import json
 import logging
 import threading
+from pathlib import Path
 from urllib.parse import urlparse
 
+import toml
 import torch
 
 from .dataset_registry import HyraxDataset
@@ -60,11 +62,6 @@ logger = logging.getLogger(__name__)
 
 class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
     """Reads JSON messages from a Kafka topic and yields latency-bounded batches.
-
-    The location of the Kafka broker(s) and topic(s) is configured in ``[data_set.KafkaStreamDataset]``.
-    Alternatively, the data_location of the dataset can be specified inline in
-    the data request as the URI ``kafka://<host>:<port>[/<topic>]``.
-    The inline URI takes precedence over the configuration file.
 
     Each Kafka message is expected to be a JSON object. :meth:`_decode` returns it as a
     flat ``dict`` (e.g. ``{"object_id": "...", "image": [...], ...}``); the wrapping
@@ -114,6 +111,19 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         self._consumer = None
         self._buffered: list[dict] = []
 
+        credentials_file = ds_config.get("credentials_file")
+        credentials_file_path = Path(credentials_file) if credentials_file else None
+
+        self.consumer_config = {
+            "bootstrap.servers": self.bootstrap_servers,
+            "group.id": self.group_id,
+            "auto.offset.reset": self.auto_offset_reset,
+        }
+
+        if credentials_file_path and credentials_file_path.exists():
+            credentials = toml.load(credentials_file_path)
+            self.consumer_config.update(credentials)
+
         super().__init__(config, metadata_table=None)
 
     def stop(self):
@@ -140,14 +150,10 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         except ImportError as err:
             raise ImportError("KafkaStreamDataset requires the 'confluent-kafka' package. ") from err
 
-        consumer = Consumer(
-            {
-                "bootstrap.servers": self.bootstrap_servers,
-                "group.id": self.group_id,
-                "auto.offset.reset": self.auto_offset_reset,
-            }
-        )
+        consumer = Consumer(self.consumer_config)
+
         consumer.subscribe(self.topics)
+
         return consumer
 
     def _ensure_consumer(self):

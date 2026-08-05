@@ -18,6 +18,7 @@ import torch
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
+from torch.nn import Module
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
 
@@ -29,6 +30,45 @@ from hyrax.trace import get_trace
 logger = logging.getLogger(__name__)
 
 _LEGACY_SPLIT_KEYS = ("train_size", "validate_size", "test_size")
+
+
+# We define a custom __getattr__ method on DistributedDataParallel so that
+# functions like train_batch can access required attributes without
+# explicitly copying them from the original module to the DDP instance.
+# DDP simply uses the torch.nn.Module.__getattr__ method, so we define a new
+# one that returns an attribute from DistributedDataParallel.module should
+# the existing __getattr__ fail.
+_old__getattr__ = Module.__getattr__
+
+
+# There is an identical version of this function used in
+# test_train.py::test_training_info_returned_on_model.
+# If this method is ever updated, make sure to update the version
+# there too.
+def _new__getattr__(self, name: str):
+    try:
+        return _old__getattr__(self, name)
+    except AttributeError:
+        if hasattr(self.module, name):
+            return getattr(self.module, name)
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+
+DistributedDataParallel.__getattr__ = _new__getattr__
+
+
+# Helper method to wrap a model in DistributedDataParallel if needed.
+# Uses idist.auto_model to do the wrapping, then ignore the result if it is a DataParallel instance.
+# For more info, see https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_model.html.
+# Arguments are identical to idist.auto_model.
+def _auto_model(model: torch.nn.Module, sync_bn: bool = False, **kwargs: Any) -> torch.nn.Module:
+    wrapped_model = idist.auto_model(model, sync_bn=sync_bn, **kwargs)
+    if type(wrapped_model) is DataParallel:
+        logger.info(
+            'Ignore previous message "Apply torch DataParallel on model". Hyrax does not use DataParallel'
+        )
+        return model
+    return wrapped_model
 
 
 class SubsetSequentialSampler(Sampler[int]):
@@ -209,7 +249,7 @@ def dist_data_loader(
     Parameters
     ----------
     dataset : hyrax.datasets.dataset_registry.HyraxDataset
-        A Hyrax dataset instance.  When *dataset* is a :class:`DataProvider`
+        A Hyrax dataset instance.  When *dataset* is a :class:`hyrax.datasets.data_provider.DataProvider`
         with ``split_indices`` set (by :func:`~hyrax.splitting_utils.create_splits`),
         the loader is restricted to those indices via a :class:`~torch.utils.data.Subset`.
         When ``split_weights`` is also set, a
@@ -373,13 +413,12 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
 
 
 def extract_model_method(model, method_name):
-    """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-    or DataParallel object. For instance, method_name could be `train_batch` or
-    `infer_batch`.
+    """Extract a method from a model, which may be wrapped in DistributedDataParallel.
+    For instance, method_name could be `train_batch` or `infer_batch`.
 
     Parameters
     ----------
-    model : nn.Module, DistributedDataParallel, or DataParallel
+    model : nn.Module
         The model to extract the method from
     method_name : str
         Name of the method to extract
@@ -389,13 +428,13 @@ def extract_model_method(model, method_name):
     Callable
         The method extracted from the model
     """
-    wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
 
-    # Check to see if the model has the requested method
+    wrapped = type(model) is DistributedDataParallel
+
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
 
-    return getattr(model.module if wrapped else model, method_name)
+    return getattr(model if hasattr(model, method_name) else model.module, method_name)
 
 
 def create_evaluator(
@@ -423,7 +462,7 @@ def create_evaluator(
     """
     device = idist.device()
     model.eval()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     evaluator = create_engine("infer_batch", device, wrapped_model, config)
 
     @evaluator.on(Events.STARTED)
@@ -477,10 +516,16 @@ def create_validator(
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
-    tensorboardx_logger = get_tensorboard_logger()
+    wrapped_model = _auto_model(model)
+
+    wrapped = type(wrapped_model) is DistributedDataParallel
+
+    if wrapped:
+        # bind the validate_batch function to the DDP model
+        wrapped_model.validate_batch = model.validate_batch.__get__(wrapped_model)
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
+    tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(validator)
 
     @validator.on(Events.STARTED)
@@ -532,7 +577,7 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     tester = create_engine("test_batch", device, wrapped_model, config)
@@ -610,7 +655,7 @@ def attach_best_checkpoint(
     results_directory : Path
         Directory where checkpoint files are written.
     """
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
     to_save = {
         "model": wrapped_model,
@@ -664,9 +709,21 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pytorch-ignite.Engine
         Engine object that will be used to train the model.
     """
+
+    # remove in future when adding support for multi-node configurations
+    if idist.get_nnodes() > 1:
+        raise RuntimeError("Multi-node configurations not supported")
+
     device = idist.device()
     model.train()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
+
+    wrapped = type(wrapped_model) is DistributedDataParallel
+
+    if wrapped:
+        # bind the train_batch function to the DDP model
+        wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
+
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)

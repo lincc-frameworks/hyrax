@@ -229,3 +229,28 @@ def test_peek_sample_buffers_and_replays(monkeypatch):
     assert len(batches) == 1
     # The peeked message is replayed as the first sample of the first batch.
     assert [s["object_id"] for s in batches[0]] == ["first", "second"]
+
+
+def test_extra_credentials(tmp_path):
+    """Extra credentials are passed to the consumer constructor."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["topics"] = "test-topic"
+    extra_credentials = {
+        "security.protocol": "SASL_PLAINTEXT",
+        "sasl.mechanism": "SCRAM-SHA-512",
+        "sasl.username": "user",
+        "sasl.password": "pass",
+    }
+
+    with open(tmp_path / "credentials.ini", "w") as f:
+        for key, value in extra_credentials.items():
+            f.write(f"'{key}' = '{value}'\n")
+    ds_config["credentials_file"] = str(tmp_path / "credentials.ini")
+    print(str(tmp_path / "credentials.ini"))
+
+    dataset = KafkaStreamDataset(h.config)
+
+    # The extra credentials should be present in the consumer config.
+    for key, value in extra_credentials.items():
+        assert dataset.consumer_config[key] == value

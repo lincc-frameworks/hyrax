@@ -292,32 +292,44 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         tract_info = skymap.findTract(radec)
         return (tract_info, tract_info.findPatch(radec))
 
-    # super basic patch caching
-    @functools.lru_cache(maxsize=128)  # noqa: B019
-    def _request_patch(self, tract_index, patch_index):
+    @staticmethod
+    @functools.lru_cache(maxsize=128)
+    def _request_patch_cached(tract_index, patch_index, butler, skymap_name, bands_tuple):
         """
-        Request a patch from the butler. This will be a list of
-        lsst.afw.image objects each corresponding to the configured
-        bands
+        Cached patch fetching using static method.
 
-        Uses functools.lru_cache for basic in-memory caching.
+        Static method means no 'self' in cache key, making it truly global.
+        Thread-safe because each call creates its own Butler instance.
         """
-        data = []
+        try:
+            # Track successful data and failed bands separately
+            data = []
+            failed_bands = []
 
-        # Get the patch images we need
-        for band in LSSTDataset.BANDS:
-            # Set up the data dict
-            butler_dict = {
-                "tract": tract_index,
-                "patch": patch_index,
-                "skymap": self.config["data_set"]["skymap"],
-                "band": band,
-            }
+            for band in bands_tuple:
+                butler_dict = {
+                    "tract": tract_index,
+                    "patch": patch_index,
+                    "skymap": skymap_name,
+                    "band": band,
+                }
+                try:
+                    image = butler.get("deep_coadd", butler_dict)
+                    data.append(image.getImage())
+                except Exception as e:
+                    logger.warning(f"Failed to fetch band {band} for patch {tract_index}-{patch_index}: {e}")
+                    failed_bands.append(band)
+                    data.append(None)  # Add None placeholder for failed band; will be filled with NaNs later
 
-            # pull from butler
-            image = self._get_butler_thread_safe().get("deep_coadd", butler_dict)
-            data.append(image.getImage())
-        return data
+            logger.debug(f"Fetched patch {tract_index}-{patch_index} from Butler")
+            if failed_bands:
+                logger.debug(f"Failed bands for patch {tract_index}-{patch_index}: {failed_bands}")
+
+            return data, failed_bands
+
+        except Exception as e:
+            logger.error(f"Failed to fetch patch {tract_index}-{patch_index}: {e}")
+            raise
 
     def _fetch_single_cutout(self, row):
         """
@@ -326,19 +338,43 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         Does not handle edge-of-tract/patch type edge cases, will only work near
         center of a patch.
         """
-        import numpy as np
-        from torch import from_numpy
 
         tract_info, patch_info = self._get_tract_patch(row)
         box_i = self._parse_box(patch_info, row)
 
-        patch_images = self._request_patch(tract_info.getId(), patch_info.sequential_index)
+        # patch_images = self._request_patch(tract_info.getId(), patch_info.sequential_index)
+        patch_images, _ = self._request_patch_cached(
+            tract_info.getId(),
+            patch_info.sequential_index,
+            self._get_butler_thread_safe(),
+            self._butler_config["skymap"],
+            tuple(LSSTDataset.BANDS),
+        )
 
-        # Actually perform a cutout
-        data = [image[box_i].getArray() for image in patch_images]
-
-        # Convert to torch format
-        data_np = np.array(data)
-        data_torch = from_numpy(data_np.astype(np.float32))
+        data_torch, _ = self._extract_cutout_from_patch_images(box_i, LSSTDataset.BANDS, patch_images)
 
         return self.apply_transform(data_torch)
+
+    def _extract_cutout_from_patch_images(self, box_i, bands_to_process, patch_images):
+        import numpy as np
+        from torch import from_numpy
+
+        # Extract cutout with NaN filling for failed bands
+        cutout_data = []
+        downloaded_bands = []  # Track successfully downloaded bands in order
+
+        for _i, (band, image) in enumerate(zip(bands_to_process, patch_images)):
+            if image is not None:
+                # Successfully retrieved band
+                cutout_data.append(image[box_i].getArray())
+                downloaded_bands.append(band)
+            else:
+                # Failed band - create NaN-filled array with same shape as box
+                nan_array = np.full((box_i.getHeight(), box_i.getWidth()), np.nan, dtype=np.float32)
+                cutout_data.append(nan_array)
+                logger.debug(f"Filled band {band} with NaN for failed retrieval")
+
+        data_np = np.array(cutout_data)
+        data_torch = from_numpy(data_np.astype(np.float32))
+
+        return data_torch, downloaded_bands

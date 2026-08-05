@@ -1,4 +1,3 @@
-import functools
 import logging
 import threading
 from pathlib import Path
@@ -587,46 +586,6 @@ class DownloadedLSSTDataset(LSSTDataset):
             logger.info(f"Synced {synced_count} manifest entries with filesystem")
             self.save_manifest_now()
 
-    # TODO: Pull out butler downloader (and attendant multithreading) as a mixin?
-    @staticmethod
-    @functools.lru_cache(maxsize=128)
-    def _request_patch_cached(tract_index, patch_index, butler, skymap_name, bands_tuple):
-        """
-        Cached patch fetching using static method.
-
-        Static method means no 'self' in cache key, making it truly global.
-        Thread-safe because each call creates its own Butler instance.
-        """
-        try:
-            # Track successful data and failed bands separately
-            data = []
-            failed_bands = []
-
-            for band in bands_tuple:
-                butler_dict = {
-                    "tract": tract_index,
-                    "patch": patch_index,
-                    "skymap": skymap_name,
-                    "band": band,
-                }
-                try:
-                    image = butler.get("deep_coadd", butler_dict)
-                    data.append(image.getImage())
-                except Exception as e:
-                    logger.warning(f"Failed to fetch band {band} for patch {tract_index}-{patch_index}: {e}")
-                    failed_bands.append(band)
-                    data.append(None)  # Add None placeholder for failed band; will be filled with NaNs later
-
-            logger.debug(f"Fetched patch {tract_index}-{patch_index} from Butler")
-            if failed_bands:
-                logger.debug(f"Failed bands for patch {tract_index}-{patch_index}: {failed_bands}")
-
-            return data, failed_bands
-
-        except Exception as e:
-            logger.error(f"Failed to fetch patch {tract_index}-{patch_index}: {e}")
-            raise
-
     def _fetch_single_cutout(self, row, idx=None, manifest_idx=None):
         """Fetch cutout, using saved cutout if available, with optional band filtering."""
         if idx is not None:
@@ -682,7 +641,6 @@ class DownloadedLSSTDataset(LSSTDataset):
 
     def _fetch_cutout_with_cache(self, row):
         """Generate cutout using cached patch fetching with NaN filling for failed bands."""
-        from torch import from_numpy
 
         if not self._butler_available():
             msg = "Attempted to fetch an un-downloaded cutout without access to a butler \n"
@@ -706,30 +664,18 @@ class DownloadedLSSTDataset(LSSTDataset):
             bands_tuple,
         )
 
-        # Extract cutout with NaN filling for failed bands
-        cutout_data = []
-        downloaded_bands = []  # Track successfully downloaded bands in order
-
         bands_to_process = self._original_bands if self._is_filtering_bands else self.BANDS
-        for _i, (band, image) in enumerate(zip(bands_to_process, patch_images)):
-            if image is not None:
-                # Successfully retrieved band
-                cutout_data.append(image[box_i].getArray())
-                downloaded_bands.append(band)
-            else:
-                # Failed band - create NaN-filled array with same shape as box
-                nan_array = np.full((box_i.getHeight(), box_i.getWidth()), np.nan, dtype=np.float32)
-                cutout_data.append(nan_array)
-                logger.debug(f"Filled band {band} with NaN for failed retrieval")
+        data_torch, downloaded_bands = self._extract_cutout_from_patch_images(
+            box_i,
+            bands_to_process,
+            patch_images,
+        )
 
         # Update global band failure statistics
         if failed_bands:
             with self._band_failure_lock:
                 for band in failed_bands:
                     self._band_failure_stats[band] += 1
-
-        data_np = np.array(cutout_data)
-        data_torch = from_numpy(data_np.astype(np.float32))
 
         # Return cutout and downloaded bands info for manifest tracking
         return data_torch, downloaded_bands
