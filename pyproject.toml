@@ -22,6 +22,7 @@ dynamic = ["version"]
 requires-python = ">=3.11"
 dependencies = [
     "astropy", # Used to load fits files of sources to query HSC cutout server
+    "fitsio", # Used by RangeReadLSSTDataset for efficient FITS range reads via cfitsio
     # Pin to the current version of pytorch ignite so workarounds to 
     # https://github.com/pytorch/ignite/issues/3372 function correctly
     # while allowing us to release packages that don't depend on dev versions
