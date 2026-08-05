@@ -384,6 +384,32 @@ poll_timeout = 1.0
 batch_flush_timeout = 5.0
 
 
+[data_set.LSDBStreamDataset]
+# Which lsdb stream to build over the catalog:
+#   "catalog"  -> lsdb.streams.CatalogStream, a single finite pass over every partition.
+#                 Best for inference: every object is visited exactly once and the run
+#                 ends on its own when the catalog is exhausted.
+#   "infinite" -> lsdb.streams.InfiniteStream, endless random resampling of partitions.
+#                 Best for training: batches keep arriving until you stop the session,
+#                 so training is not bounded by a single pass over the catalog.
+stream_type = "catalog"
+
+# Number of HATS partitions computed per chunk. Larger values amortize per-chunk dask
+# overhead but hold more rows in memory; lsdb clips this to the catalog's partition count.
+partitions_per_chunk = 1
+
+# Shuffle the partition order and the rows within each chunk. Ignored (and always on)
+# when stream_type = "infinite"; lsdb's InfiniteStream does not accept this option.
+shuffle = true
+
+# Random seed for partition/row shuffling. Set to false for fresh entropy each run.
+seed = false
+
+# Extra keyword arguments passed directly to lsdb.open_catalog. Ignored when
+# data_location is an "lsdb://<name>" reference to a pre-registered catalog.
+[data_set.LSDBStreamDataset.open_catalog_kwargs]
+
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
