@@ -22,4 +22,5 @@ Common workflows
    Custom training metrics <notebooks/custom_training_metrics>
    Dataset custom collation <notebooks/custom_dataset_collation>
    Customizing prepare_inputs <notebooks/custom_prepare_inputs>
+   Streaming a HATS catalog with LSDB <pre_executed/lsdb_stream_dataset>
    Tracing Data Flow <pre_executed/trace_feature>

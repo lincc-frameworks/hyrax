@@ -76,6 +76,7 @@ from .mmu_dataset import MultimodalUniverseDataset
 from .nested_pandas_dataset import NestedPandasDataset
 from .lancedb_dataset import LanceDBDataset
 from .kafka_stream_dataset import KafkaStreamDataset
+from .lsdb_stream_dataset import LSDBStreamDataset
 from .data_cache import DataCache
 
 __all__ = [
@@ -99,5 +100,6 @@ __all__ = [
     "NestedPandasDataset",
     "LanceDBDataset",
     "KafkaStreamDataset",
+    "LSDBStreamDataset",
     "DataCache",
 ]

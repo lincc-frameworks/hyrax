@@ -395,6 +395,32 @@ batch_flush_timeout = 5.0
 credentials_file = false
 
 
+[data_set.LSDBStreamDataset]
+# Which lsdb stream to build over the catalog:
+#   "catalog"  -> lsdb.streams.CatalogStream, a single finite pass over every partition.
+#                 Best for inference: every object is visited exactly once and the run
+#                 ends on its own when the catalog is exhausted.
+#   "infinite" -> lsdb.streams.InfiniteStream, endless random resampling of partitions.
+#                 Best for training: batches keep arriving until you stop the session,
+#                 so training is not bounded by a single pass over the catalog.
+stream_type = "catalog"
+
+# Number of HATS partitions computed per chunk. Larger values amortize per-chunk dask
+# overhead but hold more rows in memory; lsdb clips this to the catalog's partition count.
+partitions_per_chunk = 1
+
+# Shuffle the partition order and the rows within each chunk. Ignored (and always on)
+# when stream_type = "infinite"; lsdb's InfiniteStream does not accept this option.
+shuffle = true
+
+# Random seed for partition/row shuffling. Set to false for fresh entropy each run.
+seed = false
+
+# Extra keyword arguments passed directly to lsdb.open_catalog. Ignored when
+# data_location is an "lsdb://<name>" reference to a pre-registered catalog.
+[data_set.LSDBStreamDataset.open_catalog_kwargs]
+
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
@@ -411,6 +437,28 @@ model_weights_file = false
 
 # Save the results of inference in the timestamped result directory.
 save_model_output = false
+
+
+[train_stream]
+# Path to warm-start weights to fine-tune from. If false, train from scratch.
+model_weights_file = false
+
+# Filename for saved weights within the timestamped results directory.
+weights_filename = "example_model.pth"
+
+# Persist weights every N processed batches (checkpointing for open-ended streams).
+# If false, weights are saved only on session close.
+save_weights_every = false
+
+# MLflow experiment name (mirrors [train]).
+experiment_name = "notebook"
+
+# MLflow run name; if false, falls back to the results-directory name (mirrors [train]).
+run_name = false
+
+# Skip streaming batches with fewer than this many samples (e.g. tiny timeout batches).
+# If false, every non-empty batch is trained on.
+min_batch_size = false
 
 
 [vector_db]
