@@ -7,8 +7,8 @@ from typing import Union
 
 import numpy as np
 
-from hyrax.pytorch_ignite import setup_dataset
 from hyrax.datasets.result_dataset import ResultDataset
+from hyrax.pytorch_ignite import setup_dataset
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -121,9 +121,6 @@ class ReduceDimensions(Verb):
         np.ndarray
             A 2-D array of vectors for the requested reduction field.
         """
-
-        # values = [dataset[int(idx)] for idx in indices]
-
         # `get_data` is always present for a ResultDataset
         getter = getattr(dataset, f"get_{field}")
         if getter is None:
@@ -131,7 +128,6 @@ class ReduceDimensions(Verb):
 
         values = [getter(idx) for idx in indices]
         return np.asarray(values).reshape((len(indices), -1))
-
 
     def _run(
         self, algorithm: str | None, input_dir: Union[Path, str] | None, model_path: Union[Path, str] | None
@@ -173,34 +169,40 @@ class ReduceDimensions(Verb):
             from hyrax.datasets.data_provider import DataProvider
             from hyrax.datasets.inference_dataset import InferenceDataset
 
-            logger.info("Using configured [data_request.reduce_dimensions] to load dataset for dimensionality reduction.")
+            logger.info("Using configured [data_request.reduce_dimensions] to load dataset for reduction.")
 
             # setup DataProvider for reduce_dimensions
             dataset = setup_dataset(self.config)
             reduce_datasets = dataset.get("reduce_dimensions")
             if not isinstance(reduce_datasets, DataProvider):
-                raise RuntimeError("Configured [data_request.reduce_dimensions] must resolve to a DataProvider.")
+                raise RuntimeError(
+                    "Configured [data_request.reduce_dimensions] must resolve to a DataProvider."
+                )
 
             # prepped_datasets: friendly name -> dataset instance
             # TODO: how to get the friendly name? Is `default` a good name for friendly name?
             inference_results = reduce_datasets.prepped_datasets.get("default")
 
-            if not isinstance(inference_results, Union[ResultDataset, InferenceDataset]):
+            if not isinstance(inference_results, (ResultDataset, InferenceDataset)):
                 raise RuntimeError(
-                    "Configured [data_request.reduce_dimensions] must be a ResultDataset or InferenceDataset for dimensionality reduction."
+                    "Configured [data_request.reduce_dimensions] must be a "
+                    "ResultDataset or InferenceDataset for reduction."
                 )
-            
+
             reduce_request = data_request["reduce_dimensions"]
             reduce_default = reduce_request.get("default", {})
             if reduce_default.get("fields") is None:
-                logger.info("No fields specified in [data_request.reduce_dimensions.default.fields], defaulting to ['data']")
+                logger.info(
+                    "No fields specified in [data_request.reduce_dimensions.default.fields], "
+                    "defaulting to ['data']"
+                )
                 fields = ["data"]
             else:
                 fields = reduce_default.get("fields")
                 if len(fields) != 1:
                     raise RuntimeError(
-                        "Configured [data_request.reduce_dimensions.default.fields] must contain at most one field "
-                        "for dimensionality reduction."
+                        "Configured [data_request.reduce_dimensions.default.fields] must "
+                        "contain exactly one field for dimensionality reduction."
                     )
 
             field_name = fields[0]
@@ -209,8 +211,6 @@ class ReduceDimensions(Verb):
         else:
             logger.info("Using most recent inference results dataset for dimensionality reduction.")
             inference_results = load_results_dataset(self.config, results_dir=input_dir, verb="infer")
-
-        # At this point, inference_results should be a ResultDataset | InferenceDataset that has the data to reduce
 
         total_length = len(inference_results)
 

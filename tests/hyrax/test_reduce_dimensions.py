@@ -3,6 +3,7 @@ import unittest.mock as mock
 import numpy as np
 import pytest
 
+from hyrax.verbs.reduce_dimensions import ReduceDimensions
 from hyrax.verbs.reduction_algorithms.pca import PCA
 from hyrax.verbs.reduction_algorithms.umap import UMAP
 
@@ -131,6 +132,40 @@ def test_umap_load(loopback_inferred_hyrax):
     ):
         with pytest.raises(ValueError, match="output dimension of the loaded UMAP model"):
             h.reduce_dimensions(algorithm="umap", model_path="wrong_output_dim.pickle")
+
+
+def test_reduce_dimensions_requires_results_dataset_for_data_request(loopback_inferred_hyrax):
+    """
+    A reduce_dimensions data request should resolve through the configured DataProvider
+    and reject invalid datasets.
+    """
+    h, _, _ = loopback_inferred_hyrax
+
+    h.config["data_request"]["reduce_dimensions"] = {
+        "default": {
+            "dataset_class": "HyraxRandomDataset",
+            "data_location": h.config["data_request"]["infer"]["data"]["data_location"],
+            "primary_id_field": "object_id",
+            "fields": ["data"],
+        }
+    }
+
+    with pytest.raises(RuntimeError, match="ResultDataset or InferenceDataset for dimensionality reduction"):
+        h.reduce_dimensions(algorithm="umap")
+
+
+def test_get_reduce_column():
+    """The helper function should pull values from the requested getter and return a 2-D array."""
+
+    class DummyDataset:
+        def get_label(self, idx):
+            return np.array([idx, idx + 1])
+
+    dataset = DummyDataset()
+    values = ReduceDimensions._get_reduce_column(dataset, "label", [1, 3])
+
+    assert values.shape == (2, 2)
+    assert np.allclose(values, np.array([[1, 2], [3, 4]]))
 
 
 class FakePCA:
