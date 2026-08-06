@@ -32,6 +32,23 @@ MOCK_IMAGE_MAX_SIZE = 1000
 MOCK_CUTOUT_SIZE = 100
 
 
+class MockPoint2I:
+    """Mock implementation of lsst.geom.Point2I."""
+
+    def __init__(self, x, y):
+        self._x = int(x)
+        self._y = int(y)
+
+    def getX(self):  # noqa: N802, D102
+        return self._x
+
+    def getY(self):  # noqa: N802, D102
+        return self._y
+
+    def __repr__(self):
+        return f"MockPoint2I({self._x}, {self._y})"
+
+
 class MockBox2I:
     """Mock implementation of lsst.geom.Box2I for bounding box operations."""
 
@@ -60,6 +77,16 @@ class MockBox2I:
             self._min_y = 0
             self._max_x = MOCK_CUTOUT_SIZE
             self._max_y = MOCK_CUTOUT_SIZE
+
+    def getMin(self):  # noqa: N802
+        """Return minimum corner as a Point2I."""
+        return MockPoint2I(self._min_x, self._min_y)
+
+    def getMinX(self):  # noqa: N802, D102
+        return self._min_x
+
+    def getMinY(self):  # noqa: N802, D102
+        return self._min_y
 
     def getWidth(self):  # noqa: N802
         """Return box width in pixels."""
@@ -390,6 +417,28 @@ class MockSkyMap:
         return retval
 
 
+class MockDatasetRef:
+    """Mock implementation of lsst.daf.butler.DatasetRef."""
+
+    def __init__(self, dataset_type, data_id):
+        self.datasetType = dataset_type
+        self.dataId = dict(data_id)
+
+
+class MockResourcePath:
+    """Mock implementation of lsst.resources.ResourcePath."""
+
+    def __init__(self, path):
+        self._path = str(path)
+
+    @property
+    def ospath(self):  # noqa: D102
+        return self._path
+
+    def __str__(self):
+        return self._path
+
+
 class MockButler:
     """Mock implementation of LSST Butler for data retrieval.
 
@@ -404,6 +453,7 @@ class MockButler:
     fail_after_n = 0
     band_fail_after_n = {}
     band_fail_before_n = {}
+    _fits_dir = None
 
     @classmethod
     def reset(
@@ -413,6 +463,7 @@ class MockButler:
         fail_after_n=0,
         band_fail_after_n=None,
         band_fail_before_n=None,
+        fits_dir=None,
     ):
         """Resets the mock butler for a new test, and configures failure behavior
 
@@ -435,6 +486,8 @@ class MockButler:
             Fail particular band(s) for the first N calls, then succeed. Dictionary provided has bands
             as keys and counts as values. For example band_fail_before_n={"g": 5} would cause the
             first 5 gets to g band to fail, then succeed afterwards.
+        fits_dir : str, optional
+            Directory containing mock FITS files for getURI to return paths to.
         """
         cls.initialized_thread_ids = []
         cls.fail_prob = fail_prob
@@ -442,6 +495,7 @@ class MockButler:
         cls.fail_after_n = fail_after_n
         cls.band_fail_after_n = {} if band_fail_after_n is None else band_fail_after_n
         cls.band_fail_before_n = {} if band_fail_before_n is None else band_fail_before_n
+        cls._fits_dir = fits_dir
 
     def __init__(self, repo=None, collections=None):
         """Initialize mock butler.
@@ -543,6 +597,35 @@ class MockButler:
 
         else:
             raise ValueError(f"Unsupported dataset_type: {dataset_type}")
+
+    def find_dataset(self, dataset_type, data_id=None, **kwargs):
+        """Mock find_dataset — returns a DatasetRef if the dataset would exist."""
+        data_id = {} if data_id is None else data_id
+        if dataset_type == "deep_coadd":
+            band = data_id.get("band", "g")
+            band_fail_prob = MockButler.band_fail_prob.get(band, 0.0)
+            if band_fail_prob >= 1.0:
+                return None
+            return MockDatasetRef(dataset_type, data_id)
+        return MockDatasetRef(dataset_type, data_id)
+
+    def getURI(self, ref_or_type, data_id=None, **kwargs):  # noqa: N802
+        """Mock getURI — returns a ResourcePath pointing to a FITS file in _fits_dir."""
+        if isinstance(ref_or_type, MockDatasetRef):
+            data_id = ref_or_type.dataId
+        elif data_id is None:
+            data_id = {}
+
+        if MockButler._fits_dir is None:
+            raise RuntimeError("MockButler._fits_dir not set; configure via reset(fits_dir=...)")
+
+        from pathlib import Path
+
+        tract = data_id.get("tract", 0)
+        patch = data_id.get("patch", 0)
+        band = data_id.get("band", "g")
+        fits_path = Path(MockButler._fits_dir) / f"deep_coadd_{tract}_{patch}_{band}.fits"
+        return MockResourcePath(str(fits_path))
 
 
 # Mock geometry module that contains the classes
