@@ -56,8 +56,7 @@ jobs:
     - name: Use last nightly commit hash from cache
       uses: actions/cache/restore@v6
       with:
-        # restore only the env for asv
-        path: ${{env.WORKING_DIR}}/env
+        path: ${{env.WORKING_DIR}}
         # Exact match should be a cache miss.
         # Search for prefix partial matches, it will get the most recent one from cache.
         key: nightly-results-
@@ -109,7 +108,7 @@ jobs:
       uses: actions/cache/save@v6
       with:
         # save only the env for asv
-        path: ${{env.WORKING_DIR}}/env
+        path: ${{env.WORKING_DIR}}
         key: nightly-results-${{github.sha}}
     - name: Generate dashboard HTML
       run: |
