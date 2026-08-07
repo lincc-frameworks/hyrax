@@ -520,7 +520,6 @@ class DataProvider(CollationMixin):
 
         self.prepped_datasets = {}  # will be friendly name -> dataset instance
         self.dataset_getters = {}  # will be friendly name -> dict(field_name->getter func) all fields
-        self.all_metadata_fields = {}
         self.requested_fields = {}  # will be friendly name -> tuple(field_names) but only requested fields
 
         # This dictionary maintains a mapping of friendly name to callable collate
@@ -792,15 +791,6 @@ class DataProvider(CollationMixin):
                     f"No `get_*` methods were found in the class: {dataset_class}. "
                     "This is likely an error in the dataset class definition."
                 )
-
-            # Get all the dataset's metadata fields and store them in
-            # `self.all_metadata_fields` dictionary. Modify the name to be
-            # <metadata_field_name>_<friendly_name>, i.e. "RA_cifar" or "photoz_hsc".
-            if dataset_instance._metadata_table:
-                columns = [f"{col}_{friendly_name}" for col in dataset_instance._metadata_table.colnames]
-                self.all_metadata_fields[friendly_name] = columns
-            else:
-                self.all_metadata_fields[friendly_name] = []
 
             # If this dataset is marked as the primary dataset, store that
             # information for later use.
@@ -1190,153 +1180,6 @@ class DataProvider(CollationMixin):
             tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
 
         return result
-
-    # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
-    # ^ we should be able to remove most or all of this method and the metadata_fields method.
-    # ^ This is really here to support the visualization code, and if we convert that
-    # ^ to using get_<metadata_column_name> methods, we can remove this.
-    # ^ See: https://github.com/lincc-frameworks/hyrax/issues/418
-
-    def metadata(self, idxs=None, fields=None) -> np.ndarray:
-        """Fetch the requested metadata fields for the given indices.
-
-        Example:
-
-        .. code-block:: python
-
-            # Fetch the metadata_1 and metadata_2 fields from the dataset with the
-            # friendly name "random_1".
-
-            metadata = data_provider.metadata(
-                idxs=[0, 1, 2],
-                fields=["metadata_1_random_1", "metadata_2_random_1"]
-            )
-
-        Parameters
-        ----------
-        idxs : list of int, optional
-            A list of indices for which to fetch metadata. If None, no metadata
-            will be returned.
-        fields : list of str, optional
-            A list of metadata fields to fetch. If None, no metadata will be
-            returned.
-
-        Returns
-        -------
-        np.ndarray
-            A structured NumPy array containing the requested metadata fields.
-            The dtype names of the array will be the metadata field names, modified
-            to include the friendly name of the dataset they come from. For example,
-            if the "RA" field comes from a dataset with the friendly name "cifar",
-            the returned field name will be "RA_cifar".
-        """
-
-        if idxs is None:
-            idxs = []
-
-        if fields is None:
-            fields = []
-
-        # Create an empty structured array to hold the merged metadata
-        returned_metadata = np.empty(0, dtype=[])
-
-        # For each dataset:
-        # 1) Find the requested metadata fields that come from it
-        # 2) Strip the friendly name from the metadata field name
-        # 3) Call the dataset's `metadata` method with indices and metadata fields.
-        for friendly_name, dataset in self.prepped_datasets.items():
-            metadata_fields_to_fetch = [
-                field[: -len(f"_{friendly_name}")] for field in fields if field.endswith(f"_{friendly_name}")
-            ]
-
-            if metadata_fields_to_fetch:
-                # Translate indices for joined datasets; unmatched items are
-                # omitted from the secondary's metadata result.
-                effective_idxs, _mask = self._translate_metadata_indices(idxs, friendly_name)
-                if not effective_idxs and idxs:
-                    # All requested indices were unmatched in this joined
-                    # secondary — skip it entirely.
-                    continue
-                this_metadata = dataset.metadata(effective_idxs, metadata_fields_to_fetch)
-                # Append the friendly name to the columns
-                this_metadata.dtype.names = [f"{name}_{friendly_name}" for name in this_metadata.dtype.names]
-
-                # merge this_metadata into the returned_metadata structured array
-                if returned_metadata.size == 0:
-                    returned_metadata = this_metadata
-                else:
-                    returned_metadata = np.lib.recfunctions.merge_arrays(
-                        (returned_metadata, this_metadata), flatten=True
-                    )
-
-        return returned_metadata
-
-    def metadata_fields(self, friendly_name=None) -> list[str]:
-        """Returns a list of metadata fields that are available across all prepared
-        datasets.
-
-        The field names will be modified to include the friendly name of the
-        dataset they come from. For example, if the "RA" field comes from a dataset
-        with the friendly name "cifar", the returned field name will be "RA_cifar".
-
-        NOTE: If a specific dataset friendly_name is provided, only the metadata
-        fields for that dataset will be returned, and the field names will not
-        include the friendly name suffix.
-
-        Parameters
-        ----------
-        friendly_name : str, optional
-            If provided, only the metadata fields for the specified friendly name
-            will be returned. If not provided, metadata fields from all datasets
-            will be returned.
-
-        Returns
-        -------
-        list[str]
-            The column names of the metadata table passed. Empty list if no metadata
-            was provided during construction of the DataProvider.
-        """
-        all_fields = []
-        if friendly_name:
-            return [
-                field.replace(f"_{friendly_name}", "")
-                for field in self.all_metadata_fields.get(friendly_name, [])
-            ]
-
-        for _, v in self.all_metadata_fields.items():
-            all_fields.extend(v)
-
-        # Always include the `object_id` field
-        all_fields.append("object_id")
-
-        return all_fields
-
-    def _translate_metadata_indices(self, idxs, friendly_name):
-        """Translate primary indices to real dataset indices for metadata.
-
-        For joined secondaries, looks up the matching secondary index via the
-        join map.  Indices with no match in the secondary are omitted (the
-        caller receives fewer rows than requested for that secondary).
-
-        Returns a tuple ``(translated_idxs, mask)`` where *mask* is a boolean
-        list of the same length as *idxs* indicating which positions had a
-        valid match.  Non-joined datasets always return a full-True mask.
-        """
-        if friendly_name not in self._join_maps:
-            return idxs, [True] * len(idxs)
-
-        translated = []
-        mask = []
-        primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
-        for pi in idxs:
-            key = str(primary_id_getter(pi))
-            secondary_idx = self._join_maps[friendly_name].get(key)
-            if secondary_idx is not None:
-                translated.append(secondary_idx)
-                mask.append(True)
-            else:
-                mask.append(False)
-        return translated, mask
 
     def _primary_or_first_dataset(self):
         """Returns the primary dataset instance if it exists, otherwise returns

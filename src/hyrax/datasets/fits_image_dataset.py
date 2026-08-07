@@ -128,7 +128,7 @@ class FitsImageDataset(HyraxDataset, HyraxImageDataset, Dataset):
         # inside _init_from_path()
         logger.debug("Preparing Metadata")
         metadata = self._prepare_metadata()
-        super().__init__(config, metadata)
+        super().__init__(config, metadata_table=metadata)
 
         self._post_init_hook()
 

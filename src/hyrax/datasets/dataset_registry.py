@@ -5,7 +5,6 @@ from types import MethodType
 from typing import Any
 
 import numpy as np
-import numpy.typing as npt
 
 from hyrax.plugin_utils import get_or_load_class, update_registry
 
@@ -29,18 +28,11 @@ class HyraxDataset:
                 # Your len function goes here
                 pass
 
-    Optional interfaces:
-
-    ``metadata`` -> Subclasses may pass an astropy table of metadata to ``__init__`` in the
-    superclass. This table of metadata will be available through the ``metadata_fields`` and
-    ``metadata`` functions.  If desired, a subclass may override these functions directly
-    rather than using the astropy Table interface.
-
     Further documentation is in the :doc:`/pre_executed/external_dataset_class` example notebook.
 
     """
 
-    def __init__(self, config: dict, metadata_table=None, object_id_column_name=None):
+    def __init__(self, config: dict, metadata_table=None):
         """
         .. py:method:: __init__
 
@@ -57,47 +49,26 @@ class HyraxDataset:
                     <your code>
                     super().__init__(config)
 
-        If per tensor metadata is available, it is recommended that dataset authors create an
-        astropy Table of that data, in the same order as their data and pass that `metadata_table`
-        as shown below:
-
-        .. code-block:: python
-
-            from hyrax.datasets import HyraxDataset
-            from astropy.table import Table
-
-            class MyDataset(HyraxDataset):
-                def __init__(config):
-                    <your code>
-                    metadata_table = Table(<Your catalog data goes here>)
-                    super().__init__(config, metadata_table)
-
         Parameters
         ----------
-        config : dict, Optional
+        config : dict
             The runtime configuration for hyrax
-        metadata_table : Optional[Table], optional
-            An Astropy Table with
-            1. the metadata columns desired for visualization AND
-            2. in the order your data will be enumerated.
-        object_id_column_name : Optional[str], optional
-            The name of the column containing object IDs. If None, uses the default
-            from config or creates one from the ids() method.
+        metadata_table : optional
+            An Astropy Table whose columns are auto-registered as
+            ``get_<column>`` getter methods on the instance.
         """
 
         self._config = config
-        self._metadata_table = metadata_table
 
-        # Pull up all metadata fields as HyraxQL getters.
-        if self._metadata_table is not None:
+        if metadata_table is not None:
 
             def _make_getter(column):
                 def getter(self, idx, _col=column):
-                    return self._metadata_table[_col][idx]
+                    return metadata_table[_col][idx]
 
                 return getter
 
-            for col in self._metadata_table.colnames:
+            for col in metadata_table.colnames:
                 method_name = f"get_{col}"
                 if not hasattr(self, method_name):
                     setattr(self, method_name, MethodType(_make_getter(col), self))
@@ -120,17 +91,6 @@ class HyraxDataset:
 
         # Ensure the class is in the registry so the config system can find it
         update_registry(DATASET_REGISTRY, cls.__name__, cls)
-
-    def metadata_fields(self) -> list[str]:
-        """Returns a list of metadata fields supported by this object
-
-        Returns
-        -------
-        list[str]
-            The column names of the metadata table passed. Empty string if no metadata was provided at
-            during construction of the HyraxDataset (or derived class).
-        """
-        return [] if self._metadata_table is None else list(self._metadata_table.colnames)
 
     def augment_cache_key(self, idx: int, rng_seed: np.int64) -> np.int64 | None:
         """Return a cache key for augmented data, or None to skip caching.
@@ -170,54 +130,6 @@ class HyraxDataset:
             ``"test"``, or ``"engine"``.
         """
         pass
-
-    def metadata(self, idxs: npt.ArrayLike, fields: list[str]) -> npt.ArrayLike:
-        """Returns a table representing the metadata given an array of indexes and a list of fields.
-
-        Parameters
-        ----------
-        idxs : npt.ArrayLike
-            The indexes of the relevant tensor objects
-        fields : list[str]
-            The names of the fields you would like returned. All values must be among those returned by
-            metadata_fields()
-
-        Returns
-        -------
-        npt.ArrayLike
-            A numpy record array of your metadata, with only the columns specified.
-            Roughly equivalent to: `metadata_table[idxs][fields].as_array()` where metadata_table is the
-            astropy table that the HyraxDataset (or derived class) was constructed with.
-
-        Raises
-        ------
-        RuntimeError
-            When none of the provided fields are
-        """
-        metadata_fields = self.metadata_fields()
-        for field in fields:
-            if field not in metadata_fields:
-                msg = f"Field {field} is not available for {self.__class__.__name__}."
-                logger.error(msg)
-
-        columns = [field for field in fields if field in metadata_fields]
-
-        if len(columns) == 0:
-            msg = (
-                f"None of the metadata fields passed [{fields}] are available for {self.__class__.__name__}."
-            )
-            raise RuntimeError(msg)
-
-        result = self._metadata_table[idxs][columns].as_array()
-
-        # Convert masked arrays to regular arrays with NaN for masked values
-        import numpy as np
-        import numpy.ma as ma
-
-        if ma.isMaskedArray(result):
-            result = ma.filled(result, np.nan)
-
-        return result
 
 
 def fetch_dataset_class(class_name: str) -> type[HyraxDataset]:

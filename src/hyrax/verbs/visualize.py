@@ -131,9 +131,9 @@ class Visualize(Verb):
         # NOTE: this presently depends on only a single required
         # split, but here is here the data provider logic would be
         # extended if needed.
-        self.metadata_provider = datasets[Visualize.REQUIRED_DATA_GROUPS[0]]
+        self.data_provider = datasets[Visualize.REQUIRED_DATA_GROUPS[0]]
 
-        available_fields = self.metadata_provider.metadata_fields()
+        available_fields = self._available_fields()
         for field in fields.copy():
             if field not in available_fields:
                 logger.warning(f"Field {field} is unavailable for this dataset")
@@ -165,8 +165,7 @@ class Visualize(Verb):
 
         if self.color_column:
             try:
-                # Check if column exists
-                available_fields = self.metadata_provider.metadata_fields()
+                available_fields = self._available_fields()
                 if self.color_column not in available_fields:
                     logger.warning(
                         f"Column '{self.color_column}' not found in dataset."
@@ -174,14 +173,10 @@ class Visualize(Verb):
                     )
                     self.color_column = False
                 else:
-                    # Get all indices for the dataset
                     all_indices = list(range(len(self.umap_results)))
-
-                    # Extract metadata for the specified column
-                    metadata = self.metadata_provider.metadata(all_indices, [self.color_column])
-                    self.color_values = metadata[self.color_column]
+                    fetched = self._fetch_fields(all_indices, [self.color_column])
+                    self.color_values = fetched[self.color_column]
                     logger.info(f"Successfully loaded color values from column '{self.color_column}'")
-                    import numpy as np
 
                     logger.debug(
                         f"Color values range: {np.nanmin(self.color_values)} "
@@ -550,15 +545,14 @@ class Visualize(Verb):
         # these are the object_id, x, and y columns
         columns = [self.points_id, self.points.T[0], self.points.T[1]]  # type: ignore[list-item]
 
-        # These are the rest of the columns, pulled from metadata
         try:
-            metadata = self.metadata_provider.metadata(self.points_idx, self.data_fields)
+            fetched = self._fetch_fields(self.points_idx, self.data_fields)
         except Exception as e:
-            # Leave in this try/catch beause some notebook implementations dont
+            # Leave in this try/catch because some notebook implementations dont
             # allow us to return an exception to the console.
             return Table(([str(e)]), ["message"])
 
-        columns += [metadata[field] for field in self.data_fields]  # type: ignore[call-overload,misc,index]
+        columns += [fetched[field] for field in self.data_fields]
         return Table(tuple(columns), key_dims, value_dims)
 
     @staticmethod
@@ -595,6 +589,40 @@ class Visualize(Verb):
 
         return (xmin, xmax, ymin, ymax)
 
+    def _available_fields(self) -> set[str]:
+        """Return the set of all field names available across all datasets in the data provider."""
+        all_fields = set()
+        for field_list in self.data_provider.fields().values():
+            all_fields.update(field_list)
+        all_fields.add("object_id")
+        return all_fields
+
+    def _fetch_fields(self, indices, fields) -> dict[str, list]:
+        """Fetch specific fields for a list of indices from the data provider.
+
+        Parameters
+        ----------
+        indices : list of int
+            Indices to fetch data for.
+        fields : list of str
+            Field names to extract.
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            Mapping of field name to array of values across all indices.
+        """
+        import numpy as np
+
+        result = {field: [] for field in fields}
+        primary_name = self.data_provider.primary_dataset
+        for idx in indices:
+            sample = self.data_provider[idx]
+            data = sample.get(primary_name, {})
+            for field in fields:
+                result[field].append(data.get(field))
+        return {field: np.array(values) for field, values in result.items()}
+
     def get_selected_df(self):
         r"""
         Retrieve a pandas DataFrame containing the currently selected points and their associated metadata.
@@ -612,8 +640,8 @@ class Visualize(Verb):
 
         df = pd.DataFrame(self.points, columns=["x", "y"])
         df[self.object_id_column_name] = self.points_id
-        meta = self.metadata_provider.metadata(self.points_idx, self.data_fields)
-        meta_df = pd.DataFrame(meta, columns=self.data_fields)
+        fetched = self._fetch_fields(self.points_idx, self.data_fields)
+        meta_df = pd.DataFrame(fetched)
 
         cols = [self.object_id_column_name, "x", "y"] + self.data_fields
         result = pd.concat([df.reset_index(drop=True), meta_df.reset_index(drop=True)], axis=1)
@@ -682,16 +710,10 @@ class Visualize(Verb):
             # Get sampled ids correspoinding to the idxs
             sampled_ids = [id_map[idx] for idx in chosen_idx]
 
-            # Get metadata - this is in the same order as chosen_idx
-            meta = self.metadata_provider.metadata(
-                chosen_idx, [self.object_id_column_name, self.filename_column_name]
-            )
+            fetched = self._fetch_fields(chosen_idx, [self.filename_column_name])
+            raw_filenames = fetched[self.filename_column_name]
 
-            # Extract metadata directly
-            # DEBUG: object_ids = meta[self.object_id_column_name]
-            raw_filenames = meta[self.filename_column_name]
-
-            filenames = [f.decode("utf-8") for f in raw_filenames]
+            filenames = [str(f) for f in raw_filenames]
 
         else:
             sampled_ids = []

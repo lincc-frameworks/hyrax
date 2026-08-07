@@ -54,19 +54,13 @@ def test_data_provider(data_provider):
 
     # There should be 2 dataset_getters dicts with subdicts of different sizes
     assert len(dp.dataset_getters) == 2
-    assert len(dp.dataset_getters["random_0"]) == 5
-    assert len(dp.dataset_getters["random_1"]) == 5
+    assert len(dp.dataset_getters["random_0"]) == 3
+    assert len(dp.dataset_getters["random_1"]) == 3
 
     data_request = dp.data_request
     for friendly_name in data_request:
         for field in data_request[friendly_name]["fields"]:
             assert field in dp.dataset_getters[friendly_name]
-
-    data_request = dp.data_request
-    for friendly_name in data_request:
-        assert len(dp.all_metadata_fields[friendly_name]) == 3
-        for metadata_field in dp.all_metadata_fields[friendly_name]:
-            assert friendly_name in metadata_field
 
 
 def test_validate_request_no_dataset_class(multimodal_config, caplog):
@@ -338,49 +332,6 @@ def test_primary_dataset(multimodal_config):
     assert primary_dataset.data_location == "./in_memory_1"
 
 
-def test_metadata_fields(data_provider):
-    """Test that the calling metadata_fields returns the expected
-    fields with the expected structure."""
-
-    dp = data_provider
-    dp.prepare_datasets()
-
-    all_metadata_fields = dp.all_metadata_fields
-
-    assert "random_0" in all_metadata_fields
-    assert "random_1" in all_metadata_fields
-
-    assert len(all_metadata_fields["random_0"]) == 3
-    assert len(all_metadata_fields["random_1"]) == 3
-
-    all_fields = dp.metadata_fields()
-
-    assert isinstance(all_fields, list)
-    assert "object_id" in all_fields
-
-    expected_metadata_fields = ["object_id", "meta_field_1", "meta_field_2"]
-    for field in expected_metadata_fields:
-        assert field + "_random_0" in all_fields
-        assert field + "_random_1" in all_fields
-
-
-def test_metadata_fields_with_friendly_name(data_provider):
-    """Test that the calling metadata_fields returns the expected
-    fields with the expected structure."""
-
-    dp = data_provider
-    dp.prepare_datasets()
-
-    all_fields = dp.metadata_fields("random_0")
-
-    assert isinstance(all_fields, list)
-    assert "object_id" in all_fields
-
-    expected_metadata_fields = ["object_id", "meta_field_1", "meta_field_2"]
-    for field in expected_metadata_fields:
-        assert field in all_fields
-
-
 def test_sample_data():
     """Test that sample_data returns a dictionary with the expected
     structure.
@@ -533,48 +484,6 @@ def test_data_provider_ids(data_provider):
     assert len(ids) == len(random_0_ids)
     assert all(i == j for i, j in zip(ids, random_0_ids))
     assert all(i != j for i, j in zip(ids, random_1_ids))
-
-
-def test_data_provider_returns_metadata(data_provider):
-    """Basic test to ensure that metadata() returns the expected value.
-    The metadata returned from DataProvider are the metadata of the primary
-    dataset or, if no primary dataset is specified, the first dataset.
-
-    We have specified random_0 to be the primary dataset in conftest.
-    """
-
-    dp = data_provider
-    dp.prepare_datasets()
-
-    metadata = dp.metadata()
-    assert len(metadata) == 0
-
-    metadata = dp.metadata(idxs=None, fields=[])
-    assert len(metadata) == 0
-
-    metadata = dp.metadata(idxs=[], fields=[])
-    assert len(metadata) == 0
-
-    metadata = dp.metadata(idxs=[], fields=["meta_field_1_random_0"])
-    assert len(metadata) == 0
-    assert len(metadata.dtype.names) == 1
-    assert "meta_field_1_random_0" in metadata.dtype.names[0]
-
-    metadata = dp.metadata(idxs=[5], fields=["meta_field_1_random_0"])
-    assert len(metadata) == 1
-    assert len(metadata.dtype.names) == 1
-    assert "meta_field_1_random_0" in metadata.dtype.names[0]
-
-    metadata = dp.metadata(idxs=[5, 97], fields=["meta_field_1_random_0"])
-    assert len(metadata) == 2
-    assert len(metadata.dtype.names) == 1
-    assert "meta_field_1_random_0" in metadata.dtype.names
-
-    metadata = dp.metadata(idxs=[5, 97], fields=["meta_field_1_random_0", "meta_field_2_random_1"])
-    assert len(metadata) == 2
-    assert len(metadata.dtype.names) == 2
-    assert "meta_field_1_random_0" in metadata.dtype.names
-    assert "meta_field_2_random_1" in metadata.dtype.names
 
 
 def test_primary_id_field_fetched_when_not_in_fields():
