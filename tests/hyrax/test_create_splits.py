@@ -218,7 +218,7 @@ def test_verb_metadata():
 def test_run_does_not_require_data_request_validation(tmp_path):
     """With no REQUIRED/OPTIONAL_DATA_GROUPS, __init__ does not raise even for
     a config whose data_request would fail validation for other verbs."""
-    config = _make_config(tmp_path, size=10, groups=("train",))
+    config = _make_config(tmp_path, size=10, groups=("bob",))
     # Should not raise, since CreateSplits declares no required/optional groups.
     CreateSplits(config)
 

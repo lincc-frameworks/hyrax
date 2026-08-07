@@ -123,7 +123,7 @@ def test_engine_run_writes_correct_object_ids(tmp_path):
     reference_ds = HyraxRandomDataset(h.config, data_location)
     expected_ids = [reference_ds.get_object_id(i) for i in range(len(reference_ds))]
 
-    assert sorted(results.ids()) == sorted(expected_ids)
+    assert results.ids() == expected_ids
 
 
 def test_engine_run_uses_config_model_directory_when_arg_omitted(tmp_path):
