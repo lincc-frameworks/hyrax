@@ -150,7 +150,7 @@ def test_reduce_dimensions_requires_results_dataset_for_data_request(loopback_in
         }
     }
 
-    with pytest.raises(RuntimeError, match="ResultDataset or InferenceDataset for dimensionality reduction"):
+    with pytest.raises(RuntimeError, match="ResultDataset or InferenceDataset for reduction"):
         h.reduce_dimensions(algorithm="umap")
 
 
