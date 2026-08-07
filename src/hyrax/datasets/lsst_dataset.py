@@ -3,14 +3,12 @@ import logging
 import threading
 from pathlib import Path
 
-from torch.utils.data import Dataset
-
 from .dataset_registry import HyraxDataset, HyraxImageDataset
 
 logger = logging.getLogger(__name__)
 
 
-class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
+class LSSTDataset(HyraxDataset, HyraxImageDataset):
     """LSSTDataset: A dataset to access deep_coadd images from lsst pipelines
     via the butler. Must be run in an RSP.
     """
@@ -208,22 +206,6 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
         else:
             row = self.catalog[idxs]
             return self._fetch_single_cutout(row)
-
-    def __getitem__(self, idxs):
-        """Get default data fields for the this dataset.
-
-        Parameters
-        ----------
-        idxs : int or list of int
-            The index or indices of the cutouts to retrieve.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the default data fields.
-        """
-
-        return {"data": {"image": self.get_image(idxs)}}
 
     def _parse_box(self, patch, row):
         """
