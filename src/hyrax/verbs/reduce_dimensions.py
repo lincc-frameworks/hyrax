@@ -7,6 +7,9 @@ from typing import Union
 
 import numpy as np
 
+from hyrax.datasets.result_dataset import ResultDataset
+from hyrax.pytorch_ignite import setup_dataset
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -99,6 +102,33 @@ class ReduceDimensions(Verb):
             warnings.simplefilter(action="ignore", category=FutureWarning)
             return self._run(algorithm, input_dir, model_path)
 
+    @staticmethod
+    def _get_reduce_column(dataset: ResultDataset, field: str, indices) -> np.ndarray:
+        """
+        Return a 2-D array of vectors for the requested reduction field.
+
+        Parameters
+        ----------
+        dataset : ResultDataset
+            The dataset from which to extract the column.
+        field : str
+            The field name of the column to extract.
+        indices : array-like
+            The indices of the samples for which to extract.
+
+        Returns
+        -------
+        np.ndarray
+            A 2-D array of vectors for the requested reduction field.
+        """
+        # `get_data` is always present for a ResultDataset
+        getter = getattr(dataset, f"get_{field}")
+        if getter is None:
+            raise RuntimeError(f"Dataset does not have a getter for field '{field}'.")
+
+        values = [getter(idx) for idx in indices]
+        return np.asarray(values).reshape((len(indices), -1))
+
     def _run(
         self, algorithm: str | None, input_dir: Union[Path, str] | None, model_path: Union[Path, str] | None
     ):
@@ -117,7 +147,78 @@ class ReduceDimensions(Verb):
 
         algo_reducer = reducer_cls(self.config, reduction_results)
 
-        inference_results = load_results_dataset(self.config, results_dir=input_dir, verb="infer")
+        # data_request looks like:
+        # TODO: consider: reduce_dimensions section is named reduce in config, make it consistent?
+        # {
+        #     "reduce_dimensions": {
+        #         "default": {
+        #             "dataset_class": "ResultDataset",
+        #             TODO: currently must specify a valid results data location by the user.
+        #             "data_location": None, # will resolve to most recent results dir
+        #             "primary_id_field": "object_id",
+        #             "fields": ["data"],
+        #         }
+        #     }
+        # }
+
+        data_request = self.config.get("data_request", {})
+        # default field is "data"
+        field_name = "data"
+
+        if isinstance(data_request.get("reduce_dimensions"), dict) and data_request["reduce_dimensions"]:
+            from hyrax.datasets.data_provider import DataProvider
+            from hyrax.datasets.inference_dataset import InferenceDataset
+
+            logger.info("Using configured [data_request.reduce_dimensions] to load dataset for reduction.")
+
+            # setup DataProvider for reduce_dimensions
+            dataset = setup_dataset(self.config)
+            reduce_datasets = dataset.get("reduce_dimensions")
+            if not isinstance(reduce_datasets, DataProvider):
+                raise RuntimeError(
+                    "Configured [data_request.reduce_dimensions] must resolve to a DataProvider."
+                )
+
+            # prepped_datasets: friendly name -> dataset instance
+            if len(reduce_datasets.prepped_datasets) != 1:
+                raise RuntimeError(
+                    "reduce_dimensions requires exactly one dataset, "
+                    f"but {len(reduce_datasets.prepped_datasets)} were provided."
+                )
+            # Get the only key from prepped_datasets
+            dataset_name = next(iter(reduce_datasets.prepped_datasets))
+            inference_results = reduce_datasets.prepped_datasets.get(dataset_name)
+
+            if not isinstance(inference_results, (ResultDataset, InferenceDataset)):
+                raise RuntimeError(
+                    "Configured [data_request.reduce_dimensions] must be a "
+                    "ResultDataset or InferenceDataset for reduction."
+                )
+
+            reduce_request = data_request["reduce_dimensions"]
+            # TODO: change the "default" friendly name
+            reduce_default = reduce_request.get("default", {})
+            if reduce_default.get("fields") is None:
+                logger.info(
+                    "No fields specified in [data_request.reduce_dimensions.default.fields], "
+                    "defaulting to ['data']"
+                )
+                fields = ["data"]
+            else:
+                fields = reduce_default.get("fields")
+                if len(fields) != 1:
+                    raise RuntimeError(
+                        "Configured [data_request.reduce_dimensions.default.fields] must "
+                        "contain exactly one field for dimensionality reduction."
+                    )
+
+            field_name = fields[0]
+            logger.info(f"Using field '{field_name}' for dimensionality reduction.")
+
+        else:
+            logger.info("Using most recent inference results dataset for dimensionality reduction.")
+            inference_results = load_results_dataset(self.config, results_dir=input_dir, verb="infer")
+
         total_length = len(inference_results)
 
         # Prepare data sample for either fitting a new model or validating a pre-trained model loaded.
@@ -125,7 +226,7 @@ class ReduceDimensions(Verb):
         sample_size = int(np.min([config_sample_size if config_sample_size else np.inf, total_length]))
         rng = np.random.default_rng()
         sample_indexes = rng.choice(np.arange(total_length), size=sample_size, replace=False)
-        data_sample = np.asarray(inference_results[sample_indexes]).reshape((sample_size, -1))
+        data_sample = self._get_reduce_column(inference_results, field_name, sample_indexes)
 
         # Load model if path provided, otherwise fit new model
         # Getting the model of current algorithm specified.
@@ -156,7 +257,7 @@ class ReduceDimensions(Verb):
         args = (
             (
                 all_ids[batch_indexes],
-                inference_results[batch_indexes].reshape(len(batch_indexes), -1),
+                self._get_reduce_column(inference_results, field_name, batch_indexes),
             )
             for batch_indexes in np.array_split(all_indexes, num_batches)
         )
