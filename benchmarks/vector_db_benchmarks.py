@@ -10,7 +10,7 @@ class VectorDBInsertBenchmarks:
     timeout = 120  # max seconds per benchmark before timing out
 
     # Parameters for the benchmarks: vector lengths and vector database implementations
-    params = ([64, 256, 2048, 16_384], ["chromadb", "qdrant"])
+    params = ([64, 256, 2048, 16_384], ["chromadb", "qdrant", "lance"])
     param_names = ["vector_length", "vector_db_implementation"]
 
     # Ideally this would be a `setup_cache` method, but `setup_cache` cannot be
@@ -59,7 +59,7 @@ class VectorDBInsertBenchmarks:
 
         self.h.config["vector_db"]["name"] = vector_db_implementation
 
-        self.h.infer()
+        self.infer_results = self.h.infer()
 
     def tear_down(self):
         """Clean up the temporary directory used to store inference results."""
@@ -67,13 +67,20 @@ class VectorDBInsertBenchmarks:
 
     def time_load_vector_db(self, vector_length, vector_db_implementation):
         """Timing benchmark for loading a vector database."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            self.h.save_to_database(output_dir=Path(tmp_dir))
+        if vector_db_implementation == "lance":
+            # Lance stores its index inside the inference results dir (timestamped subdir)
+            self.h.save_to_database(output_dir=self.infer_results.data_location)
+        else:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                self.h.save_to_database(output_dir=Path(tmp_dir))
 
     def peakmem_load_vector_db(self, vector_length, vector_db_implementation):
         """Memory benchmark for loading a vector database."""
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            self.h.save_to_database(output_dir=Path(tmp_dir))
+        if vector_db_implementation == "lance":
+            self.h.save_to_database(output_dir=self.infer_results.data_location)
+        else:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                self.h.save_to_database(output_dir=Path(tmp_dir))
 
 
 class VectorDBSearchBenchmarks:
@@ -84,7 +91,7 @@ class VectorDBSearchBenchmarks:
     # Parameters for the benchmarks: shard size limits and vector database implementations
     # The smaller shard size limit will result in parallelized searches, while the
     # larger shard size limit will trigger a sequential search across shards.
-    params = ([64, 128], ["chromadb", "qdrant"])
+    params = ([64, 128], ["chromadb", "qdrant", "lance"])
     param_names = ["shard_size_limit", "vector_db_implementation"]
 
     def setup(self, shard_size_limit, vector_db_implementation):
@@ -132,7 +139,7 @@ class VectorDBSearchBenchmarks:
             pass
         self.h.config["infer"]["model_weights_file"] = str(weights_file)
 
-        self.h.infer()
+        infer_results = self.h.infer()
 
         # Get the list of dataset ids
         self.ds = self.h.prepare()
@@ -143,9 +150,15 @@ class VectorDBSearchBenchmarks:
         # Qdrant requires the vector size in order to create its collections
         self.h.config["vector_db"]["qdrant"]["vector_size"] = self.vector_length
 
-        # Save inference results to vector database and create a db connection
-        self.h.save_to_database(output_dir=Path(self.output_dir))
-        self.db = self.h.database_connection(self.output_dir)
+        # Save inference results to vector database and create a db connection.
+        # Lance stores its index inside the inference results dir, so both paths
+        # must be the same directory.
+        if vector_db_implementation == "lance":
+            vdb_dir = infer_results.data_location
+        else:
+            vdb_dir = Path(self.output_dir)
+        self.h.save_to_database(output_dir=vdb_dir)
+        self.db = self.h.database_connection(vdb_dir)
 
     def tear_down(self):
         """Clean up the temporary directory used to store inference results."""
