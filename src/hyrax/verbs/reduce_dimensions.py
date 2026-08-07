@@ -180,8 +180,14 @@ class ReduceDimensions(Verb):
                 )
 
             # prepped_datasets: friendly name -> dataset instance
-            # TODO: how to get the friendly name? Is `default` a good name for friendly name?
-            inference_results = reduce_datasets.prepped_datasets.get("default")
+            if len(reduce_datasets.prepped_datasets) != 1:
+                raise RuntimeError(
+                    "reduce_dimensions requires exactly one dataset, "
+                    f"but {len(reduce_datasets.prepped_datasets)} were provided."
+                )
+            # Get the only key from prepped_datasets
+            dataset_name = next(iter(reduce_datasets.prepped_datasets))
+            inference_results = reduce_datasets.prepped_datasets.get(dataset_name)
 
             if not isinstance(inference_results, (ResultDataset, InferenceDataset)):
                 raise RuntimeError(
@@ -190,6 +196,7 @@ class ReduceDimensions(Verb):
                 )
 
             reduce_request = data_request["reduce_dimensions"]
+            # TODO: change the "default" friendly name
             reduce_default = reduce_request.get("default", {})
             if reduce_default.get("fields") is None:
                 logger.info(
