@@ -532,3 +532,29 @@ class LSDBStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
                 self._buffered = batch + leftover + self._buffered
             if self._exhausted or self._stop.is_set():
                 self._iterator = None
+
+    def collate_lightcurve(self, samples):
+        """
+        TODO this is experimental and probably doesn't belong here.
+        It was created for testing, and should either be solidified or removed
+        before this code is merged to main.
+        """
+        import numpy as np
+
+        result = {}
+
+        vals = [s["lightcurve"]["sap_flux"] for s in samples]
+        lengths = np.array([len(s) for s in vals], dtype=np.int64)
+        max_len = int(lengths.max())
+
+        padded = np.zeros((len(vals), max_len), dtype=np.float32)
+        mask = np.zeros((len(vals), max_len), dtype=np.int64)
+        for i, s in enumerate(vals):
+            padded[i, : lengths[i]] = s
+            mask[i, : lengths[i]] = 1
+
+        result["lightcurve"] = padded
+        result["lightcurve_lengths"] = lengths
+        result["lightcurve_mask"] = mask
+
+        return result
