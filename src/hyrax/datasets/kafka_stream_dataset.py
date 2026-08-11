@@ -182,6 +182,16 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         # Applied last so they win over both the defaults above and the credentials file.
         consumer_options = ds_config.get("consumer_options")
         if consumer_options:
+            invariant_keys = {"enable.auto.commit", "enable.auto.offset.store"}
+            overridden = invariant_keys.intersection(consumer_options)
+            if overridden:
+                logger.warning(
+                    "consumer_options contains %s. Overriding these settings can cause "
+                    "messages to be dropped or processed more than once. Use the default "
+                    "values (enable.auto.commit=false, enable.auto.offset.store=true) "
+                    "to ensure at-least-once delivery semantics.",
+                    ", ".join(sorted(overridden)),
+                )
             self.consumer_config.update(consumer_options)
 
         super().__init__(config, metadata_table=None)

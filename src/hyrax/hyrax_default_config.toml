@@ -414,6 +414,10 @@ credentials_file = false
 # `enable.auto.commit` is forced to false and should be left alone: offsets are committed
 # by the stream only once a batch has been fully processed downstream, so that a failure
 # mid-pipeline replays those alerts instead of silently dropping them.
+#
+# NOTE: While it is technically possible to put credentials (e.g. "sasl.username",
+# "sasl.password") here, you SHOULD NOT do so. Use `credentials_file` instead to avoid
+# accidentally committing secrets into your configuration files.
 [data_set.KafkaStreamDataset.consumer_options]
 
 
