@@ -1,7 +1,7 @@
 """Config migration: version 4 → version 5.
 
 Move the legacy ``[umap]`` and ``[umap.UMAP]`` to be under ``[reduce_dimensions]`` table
-with ``[rereduce_dimensionsduce.umap]`` and ``[reduce_dimensions.umap.kwargs]``.
+with ``[reduce_dimensions.umap]`` and ``[reduce_dimensions.umap.kwargs]``.
 """
 
 import tomlkit
