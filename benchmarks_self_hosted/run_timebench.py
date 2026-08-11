@@ -7,6 +7,7 @@ from pathlib import Path
 
 import torch
 from timebench_utils import benchmark_repeated
+
 import hyrax
 
 CONFIG = {
