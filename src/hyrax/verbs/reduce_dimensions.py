@@ -30,7 +30,7 @@ class ReduceDimensions(Verb):
 
     @staticmethod
     def setup_parser(parser: ArgumentParser):
-        """Setup parser for reduce-dimensions verb"""
+        """Setup parser for reduce_dimensions verb"""
         parser.add_argument(
             "-a",
             "--algorithm",
@@ -55,7 +55,7 @@ class ReduceDimensions(Verb):
 
     def run_cli(self, args: Namespace | None = None):
         """CLI stub for ReduceDimensions verb"""
-        logger.info("`reduce-dimensions` run from CLI.")
+        logger.info("`reduce_dimensions` run from CLI.")
 
         if args is None:
             raise RuntimeError("Run CLI called with no arguments.")
@@ -142,7 +142,7 @@ class ReduceDimensions(Verb):
         from hyrax.verbs.reduction_algorithms.algorithm_registry import fetch_reducer_class
 
         # Get reducer class
-        algorithm_name = algorithm or self.config["reduce"]["algorithm"]
+        algorithm_name = algorithm or self.config["reduce_dimensions"]["algorithm"]
         reducer_cls = fetch_reducer_class(algorithm_name)
 
         results_dir = create_results_dir(self.config, f"{algorithm_name}")
@@ -209,7 +209,7 @@ class ReduceDimensions(Verb):
         total_length = len(inference_results)
 
         # Prepare data sample for either fitting a new model or validating a pre-trained model loaded.
-        config_sample_size = self.config["reduce"][algorithm_name].get("fit_sample_size", None)
+        config_sample_size = self.config["reduce_dimensions"][algorithm_name].get("fit_sample_size", None)
         sample_size = int(np.min([config_sample_size if config_sample_size else np.inf, total_length]))
         rng = np.random.default_rng()
         sample_indexes = rng.choice(np.arange(total_length), size=sample_size, replace=False)
@@ -218,7 +218,7 @@ class ReduceDimensions(Verb):
         # Load model if path provided, otherwise fit new model
         # Getting the model of current algorithm specified.
         if model_path is None:
-            model_path = self.config["reduce"][algorithm_name].get("model_path", None)
+            model_path = self.config["reduce_dimensions"][algorithm_name].get("model_path", None)
 
         if model_path:
             logger.info(f"Loading pre-existing reducer model from {model_path}")
@@ -227,7 +227,7 @@ class ReduceDimensions(Verb):
             logger.info("No model_path specified. A new model will be fitted.")
             algo_reducer.fit(data_sample)
 
-            if self.config["reduce"].get("save_fit_model", False):
+            if self.config["reduce_dimensions"].get("save_fit_model", False):
                 logger.info(f"Saving fitted {algorithm_name} reducer to result directory")
                 algo_reducer.save_model(results_dir)
 
@@ -235,7 +235,7 @@ class ReduceDimensions(Verb):
         gc.collect()
 
         # Transform dataset
-        batch_size = self.config["reduce"]["batch_size"]
+        batch_size = self.config["reduce_dimensions"]["batch_size"]
         num_batches = int(np.ceil(total_length / batch_size))
 
         all_indexes = np.arange(0, total_length)

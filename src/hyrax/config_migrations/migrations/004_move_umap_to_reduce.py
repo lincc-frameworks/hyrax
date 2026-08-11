@@ -1,7 +1,7 @@
 """Config migration: version 4 → version 5.
 
-Move the legacy ``[umap]`` and ``[umap.UMAP]`` to be under ``[reduce]`` table
-with ``[reduce.umap]`` and ``[reduce.umap.kwargs]``.
+Move the legacy ``[umap]`` and ``[umap.UMAP]`` to be under ``[reduce_dimensions]`` table
+with ``[rereduce_dimensionsduce.umap]`` and ``[reduce_dimensions.umap.kwargs]``.
 """
 
 import tomlkit
@@ -13,45 +13,45 @@ from hyrax.config_migrations.migration_utils import migration_step, move_key
 @migration_step(
     from_version=4,
     key_renames={
-        "umap.fit_sample_size": "reduce.umap.fit_sample_size",
-        "umap.model_path": "reduce.umap.model_path",
-        "umap.save_fit_umap": "reduce.save_fit_model",
-        "umap.parallel": "reduce.parallel",
-        "umap.UMAP": "reduce.umap.kwargs",
+        "umap.fit_sample_size": "reduce_dimensions.umap.fit_sample_size",
+        "umap.model_path": "reduce_dimensions.umap.model_path",
+        "umap.save_fit_umap": "reduce_dimensions.save_fit_model",
+        "umap.parallel": "reduce_dimensions.parallel",
+        "umap.UMAP": "reduce_dimensions.umap.kwargs",
     },
 )
 def move_umap_to_reduce(cfg: TOMLDocument) -> TOMLDocument:
-    """Move the legacy ``[umap]`` and ``[umap.UMAP]`` to be under ``[reduce]``."""
+    """Move the legacy ``[umap]`` and ``[umap.UMAP]`` to be under ``[reduce_dimensions]``."""
     # Moving umap sections
     umap_tbl = cfg.get("umap")
     if not umap_tbl:
         return cfg
 
-    # Ensure [reduce] exists
-    reduce_tbl = cfg.get("reduce")
+    # Ensure [reduce_dimensions] exists
+    reduce_tbl = cfg.get("reduce_dimensions")
     if reduce_tbl is None:
         reduce_tbl = tomlkit.table()
-        cfg["reduce"] = reduce_tbl
+        cfg["reduce_dimensions"] = reduce_tbl
 
-    # Ensure [reduce.umap] exists
+    # Ensure [reduce_dimensions.umap] exists
     umap_reduce = reduce_tbl.get("umap")
     if umap_reduce is None:
         umap_reduce = tomlkit.table()
         reduce_tbl["umap"] = umap_reduce
 
-    # under [reduce.umap]
-    move_key(cfg, "umap.fit_sample_size", "reduce.umap.fit_sample_size")
-    move_key(cfg, "umap.model_path", "reduce.umap.model_path")
+    # under [reduce_dimensions.umap]
+    move_key(cfg, "umap.fit_sample_size", "reduce_dimensions.umap.fit_sample_size")
+    move_key(cfg, "umap.model_path", "reduce_dimensions.umap.model_path")
 
-    # under [reduce]
+    # under [reduce_dimensions]
     reduce_tbl["batch_size"] = 1024
-    move_key(cfg, "umap.save_fit_umap", "reduce.save_fit_model")
-    move_key(cfg, "umap.parallel", "reduce.parallel")
+    move_key(cfg, "umap.save_fit_umap", "reduce_dimensions.save_fit_model")
+    move_key(cfg, "umap.parallel", "reduce_dimensions.parallel")
     if "name" in umap_tbl and umap_tbl["name"] == "umap.UMAP":
         reduce_tbl["algorithm"] = "umap"
 
-    # Move umap.UMAP kwargs to reduce.umap.kwargs
-    move_key(cfg, "umap.UMAP", "reduce.umap.kwargs")
+    # Move umap.UMAP kwargs to reduce_dimensions.umap.kwargs
+    move_key(cfg, "umap.UMAP", "reduce_dimensions.umap.kwargs")
 
     # Delete the old umap section
     del cfg["umap"]
@@ -72,6 +72,6 @@ def move_umap_to_reduce(cfg: TOMLDocument) -> TOMLDocument:
     reduce_tbl["pca"]["kwargs"]["n_components"] = 2
 
     if len(reduce_tbl):
-        cfg["reduce"] = reduce_tbl
+        cfg["reduce_dimensions"] = reduce_tbl
 
     return cfg
