@@ -24,6 +24,10 @@ class ReduceDimensions(Verb):
     add_parser_kwargs = {}
     description = "Reduce the dimensionality of a dataset using provided or default reduction algorithm."
 
+    # Dataset groups that the ReduceDimensions verb knows about.
+    # OPTIONAL_DATA_GROUPS are used when present but do not cause an error if absent.
+    OPTIONAL_DATA_GROUPS = ("reduce_dimensions",)
+
     @staticmethod
     def setup_parser(parser: ArgumentParser):
         """Setup parser for reduce-dimensions verb"""
@@ -147,47 +151,31 @@ class ReduceDimensions(Verb):
 
         algo_reducer = reducer_cls(self.config, reduction_results)
 
-        # data_request looks like:
-        # TODO: consider: reduce_dimensions section is named reduce in config, make it consistent?
-        # {
-        #     "reduce_dimensions": {
-        #         "default": {
-        #             "dataset_class": "ResultDataset",
-        #             TODO: currently must specify a valid results data location by the user.
-        #             "data_location": None, # will resolve to most recent results dir
-        #             "primary_id_field": "object_id",
-        #             "fields": ["data"],
-        #         }
-        #     }
-        # }
-
         data_request = self.config.get("data_request", {})
-        # default field is "data"
+        # Default field for ResultDataset is "data"
         field_name = "data"
-
         if isinstance(data_request.get("reduce_dimensions"), dict) and data_request["reduce_dimensions"]:
             from hyrax.datasets.data_provider import DataProvider
             from hyrax.datasets.inference_dataset import InferenceDataset
 
             logger.info("Using configured [data_request.reduce_dimensions] to load dataset for reduction.")
 
-            # setup DataProvider for reduce_dimensions
-            dataset = setup_dataset(self.config)
+            # Setup DataProvider for reduce_dimensions
+            dataset = setup_dataset(self.config, splits=ReduceDimensions.OPTIONAL_DATA_GROUPS)
             reduce_datasets = dataset.get("reduce_dimensions")
             if not isinstance(reduce_datasets, DataProvider):
                 raise RuntimeError(
                     "Configured [data_request.reduce_dimensions] must resolve to a DataProvider."
                 )
 
-            # prepped_datasets: friendly name -> dataset instance
             if len(reduce_datasets.prepped_datasets) != 1:
                 raise RuntimeError(
                     "reduce_dimensions requires exactly one dataset, "
                     f"but {len(reduce_datasets.prepped_datasets)} were provided."
                 )
             # Get the only key from prepped_datasets
-            dataset_name = next(iter(reduce_datasets.prepped_datasets))
-            inference_results = reduce_datasets.prepped_datasets.get(dataset_name)
+            friendly_name = next(iter(reduce_datasets.prepped_datasets))
+            inference_results = reduce_datasets.prepped_datasets.get(friendly_name)
 
             if not isinstance(inference_results, (ResultDataset, InferenceDataset)):
                 raise RuntimeError(
@@ -195,22 +183,21 @@ class ReduceDimensions(Verb):
                     "ResultDataset or InferenceDataset for reduction."
                 )
 
-            reduce_request = data_request["reduce_dimensions"]
-            # TODO: change the "default" friendly name
-            reduce_default = reduce_request.get("default", {})
-            if reduce_default.get("fields") is None:
+            # Check fields provided from data request
+            reduce_request = data_request["reduce_dimensions"].get(friendly_name, {})
+            fields = reduce_request.get("fields", {})
+            if len(fields) == 0:
                 logger.info(
-                    "No fields specified in [data_request.reduce_dimensions.default.fields], "
+                    f"No fields specified in [data_request.reduce_dimensions.{friendly_name}.fields], "
                     "defaulting to ['data']"
                 )
                 fields = ["data"]
-            else:
-                fields = reduce_default.get("fields")
-                if len(fields) != 1:
-                    raise RuntimeError(
-                        "Configured [data_request.reduce_dimensions.default.fields] must "
-                        "contain exactly one field for dimensionality reduction."
-                    )
+
+            if len(fields) != 1:
+                raise RuntimeError(
+                    f"Configured [data_request.reduce_dimensions.{friendly_name}.fields] must "
+                    "contain exactly one field for dimensionality reduction."
+                )
 
             field_name = fields[0]
             logger.info(f"Using field '{field_name}' for dimensionality reduction.")
