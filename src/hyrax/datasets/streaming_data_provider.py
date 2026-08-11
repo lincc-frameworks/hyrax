@@ -144,3 +144,14 @@ class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
     def stop(self):
         """Stop the underlying stream's iteration."""
         self._stream.stop()
+
+    def close(self):
+        """Release the underlying stream's resources (e.g. close the Kafka consumer).
+
+        Signalling ``stop()`` is not enough for a stream that holds a connection: a
+        suspended ``__iter__`` generator never resumes to run its own cleanup. Not every
+        streaming dataset needs teardown, so this is a no-op when the stream defines none.
+        """
+        close = getattr(self._stream, "close", None)
+        if callable(close):
+            close()
