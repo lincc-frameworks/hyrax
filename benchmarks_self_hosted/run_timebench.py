@@ -6,9 +6,8 @@ import subprocess
 from pathlib import Path
 
 import torch
-
-import hyrax
 from timebench_utils import benchmark_repeated
+import hyrax
 
 CONFIG = {
     "train_fraction": 1.0,
