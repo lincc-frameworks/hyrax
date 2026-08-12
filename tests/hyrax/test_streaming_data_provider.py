@@ -2,7 +2,13 @@
 
 Reuses the FakeConsumer pattern from ``test_kafka_stream_dataset.py``: the provider builds
 a KafkaStreamDataset internally, so tests patch ``provider._stream._make_consumer``.
+
+The provider reads every field through a ``get_<field>(sample)`` method on the wrapped
+dataset rather than indexing the decoded sample dict, so the streams used here are
+KafkaStreamDataset subclasses that define those getters.
 """
+
+import logging
 
 import numpy as np
 import pytest
@@ -16,8 +22,33 @@ from hyrax.datasets.streaming_data_provider import StreamingDataProvider
 from hyrax.pytorch_ignite import dist_data_loader, setup_dataset
 
 
+class _GetterStream(KafkaStreamDataset):
+    """KafkaStreamDataset subclass exposing ``get_<field>`` accessors over flat samples.
+
+    ``get_flux`` is deliberately *derived* — the decoded messages carry no ``flux`` key —
+    so tests can tell getter-mediated access apart from a plain dict lookup.
+    """
+
+    def get_image(self, sample):
+        """Return the image payload of one decoded sample."""
+        return sample["image"]
+
+    def get_flux(self, sample):
+        """Compute a scalar flux from the image; there is no `flux` key in the message."""
+        return float(np.sum(sample["image"]))
+
+
+class _HookedStream(_GetterStream):
+    """Getter stream that also defines a per-field collate hook for `image`."""
+
+    def collate_image(self, samples):
+        """Stack images and also emit a boolean mask of the same shape."""
+        arr = np.stack([s["image"] for s in samples], axis=0)
+        return {"image": arr, "image_mask": np.ones_like(arr, dtype=bool)}
+
+
 def _build_provider(
-    batch_size=5, flush=100.0, fields=("image",), primary_id="object_id", dataset_class="KafkaStreamDataset"
+    batch_size=5, flush=100.0, fields=("image",), primary_id="object_id", dataset_class="_GetterStream"
 ):
     """Construct a StreamingDataProvider wrapping a KafkaStreamDataset."""
     h = hyrax.Hyrax()
@@ -55,6 +86,71 @@ def test_structure_shapes_a_flat_sample():
     assert structured["data"]["image"].dtype == np.float32
 
 
+def test_structure_reads_fields_through_dataset_getters():
+    """Field values come from `get_<field>(sample)`, not from indexing the sample dict."""
+    provider = _build_provider(fields=("image", "flux"))
+    # The decoded message has no `flux` key — only `_GetterStream.get_flux` can produce it.
+    structured = provider._structure({"object_id": "abc", "image": [[1.0, 2.0], [3.0, 4.0]]})
+
+    assert structured["data"]["flux"] == np.float32(10.0)
+    assert structured["data"]["image"].shape == (2, 2)
+
+
+def test_getters_are_cached_from_the_stream_instance():
+    """Every `get_*` method on the stream is cached as a bound method, regardless of `fields`."""
+    provider = _build_provider(fields=("image",))
+
+    # All getters are cached, even though only `image` was requested...
+    assert set(provider.dataset_getters) == {"image", "flux"}
+    # ...and each one is bound to the wrapped stream instance.
+    for getter in provider.dataset_getters.values():
+        assert getter.__self__ is provider._stream
+
+    # The requested `fields` still control what `_structure` emits.
+    assert provider.fields == ["image"]
+    assert set(provider._structure({"object_id": "a", "image": [[1.0]]})["data"]) == {"image"}
+
+
+def test_fields_derived_from_getters_when_not_configured():
+    """With no `fields` in the request, they are derived from the stream's `get_*` methods."""
+    provider = _build_provider(fields=())
+
+    # Derived at construction time — no sample needed. `dir()` orders them alphabetically.
+    assert provider.fields == ["flux", "image"]
+
+    structured = provider._structure({"object_id": "x", "image": [[2.0]]})
+    assert set(structured["data"]) == {"flux", "image"}
+
+
+def test_requested_field_without_a_getter_raises():
+    """A requested field with no matching `get_<field>` method fails when structuring."""
+    provider = _build_provider(fields=("image", "no_such_field"))
+
+    with pytest.raises(KeyError, match="no_such_field"):
+        provider._structure({"object_id": "a", "image": [[1.0]]})
+
+
+def test_error_logged_when_stream_has_no_getters(caplog):
+    """A stream with no `get_*` methods is a dataset-definition error and is logged as one."""
+    with caplog.at_level(logging.ERROR, logger="hyrax.datasets.streaming_data_provider"):
+        provider = _build_provider(fields=(), dataset_class="KafkaStreamDataset")
+
+    assert provider.dataset_getters == {}
+    assert provider.fields == []
+    assert "No `get_*` methods were found" in caplog.text
+    assert "KafkaStreamDataset" in caplog.text
+
+
+def test_get_object_id_stringifies_primary_id_field():
+    """get_object_id reads the configured primary id field and returns it as a string."""
+    provider = _build_provider(fields=("image",))
+    assert provider.get_object_id({"object_id": 12345, "image": [[1.0]]}) == "12345"
+
+    renamed = _build_provider(fields=("image",), primary_id="objectId")
+    assert renamed.get_object_id({"objectId": 7, "image": [[1.0]]}) == "7"
+    assert renamed._structure({"objectId": 7, "image": [[1.0]]})["object_id"] == "7"
+
+
 def test_collate_matches_infer_contract():
     """collate (from CollationMixin) yields object_id ndarray + grouped data fields."""
     provider = _build_provider(fields=("image",))
@@ -66,14 +162,6 @@ def test_collate_matches_infer_contract():
     assert list(collated["object_id"]) == ["id0", "id1", "id2", "id3"]
     assert collated["object_id"].dtype.kind in ("U", "S")
     assert collated["data"]["image"].shape == (4, 1, 2)
-
-
-def test_fields_derived_when_not_configured(monkeypatch):
-    """With no `fields` in the request, they are derived from the first sample."""
-    provider = _build_provider(fields=())
-    provider._structure({"object_id": "x", "image": [[1.0]], "flux": 3.0})
-
-    assert provider.fields == ["image", "flux"]
 
 
 def test_sample_data_returns_structured_and_is_not_lost(monkeypatch):
@@ -93,7 +181,7 @@ def test_sample_data_returns_structured_and_is_not_lost(monkeypatch):
 
 def test_dist_data_loader_end_to_end(monkeypatch):
     """The provider flows through dist_data_loader and yields collated batch dicts."""
-    provider = _build_provider(batch_size=2, fields=("image",))
+    provider = _build_provider(batch_size=2, fields=("image", "flux"))
     messages = [_make_message(f"id{i}", [[float(i)]]) for i in range(2)]
     _patch_stream(monkeypatch, provider, messages)
 
@@ -107,6 +195,8 @@ def test_dist_data_loader_end_to_end(monkeypatch):
     batch = batches[0]
     assert list(batch["object_id"]) == ["id0", "id1"]
     assert batch["data"]["image"].shape == (2, 1, 1)
+    # The derived (getter-only) field survives the whole path to the batch dict.
+    assert list(batch["data"]["flux"]) == [0.0, 1.0]
 
 
 def test_requires_single_dataset():
@@ -114,8 +204,8 @@ def test_requires_single_dataset():
     h = hyrax.Hyrax()
     h.config["data_set"]["KafkaStreamDataset"]["topics"] = "t"
     request = {
-        "a": {"dataset_class": "KafkaStreamDataset", "primary_id_field": "object_id"},
-        "b": {"dataset_class": "KafkaStreamDataset", "primary_id_field": "object_id"},
+        "a": {"dataset_class": "_GetterStream", "primary_id_field": "object_id"},
+        "b": {"dataset_class": "_GetterStream", "primary_id_field": "object_id"},
     }
     with pytest.raises(RuntimeError, match="exactly one"):
         StreamingDataProvider(h.config, request)
@@ -133,18 +223,9 @@ def test_requires_primary_id_field():
     """The request must declare which field is the object id."""
     h = hyrax.Hyrax()
     h.config["data_set"]["KafkaStreamDataset"]["topics"] = "t"
-    request = {"data": {"dataset_class": "KafkaStreamDataset"}}
+    request = {"data": {"dataset_class": "_GetterStream"}}
     with pytest.raises(RuntimeError, match="primary_id_field"):
         StreamingDataProvider(h.config, request)
-
-
-class _HookedStream(KafkaStreamDataset):
-    """KafkaStreamDataset subclass with a per-field collate hook for `image`."""
-
-    def collate_image(self, samples):
-        """Stack images and also emit a boolean mask of the same shape."""
-        arr = np.stack([s["image"] for s in samples], axis=0)
-        return {"image": arr, "image_mask": np.ones_like(arr, dtype=bool)}
 
 
 def test_field_collate_hook_is_honored():
@@ -159,6 +240,20 @@ def test_field_collate_hook_is_honored():
     assert collated["data"]["image_mask"].dtype == bool
 
 
+def test_field_collate_hooks_registered_for_derived_fields():
+    """Hooks are registered for getter-derived fields too, not just configured ones."""
+    provider = _build_provider(fields=(), dataset_class="_HookedStream")
+    hooks = provider.field_collate_functions["data"]
+
+    assert set(hooks) == {"flux", "image"}
+    assert hooks["image"] == provider._stream.collate_image
+    assert hooks["flux"] is None
+
+    collated = provider.collate([provider._structure({"object_id": "a", "image": [[3.0]]})])
+    assert "image_mask" in collated["data"]
+    assert collated["data"]["flux"] == np.float32(3.0)
+
+
 def test_setup_dataset_routes_streaming_vs_map():
     """setup_dataset picks StreamingDataProvider for iterable datasets, DataProvider otherwise."""
     h = hyrax.Hyrax()
@@ -166,7 +261,7 @@ def test_setup_dataset_routes_streaming_vs_map():
     h.config["data_request"] = {
         "stream": {
             "data": {
-                "dataset_class": "KafkaStreamDataset",
+                "dataset_class": "_GetterStream",
                 "primary_id_field": "object_id",
                 "fields": ["image"],
             }
