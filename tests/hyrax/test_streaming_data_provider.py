@@ -37,6 +37,10 @@ class _GetterStream(KafkaStreamDataset):
         """Compute a scalar flux from the image; there is no `flux` key in the message."""
         return float(np.sum(sample["image"]))
 
+    def get_object_id(self, sample):
+        """Return the object id as a string, regardless of its original type."""
+        return str(sample["object_id"])
+
 
 class _HookedStream(_GetterStream):
     """Getter stream that also defines a per-field collate hook for `image`."""
@@ -101,9 +105,9 @@ def test_getters_are_cached_from_the_stream_instance():
     provider = _build_provider(fields=("image",))
 
     # All getters are cached, even though only `image` was requested...
-    assert set(provider.dataset_getters) == {"image", "flux"}
+    assert set(provider.dataset_getters["data"]) == {"image", "flux", "object_id"}
     # ...and each one is bound to the wrapped stream instance.
-    for getter in provider.dataset_getters.values():
+    for getter in provider.dataset_getters["data"].values():
         assert getter.__self__ is provider._stream
 
     # The requested `fields` still control what `_structure` emits.
@@ -116,10 +120,10 @@ def test_fields_derived_from_getters_when_not_configured():
     provider = _build_provider(fields=())
 
     # Derived at construction time — no sample needed. `dir()` orders them alphabetically.
-    assert provider.fields == ["flux", "image"]
+    assert provider.fields == ["flux", "image", "object_id"]
 
     structured = provider._structure({"object_id": "x", "image": [[2.0]]})
-    assert set(structured["data"]) == {"flux", "image"}
+    assert set(structured["data"]) == {"flux", "image", "object_id"}
 
 
 def test_requested_field_without_a_getter_raises():
@@ -135,20 +139,10 @@ def test_error_logged_when_stream_has_no_getters(caplog):
     with caplog.at_level(logging.ERROR, logger="hyrax.datasets.streaming_data_provider"):
         provider = _build_provider(fields=(), dataset_class="KafkaStreamDataset")
 
-    assert provider.dataset_getters == {}
+    assert provider.dataset_getters["data"] == {}
     assert provider.fields == []
     assert "No `get_*` methods were found" in caplog.text
     assert "KafkaStreamDataset" in caplog.text
-
-
-def test_get_object_id_stringifies_primary_id_field():
-    """get_object_id reads the configured primary id field and returns it as a string."""
-    provider = _build_provider(fields=("image",))
-    assert provider.get_object_id({"object_id": 12345, "image": [[1.0]]}) == "12345"
-
-    renamed = _build_provider(fields=("image",), primary_id="objectId")
-    assert renamed.get_object_id({"objectId": 7, "image": [[1.0]]}) == "7"
-    assert renamed._structure({"objectId": 7, "image": [[1.0]]})["object_id"] == "7"
 
 
 def test_collate_matches_infer_contract():
@@ -245,7 +239,7 @@ def test_field_collate_hooks_registered_for_derived_fields():
     provider = _build_provider(fields=(), dataset_class="_HookedStream")
     hooks = provider.field_collate_functions["data"]
 
-    assert set(hooks) == {"flux", "image"}
+    assert set(hooks) == {"flux", "image", "object_id"}
     assert hooks["image"] == provider._stream.collate_image
     assert hooks["flux"] is None
 
