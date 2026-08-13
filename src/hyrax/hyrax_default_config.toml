@@ -386,6 +386,10 @@ group_id = "hyrax-infer-stream"
 # a stream" in the hyrax.datasets.kafka_stream_dataset docs.
 auto_offset_reset = "earliest"
 
+# Once a batch of messages has been processed downstream, commit the offsets for that batch.
+# Setting to false disables committing - used for testing to replay the stream.
+commit_after_batch = true
+
 # Seconds to block on each Kafka poll while waiting for a message.
 poll_timeout = 1.0
 

@@ -135,6 +135,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         self.auto_offset_reset = ds_config["auto_offset_reset"]
         self.poll_timeout = float(ds_config["poll_timeout"])
         self.batch_flush_timeout = float(ds_config["batch_flush_timeout"])
+        self.commit_after_batch = bool(ds_config["commit_after_batch"])
 
         # Bound on how long peek_sample() waits for its first message. The TOML `false`
         # sentinel (or 0) means "wait indefinitely".
@@ -461,7 +462,8 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
                     # safe to advance the committed offset. Asynchronous: a synchronous
                     # round trip per batch adds latency and eats into max.poll.interval.ms.
                     # Consumer.close() flushes whatever is still in flight.
-                    self._commit(consumer)
+                    if self.commit_after_batch:
+                        self._commit(consumer)
         finally:
             # Routed through close() rather than consumer.close() so this is a no-op when
             # the owner already closed the stream and left this generator suspended.
