@@ -447,7 +447,7 @@ vector_size = 64
 inference_dir = false
 
 
-[reduce]
+[reduce_dimensions]
 # Name of the reduction algorithm to use
 algorithm = "umap"
 
@@ -461,7 +461,7 @@ batch_size = 1024
 parallel = false
 
 
-[reduce.umap]
+[reduce_dimensions.umap]
 # Number of data points used to fit the umap model.
 fit_sample_size = 1024
 
@@ -469,7 +469,7 @@ fit_sample_size = 1024
 model_path = false
 
 
-[reduce.umap.kwargs]
+[reduce_dimensions.umap.kwargs]
 # Specify any parameter accepted by https://umap-learn.readthedocs.io/en/latest/api.html#umap
 # Dimension of the embedded space
 n_components = 2
@@ -479,11 +479,11 @@ n_components = 2
 n_neighbors = 15
 
 
-[reduce.tsne]
+[reduce_dimensions.tsne]
 # Placeholder for config values of tsne model
 
 
-[reduce.tsne.kwargs]
+[reduce_dimensions.tsne.kwargs]
 # Specify any parameter accepted by https://scikit-learn.org/stable/modules/generated/sklearn.manifold.TSNE.html
 # Dimension of the embedded space
 n_components = 2
@@ -493,7 +493,7 @@ n_components = 2
 perplexity = 30.0
 
 
-[reduce.pca]
+[reduce_dimensions.pca]
 # Number of data points used to fit the pca model.
 fit_sample_size = 1024
 
@@ -501,7 +501,7 @@ fit_sample_size = 1024
 model_path = false
 
 
-[reduce.pca.kwargs]
+[reduce_dimensions.pca.kwargs]
 # Specify any parameter accepted by https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html#
 # Dimension of the embedded space
 n_components=2
