@@ -50,7 +50,7 @@ def _build_stream_config(tmp_path, batch_size=2):
     h.config["data_request"] = {
         "infer_stream": {
             "data": {
-                "dataset_class": "KafkaStreamDataset",
+                "dataset_class": "_ImageStream",
                 "data_location": "./",
                 "primary_id_field": "object_id",
                 "fields": ["image"],
