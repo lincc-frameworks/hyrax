@@ -438,17 +438,22 @@ class CollationMixin:
         # calling the custom function.
         for friendly_name, samples in custom_collate.items():
             custom_collate_fn = self.custom_collate_functions[friendly_name]
-
             try:
                 custom_collated_data = custom_collate_fn(samples)
             except Exception as err:
+                func_name = (
+                    custom_collate_fn.func.__name__
+                    if hasattr(custom_collate_fn, "func")
+                    else str(custom_collate_fn)
+                )
                 logger.error(
                     f"Error occurred while collating batch for dataset '{friendly_name}' "
-                    "using its custom collate function."
+                    f"using its '{func_name}' collate function."
                 )
+                # TODO: make this better when we're using the default collate function
                 raise RuntimeError(
                     f"Error occurred while collating batch for dataset '{friendly_name}' "
-                    "using its custom collate function."
+                    f"using its '{func_name}' collate function."
                 ) from err
 
             batch_dict[friendly_name] = custom_collated_data
