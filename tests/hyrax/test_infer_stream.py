@@ -15,6 +15,22 @@ import hyrax
 from hyrax.datasets.kafka_stream_dataset import KafkaStreamDataset
 
 
+class _ImageStream(KafkaStreamDataset):
+    """KafkaStreamDataset subclass exposing the `get_<field>` accessors the provider needs.
+
+    ``StreamingDataProvider`` reads each requested field through ``get_<field>(sample)`` on
+    the wrapped dataset, so a stream must define one getter per field it offers.
+    """
+
+    def get_image(self, sample):
+        """Return the image payload of one decoded sample."""
+        return sample["image"]
+
+    def get_object_id(self, sample):
+        """Return the object id of one decoded sample."""
+        return str(sample["object_id"])
+
+
 def _msg(object_id, image):
     return FakeMessage(json.dumps({"object_id": object_id, "image": image}))
 
@@ -86,7 +102,7 @@ def test_infer_stream_iterates_streaming_dataset(tmp_path, monkeypatch):
     h.config["data_request"] = {
         "infer_stream": {
             "data": {
-                "dataset_class": "KafkaStreamDataset",
+                "dataset_class": "_ImageStream",
                 "data_location": "./",
                 "primary_id_field": "object_id",
                 "fields": ["image"],
