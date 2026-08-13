@@ -47,6 +47,7 @@ class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
     def __init__(self, config: dict, request: dict):
         self.config = config
         self.data_request = request
+        self.dataset_getters = {}  # friendly_name -> field_name -> callable
 
         if len(request) != 1:
             raise RuntimeError(
@@ -96,18 +97,37 @@ class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
 
         self.prepped_datasets = {friendly_name: self._stream}
 
+        # If no fields were specifically requested, we'll assume that the user
+        # wants _all_ the available fields - user defined and dynamically created!
+        if not self.fields:
+            self.fields = [method[4:] for method in dir(self._stream) if method.startswith("get_")]
+
+        # Cache all of the `get_<field_name>` methods in the dataset instance
+        # so that we don't have to look them up each time we call `_structure`.
+        self.dataset_getters = {self.friendly_name: {}}
+        for method in dir(self._stream):
+            if method.startswith("get_"):
+                field_name = method[4:]  # Remove the "get_" prefix
+                self.dataset_getters[self.friendly_name][field_name] = getattr(self._stream, method)
+
+        if len(self.dataset_getters[self.friendly_name]) == 0:
+            logger.error(
+                f"No `get_*` methods were found in the class: {type(self._stream)}. "
+                "This is likely an error in the dataset class definition."
+            )
+
         # Collation wiring consumed by CollationMixin.collate.
         self.custom_collate_functions: dict = {}
-        self.field_collate_functions: dict = {friendly_name: {}}
+        self.field_collate_functions: dict = {self.friendly_name: {}}
         stream_collate = getattr(self._stream, "collate", None)
         if callable(stream_collate):
             # A user subclass may define a dataset-level collate; honor it.
-            self.custom_collate_functions[friendly_name] = stream_collate
+            self.custom_collate_functions[self.friendly_name] = stream_collate
 
-        # If fields are known up front, register per-field collate hooks now; otherwise
-        # this happens lazily once the first sample reveals the field names.
-        if self.fields:
-            self._register_field_collate_hooks()
+        # The user will define the fields they want, or if none are defined,
+        # we'll derive them from the getters in the dataset instance. Either way,
+        # we need to register any field-level collate hooks.
+        self._register_field_collate_hooks()
 
     def _register_field_collate_hooks(self):
         """Detect ``collate_<field>`` methods on the wrapped stream for each field."""
@@ -118,15 +138,13 @@ class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
 
     def _structure(self, sample: dict) -> dict:
         """Turn a flat decoded sample into the per-sample shape ``collate`` expects."""
-        if not self.fields:
-            self.fields = [key for key in sample if key != self.primary_id_field]
-            self._register_field_collate_hooks()
         data = {}
         for field in self.fields:
-            arr = np.asarray(sample[field])
+            arr = np.asarray(self.dataset_getters[self.friendly_name][field](sample))
             data[field] = arr.astype(np.float32, copy=False) if np.issubdtype(arr.dtype, np.floating) else arr
 
-        return {"object_id": str(sample[self.primary_id_field]), self.friendly_name: data}
+        object_id = self.dataset_getters[self.friendly_name][self.primary_id_field](sample)
+        return {"object_id": object_id, self.friendly_name: data}
 
     def __iter__(self):
         """Yield ``list[dict]`` batches of structured samples for ``collate_fn``."""
