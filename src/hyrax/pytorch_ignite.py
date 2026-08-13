@@ -769,8 +769,12 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_training_post_epoch_hooks(trainer):
-        if hasattr(model, "train_post_epoch"):
-            model.train_post_epoch()
+        hook = getattr(model, "train_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("train_post_epoch is not supported for distributed training yet.")
+        hook()
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss(trainer):
