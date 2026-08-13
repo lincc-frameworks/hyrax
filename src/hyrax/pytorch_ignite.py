@@ -543,7 +543,7 @@ def create_validator(
         model.final_validation_metrics = validator.state.output
 
     @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
-    def run_training_post_epoch_hooks(validator):
+    def run_validate_post_epoch_hooks(validator):
         hook = getattr(model, "validate_post_epoch", None)
         if not callable(hook):
             return
