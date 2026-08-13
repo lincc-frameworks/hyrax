@@ -26,6 +26,10 @@ class _ImageStream(KafkaStreamDataset):
         """Return the image payload of one decoded sample."""
         return sample["image"]
 
+    def get_object_id(self, sample):
+        """Return the object id of one decoded sample."""
+        return str(sample["object_id"])
+
 
 def _msg(object_id, image):
     return FakeMessage(json.dumps({"object_id": object_id, "image": image}))
