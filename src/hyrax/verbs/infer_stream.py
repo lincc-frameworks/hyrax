@@ -206,6 +206,25 @@ class InferStreamSession:
         if self._provider is not None and hasattr(self._provider, "stop"):
             self._provider.stop()
 
+    def _close_provider(self):
+        """Tear down the streaming data source, releasing any connection it holds.
+
+        Kept separate from :meth:`stop` because stopping is only a signal: a data loader
+        left suspended mid-iteration (the caller hit an exception, or broke out of the
+        loop) never resumes to clean up after itself, so the connection has to be closed
+        from the outside or it lingers for the life of the process.
+        """
+        if self._provider is None:
+            return
+        close = getattr(self._provider, "close", None)
+        if not callable(close):
+            return
+        try:
+            close()
+        except Exception as err:
+            # Teardown of the data source must not prevent the result commit below.
+            logger.warning(f"Error closing the streaming data source: {err}")
+
     def process(self, batch: dict) -> npt.NDArray:
         """Run inference on a single batch and save results.
 
@@ -246,8 +265,13 @@ class InferStreamSession:
             if self._config["infer_stream"]["save_model_output"]:
                 return self._load_dataset(self._config, self._results_dir)
             return None
-        # End any in-progress streaming iteration before tearing down.
+        # End any in-progress streaming iteration, then release the data source itself.
+        # __exit__ calls close() on every exit path, so this is what makes
+        # `with hy.infer_stream() as session:` a real guarantee that the stream's
+        # connection is dropped even when the body raises.
         self.stop()
+        self._close_provider()
+        self.data_loader = None
 
         if self._config["infer_stream"]["save_model_output"]:
             self._save_batch.data_writer.commit()
