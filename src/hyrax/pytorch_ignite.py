@@ -768,6 +768,11 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
             mlflow.log_metrics({f"training/{m}": trainer.state.output[m]}, step=step)
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_training_post_epoch_hooks(trainer):
+        if hasattr(model, "train_post_epoch"):
+            model.train_post_epoch()
+
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss(trainer):
         logger.debug(f"Epoch {trainer.state.epoch} run time: {trainer.state.times['EPOCH_COMPLETED']:.2f}[s]")
         logger.debug(f"Epoch {trainer.state.epoch} metrics: {trainer.state.output}")
