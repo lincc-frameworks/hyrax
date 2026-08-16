@@ -233,3 +233,40 @@ def custom_field_collate_data_provider(multimodal_config):
 
     yield dp
     delattr(HyraxRandomDataset, "collate_image")
+
+
+@pytest.fixture(scope="function")
+def getitem_data_provider():
+    """Create a DataProvider using a __getitem__-mode dataset."""
+    from hyrax.datasets import HyraxDataset
+
+    class _GetitemDataset(HyraxDataset):
+        """Test dataset using __getitem__ mode."""
+
+        def __init__(self, config, data_location=None):
+            rng = np.random.default_rng(42)
+            self._images = rng.random((10, 3, 8, 8), dtype=np.float32)
+            self._ids = [f"id-{i}" for i in range(10)]
+            super().__init__(config)
+
+        def __len__(self):
+            return 10
+
+        def __getitem__(self, idx):
+            return {
+                "image": self._images[idx],
+                "object_id": self._ids[idx],
+            }
+
+    h = hyrax.Hyrax()
+    request = {
+        "data": {
+            "dataset_class": "_GetitemDataset",
+            "data_location": "./in_memory",
+            "fields": ["image", "object_id"],
+            "primary_id_field": "object_id",
+        },
+    }
+    h.config["data_request"] = {"train": request}
+    dp = DataProvider(h.config, request)
+    return dp
