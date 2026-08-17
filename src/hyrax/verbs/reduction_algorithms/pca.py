@@ -16,7 +16,7 @@ class PCA(ReductionAlgorithm):
 
     def __init__(self, config: dict, reduction_results=None):
         super().__init__(config, reduction_results)
-        self.reducer = sklearn_decomposition.PCA(**self.config["reduce"]["pca"]["kwargs"])
+        self.reducer = sklearn_decomposition.PCA(**self.config["reduce_dimensions"]["pca"]["kwargs"])
 
     def save_model(self, results_dir: Path):
         """
@@ -44,7 +44,7 @@ class PCA(ReductionAlgorithm):
             If not specified, method will look in the config for a default model path.
         """
         if model_path is None:
-            model_path = self.config["reduce"]["pca"]["model_path"]
+            model_path = self.config["reduce_dimensions"]["pca"]["model_path"]
 
         if not model_path:
             logger.info("No pre-existing PCA model found. A new model will be fitted.")
@@ -128,7 +128,7 @@ class PCA(ReductionAlgorithm):
 
         from tqdm.auto import tqdm
 
-        if self.config["reduce"]["parallel"]:
+        if self.config["reduce_dimensions"]["parallel"]:
             import multiprocessing as mp
 
             # Process pool loop

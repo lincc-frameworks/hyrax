@@ -374,17 +374,32 @@ bootstrap_servers = "localhost:9092"
 # topic string is accepted for convenience, and will be converted to a list of one topic.
 topics = []
 
-# Kafka consumer group id.
+# Kafka consumer group id. NOTE this default is shared: two runs against the same broker
+# join the same group and split its partitions between them, so on a single-partition
+# topic one of them is assigned nothing and sees no messages at all. Give concurrent runs
+# distinct group ids. A group also remembers its committed offsets, so a fresh group_id is
+# one way to replay a topic this one has already consumed.
 group_id = "hyrax-infer-stream"
 
 # Where to start consuming when the group has no committed offset: "latest" or "earliest".
+# This has no effect once the group has committed an offset -- see "Recovering / replaying
+# a stream" in the hyrax.datasets.kafka_stream_dataset docs.
 auto_offset_reset = "earliest"
+
+# Once a batch of messages has been processed downstream, commit the offsets for that batch.
+# Setting to false disables committing - used for testing to replay the stream.
+commit_after_batch = true
 
 # Seconds to block on each Kafka poll while waiting for a message.
 poll_timeout = 1.0
 
 # Maximum seconds to wait before flushing a partial (smaller than batch_size) batch.
 batch_flush_timeout = 5.0
+
+# Maximum seconds peek_sample() waits for a first message before raising TimeoutError.
+# This bounds model pre-flighting, which would otherwise block forever against an empty
+# topic or an assignment held by another consumer. Set to false to wait indefinitely.
+peek_timeout = 120.0
 
 # Provided path credentials file for a `confluent_kafka` consumer instance
 # e.g.
@@ -393,6 +408,21 @@ batch_flush_timeout = 5.0
 # "security.protocol" = "SASL_PLAINTEXT"
 # "sasl.mechanism" = "SCRAM-SHA-512"
 credentials_file = false
+
+# Arbitrary librdkafka settings merged into the consumer configuration, applied after
+# `credentials_file` so they win over it. Use this to tune client behavior, e.g.
+# [data_set.KafkaStreamDataset.consumer_options]
+# "max.poll.interval.ms" = 600000
+# "session.timeout.ms" = 45000
+#
+# `enable.auto.commit` is forced to false and should be left alone: offsets are committed
+# by the stream only once a batch has been fully processed downstream, so that a failure
+# mid-pipeline replays those alerts instead of silently dropping them.
+#
+# NOTE: While it is technically possible to put credentials (e.g. "sasl.username",
+# "sasl.password") here, you SHOULD NOT do so. Use `credentials_file` instead to avoid
+# accidentally committing secrets into your configuration files.
+[data_set.KafkaStreamDataset.consumer_options]
 
 
 [data_set.LSDBStreamDataset]
@@ -495,7 +525,7 @@ vector_size = 64
 inference_dir = false
 
 
-[reduce]
+[reduce_dimensions]
 # Name of the reduction algorithm to use
 algorithm = "umap"
 
@@ -509,7 +539,7 @@ batch_size = 1024
 parallel = false
 
 
-[reduce.umap]
+[reduce_dimensions.umap]
 # Number of data points used to fit the umap model.
 fit_sample_size = 1024
 
@@ -517,7 +547,7 @@ fit_sample_size = 1024
 model_path = false
 
 
-[reduce.umap.kwargs]
+[reduce_dimensions.umap.kwargs]
 # Specify any parameter accepted by https://umap-learn.readthedocs.io/en/latest/api.html#umap
 # Dimension of the embedded space
 n_components = 2
@@ -527,11 +557,11 @@ n_components = 2
 n_neighbors = 15
 
 
-[reduce.tsne]
+[reduce_dimensions.tsne]
 # Placeholder for config values of tsne model
 
 
-[reduce.tsne.kwargs]
+[reduce_dimensions.tsne.kwargs]
 # Specify any parameter accepted by https://scikit-learn.org/stable/modules/generated/sklearn.manifold.TSNE.html
 # Dimension of the embedded space
 n_components = 2
@@ -541,7 +571,7 @@ n_components = 2
 perplexity = 30.0
 
 
-[reduce.pca]
+[reduce_dimensions.pca]
 # Number of data points used to fit the pca model.
 fit_sample_size = 1024
 
@@ -549,7 +579,7 @@ fit_sample_size = 1024
 model_path = false
 
 
-[reduce.pca.kwargs]
+[reduce_dimensions.pca.kwargs]
 # Specify any parameter accepted by https://scikit-learn.org/stable/modules/generated/sklearn.decomposition.PCA.html#
 # Dimension of the embedded space
 n_components=2
