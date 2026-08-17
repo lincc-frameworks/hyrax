@@ -18,6 +18,9 @@ from hyrax.tensorboardx_logger import get_tensorboard_logger
 logger = logging.getLogger(__name__)
 tensorboardx_logger = get_tensorboard_logger()
 
+_NAN_WARNING_MAX = 3
+_nan_warning_count = 0
+
 
 @functools.singledispatch
 def _handle_nans(batch, config):
@@ -63,12 +66,18 @@ def _handle_nans_logic_numpy(batch, config):
         return batch
 
     if config["data_set"]["nan_mode"] is False:
+        global _nan_warning_count
         if np.any(np.isnan(batch)):
-            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
-            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
-            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
-            msg += "to get started."
-            logger.warning(msg)
+            if _nan_warning_count < _NAN_WARNING_MAX:
+                msg = "Input data contains NaN values. This may mean your model output is all NaNs."
+                msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
+                msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
+                msg += "to get started."
+                logger.warning(msg)
+                _nan_warning_count += 1
+            elif _nan_warning_count == _NAN_WARNING_MAX:
+                logger.warning("Silencing additional NaN warnings.")
+                _nan_warning_count += 1
         return batch
 
     if config["data_set"]["nan_mode"] == "quantile":
