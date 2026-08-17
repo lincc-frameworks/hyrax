@@ -70,8 +70,10 @@ which a live ``lsdb.Catalog`` object would break.
 import logging
 import threading
 from pathlib import Path
+from types import MethodType
 
-import torch
+import numpy as np
+from torch.utils.data import IterableDataset
 
 from .dataset_registry import HyraxDataset
 
@@ -85,7 +87,7 @@ LSDB_URI_PREFIX = "lsdb://"
 _CATALOG_REGISTRY: dict[str, object] = {}
 
 
-class LSDBStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
+class LSDBStreamDataset(HyraxDataset, IterableDataset):
     """Streams rows from a HATS catalog and yields fixed-size batches.
 
     The stream is configured in ``[data_set.LSDBStreamDataset]``; the catalog itself comes
@@ -166,6 +168,40 @@ class LSDBStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         self._row_checked = False
 
         super().__init__(config, metadata_table=None)
+
+        # Dynamic getter creation - assumes only one level of nesting.
+        all_columns = set(self._catalog.columns)
+        nested_columns = set(self._catalog.nested_columns)
+        self._register_getters(list(all_columns - nested_columns))
+
+        # For each of the nested columns, get all the subcolumns
+        for nested_column in nested_columns:
+            nested_subcols = list(self._catalog[nested_column].columns)
+            self._register_nested_getters(nested_column, nested_subcols)
+
+    def _register_getters(self, columns) -> None:
+        def _make_getter(field_name: str):
+            def getter(self, sample, _field_name=field_name):
+                return sample[_field_name]
+
+            return getter
+
+        for field_name in columns:
+            method_name = f"get_{field_name}"
+            if not hasattr(self, method_name):
+                setattr(self, method_name, MethodType(_make_getter(field_name), self))
+
+    def _register_nested_getters(self, nested_column, nested_subcolumns) -> None:
+        def _make_getter(nested_column: str, subnested_column: str):
+            def getter(self, sample, _nested_name=nested_column, _subnested_name=subnested_column):
+                return np.asarray(sample[_nested_name][_subnested_name])
+
+            return getter
+
+        for subnested_column in nested_subcolumns:
+            method_name = f"get_{nested_column}_{subnested_column}"
+            if not hasattr(self, method_name):
+                setattr(self, method_name, MethodType(_make_getter(nested_column, subnested_column), self))
 
     #
     # In-memory catalog registry
