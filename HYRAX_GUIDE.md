@@ -163,7 +163,7 @@ Hyrax discovers components through three registries:
 - Models must inherit from `torch.nn.Module` and implement `__init__`, `forward`,
   `train_batch`, and `prepare_inputs`.
 - The decorator wires up save/load, optimizer, and criterion handling.
-- Built-in: `HyraxAutoencoder`, `HyraxAutoencoderV2`, `HyraxCNN`, `SimCLR`, `ImageDCAE`, `HSCAutoencoder`, `HSCDCAE`, `HyraxLoopback`
+- Built-in: `HyraxAutoencoder`, `HyraxAutoencoderV2`, `HyraxCNN`, `SimCLR`, `ImageDCAE`, `HSCAutoencoder`, `HSCDCAE`, `HyraxLoopback`, `HyraxTs2Vec`
 - **External plugins supported** — use a fully qualified import path in the config
   (e.g. `model.name = "my_pkg.my_module.MyModel"`).
 
