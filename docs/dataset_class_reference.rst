@@ -313,6 +313,24 @@ Streams always run with ``num_workers = 0``, because a plain ``IterableDataset``
 does no sharding across worker processes - with several workers each would open
 its own stream and every object would be seen more than once.
 
+That also means PyTorch's ``prefetch_factor`` does nothing for a stream: with no
+worker processes there is nothing running ahead of the training loop, so by
+default the GPU sits idle for the whole of every fetch. A streaming dataset that
+reads from anywhere slow has to hide that latency itself.
+:class:`~hyrax.datasets.lsdb_stream_dataset.LSDBStreamDataset` does it two ways,
+and its module docstring is the reference for both: it hands lsdb an active
+``dask.distributed`` client so chunk computation is asynchronous, and it runs a
+background thread (``prefetch_chunks``) that keeps finished chunks queued and
+moves row decoding off the consumer's thread.
+
+Prefetching is not free to bolt on to any stream. It is only safe where fetching
+ahead of the consumer has no side effects, and where rows fetched but never
+delivered can be handed back rather than dropped - otherwise a consumer that
+stops early silently loses data.
+:class:`~hyrax.datasets.kafka_stream_dataset.KafkaStreamDataset` deliberately does
+**not** prefetch: it commits offsets only when the generator is resumed, so
+running ahead would break its at-least-once delivery guarantee.
+
 Two streaming datasets ship with Hyrax:
 :class:`~hyrax.datasets.kafka_stream_dataset.KafkaStreamDataset` for live alert
 streams, and :class:`~hyrax.datasets.lsdb_stream_dataset.LSDBStreamDataset` for

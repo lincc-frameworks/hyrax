@@ -472,7 +472,29 @@ stream_type = "catalog"
 
 # Number of HATS partitions computed per chunk. Larger values amortize per-chunk dask
 # overhead but hold more rows in memory; lsdb clips this to the catalog's partition count.
+# With a dask client attached, set this to at least twice the worker count so a single
+# chunk can occupy the whole cluster.
 partitions_per_chunk = 1
+
+# Hand lsdb an active dask.distributed Client. lsdb submits the next chunk's future before
+# returning the current one, so with a client the next chunk computes in the background
+# while Hyrax trains on this one; with no client it computes inline and every fetch blocks.
+# Hyrax attaches to whatever client is already active, so create one before starting the
+# run. Client(processes=False) is usually the right choice on a single machine: it still
+# gives real futures, but keeps results in-process instead of serializing every chunk back
+# from a worker.
+use_dask_client = true
+
+# Explicit dask scheduler address, e.g. "tcp://127.0.0.1:8786". When false, the active
+# client is used if there is one, and the stream runs synchronously if there is not.
+dask_client_address = false
+
+# Chunks a background thread fetches and decodes ahead of the consumer. This is independent
+# of `use_dask_client` and stacks with it: the client overlaps one chunk's computation, this
+# buffers several finished chunks and also moves the row decoding off the training thread.
+# Each buffered chunk holds `partitions_per_chunk` partitions of decoded rows in memory, so
+# raise it only as far as memory allows. Set to 0 or false to fetch synchronously.
+prefetch_chunks = 2
 
 # Shuffle the partition order and the rows within each chunk. Ignored (and always on)
 # when stream_type = "infinite"; lsdb's InfiniteStream does not accept this option.

@@ -20,6 +20,7 @@ The single source of truth for ``primary_id_field`` and ``fields`` is ``[data_re
 """
 
 import logging
+from time import perf_counter
 
 import numpy as np
 import torch
@@ -28,6 +29,9 @@ from .data_provider import CollationMixin, DataProvider
 from .dataset_registry import fetch_dataset_class
 
 logger = logging.getLogger(__name__)
+
+# How often the structuring cost is reported, in batches. A logging cadence only.
+STRUCTURE_LOG_EVERY_BATCHES = 50
 
 
 class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
@@ -147,9 +151,27 @@ class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
         return {"object_id": object_id, self.friendly_name: data}
 
     def __iter__(self):
-        """Yield ``list[dict]`` batches of structured samples for ``collate_fn``."""
-        for batch in self._stream:
-            yield [self._structure(sample) for sample in batch]
+        """Yield ``list[dict]`` batches of structured samples for ``collate_fn``.
+
+        Structuring runs on the consumer's thread, after whatever prefetching the wrapped
+        stream does, so its cost lands directly on the training loop. The DEBUG timing below
+        is what says whether that matters: a large ``structure`` next to a small stream wait
+        means the bottleneck is here, not in the data source.
+        """
+        structure_seconds = 0.0
+
+        for batches, batch in enumerate(self._stream, start=1):
+            start = perf_counter()
+            structured = [self._structure(sample) for sample in batch]
+            structure_seconds += perf_counter() - start
+
+            if batches % STRUCTURE_LOG_EVERY_BATCHES == 0:
+                logger.debug(
+                    f"{self.friendly_name}: structured {batches} batches in "
+                    f"{structure_seconds:.2f} s ({structure_seconds / batches * 1e3:.1f} ms/batch)"
+                )
+
+            yield structured
 
     def sample_data(self) -> dict:
         """Return one structured sample for model pre-flighting (``setup_model``).
