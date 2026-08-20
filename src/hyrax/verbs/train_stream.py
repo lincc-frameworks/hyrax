@@ -79,7 +79,6 @@ class TrainStream(Verb):
         from pathlib import Path
 
         import mlflow
-        from ignite.distributed import auto_model
         from ignite.distributed import device as idist_device
 
         from hyrax.config_utils import create_results_dir, log_runtime_config
@@ -133,12 +132,8 @@ class TrainStream(Verb):
         init_tensorboard_logger(log_dir=results_dir)
         log_runtime_config(config, results_dir)
 
-        # Wrap for (possibly distributed) execution, but keep the unwrapped model around so
-        # we can call `.save()` and reference `.optimizer`. On a single device auto_model is
-        # a no-op, so both names refer to the same object.
-        wrapped_model = auto_model(model)
         device = idist_device()
-        process_func = create_process_func("train_batch", device, wrapped_model, config)
+        process_func = create_process_func("train_batch", device, model, config)
         trainer = create_trainer(model, config, results_dir)
         # Start an MLflow run that spans the whole session. A stream has no fixed end, so we
         # cannot wrap the training loop in a `with mlflow.start_run()` block the way batch
