@@ -228,9 +228,6 @@ def test_nan_handling_tuple_preserves_order(loopback_hyrax_nan):
     assert output[4] == elem5
 
 
-def test_nan_warning_limit(loopback_hyrax_nan, caplog):
-    """Test that the NaN warning is only emitted up to _NAN_WARNING_MAX times,
-    then a silencing message is emitted once, and no further warnings appear."""
 def test_nan_warning_limit(loopback_hyrax_nan, caplog, monkeypatch):
     """Test that the NaN warning is only emitted up to _NAN_WARNING_MAX times,
     then a silencing message is emitted once, and no further warnings appear."""
