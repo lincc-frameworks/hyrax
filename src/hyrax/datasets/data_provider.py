@@ -69,7 +69,7 @@ def _handle_nans_logic_numpy(batch, config):
         global _nan_warning_count
         if np.any(np.isnan(batch)):
             if _nan_warning_count < _NAN_WARNING_MAX:
-                msg = "Input data contains NaN values. This may mean your model output is all NaNs."
+                msg = "Input data contains NaN values. This may mean your model output is all NaNs. "
                 msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
                 msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
                 msg += "to get started."

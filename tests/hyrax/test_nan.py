@@ -231,8 +231,11 @@ def test_nan_handling_tuple_preserves_order(loopback_hyrax_nan):
 def test_nan_warning_limit(loopback_hyrax_nan, caplog):
     """Test that the NaN warning is only emitted up to _NAN_WARNING_MAX times,
     then a silencing message is emitted once, and no further warnings appear."""
+def test_nan_warning_limit(loopback_hyrax_nan, caplog, monkeypatch):
+    """Test that the NaN warning is only emitted up to _NAN_WARNING_MAX times,
+    then a silencing message is emitted once, and no further warnings appear."""
     # Reset the global counter so this test is independent of execution order
-    dp._nan_warning_count = 0
+    monkeypatch.setattr(dp, "_nan_warning_count", 0)
 
     h, _ = loopback_hyrax_nan
     h.config["data_set"]["nan_mode"] = False
@@ -251,6 +254,3 @@ def test_nan_warning_limit(loopback_hyrax_nan, caplog):
 
     assert len(nan_warnings) == dp._NAN_WARNING_MAX
     assert len(silencing_warnings) == 1
-
-    # Reset the counter after the test so it doesn't affect other tests
-    dp._nan_warning_count = 0
