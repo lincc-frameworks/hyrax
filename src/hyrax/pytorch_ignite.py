@@ -614,6 +614,15 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
 
     tester.run = run_with_no_grad
 
+    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_test_post_epoch_hooks(tester):
+        hook = getattr(model, "test_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("test_post_epoch is not supported for distributed use yet.")
+        hook()
+
     @tester.on(Events.COMPLETED)
     def log_test_metrics(engine):
         from colorama import Fore, Style
