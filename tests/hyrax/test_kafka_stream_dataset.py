@@ -35,13 +35,18 @@ class FakeMessage:
 class FakeConsumer:
     """Returns queued messages, then None (empty poll) on every subsequent call."""
 
-    def __init__(self, messages, on_exhausted=None):
+    def __init__(self, messages, on_exhausted=None, poll_error=None):
         self._messages = list(messages)
         self._on_exhausted = on_exhausted
+        self._poll_error = poll_error
         self.closed = False
+        self.close_count = 0
+        self.commits = []
 
     def poll(self, timeout):
         """Pop the next queued message, or None once the queue is empty."""
+        if self._poll_error is not None:
+            raise self._poll_error
         if self._messages:
             return self._messages.pop(0)
         if self._on_exhausted is not None:
@@ -57,12 +62,28 @@ class FakeConsumer:
             self._on_exhausted()
         return drained
 
-    def subscribe(self, topics):
+    def subscribe(self, topics, on_assign=None, on_revoke=None):
         """No-op subscribe to match the confluent_kafka Consumer interface."""
         pass
 
+    def assignment(self):
+        """No partitions assigned; enough for the diagnostics to render."""
+        return []
+
+    def commit(self, asynchronous=True):
+        """Record a commit so tests can assert *when* offsets are advanced."""
+        self.commits.append(asynchronous)
+
     def close(self):
-        """Record that the consumer was closed."""
+        """Record that the consumer was closed, and catch double closes.
+
+        confluent_kafka raises on a second close, so this does too: the stream is closed
+        from several places (teardown, an abandoned generator's ``finally``) and a
+        regression there must fail loudly rather than pass unnoticed.
+        """
+        self.close_count += 1
+        if self.closed:
+            raise RuntimeError("Consumer closed")
         self.closed = True
 
 
@@ -80,10 +101,10 @@ def _build_dataset(batch_size=5, batch_flush_timeout=100.0):
     return KafkaStreamDataset(h.config)
 
 
-def _patch_consumer(monkeypatch, dataset, messages, stop_when_exhausted=False):
+def _patch_consumer(monkeypatch, dataset, messages, stop_when_exhausted=False, poll_error=None):
     """Make the dataset use a single FakeConsumer over ``messages``."""
     on_exhausted = dataset.stop if stop_when_exhausted else None
-    consumer = FakeConsumer(messages, on_exhausted=on_exhausted)
+    consumer = FakeConsumer(messages, on_exhausted=on_exhausted, poll_error=poll_error)
     monkeypatch.setattr(dataset, "_make_consumer", lambda: consumer)
     return consumer
 
@@ -213,6 +234,145 @@ def test_consumer_closed_after_iteration(monkeypatch):
     list(dataset)
 
     assert consumer.closed
+    assert consumer.close_count == 1
+    assert dataset._consumer is None
+
+
+def test_close_is_idempotent(monkeypatch):
+    """Repeated close() calls close the underlying consumer exactly once.
+
+    The stream is closed from several places -- session teardown, and an abandoned
+    generator's ``finally`` whenever it is finally collected -- so the second call has to
+    be a no-op.
+    """
+    dataset = _build_dataset()
+    consumer = _patch_consumer(monkeypatch, dataset, [])
+    dataset._ensure_consumer()
+
+    dataset.close()
+    dataset.close()
+
+    assert consumer.close_count == 1
+    assert dataset._consumer is None
+
+
+def test_close_does_not_commit(monkeypatch):
+    """close() must not advance offsets: it is reached on failure paths too.
+
+    librdkafka has already stored offsets for every message it handed out, including a
+    batch the caller never finished, so committing during teardown would skip exactly the
+    alerts that still need reprocessing.
+    """
+    dataset = _build_dataset()
+    consumer = _patch_consumer(monkeypatch, dataset, [])
+    dataset._ensure_consumer()
+
+    dataset.close()
+
+    assert consumer.commits == []
+
+
+def test_peek_sample_closes_consumer_on_interrupt(monkeypatch):
+    """An interrupted peek must not leave a subscribed consumer behind.
+
+    This is the notebook case: a KeyboardInterrupt out of peek_sample used to leave a live
+    consumer holding the topic's partitions, so the next run joined the same group and was
+    assigned nothing.
+    """
+    dataset = _build_dataset()
+    consumer = _patch_consumer(monkeypatch, dataset, [], poll_error=KeyboardInterrupt())
+
+    with pytest.raises(KeyboardInterrupt):
+        dataset.peek_sample()
+
+    assert consumer.closed
+    assert dataset._consumer is None
+
+
+def test_peek_sample_closes_consumer_on_error(monkeypatch):
+    """Any exception out of peek_sample releases the consumer."""
+    dataset = _build_dataset()
+    consumer = _patch_consumer(monkeypatch, dataset, [], poll_error=RuntimeError("broker exploded"))
+
+    with pytest.raises(RuntimeError, match="broker exploded"):
+        dataset.peek_sample()
+
+    assert consumer.closed
+    assert dataset._consumer is None
+
+
+def test_peek_timeout_raises_with_diagnostic(monkeypatch):
+    """peek_sample gives up instead of blocking forever, and says what it was waiting on."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["topics"] = "test-topic"
+    ds_config["peek_timeout"] = 0.05
+    dataset = KafkaStreamDataset(h.config)
+    consumer = _patch_consumer(monkeypatch, dataset, [])
+
+    with pytest.raises(TimeoutError) as excinfo:
+        dataset.peek_sample()
+
+    message = str(excinfo.value)
+    assert "peek_timeout" in message
+    assert "test-topic" in message
+    # An empty assignment is the signature of a consumer left over from an earlier run,
+    # so the error has to point at the command that reveals it.
+    assert "kafka-consumer-groups" in message
+    assert consumer.closed
+
+
+def test_peek_timeout_disabled_by_false(monkeypatch):
+    """The TOML `false` sentinel restores the unbounded wait."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["topics"] = "test-topic"
+    ds_config["peek_timeout"] = False
+    dataset = KafkaStreamDataset(h.config)
+
+    assert dataset.peek_timeout is None
+
+
+def test_offsets_committed_only_after_batch_is_consumed(monkeypatch):
+    """Offsets advance when the caller comes back for more, not when a batch is handed out."""
+    dataset = _build_dataset(batch_size=2, batch_flush_timeout=0.0)
+    messages = [_make_message(f"id{i}", [[float(i)]]) for i in range(4)]
+    consumer = _patch_consumer(monkeypatch, dataset, messages, stop_when_exhausted=True)
+
+    iterator = iter(dataset)
+
+    next(iterator)
+    assert consumer.commits == []  # handed out, but the caller has not finished with it
+
+    next(iterator)
+    assert consumer.commits == [True]  # resuming committed the first batch, asynchronously
+
+
+def test_abandoned_batch_is_not_committed(monkeypatch):
+    """A batch the caller never finished stays uncommitted so it is redelivered.
+
+    Closing the iterator stands in for the real failure: the caller raised, or broke out
+    of the loop, leaving the generator suspended at its yield.
+    """
+    dataset = _build_dataset(batch_size=2, batch_flush_timeout=0.0)
+    messages = [_make_message(f"id{i}", [[float(i)]]) for i in range(4)]
+    consumer = _patch_consumer(monkeypatch, dataset, messages, stop_when_exhausted=True)
+
+    iterator = iter(dataset)
+    next(iterator)
+    iterator.close()
+
+    assert consumer.commits == []
+    assert consumer.closed
+
+
+def test_auto_commit_disabled():
+    """The stream owns offset commits; librdkafka must not advance them on its own."""
+    dataset = _build_dataset()
+
+    assert dataset.consumer_config["enable.auto.commit"] is False
+    # __iter__'s explicit commit relies on librdkafka having stored delivered offsets.
+    assert dataset.consumer_config["enable.auto.offset.store"] is True
 
 
 def test_peek_sample_buffers_and_replays(monkeypatch):
@@ -254,3 +414,32 @@ def test_extra_credentials(tmp_path):
     # The extra credentials should be present in the consumer config.
     for key, value in extra_credentials.items():
         assert dataset.consumer_config[key] == value
+
+
+def test_consumer_options_reach_the_consumer_config():
+    """Arbitrary librdkafka settings can be tuned without a credentials file."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["topics"] = "test-topic"
+    ds_config["consumer_options"] = {"max.poll.interval.ms": 600000, "session.timeout.ms": 45000}
+
+    dataset = KafkaStreamDataset(h.config)
+
+    assert dataset.consumer_config["max.poll.interval.ms"] == 600000
+    assert dataset.consumer_config["session.timeout.ms"] == 45000
+
+
+def test_consumer_options_win_over_credentials_file(tmp_path):
+    """consumer_options is applied last, so it overrides the credentials file."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["topics"] = "test-topic"
+
+    credentials_path = tmp_path / "credentials.ini"
+    credentials_path.write_text("'security.protocol' = 'SASL_PLAINTEXT'\n")
+    ds_config["credentials_file"] = str(credentials_path)
+    ds_config["consumer_options"] = {"security.protocol": "SASL_SSL"}
+
+    dataset = KafkaStreamDataset(h.config)
+
+    assert dataset.consumer_config["security.protocol"] == "SASL_SSL"
