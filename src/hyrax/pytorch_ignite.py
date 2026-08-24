@@ -558,7 +558,7 @@ def create_validator(
 
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
-        for m in trainer.state.output:
+        for m in validator.state.output:
             tensorboardx_logger.add_scalar(f"training/validation/{m}", validator.state.output[m], step)
             mlflow.log_metrics({f"validation/{m}": validator.state.output[m]}, step=step)
 
