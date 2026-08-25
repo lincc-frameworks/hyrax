@@ -7,6 +7,7 @@ import torch
 from colorama import Back, Fore, Style
 
 from hyrax.config_utils import create_results_dir, log_runtime_config
+from hyrax.context import init_context, update_context
 from hyrax.gpu_monitor import GpuMonitor
 from hyrax.pytorch_ignite import (
     Events,
@@ -74,6 +75,7 @@ class Train(Verb):
 
         # Create a results directory
         results_dir = create_results_dir(config, "train")
+        init_context(results_dir, "train")
         log_runtime_config(config, results_dir)
 
         # Create a tensorboardX logger
@@ -107,6 +109,17 @@ class Train(Verb):
     # this used to be a nested method inside run() without any args except rank (needed for idist.Parallel)
     @staticmethod
     def _training(rank, model, dataset, config, results_dir):
+        # idist.Parallel spawns fresh processes, so the run context established in run()
+        # is absent in the child ranks. Repopulate it here, where every rank passes. We
+        # update rather than init so that anything a model stashed in the context during
+        # setup_model survives on the single-process path.
+        update_context(
+            results_dir=results_dir,
+            verb="train",
+            rank=idist.get_rank(),
+            world_size=idist.get_world_size(),
+        )
+
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"

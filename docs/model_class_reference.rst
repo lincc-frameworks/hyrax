@@ -241,6 +241,27 @@ Example:
        return {"my_metric": 0.42}
 
 
+``train_post_epoch(self)`` and ``validate_post_epoch(self)``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Optional zero-argument hooks called once at the end of each training epoch and
+each validation epoch respectively. Unlike ``log_epoch_metrics``, they return
+nothing -- use them to do work, such as writing out data you accumulated across
+the epoch. They pair naturally with the run context described below.
+
+.. note::
+
+   These hooks are not supported for distributed training. If they are present
+   and the world size is greater than one, Hyrax raises ``NotImplementedError``.
+
+Example:
+
+.. code-block:: python
+
+   def train_post_epoch(self):
+       self.flush_activations()
+
+
 Optimizer / criterion / scheduler setup
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -265,6 +286,88 @@ Example: manual optimizer + automatic criterion/scheduler
 
 This mixed mode is valid. Optimizer/criterion/scheduler do not all need to use
 exactly the same style.
+
+
+The run context
+---------------
+
+Scalar metrics returned from ``train_batch`` and friends go to TensorBoard and
+MLflow. When you want to save something that does not fit that shape -- attention
+maps, per-epoch embeddings, a JSON of diagnostics -- write it into the run's
+results directory. ``get_context()`` tells you where that is.
+
+.. code-block:: python
+
+   from hyrax import get_context
+
+   context = get_context()
+   context["results_dir"]   # Path to this run's results directory
+
+The context is a plain dictionary with these keys:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 65
+
+   * - Key
+     - Type
+     - Meaning
+   * - ``results_dir``
+     - ``Path``
+     - The results directory for the current run.
+   * - ``verb``
+     - ``str``
+     - Which verb is running: ``"train"``, ``"infer"``, ``"test"``, etc.
+   * - ``rank``
+     - ``int``
+     - The distributed rank of this process. ``0`` when not distributed.
+   * - ``world_size``
+     - ``int``
+     - The number of distributed processes. ``1`` when not distributed.
+
+Call ``get_context()`` wherever you like, including in ``__init__``. It always
+returns the same dictionary object, and Hyrax fills that object in place when a
+verb starts, so you never have to worry about initialization order.
+
+.. code-block:: python
+
+   from hyrax import get_context
+
+
+   @hyrax_model
+   class MyModel(nn.Module):
+       def __init__(self, config, data_sample=None):
+           super().__init__()
+           self.config = config
+           self.context = get_context()
+           self.activations = []
+
+       def train_batch(self, batch):
+           features, labels = batch
+           ...
+           self.activations.append(hidden.detach().cpu().numpy())
+           return {"loss": loss.item()}
+
+       def train_post_epoch(self):
+           rank = self.context["rank"]
+           outfile = self.context["results_dir"] / f"activations_rank{rank}.npy"
+           np.save(outfile, np.concatenate(self.activations))
+           self.activations.clear()
+
+Note the use of ``rank`` in the filename. Under distributed training every rank
+shares one results directory, so include the rank in any filename you write or
+the ranks will overwrite each other.
+
+You may also put your own keys in the context. Hyrax clears it at the start of
+each verb run, so anything you add lasts for that run only.
+
+.. note::
+
+   The context describes the run that is happening *now*. If you hold a model
+   across two calls -- ``h.train()`` then ``h.infer()`` -- its context will point
+   at the inference results directory during the second call. A model built
+   outside of any verb run has an empty context, and reading a key from it raises
+   a ``KeyError`` explaining why.
 
 
 Complete minimal class

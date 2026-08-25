@@ -72,6 +72,7 @@ class InferStream(Verb):
         from ignite.distributed import device as idist_device
 
         from hyrax.config_utils import create_results_dir, log_runtime_config
+        from hyrax.context import init_context
         from hyrax.datasets.result_factories import load_results_dataset
         from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
@@ -85,6 +86,12 @@ class InferStream(Verb):
         from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
+
+        # Create a timestamped results directory. This happens before the model is built
+        # so that the run context is populated by the time the model's __init__ runs,
+        # matching the ordering used by the train, infer and test verbs.
+        results_dir = create_results_dir(config, "infer_stream")
+        init_context(results_dir, "infer_stream")
 
         # Build the model either from a configured streaming dataset (preferred, enables
         # session iteration) or from an explicitly supplied sample batch.
@@ -111,9 +118,6 @@ class InferStream(Verb):
 
         # set model in eval mode
         model.eval()
-
-        # Create a timestamped results directory
-        results_dir = create_results_dir(config, "infer_stream")
 
         # Start TensorBoard logger
         init_tensorboard_logger(log_dir=results_dir)

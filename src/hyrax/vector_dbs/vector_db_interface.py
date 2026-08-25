@@ -3,11 +3,13 @@ from typing import Union
 
 import numpy as np
 
+from hyrax.context import ContextKeys
+
 
 class VectorDB(ABC):
     """Interface for a vector database"""
 
-    def __init__(self, config: dict | None = None, context: dict | None = None):
+    def __init__(self, config: dict | None = None, context: ContextKeys | None = None):
         """
         .. py:method:: __init__
 
@@ -18,7 +20,9 @@ class VectorDB(ABC):
         config : dict, optional
             An instance of the runtime configuration, by default None
         context : dict, optional
-            An instance of the context object, by default None
+            The Hyrax run context. See :class:`hyrax.context.ContextKeys`.
+            Implementations require ``results_dir`` (a ``Path``, the directory
+            the database is stored in). By default None.
         """
         self.config = config if config else {}
         self.context = context if context else {}

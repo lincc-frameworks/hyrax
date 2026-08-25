@@ -74,7 +74,10 @@ class DatabaseConnection(Verb):
         db_type = self._get_database_type_from_config(vector_db_path)
         config["vector_db"]["name"] = db_type
 
-        # Create an instance of the vector database class for the connection
+        # Create an instance of the vector database class for the connection. This
+        # builds a context explicitly rather than calling init_context() because
+        # connecting to an existing database is not a run - clobbering the process
+        # run context here would discard the context of whatever run just finished.
         self.vector_db = vector_db_factory(config, context={"results_dir": vector_db_path})
         if self.vector_db is None:
             raise RuntimeError(f"Unable to conenct to the {db_type} database in directory {vector_db_path}")

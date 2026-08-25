@@ -24,7 +24,7 @@ class QdrantDB(VectorDB):
         """Connect to the Qdrant database and return an instance of the client."""
         # Results_dir is the directory where the Qdrant database is stored.
         results_dir = self.context["results_dir"]
-        self.client = QdrantClient(path=results_dir)
+        self.client = QdrantClient(path=str(results_dir))
 
         collections = self.client.get_collections().collections
         if len(collections):

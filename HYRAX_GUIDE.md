@@ -163,6 +163,8 @@ Hyrax discovers components through three registries:
 - Models must inherit from `torch.nn.Module` and implement `__init__`, `forward`,
   `train_batch`, and `prepare_inputs`.
 - The decorator wires up save/load, optimizer, and criterion handling.
+- Models reach run-scoped state (results dir, verb, distributed rank) via
+  `from hyrax import get_context`. See "Run context" below.
 - Built-in: `HyraxAutoencoder`, `HyraxAutoencoderV2`, `HyraxCNN`, `SimCLR`, `ImageDCAE`, `HSCAutoencoder`, `HSCDCAE`, `HyraxLoopback`
 - **External plugins supported** — use a fully qualified import path in the config
   (e.g. `model.name = "my_pkg.my_module.MyModel"`).
@@ -252,6 +254,31 @@ High-level pipeline:
 7. **Vector DB** — store and query latent vectors (ChromaDB or Qdrant).
 
 Each verb that produces output creates its own timestamped results directory.
+
+## Run context
+
+`src/hyrax/context.py` holds one run context for the process — a plain dict
+describing the run currently underway. Verbs populate it with `init_context()`
+immediately after `create_results_dir()`; everything else reads it with
+`get_context()` (also exported as `hyrax.get_context`).
+
+Keys: `results_dir` (a `Path`), `verb`, `rank`, `world_size`, plus `ml_framework`
+for ONNX export. Consumers are models (writing artifacts that don't fit the
+TensorBoard/MLflow scalar-metric paradigm), vector database implementations, and
+the ONNX exporter.
+
+- **`get_context()` always returns the same dict object.** `init_context()` clears
+  and repopulates it *in place* rather than rebinding it. That's what lets a model
+  take a handle in `__init__` and still see values a verb adds afterward. Do not
+  "simplify" this by assigning a new dict to the module global.
+- **The context is per-run and cleared on every verb invocation.** A model held
+  across `h.train()` then `h.infer()` sees the infer run's directory during the
+  second call.
+- **`idist.Parallel` spawns fresh processes, so module globals reset in child
+  ranks.** `Train._training` repopulates the context per-rank; any new distributed
+  entry point must do the same.
+- **`results_dir` is always a `Path`**, never a `str`. `model_exporters.py` uses
+  the `/` operator on it.
 
 ## Testing Conventions
 
