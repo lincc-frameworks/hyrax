@@ -55,28 +55,22 @@ class ContextKeys(TypedDict, total=False):
 
     Note: total=False means that all keys are optional so that type checkers
     don't complain about the context being empty before a verb has started a run.
-
-    Attributes
-    ----------
-    results_dir : Path
-        The results directory for the current run.
-    verb : str
-        The name of the verb that started the run, e.g. ``"train"``, ``"infer"``,
-        ``"test"``, ``"infer_stream"``, ``"onnx"``, ``"vector-db"``.
-    rank : int
-        The distributed rank of the current process. ``0`` when not running
-        distributed.
-    world_size : int
-        The number of distributed processes. ``1`` when not running distributed.
-    ml_framework : str
-        The source framework for a model export. Only set by the ``to_onnx`` verb.
     """
 
     results_dir: Path
+    """The results directory for the current run."""
+
     verb: str
+    """The name of the verb that started the run, e.g. ``"train"``, ``"infer"``"""
+
     rank: int
+    """The distributed rank of the current process. ``0`` when not running distributed."""
+
     world_size: int
+    """The number of distributed processes. ``1`` when not running distributed."""
+
     ml_framework: str
+    """The source framework for a model export. Only set by the ``to_onnx`` verb."""
 
 
 class RunContext(dict):
