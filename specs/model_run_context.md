@@ -153,8 +153,9 @@ class MyModel(nn.Module):
         self.activations.clear()
 ```
 
-The natural flush points are the existing duck-typed zero-arg hooks `train_post_epoch` and
-`validate_post_epoch` in `pytorch_ignite.py`, which were previously undocumented.
+The natural flush points are the existing duck-typed zero-arg hooks `train_post_epoch`,
+`validate_post_epoch` and `test_post_epoch` in `pytorch_ignite.py`, none of which had any
+documentation before this change.
 
 Users may also add their own keys. The context is cleared at the start of each verb run, so
 user keys last for that run only.

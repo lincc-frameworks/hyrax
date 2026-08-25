@@ -182,12 +182,23 @@ class ContextWritingLoopback(nn.Module):
     """
 
     def __init__(self, config, data_sample=None):
+        from functools import partial
+
         super().__init__()
         self.config = config
         self.unused_module = nn.Linear(1, 1)
         # A handle taken here, before the verb has necessarily filled the context.
         self.context = get_context()
         self.batches_seen = 0
+
+        def load(self, weight_file):
+            """This model has no meaningful weights, so loading is a noop."""
+            pass
+
+        # Overridden this way rather than as a method because Torch's __init__
+        # cleverness stomps a load defined in the usual fashion. Same trick as
+        # HyraxLoopback.
+        self.load = partial(load, self)
 
     def forward(self, x):
         """Return the input unchanged."""
@@ -210,8 +221,22 @@ class ContextWritingLoopback(nn.Module):
         """Inference is just a forward pass."""
         return self.forward(batch)
 
+    def test_batch(self, batch):
+        """Testing is a noop; just count the batch."""
+        self.forward(batch)
+        self.batches_seen += 1
+        return {"loss": 0.0}
+
     def train_post_epoch(self):
         """Persist something that does not fit the TensorBoard/MLflow paradigm."""
+        self._write_notes()
+
+    def test_post_epoch(self):
+        """Same, at the end of the test pass."""
+        self._write_notes()
+
+    def _write_notes(self):
+        """Write accumulated state into whichever run's results dir is current."""
         rank = self.context["rank"]
         outfile = self.context["results_dir"] / f"my_notes_rank{rank}.json"
         with open(outfile, "w") as f:
@@ -242,6 +267,23 @@ def test_model_writes_to_results_dir_during_train(loopback_hyrax):
 
     notes = json.loads(notes_file.read_text())
     assert notes["verb"] == "train"
+    assert notes["batches_seen"] > 0
+
+
+def test_model_writes_to_results_dir_during_test(loopback_hyrax):
+    """The same pattern via test_post_epoch, which lands in the test results dir."""
+    h, _ = loopback_hyrax
+    h.config["model"]["name"] = "ContextWritingLoopback"
+    h.config["test"]["model_weights_file"] = h.config["infer"]["model_weights_file"]
+
+    h.test()
+
+    results_dir = find_most_recent_results_dir(h.config, "test")
+    notes_file = results_dir / "my_notes_rank0.json"
+    assert notes_file.exists()
+
+    notes = json.loads(notes_file.read_text())
+    assert notes["verb"] == "test"
     assert notes["batches_seen"] > 0
 
 

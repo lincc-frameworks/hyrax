@@ -53,6 +53,9 @@ class ContextKeys(TypedDict, total=False):
     This is a documentation and type-annotation aid; the context is an ordinary
     dictionary and is not validated against this definition.
 
+    Note: total=False means that all keys are optional so that type checkers
+    don't complain about the context being empty before a verb has started a run.
+
     Attributes
     ----------
     results_dir : Path

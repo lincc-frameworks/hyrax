@@ -241,25 +241,60 @@ Example:
        return {"my_metric": 0.42}
 
 
-``train_post_epoch(self)`` and ``validate_post_epoch(self)``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``train_post_epoch(self)``, ``validate_post_epoch(self)``, ``test_post_epoch(self)``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-Optional zero-argument hooks called once at the end of each training epoch and
-each validation epoch respectively. Unlike ``log_epoch_metrics``, they return
-nothing -- use them to do work, such as writing out data you accumulated across
-the epoch. They pair naturally with the run context described below.
+Optional zero-argument hooks called once at the end of an epoch. Unlike
+``log_epoch_metrics``, they return nothing -- use them to do work, such as
+writing out data you accumulated across the epoch. They pair naturally with the
+run context described below.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Hook
+     - Verb
+     - Called
+   * - ``train_post_epoch``
+     - ``train``
+     - At the end of each training epoch.
+   * - ``validate_post_epoch``
+     - ``train``
+     - At the end of each validation epoch, if you use ``validate`` data.
+   * - ``test_post_epoch``
+     - ``test``
+     - At the end of the test pass, after every batch has been through
+       ``test_batch``.
+
+Define only the hooks you need. Hyrax checks for each one and skips it if your
+model does not define it.
 
 .. note::
 
-   These hooks are not supported for distributed training. If they are present
-   and the world size is greater than one, Hyrax raises ``NotImplementedError``.
+   These hooks are not supported for distributed runs. If a hook is present and
+   the world size is greater than one, Hyrax raises ``NotImplementedError``.
 
-Example:
+Example -- accumulate predictions across the test pass, then write a confusion
+matrix once at the end:
 
 .. code-block:: python
 
-   def train_post_epoch(self):
-       self.flush_activations()
+   def test_batch(self, batch):
+       features, labels = batch
+       logits = self.forward(features)
+       self.predictions.append(logits.argmax(dim=-1).cpu().numpy())
+       self.labels.append(labels.cpu().numpy())
+       return {"loss": self.criterion(logits, labels).item()}
+
+   def test_post_epoch(self):
+       matrix = confusion_matrix(
+           np.concatenate(self.labels), np.concatenate(self.predictions)
+       )
+       np.save(self.context["results_dir"] / "confusion_matrix.npy", matrix)
+
+``self.context`` there is the run context, which is where the hook learns the
+directory to write into. See the next section.
 
 
 Optimizer / criterion / scheduler setup
