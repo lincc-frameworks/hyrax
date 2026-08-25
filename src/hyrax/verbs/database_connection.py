@@ -83,7 +83,7 @@ class DatabaseConnection(Verb):
         # Create an instance of the vector database class for the connection
         self.vector_db = vector_db_factory(config)
         if self.vector_db is None:
-            raise RuntimeError(f"Unable to conenct to the {db_type} database in directory {vector_db_path}")
+            raise RuntimeError(f"Unable to connect to the {db_type} database in directory {vector_db_path}")
 
         return self.vector_db
 
