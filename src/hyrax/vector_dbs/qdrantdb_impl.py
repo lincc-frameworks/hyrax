@@ -11,8 +11,8 @@ from hyrax.vector_dbs.vector_db_interface import VectorDB
 class QdrantDB(VectorDB):
     """Implementation of the VectorDB interface using Qdrant as the backend."""
 
-    def __init__(self, config, context):
-        super().__init__(config, context)
+    def __init__(self, config):
+        super().__init__(config)
         self.client = None
         self.collection_size = 0
 
@@ -22,9 +22,8 @@ class QdrantDB(VectorDB):
 
     def connect(self):
         """Connect to the Qdrant database and return an instance of the client."""
-        # Results_dir is the directory where the Qdrant database is stored.
-        results_dir = self.context["results_dir"]
-        self.client = QdrantClient(path=str(results_dir))
+        # self.results_dir is the directory where the Qdrant database is stored.
+        self.client = QdrantClient(path=str(self.results_dir))
 
         collections = self.client.get_collections().collections
         if len(collections):

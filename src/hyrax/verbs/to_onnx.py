@@ -39,7 +39,7 @@ class ToOnnx(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
-        from hyrax.context import get_context, init_context
+        from hyrax.context import init_context
         from hyrax.model_exporters import export_to_onnx
         from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
 
@@ -106,4 +106,4 @@ class ToOnnx(Verb):
         batch_sample = next(iter(infer_data_loader))
         batch_sample = model.prepare_inputs(batch_sample)
 
-        export_to_onnx(model, batch_sample, config, get_context())
+        export_to_onnx(model, batch_sample, config)

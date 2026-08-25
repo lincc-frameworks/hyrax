@@ -1,11 +1,14 @@
 from typing import Union
 
-from hyrax.context import ContextKeys
 from hyrax.vector_dbs.vector_db_interface import VectorDB
 
 
-def vector_db_factory(config: dict, context: ContextKeys) -> Union[VectorDB, None]:
-    """Factory method to create a database object"""
+def vector_db_factory(config: dict) -> Union[VectorDB, None]:
+    """Factory method to create a database object.
+
+    The database directory comes from the Hyrax run context, so point the context
+    at it with :func:`hyrax.context.init_context` before calling this.
+    """
 
     # if the vector_db name is `False`, return None
     if not config["vector_db"]["name"]:
@@ -16,10 +19,10 @@ def vector_db_factory(config: dict, context: ContextKeys) -> Union[VectorDB, Non
     if vector_db_name == "chromadb":
         from hyrax.vector_dbs.chromadb_impl import ChromaDB
 
-        return ChromaDB(config, context)
+        return ChromaDB(config)
     elif vector_db_name == "qdrant":
         from hyrax.vector_dbs.qdrantdb_impl import QdrantDB
 
-        return QdrantDB(config, context)
+        return QdrantDB(config)
     else:
         return None

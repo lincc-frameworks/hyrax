@@ -41,8 +41,7 @@ vector-db insertion moved to `save_to_database.py`.
 The tensorboard logger solves this with a stateless proxy class plus `__getattr__`. For a
 dict the same late-binding comes far more cheaply: keep **one module-level dict object for
 the life of the process** and only ever `clear()` / `update()` it in place. A handle taken
-at any time stays valid, and `get_context()` returns a real `dict`, so it drops straight
-into the existing `VectorDB.__init__(config, context)` and `export_to_onnx(...)` call sites.
+at any time stays valid, and `get_context()` returns a real `dict`.
 
 This is load-bearing. Assigning a new dict to the module global would silently break the
 late-binding guarantee.
@@ -105,9 +104,35 @@ an empty results dir behind — already the behavior of every other verb.
 `log_runtime_config` stays where it was, since it intentionally runs after
 `load_model_weights` so the resolved weights path is captured.
 
-**`database_connection.py` keeps building its context explicitly.** It connects to a
-*pre-existing* database directory rather than starting a run; calling `init_context` there
-would clobber the context of whatever run just finished.
+**`database_connection.py` also calls `init_context`**, pointing it at the pre-existing
+database directory it was asked to connect to. That directory is not a new run's output,
+but the context is how the database finds its location, so it has to be set before the
+database is built. See "Nothing takes a context parameter" below for why this is safe.
+
+### Nothing takes a context parameter
+
+Consumers call `get_context()` themselves rather than receiving a context argument:
+`VectorDB.__init__(config)`, `vector_db_factory(config)`, `export_to_onnx(model, sample,
+config)`. Whoever starts the work points the context at the right directory first.
+
+There is one hazard this creates, and it is worth understanding before adding another
+consumer. **An object that outlives its run must snapshot what it needs.**
+`database_connection.run()` hands the database object back to the user for interactive
+querying, and `chromadb_impl` re-reads `results_dir` at *query* time to spawn its
+`ProcessPoolExecutor` workers (`chromadb_impl.py:207,287,342,390`). If the database held
+the live context, this would break:
+
+```python
+db = h.database_connection()   # context -> database dir
+h.train()                      # context -> train results dir
+db.get_by_id(...)              # would look for the database inside the train dir
+```
+
+So `VectorDB.__init__` copies the path into `self.results_dir` at construction, and
+subclasses read that. Models do not need this because a model lives and dies inside one
+verb run — a model *wants* to follow the live context. Regression test:
+`test_context.py::test_vector_db_snapshots_its_directory`, which fails with a live handle
+and passes with the snapshot.
 
 ### Distributed repair
 
@@ -168,11 +193,13 @@ user keys last for that run only.
    `database_connection.py` already handed Qdrant a `Path`. Added a matching `str()`
    coercion at `qdrantdb_impl.py:27` so both backends are explicit. `model_exporters.py`
    uses the `/` operator and *requires* a `Path`.
-3. **Renamed `ctx` → `context`** in `export_to_onnx`; it is called positionally, so no
-   caller broke.
-4. **Typed the explicit consumers** with `ContextKeys` (`VectorDB.__init__`,
-   `vector_db_factory`, `export_to_onnx`) and replaced the vague *"an instance of the
-   context object"* docstring with the real key list.
+3. **Renamed `ctx` → `context`** in `export_to_onnx` (before the parameter was dropped
+   entirely).
+4. **Dropped the context parameter** from `VectorDB.__init__`, `vector_db_factory` and
+   `export_to_onnx`; they call `get_context()` instead. Replaced the vague *"an instance of
+   the context object"* docstring with a real explanation, and fixed the stale
+   `results_dir: str` annotations on the ChromaDB worker helpers, which have received a
+   `Path` since the standardization above.
 
 Not in scope: the `#!` TODO at `qdrantdb_impl.py:58-61` asking for a vector-size context
 key. `ContextKeys` makes it a clean follow-up.

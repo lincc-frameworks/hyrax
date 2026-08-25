@@ -1,5 +1,6 @@
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from pathlib import Path
 from typing import Union
 
 import chromadb
@@ -12,13 +13,13 @@ MIN_SHARDS_FOR_PARALLELIZATION = 50
 logger = logging.getLogger()
 
 
-def _query_for_nn(results_dir: str, shard_name: str, vectors: list[np.ndarray], k: int):
+def _query_for_nn(results_dir: Path, shard_name: str, vectors: list[np.ndarray], k: int):
     """The query function for the ProcessPoolExecutor to query a shard for the
     nearest neighbors of a set of vectors.
 
     Parameters
     ----------
-    results_dir : str
+    results_dir : Path
         The directory where the ChromaDB results are stored
     shard_name : str
         The name of the ChromaDB shard to load and query
@@ -38,13 +39,13 @@ def _query_for_nn(results_dir: str, shard_name: str, vectors: list[np.ndarray], 
     return collection.query(query_embeddings=vectors, n_results=k)
 
 
-def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]], include: list[str] | None):
+def _query_for_id(results_dir: Path, shard_name: str, id: Union[str, list[str]], include: list[str] | None):
     """The query function for the ProcessPoolExecutor to query a shard for the
     vector associated with a given id.
 
     Parameters
     ----------
-    results_dir : str
+    results_dir : Path
         The directory where the ChromaDB results are stored
     shard_name : str
         The name of the ChromaDB shard to load and query
@@ -68,8 +69,8 @@ def _query_for_id(results_dir: str, shard_name: str, id: Union[str, list[str]], 
 class ChromaDB(VectorDB):
     """Implementation of the VectorDB interface using ChromaDB as the backend."""
 
-    def __init__(self, config, context):
-        super().__init__(config, context)
+    def __init__(self, config):
+        super().__init__(config)
         self.chromadb_client = None
         self.collection = None
 
@@ -87,8 +88,7 @@ class ChromaDB(VectorDB):
 
     def connect(self):
         """Create a database connection"""
-        results_dir = self.context["results_dir"]
-        self.chromadb_client = chromadb.PersistentClient(path=str(results_dir))
+        self.chromadb_client = chromadb.PersistentClient(path=str(self.results_dir))
         return self.chromadb_client
 
     def create(self):
@@ -203,9 +203,7 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(
-                        _query_for_id, self.context["results_dir"], shard.name, id, ["embeddings"]
-                    ): shard
+                    executor.submit(_query_for_id, self.results_dir, shard.name, id, ["embeddings"]): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):
@@ -284,7 +282,7 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(_query_for_nn, self.context["results_dir"], shard.name, vectors, k): shard
+                    executor.submit(_query_for_nn, self.results_dir, shard.name, vectors, k): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):
@@ -338,9 +336,7 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(
-                        _query_for_id, self.context["results_dir"], shard.name, ids, ["embeddings"]
-                    ): shard
+                    executor.submit(_query_for_id, self.results_dir, shard.name, ids, ["embeddings"]): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):
@@ -386,9 +382,7 @@ class ChromaDB(VectorDB):
             multiprocessing.set_start_method("spawn", force=True)
             with ProcessPoolExecutor() as executor:
                 futures = {
-                    executor.submit(
-                        _query_for_id, self.context["results_dir"], shard.name, ids, include=[]
-                    ): shard
+                    executor.submit(_query_for_id, self.results_dir, shard.name, ids, include=[]): shard
                     for shard in shards
                 }
                 for future in as_completed(futures):

@@ -4,13 +4,17 @@ import onnx
 import onnxruntime
 from numpy import allclose
 
-from hyrax.context import ContextKeys
+from hyrax.context import get_context
 
 logger = logging.getLogger(__name__)
 
 
-def export_to_onnx(model, sample, config, context: ContextKeys):
+def export_to_onnx(model, sample, config):
     """Dispatching function to convert a ML framework model into an ONNX model.
+
+    The output directory and source framework are read from the Hyrax run
+    context, which the calling verb populates with ``results_dir`` and
+    ``ml_framework``. See :class:`hyrax.context.ContextKeys`.
 
     Parameters
     ----------
@@ -22,11 +26,8 @@ def export_to_onnx(model, sample, config, context: ContextKeys):
         output of the ONNX model against the output of the PyTorch model.
     config : dict
         The parsed config file as a nested dict
-    context : dict
-        The Hyrax run context. See :class:`hyrax.context.ContextKeys`. This
-        function requires ``results_dir`` (a ``Path``, the directory the ONNX
-        model is written to) and ``ml_framework`` (the source framework).
     """
+    context = get_context()
 
     # build the output ONNX file path
     onnx_opset_version = config["onnx"]["opset_version"]

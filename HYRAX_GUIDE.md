@@ -265,7 +265,9 @@ immediately after `create_results_dir()`; everything else reads it with
 Keys: `results_dir` (a `Path`), `verb`, `rank`, `world_size`, plus `ml_framework`
 for ONNX export. Consumers are models (writing artifacts that don't fit the
 TensorBoard/MLflow scalar-metric paradigm), vector database implementations, and
-the ONNX exporter.
+the ONNX exporter. **Nothing takes a context parameter** — consumers call
+`get_context()` themselves, and whoever starts the work is responsible for
+pointing the context at the right directory first.
 
 - **`get_context()` always returns the same dict object.** `init_context()` clears
   and repopulates it *in place* rather than rebinding it. That's what lets a model
@@ -274,6 +276,13 @@ the ONNX exporter.
 - **The context is per-run and cleared on every verb invocation.** A model held
   across `h.train()` then `h.infer()` sees the infer run's directory during the
   second call.
+- **Objects that outlive their run must snapshot what they need, not hold the
+  live context.** `VectorDB.__init__` copies `results_dir` into `self.results_dir`
+  for exactly this reason: `database_connection` hands the database back to the
+  user for interactive querying, and ChromaDB re-reads that path at query time to
+  spawn worker processes. A live handle would make a held connection follow
+  whatever verb ran last. Regression test:
+  `test_context.py::test_vector_db_snapshots_its_directory`.
 - **`idist.Parallel` spawns fresh processes, so module globals reset in child
   ranks.** `Train._training` repopulates the context per-rank; any new distributed
   entry point must do the same.

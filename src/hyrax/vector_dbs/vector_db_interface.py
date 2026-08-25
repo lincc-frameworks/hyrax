@@ -1,31 +1,39 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Union
 
 import numpy as np
 
-from hyrax.context import ContextKeys
+from hyrax.context import get_context
 
 
 class VectorDB(ABC):
     """Interface for a vector database"""
 
-    def __init__(self, config: dict | None = None, context: ContextKeys | None = None):
+    def __init__(self, config: dict | None = None):
         """
         .. py:method:: __init__
 
         Create a new instance of a `VectorDB` object.
 
+        The directory the database lives in is read from the Hyrax run context,
+        so callers do not need to pass it. Whoever creates a database is
+        responsible for pointing the run context at the right directory first
+        (see :func:`hyrax.context.init_context`).
+
         Parameters
         ----------
         config : dict, optional
             An instance of the runtime configuration, by default None
-        context : dict, optional
-            The Hyrax run context. See :class:`hyrax.context.ContextKeys`.
-            Implementations require ``results_dir`` (a ``Path``, the directory
-            the database is stored in). By default None.
         """
         self.config = config if config else {}
-        self.context = context if context else {}
+
+        # Snapshot the directory rather than holding the live run context. A
+        # database object outlives the run that created it - database_connection
+        # hands one back to the user for interactive querying - and subclasses
+        # read this path at query time, long after __init__. Holding the live
+        # context would make a held connection follow whatever verb ran last.
+        self.results_dir: Path = get_context()["results_dir"]
 
     @abstractmethod
     def connect(self):

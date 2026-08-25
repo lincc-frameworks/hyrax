@@ -298,3 +298,31 @@ def test_verbs_populate_the_context(loopback_hyrax):
     h.infer()
     assert get_context()["verb"] == "infer"
     assert get_context()["results_dir"] == find_most_recent_results_dir(h.config, "infer")
+
+
+def test_vector_db_snapshots_its_directory(loopback_inferred_hyrax):
+    """A vector database reads its directory from the run context, but must snapshot
+    it rather than hold the live context.
+
+    database_connection hands the database object back to the user for interactive
+    querying, and ChromaDB re-reads this path at query time to spawn its worker
+    processes. If it followed the live run context, a held connection would start
+    looking for the database inside whatever results directory the next verb made.
+    """
+    h, _, inference_results = loopback_inferred_hyrax
+    h.config["vector_db"]["name"] = "chromadb"
+
+    vdb_path = Path(h.config["general"]["results_dir"]).resolve()
+    h.save_to_database(output_dir=vdb_path)
+    db = h.database_connection(database_dir=vdb_path)
+
+    assert db.results_dir == vdb_path
+
+    # Move the run context on to a different directory.
+    h.infer()
+    assert get_context()["results_dir"] != vdb_path
+
+    # The held connection must be unaffected and still able to query.
+    assert db.results_dir == vdb_path
+    an_id = list(inference_results.ids())[0]
+    assert an_id in db.get_by_id(an_id)
