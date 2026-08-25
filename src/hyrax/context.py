@@ -89,8 +89,8 @@ class RunContext(dict):
     def __missing__(self, key):
         msg = f"'{key}' is not in the Hyrax run context. "
         msg += f"Available keys: {sorted(self)}. "
-        msg += "The run context is populated by a Hyrax verb (train, infer, test, ...) "
-        msg += "and is empty when a model is constructed outside of a verb run."
+        msg += "The run context is populated by a Hyrax verb (train, infer, test, ...). "
+        msg += "It is empty outside of a verb run (e.g. when constructing a model or vector DB directly)."
         raise KeyError(msg)
 
 
