@@ -15,10 +15,10 @@ with warnings.catch_warnings():
 from collections.abc import Iterator, Sequence
 
 import torch
+import torch.multiprocessing as mp
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
-import torch.multiprocessing as mp
 from torch.nn import Module
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
@@ -292,9 +292,6 @@ def dist_data_loader(
         stream_kwargs["num_workers"] = 0
         return idist.auto_dataloader(dataset, **stream_kwargs)
 
-    # enforce fork start method for dataloaders to avoid issues with CUDA in child processes
-    fork_context = mp.get_context('fork')
-
     # Extract the config dictionary that will be provided as kwargs to the DataLoader.
     # Hyrax controls ordering through explicit samplers; warn and ignore legacy
     # ``data_loader.shuffle`` if an old/unversioned config still contains it.
@@ -347,7 +344,14 @@ def dist_data_loader(
         else None
     )
 
-    return idist.auto_dataloader(sub_dataset, sampler=sampler, multiprocessing_context=fork_context, **data_loader_kwargs)
+    # Enforce the fork start method for worker processes to avoid issues with CUDA in
+    # child processes. ``multiprocessing_context`` is only valid when multi-process
+    # loading is actually requested (num_workers > 0) - passing it otherwise raises
+    # a ValueError from the underlying DataLoader.
+    if data_loader_kwargs.get("num_workers", 0) > 0:
+        data_loader_kwargs["multiprocessing_context"] = mp.get_context("fork")
+
+    return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
 
 # TODO: Clean up the input variables here.

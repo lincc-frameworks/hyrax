@@ -33,7 +33,17 @@ def pytest_configure(config):
 
 
 @pytest.fixture(scope="function")
-def loopback_hyrax(tmp_path_factory, request, num_workers=0):
+def num_workers(request):
+    """The number of DataLoader worker processes for loopback fixtures. Defaults to 0
+    (in-process loading); override per-test with
+    ``@pytest.mark.parametrize("num_workers", [2], indirect=True)`` to exercise
+    multi-process loading.
+    """
+    return getattr(request, "param", 0)
+
+
+@pytest.fixture(scope="function")
+def loopback_hyrax(tmp_path_factory, num_workers):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model
     and a simple dataset yielding random numbers

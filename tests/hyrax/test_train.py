@@ -53,6 +53,22 @@ def test_train(loopback_hyrax):
     h.train()
 
 
+@pytest.mark.parametrize("num_workers", [2], indirect=True)
+def test_train_with_multiple_workers(loopback_hyrax):
+    """
+    Training should succeed when the data loader uses multiple worker
+    processes (num_workers=2), not just the default single-process loading.
+    """
+    h, _ = loopback_hyrax
+    model = h.train()
+
+    # Verify we got the trained model back
+    import torch
+
+    assert model is not None
+    assert isinstance(model, torch.nn.Module)
+
+
 def test_best_checkpoint_uses_validation_loss(loopback_hyrax, tmp_path):
     """
     When a validator is present, the best checkpoint should be scored on
