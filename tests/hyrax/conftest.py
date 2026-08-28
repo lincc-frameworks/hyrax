@@ -33,7 +33,7 @@ def pytest_configure(config):
 
 
 @pytest.fixture(scope="function")
-def loopback_hyrax(tmp_path_factory, request):
+def loopback_hyrax(tmp_path_factory, request, num_workers=0):
     """This generates a loopback hyrax instance
     which is configured to use the loopback model
     and a simple dataset yielding random numbers
@@ -44,6 +44,7 @@ def loopback_hyrax(tmp_path_factory, request):
     h.config["model"]["name"] = "HyraxLoopback"
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 5
+    h.config["data_loader"]["num_workers"] = num_workers
     h.config["general"]["results_dir"] = str(results_dir)
 
     h.config["general"]["dev_mode"] = True
