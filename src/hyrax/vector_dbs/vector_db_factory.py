@@ -20,5 +20,9 @@ def vector_db_factory(config: dict, context: dict) -> Union[VectorDB, None]:
         from hyrax.vector_dbs.qdrantdb_impl import QdrantDB
 
         return QdrantDB(config, context)
+    elif vector_db_name == "lance":
+        from hyrax.vector_dbs.lance_impl import LanceDB
+
+        return LanceDB(config, context)
     else:
         return None
