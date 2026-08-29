@@ -1,6 +1,5 @@
 import numpy as np
 from astropy.table import Table
-from torch.utils.data import Dataset
 
 from hyrax.datasets.dataset_registry import HyraxDataset
 
@@ -150,48 +149,8 @@ class HyraxRandomDatasetBase:
         return str(self.id_list[idx])
 
 
-class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset, Dataset):
-    """This dataset is stand-in for a map-style dataset.
-    It will produce random numpy arrays along with sequential numeric ids and,
-    optionally, labels randomly selected from the provided list of possible labels.
-    """
-
-    def __getitem__(self, idx: int) -> dict:
-        """Get a data sample by index.
-
-        The returned dictionary will contain the following keys:
-
-        - ``index``: The index of the data sample.
-        - ``object_id``: The ID of the data sample.
-        - ``image``: The data sample as a numpy array.
-        - ``label``: The label of the data sample (if provided).
-
-
-        Parameters
-        ----------
-        idx : int
-            The index of the data sample to retrieve.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the data sample and its metadata.
-
-        """
-
-        ret = {
-            "data": {
-                "index": idx,
-                "object_id": self.get_object_id(idx),
-                "image": self.get_image(idx),
-            },
-            "object_id": self.get_object_id(idx),
-        }
-
-        if self.provided_labels:
-            ret["data"]["label"] = self.get_label(idx)
-
-        return ret
+class HyraxRandomDataset(HyraxRandomDatasetBase, HyraxDataset):
+    """Stand-in map-style dataset producing random numpy arrays with sequential IDs."""
 
     def __len__(self):
         """Get the total number of samples in this dataset. This should be return
