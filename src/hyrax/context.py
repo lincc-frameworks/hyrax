@@ -2,9 +2,7 @@
 
 A Hyrax verb run produces a results directory and a handful of other facts about
 the run (which verb, which distributed rank). Several pieces of Hyrax need those
-facts but are not handed them directly: models are constructed with only
-``config`` and ``data_sample``, and vector databases and the ONNX exporter
-receive them through an informal ``context`` dictionary.
+facts but are not handed them directly.
 
 This module holds one context for the process. Verbs populate it with
 :func:`init_context`; everything else reads it with :func:`get_context`.
