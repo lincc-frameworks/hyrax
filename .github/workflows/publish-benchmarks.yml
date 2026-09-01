@@ -22,7 +22,7 @@ jobs:
         fetch-depth: 0
     - name: Download benchmark HTML artifact
       continue-on-error: true
-      uses: dawidd6/action-download-artifact@v21
+      uses: dawidd6/action-download-artifact@v24
       with:
         name: benchmark-html
         run_id: ${{ github.event.workflow_run.id }}
@@ -35,7 +35,7 @@ jobs:
         folder: benchmarks/_html
     - name: Download benchmark results artifact
       continue-on-error: true
-      uses: dawidd6/action-download-artifact@v21
+      uses: dawidd6/action-download-artifact@v24
       with:
         name: benchmark-results
         run_id: ${{ github.event.workflow_run.id }}
