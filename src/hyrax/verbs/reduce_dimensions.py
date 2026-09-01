@@ -138,7 +138,6 @@ class ReduceDimensions(Verb):
     ):
         """See run()"""
         from hyrax.config_utils import create_results_dir
-        from hyrax.context import update_context
         from hyrax.datasets.result_factories import create_results_writer, load_results_dataset
         from hyrax.verbs.reduction_algorithms.algorithm_registry import fetch_reducer_class
 
@@ -147,7 +146,6 @@ class ReduceDimensions(Verb):
         reducer_cls = fetch_reducer_class(algorithm_name)
 
         results_dir = create_results_dir(self.config, f"{algorithm_name}")
-        update_context(results_dir=results_dir, verb=algorithm_name)
         logger.info(f"Saving reduction results using {algorithm_name} to {results_dir}")
         reduction_results = create_results_writer(results_dir)
 

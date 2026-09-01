@@ -28,12 +28,6 @@ class VectorDB(ABC):
         """
         self.config = config if config else {}
 
-        # Hold the context of the run that created us. Run contexts are per-run
-        # objects that are released when their verb finishes, so this keeps
-        # pointing at our own database directory however many verbs run later.
-        # That matters because a database object outlives the run that created it
-        # - database_connection hands one back to the user for interactive
-        # querying - and subclasses read results_dir at query time.
         self.context = get_context()
 
     @property

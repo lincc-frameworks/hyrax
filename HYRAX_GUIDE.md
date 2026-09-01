@@ -163,7 +163,7 @@ Hyrax discovers components through three registries:
 - Models must inherit from `torch.nn.Module` and implement `__init__`, `forward`,
   `train_batch`, and `prepare_inputs`.
 - The decorator wires up save/load, optimizer, and criterion handling.
-- Models reach run-scoped state (results dir, verb, distributed rank) via
+- Models reach run-scoped state (results dir, verb) via
   `from hyrax import get_context`. See "Run context" below.
 - Built-in: `HyraxAutoencoder`, `HyraxAutoencoderV2`, `HyraxCNN`, `SimCLR`, `ImageDCAE`, `HSCAutoencoder`, `HSCDCAE`, `HyraxLoopback`
 - **External plugins supported** — use a fully qualified import path in the config
@@ -262,20 +262,12 @@ currently underway. Each verb run gets its own context object, and everything
 else reads the current one with `get_context()` (also exported as
 `hyrax.get_context`).
 
-Keys: `results_dir` (a `Path`), `verb`, `rank`, `world_size`, plus `ml_framework`
-for ONNX export. Consumers are models (writing artifacts that don't fit the
-TensorBoard/MLflow scalar-metric paradigm), vector database implementations, and
+Keys: `results_dir` (a `Path`), `verb`, and `ml_framework`.
+Consumers are models, vector database implementations, and
 the ONNX exporter. **Nothing takes a context parameter** — consumers call
 `get_context()` themselves, and whoever starts the work is responsible for
 pointing the context at the right directory first.
 
-- **The `Verb` base class owns the lifecycle.** `Verb.__init_subclass__` wraps
-  every verb's `run()` so a fresh context is installed on entry and released in a
-  `finally` — including when the verb raises. Verbs do not call `run_context()`
-  themselves; they record their directory with `update_context(results_dir=...)`
-  right after `create_results_dir()`. A verb that never creates a results
-  directory simply has no `results_dir` key, rather than inheriting the previous
-  run's.
 - **Each run gets a new context object.** This is what lets an object hold a
   context instead of copying values out of it. `VectorDB.__init__` stores
   `get_context()` and exposes `results_dir` as a property: `database_connection`
@@ -288,14 +280,6 @@ pointing the context at the right directory first.
 - **Models should call `get_context()` at the point of use**, not stash it in
   `__init__`. A saved context is pickled into distributed child processes before
   their ranks are assigned, so it reports rank 0 everywhere.
-- **Verb runs do not nest.** A context is released to empty, not to whatever was
-  current before, so a verb that calls another verb is left without one. Only the
-  deprecated `umap` verb does this, and it returns immediately after delegating.
-- **`idist.Parallel` spawns fresh processes, so module globals reset in child
-  ranks.** `Train._training` repopulates the context per-rank; any new distributed
-  entry point must do the same.
-- **`results_dir` is always a `Path`**, never a `str`. `model_exporters.py` uses
-  the `/` operator on it.
 
 ## Testing Conventions
 

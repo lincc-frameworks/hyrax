@@ -53,8 +53,7 @@ class Verb(ABC):  # noqa: B024
 
         @functools.wraps(run)
         def run_with_context(self, *args, **kwargs):
-            with run_context(type(self).cli_name) as context:
-                self.context = context
+            with run_context(type(self).cli_name):
                 return run(self, *args, **kwargs)
 
         # functools.wraps sets __wrapped__, so inspect.signature() still reports

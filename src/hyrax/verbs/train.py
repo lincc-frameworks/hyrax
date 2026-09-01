@@ -75,7 +75,6 @@ class Train(Verb):
 
         # Create a results directory
         results_dir = create_results_dir(config, "train")
-        update_context(results_dir=results_dir)
         log_runtime_config(config, results_dir)
 
         # Create a tensorboardX logger
@@ -118,8 +117,6 @@ class Train(Verb):
         update_context(
             results_dir=results_dir,
             verb="train",
-            rank=idist.get_rank(),
-            world_size=idist.get_world_size(),
         )
 
         logger.info(

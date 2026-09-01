@@ -59,7 +59,6 @@ class Engine(Verb):
             create_results_dir,
             find_most_recent_results_dir,
         )
-        from hyrax.context import update_context
         from hyrax.datasets.data_provider import DataProvider
         from hyrax.datasets.result_factories import create_results_writer
         from hyrax.plugin_utils import load_prepare_inputs
@@ -117,7 +116,6 @@ class Engine(Verb):
 
         # Initialize the ResultDatasetWriter to persist results of inference
         result_dir = create_results_dir(config, "engine")
-        update_context(results_dir=result_dir)
         self.results_writer = create_results_writer(result_dir)
 
         # Determine which indices to iterate over

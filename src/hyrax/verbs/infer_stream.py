@@ -74,7 +74,6 @@ class InferStream(Verb):
         from ignite.distributed import device as idist_device
 
         from hyrax.config_utils import create_results_dir, log_runtime_config
-        from hyrax.context import update_context
         from hyrax.datasets.result_factories import load_results_dataset
         from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
@@ -93,7 +92,6 @@ class InferStream(Verb):
         # so that the run context is populated by the time the model's __init__ runs,
         # matching the ordering used by the train, infer and test verbs.
         results_dir = create_results_dir(config, "infer_stream")
-        update_context(results_dir=results_dir)
 
         # Build the model either from a configured streaming dataset (preferred, enables
         # session iteration) or from an explicitly supplied sample batch.

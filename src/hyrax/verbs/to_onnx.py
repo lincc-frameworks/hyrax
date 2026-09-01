@@ -64,7 +64,7 @@ class ToOnnx(Verb):
                 return
 
         output_dir = create_results_dir(config, "onnx")
-        update_context(results_dir=output_dir, verb="onnx", ml_framework="pytorch")
+        update_context(ml_framework="pytorch")
         log_runtime_config(config, output_dir)
 
         # grab the config file from the input directory, and render it.

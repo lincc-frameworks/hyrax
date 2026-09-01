@@ -43,14 +43,12 @@ class CreateSplits(Verb):
             The populated dataset providers, keyed by group name.
         """
         from hyrax.config_utils import create_results_dir, log_runtime_config
-        from hyrax.context import update_context
         from hyrax.pytorch_ignite import setup_dataset
         from hyrax.splitting_utils import create_splits
 
         config = self.config
 
         results_dir = create_results_dir(config, "splits")
-        update_context(results_dir=results_dir, verb="splits")
         datasets = setup_dataset(config)
         create_splits(config, datasets, results_dir=results_dir, persist=True)
         log_runtime_config(config, results_dir)

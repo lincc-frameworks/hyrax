@@ -288,13 +288,14 @@ matrix once at the end:
        return {"loss": self.criterion(logits, labels).item()}
 
    def test_post_epoch(self):
+       context = get_context()
        matrix = confusion_matrix(
            np.concatenate(self.labels), np.concatenate(self.predictions)
        )
-       np.save(self.context["results_dir"] / "confusion_matrix.npy", matrix)
+       np.save(context["results_dir"] / "confusion_matrix.npy", matrix)
 
-``self.context`` there is the run context, which is where the hook learns the
-directory to write into. See the next section.
+``context`` is the run context, which is where the hook learns the
+directory to write into. See "The run context" section for more details.
 
 
 Optimizer / criterion / scheduler setup
@@ -353,12 +354,6 @@ The context is a plain dictionary with these keys:
    * - ``verb``
      - ``str``
      - Which verb is running: ``"train"``, ``"infer"``, ``"test"``, etc.
-   * - ``rank``
-     - ``int``
-     - The distributed rank of this process. ``0`` when not distributed.
-   * - ``world_size``
-     - ``int``
-     - The number of distributed processes. ``1`` when not distributed.
 
 Call ``get_context()`` at the point where you need a value, rather than saving
 the context in ``__init__``. Each verb run has its own context, and reading it
@@ -384,20 +379,12 @@ when you use it always gives you the run that is actually underway.
 
        def train_post_epoch(self):
            context = get_context()
-           rank = context["rank"]
-           outfile = context["results_dir"] / f"activations_rank{rank}.npy"
+           outfile = context["results_dir"] / f"activations.npy"
            np.save(outfile, np.concatenate(self.activations))
            self.activations.clear()
 
-Note the use of ``rank`` in the filename. Under distributed training every rank
-shares one results directory, so include the rank in any filename you write or
-the ranks will overwrite each other. This is also why the example reads the
-context inside ``train_post_epoch``: distributed training runs your model in
-separate processes, and a context saved in ``__init__`` is copied into each of
-them before their ranks are assigned, so it would report rank 0 everywhere.
-
 You may also put your own keys in the context. Each verb run starts with a fresh
-one and releases it at the end, so anything you add lasts for that run only.
+context and releases it at the end, so anything you add lasts for that run only.
 
 Outside a verb run - if you construct a model yourself, for instance - the
 context is empty, and reading a key from it raises a ``KeyError`` that says so.

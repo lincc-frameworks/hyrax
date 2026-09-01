@@ -65,12 +65,6 @@ class ContextKeys(TypedDict, total=False):
     verb: str
     """The name of the verb that started the run, e.g. ``"train"``, ``"infer"``"""
 
-    rank: int
-    """The distributed rank of the current process. ``0`` when not running distributed."""
-
-    world_size: int
-    """The number of distributed processes. ``1`` when not running distributed."""
-
     ml_framework: str
     """The source framework for a model export. Only set by the ``to_onnx`` verb."""
 
@@ -142,7 +136,7 @@ def run_context(verb: str, **extra) -> Generator[RunContext]:
         update_context(**extra)
         yield _current
     finally:
-        _current = RunContext()
+        clear_context()
 
 
 @contextmanager
@@ -170,7 +164,7 @@ def use_context(context: RunContext) -> Generator[RunContext]:
     try:
         yield _current
     finally:
-        _current = RunContext()
+        clear_context()
 
 
 def update_context(**kwargs) -> RunContext:
@@ -189,15 +183,8 @@ def update_context(**kwargs) -> RunContext:
     RunContext
         The current run context, for convenience.
     """
-    # Imported here rather than at module scope to keep this module cheap for
-    # user model code to import.
-    import ignite.distributed as idist
-
     if "results_dir" in kwargs:
         kwargs["results_dir"] = Path(kwargs["results_dir"])
-
-    kwargs.setdefault("rank", idist.get_rank())
-    kwargs.setdefault("world_size", idist.get_world_size())
 
     _current.update(kwargs)
     return _current

@@ -46,7 +46,6 @@ class Infer(Verb):
             create_results_dir,
             log_runtime_config,
         )
-        from hyrax.context import update_context
         from hyrax.datasets.result_factories import load_results_dataset
         from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
@@ -63,7 +62,6 @@ class Infer(Verb):
 
         # Create a results directory and dump our config there
         results_dir = create_results_dir(config, "infer")
-        update_context(results_dir=results_dir)
 
         # Create a tensorboardX logger
         init_tensorboard_logger(log_dir=results_dir)
