@@ -15,6 +15,7 @@ with warnings.catch_warnings():
 from collections.abc import Iterator, Sequence
 
 import torch
+import torch.multiprocessing as mp
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
@@ -342,6 +343,13 @@ def dist_data_loader(
         if shuffle
         else None
     )
+
+    # Enforce the fork start method for worker processes to avoid issues with CUDA in
+    # child processes. ``multiprocessing_context`` is only valid when multi-process
+    # loading is actually requested (num_workers > 0) - passing it otherwise raises
+    # a ValueError from the underlying DataLoader.
+    if data_loader_kwargs.get("num_workers", 0) > 0:
+        data_loader_kwargs["multiprocessing_context"] = mp.get_context("fork")
 
     return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 

@@ -76,6 +76,22 @@ def test_infer_order(loopback_hyrax, train_shuffle):
         assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]))
 
 
+@pytest.mark.parametrize("num_workers", [2], indirect=True)
+def test_infer_with_multiple_workers(loopback_hyrax):
+    """
+    Inference should succeed when the data loader uses multiple worker
+    processes (num_workers=2), not just the default single-process loading.
+    """
+    h, _ = loopback_hyrax
+    result = h.infer()
+
+    # Verify we got a ResultDataset back
+    from hyrax.datasets.result_dataset import ResultDataset
+
+    assert result is not None
+    assert isinstance(result, ResultDataset)
+
+
 def test_infer_split_definition_preserves_underlying_dataset_order(loopback_hyrax):
     """Inference with split config should restrict the dataset to a deterministic
     subset whose indices match the first N indices of the underlying dataset.

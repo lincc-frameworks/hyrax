@@ -6,7 +6,7 @@ from hyrax.config_utils import find_most_recent_results_dir
 
 
 @pytest.fixture(scope="function")
-def loopback_hyrax_map_only(tmp_path_factory):
+def loopback_hyrax_map_only(tmp_path_factory, num_workers):
     """This generates a loopback hyrax instance with map-style datasets only,
     suitable for testing the test verb which requires explicit test dataset."""
     import hyrax
@@ -17,6 +17,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
     h.config["model"]["name"] = "HyraxLoopback"
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 5
+    h.config["data_loader"]["num_workers"] = num_workers
     h.config["general"]["results_dir"] = str(results_dir)
     h.config["general"]["dev_mode"] = True
 
@@ -128,6 +129,26 @@ def test_test(loopback_hyrax_map_only):
     assert result.data_location.exists()
     assert (result.data_location / "lance_db").exists()
     assert (result.data_location / "test_weights.pth").exists()
+
+
+@pytest.mark.parametrize("num_workers", [2], indirect=True)
+def test_test_with_multiple_workers(loopback_hyrax_map_only):
+    """
+    Testing should succeed when the data loader uses multiple worker
+    processes (num_workers=2), not just the default single-process loading.
+    """
+    h, _ = loopback_hyrax_map_only
+    # First train a model to have weights to test
+    h.train()
+
+    # Now test the model
+    result = h.test()
+
+    # Verify we got a ResultDataset back
+    from hyrax.datasets.result_dataset import ResultDataset
+
+    assert result is not None
+    assert isinstance(result, ResultDataset)
 
 
 def test_test_with_explicit_weights(loopback_hyrax_map_only, tmp_path):
