@@ -4,8 +4,9 @@ A Hyrax verb run produces a results directory and a handful of other facts about
 the run (which verb, which distributed rank). Several pieces of Hyrax need those
 facts but are not handed them directly.
 
-This module holds one context for the process. Verbs populate it with
-:func:`init_context`; everything else reads it with :func:`get_context`.
+Each verb run gets its own context object. The ``Verb`` base class installs one
+for the duration of ``run()`` and releases it when the run ends; everything else
+reads the current one with :func:`get_context`.
 
 Typical usage in a model::
 
@@ -16,20 +17,22 @@ Typical usage in a model::
         def __init__(self, config, data_sample=None):
             super().__init__()
             self.config = config
-            self.context = get_context()
 
         def train_post_epoch(self):
-            rank = self.context["rank"]
-            np.save(self.context["results_dir"] / f"acts_rank{rank}.npy", self.acts)
+            context = get_context()
+            rank = context["rank"]
+            np.save(context["results_dir"] / f"acts_rank{rank}.npy", self.acts)
 
-The dictionary returned by :func:`get_context` is the same object for the life
-of the process -- :func:`init_context` clears and repopulates it in place rather
-than replacing it. That means client code never has to think about
-initialization order: a handle taken before a verb populates the context still
-sees the values once they arrive.
+Because contexts are per-run objects that are never reused, an object that
+outlives the run that created it can simply hold on to the context it was given
+rather than copying values out of it. :class:`hyrax.vector_dbs.VectorDB` does
+exactly that, so a database handed back by ``database_connection`` keeps pointing
+at its own directory no matter what runs afterwards.
 """
 
 import logging
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypedDict
 
@@ -40,8 +43,9 @@ __all__ = [
     "RunContext",
     "clear_context",
     "get_context",
-    "init_context",
+    "run_context",
     "update_context",
+    "use_context",
 ]
 
 
@@ -86,57 +90,95 @@ class RunContext(dict):
         raise KeyError(msg)
 
 
-# One object for the life of the process. Never rebound - only cleared and updated
-# in place - so handles taken before init_context() stay valid.
-_context = RunContext()
+# The context for the run currently underway. Empty outside a run, so that
+# get_context() is always safe to call.
+_current: RunContext = RunContext()
 
 
 def get_context() -> RunContext:
-    """Get the run context for this process.
+    """Get the run context for the run currently underway.
 
-    Safe to call at any time. Before a verb has started a run the context is
-    empty, and reading a key from it raises a ``KeyError`` explaining why.
+    Safe to call at any time. Outside a verb run the context is empty, and
+    reading a key from it raises a ``KeyError`` explaining why.
 
     Returns
     -------
     RunContext
-        The process-wide run context. This is always the same object, so a
-        handle taken now will reflect values a verb adds later.
+        The current run context. Each verb run gets a fresh object, so code that
+        needs a context to outlive its run can hold this rather than copying
+        values out of it.
     """
-    return _context
+    return _current
 
 
-def init_context(results_dir, verb: str, **extra) -> RunContext:
-    """Start a new run context, discarding any previous run's values.
+@contextmanager
+def run_context(verb: str, **extra) -> Generator[RunContext]:
+    """Install a fresh context for one verb run, releasing it when the run ends.
 
-    This should be called by code that controls overall hyrax execution, e.g. a
-    Verb's ``run()`` method, immediately after creating its results directory.
+    The ``Verb`` base class wraps every verb's ``run()`` in this, so verbs do not
+    call it themselves; they fill in their results directory with
+    :func:`update_context` once they have created it.
+
+    Verb runs are not expected to nest. The context is released to empty rather
+    than to whatever was current beforehand, so a verb that calls another verb
+    is left without a context once the inner call returns.
 
     Parameters
     ----------
-    results_dir : Path or str
-        The results directory for this run. Coerced to ``Path``.
     verb : str
         The name of the verb starting the run.
     **extra
         Any additional keys to place in the context.
 
-    Returns
-    -------
+    Yields
+    ------
     RunContext
-        The run context, for convenience. This is the same object
-        :func:`get_context` returns.
+        The newly installed context.
     """
-    _context.clear()
-    return update_context(results_dir=Path(results_dir), verb=verb, **extra)
+    global _current
+
+    _current = RunContext(verb=verb)
+    try:
+        update_context(**extra)
+        yield _current
+    finally:
+        _current = RunContext()
+
+
+@contextmanager
+def use_context(context: RunContext) -> Generator[RunContext]:
+    """Re-enter a context captured earlier, for work that outlives its verb run.
+
+    An object that keeps running model code after the verb that built it has
+    returned - :class:`hyrax.verbs.infer_stream.InferStreamSession`, for example -
+    captures ``get_context()`` at construction and re-installs it around that
+    later work, so models see the run they belong to rather than an empty context.
+
+    Parameters
+    ----------
+    context : RunContext
+        A context captured earlier with :func:`get_context`.
+
+    Yields
+    ------
+    RunContext
+        The re-installed context.
+    """
+    global _current
+
+    _current = context
+    try:
+        yield _current
+    finally:
+        _current = RunContext()
 
 
 def update_context(**kwargs) -> RunContext:
-    """Merge values into the run context, leaving existing keys in place.
+    """Merge values into the current run context, leaving existing keys in place.
 
-    Use this rather than :func:`init_context` when adding to a run that is
-    already underway, so that anything a model has stashed in the context is
-    preserved.
+    Verbs use this to record their results directory once they have created it.
+    Existing keys are preserved, so anything a model has stashed in the context
+    survives.
 
     If ``results_dir`` is given it is coerced to ``Path``. If ``rank`` and
     ``world_size`` are not given they are filled in from ignite's distributed
@@ -145,7 +187,7 @@ def update_context(**kwargs) -> RunContext:
     Returns
     -------
     RunContext
-        The run context, for convenience.
+        The current run context, for convenience.
     """
     # Imported here rather than at module scope to keep this module cheap for
     # user model code to import.
@@ -157,13 +199,17 @@ def update_context(**kwargs) -> RunContext:
     kwargs.setdefault("rank", idist.get_rank())
     kwargs.setdefault("world_size", idist.get_world_size())
 
-    _context.update(kwargs)
-    return _context
+    _current.update(kwargs)
+    return _current
 
 
 def clear_context() -> None:
-    """Empty the run context.
+    """Release the current run context.
 
-    Valid to call whether or not a run is active.
+    Verbs release their own context when they finish, so this is only needed to
+    clean up after code that populated a context outside a verb run, such as a
+    test.
     """
-    _context.clear()
+    global _current
+
+    _current = RunContext()

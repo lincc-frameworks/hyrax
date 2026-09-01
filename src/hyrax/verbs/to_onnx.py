@@ -39,7 +39,7 @@ class ToOnnx(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
-        from hyrax.context import init_context
+        from hyrax.context import update_context
         from hyrax.model_exporters import export_to_onnx
         from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
 
@@ -64,7 +64,7 @@ class ToOnnx(Verb):
                 return
 
         output_dir = create_results_dir(config, "onnx")
-        init_context(output_dir, "onnx", ml_framework="pytorch")
+        update_context(results_dir=output_dir, verb="onnx", ml_framework="pytorch")
         log_runtime_config(config, output_dir)
 
         # grab the config file from the input directory, and render it.

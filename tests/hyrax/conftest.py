@@ -5,9 +5,23 @@ import numpy as np
 import pytest
 
 import hyrax
+from hyrax.context import clear_context
 from hyrax.datasets.data_provider import DataProvider
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def clean_context():
+    """Keep the run context from leaking between tests.
+
+    Verbs release their own context, but tests that populate one directly - the
+    vector database tests point one at a tmp_path - would otherwise leave it set
+    for whatever runs next in the same worker.
+    """
+    clear_context()
+    yield
+    clear_context()
 
 
 def pytest_configure(config):

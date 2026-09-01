@@ -1,3 +1,4 @@
+import inspect
 import json
 from pathlib import Path
 
@@ -10,18 +11,11 @@ from hyrax.context import (
     RunContext,
     clear_context,
     get_context,
-    init_context,
+    run_context,
     update_context,
+    use_context,
 )
 from hyrax.models.model_registry import hyrax_model
-
-
-@pytest.fixture(autouse=True)
-def clean_context():
-    """The run context is process-wide, so make sure each test starts and ends clean."""
-    clear_context()
-    yield
-    clear_context()
 
 
 def test_context_is_a_dict():
@@ -33,83 +27,109 @@ def test_context_is_a_dict():
     assert context == {}
 
 
-def test_handle_taken_before_init_sees_values():
-    """The late-binding guarantee. A model may take a handle in __init__ before the
-    verb has populated the context; that handle must reflect the values when they
-    arrive. This is why init_context mutates in place rather than rebinding."""
-    early_handle = get_context()
-    assert early_handle == {}
-
-    init_context("/some/results/dir", "train")
-
-    assert early_handle is get_context()
-    assert early_handle["verb"] == "train"
-    assert early_handle["results_dir"] == Path("/some/results/dir")
+def test_context_identity_is_stable_within_a_run():
+    """Everything reading the context during one run must see the same object, so a
+    key one piece of code adds is visible to the rest of the run."""
+    with run_context("train", results_dir="/some/results/dir") as context:
+        assert get_context() is context
+        update_context(user_key="stashed by a model")
+        assert get_context()["user_key"] == "stashed by a model"
 
 
-def test_init_context_populates_expected_keys():
-    """init_context fills in the documented key set."""
-    context = init_context("/some/results/dir", "infer")
+def test_each_run_gets_its_own_context_object():
+    """The whole point of the per-run lifecycle: an object captured during one run is
+    not the object a later run uses, so holding it cannot follow the wrong verb."""
+    with run_context("train", results_dir="/first/run") as first:
+        pass
 
-    assert context["results_dir"] == Path("/some/results/dir")
-    assert context["verb"] == "infer"
-    assert context["rank"] == 0
-    assert context["world_size"] == 1
+    with run_context("infer", results_dir="/second/run") as second:
+        assert second is not first
+
+    assert first["results_dir"] == Path("/first/run")
+    assert first["verb"] == "train"
 
 
-def test_init_context_coerces_results_dir_to_path():
+def test_run_context_populates_expected_keys():
+    """run_context plus the verb's own update_context fill the documented key set."""
+    with run_context("infer", results_dir="/some/results/dir") as context:
+        assert context["results_dir"] == Path("/some/results/dir")
+        assert context["verb"] == "infer"
+        assert context["rank"] == 0
+        assert context["world_size"] == 1
+
+
+def test_run_context_coerces_results_dir_to_path():
     """save_to_database used to pass a str; model_exporters uses the `/` operator."""
-    context = init_context("/some/results/dir", "vector-db")
-    assert isinstance(context["results_dir"], Path)
+    with run_context("vector-db", results_dir="/some/results/dir") as context:
+        assert isinstance(context["results_dir"], Path)
 
-    context = init_context(Path("/some/results/dir"), "vector-db")
-    assert isinstance(context["results_dir"], Path)
+    with run_context("vector-db", results_dir=Path("/some/results/dir")) as context:
+        assert isinstance(context["results_dir"], Path)
 
 
-def test_init_context_accepts_extra_keys():
+def test_run_context_accepts_extra_keys():
     """The to_onnx verb adds ml_framework this way."""
-    context = init_context("/some/results/dir", "onnx", ml_framework="pytorch")
-    assert context["ml_framework"] == "pytorch"
+    with run_context("onnx", results_dir="/some/results/dir", ml_framework="pytorch") as context:
+        assert context["ml_framework"] == "pytorch"
 
 
-def test_init_context_clears_previous_run():
-    """Starting a new run must not leak the previous run's keys."""
-    init_context("/first/run", "train")
-    update_context(user_key="stashed by a model")
+def test_run_context_releases_on_exit():
+    """A finished run leaves nothing behind for the next one to inherit."""
+    with run_context("train", results_dir="/some/run"):
+        assert get_context()["verb"] == "train"
 
-    init_context("/second/run", "infer")
+    assert get_context() == {}
 
-    assert get_context()["results_dir"] == Path("/second/run")
-    assert get_context()["verb"] == "infer"
-    assert "user_key" not in get_context()
+
+def test_run_context_releases_when_the_body_raises():
+    """A failed run must not leave the context pointing at its half-built directory."""
+    with pytest.raises(ValueError):
+        with run_context("train", results_dir="/some/run"):
+            raise ValueError("something went wrong mid-run")
+
+    assert get_context() == {}
 
 
 def test_update_context_preserves_existing_keys():
-    """train.py's _training uses update rather than init so that anything a model
-    stashed during setup_model survives on the single-process path."""
-    init_context("/some/run", "train")
-    update_context(user_key="stashed by a model")
+    """train.py's _training updates the context in place, so anything a model stashed
+    during setup_model survives on the single-process path."""
+    with run_context("train", results_dir="/some/run"):
+        update_context(user_key="stashed by a model")
 
-    update_context(results_dir=Path("/some/run"), verb="train", rank=1, world_size=4)
+        update_context(results_dir=Path("/some/run"), verb="train", rank=1, world_size=4)
 
-    assert get_context()["user_key"] == "stashed by a model"
-    assert get_context()["rank"] == 1
-    assert get_context()["world_size"] == 4
+        assert get_context()["user_key"] == "stashed by a model"
+        assert get_context()["rank"] == 1
+        assert get_context()["world_size"] == 4
 
 
 def test_update_context_coerces_results_dir_to_path():
-    """Coercion applies on the update path too, not just init."""
+    """Coercion applies wherever values enter the context."""
     update_context(results_dir="/some/run")
     assert get_context()["results_dir"] == Path("/some/run")
+
+
+def test_use_context_reinstalls_a_captured_context():
+    """How an object that outlives its run - InferStreamSession - gives the model code
+    it drives the run it actually belongs to."""
+    with run_context("infer_stream", results_dir="/some/run") as captured:
+        pass
+
+    assert get_context() == {}
+
+    with use_context(captured):
+        assert get_context() is captured
+        assert get_context()["results_dir"] == Path("/some/run")
+
+    assert get_context() == {}
 
 
 def test_missing_key_raises_helpful_error():
     """Hyrax users are scientists, not software engineers. A bare KeyError from a
     dict lookup would not tell them why the context was empty."""
-    init_context("/some/run", "train")
-
-    with pytest.raises(KeyError) as excinfo:
-        get_context()["not_a_real_key"]
+    with run_context("train", results_dir="/some/run"):
+        with pytest.raises(KeyError) as excinfo:
+            get_context()["not_a_real_key"]
 
     message = str(excinfo.value)
     assert "not_a_real_key" in message
@@ -126,8 +146,8 @@ def test_missing_key_error_when_context_is_empty():
 
 
 def test_clear_context():
-    """clear_context empties the context without replacing the object."""
-    init_context("/some/run", "train")
+    """clear_context releases a context populated outside a verb run."""
+    update_context(results_dir="/some/run", verb="train")
     clear_context()
     assert get_context() == {}
 
@@ -187,8 +207,6 @@ class ContextWritingLoopback(nn.Module):
         super().__init__()
         self.config = config
         self.unused_module = nn.Linear(1, 1)
-        # A handle taken here, before the verb has necessarily filled the context.
-        self.context = get_context()
         self.batches_seen = 0
 
         def load(self, weight_file):
@@ -236,11 +254,17 @@ class ContextWritingLoopback(nn.Module):
         self._write_notes()
 
     def _write_notes(self):
-        """Write accumulated state into whichever run's results dir is current."""
-        rank = self.context["rank"]
-        outfile = self.context["results_dir"] / f"my_notes_rank{rank}.json"
+        """Write accumulated state into the results dir of the run underway.
+
+        Read the context here rather than stashing a handle in __init__: this is
+        the form that reports the right rank under distributed training, where a
+        handle taken in the parent is pickled into each child as a stale copy.
+        """
+        context = get_context()
+        rank = context["rank"]
+        outfile = context["results_dir"] / f"my_notes_rank{rank}.json"
         with open(outfile, "w") as f:
-            json.dump({"batches_seen": self.batches_seen, "verb": self.context["verb"]}, f)
+            json.dump({"batches_seen": self.batches_seen, "verb": context["verb"]}, f)
 
     @staticmethod
     def prepare_inputs(data_dict):
@@ -287,27 +311,57 @@ def test_model_writes_to_results_dir_during_test(loopback_hyrax):
     assert notes["batches_seen"] > 0
 
 
-def test_verbs_populate_the_context(loopback_hyrax):
-    """Each verb should leave the context pointing at its own results directory."""
+def test_verbs_release_their_context(loopback_hyrax):
+    """A verb's context lasts for its run and no longer.
+
+    The in-run half is covered by test_model_writes_to_results_dir_during_train,
+    where the model's notes land in the train results directory.
+    """
     h, _ = loopback_hyrax
 
     h.train()
-    assert get_context()["verb"] == "train"
-    assert get_context()["results_dir"] == find_most_recent_results_dir(h.config, "train")
+    assert get_context() == {}
 
     h.infer()
-    assert get_context()["verb"] == "infer"
-    assert get_context()["results_dir"] == find_most_recent_results_dir(h.config, "infer")
+    assert get_context() == {}
 
 
-def test_vector_db_snapshots_its_directory(loopback_inferred_hyrax):
-    """A vector database reads its directory from the run context, but must snapshot
-    it rather than hold the live context.
+def test_verb_without_a_results_dir_does_not_inherit_one(loopback_hyrax):
+    """Verbs that never create a results directory used to see the previous run's,
+    because nothing released it. The base class hands each verb its own context,
+    which the wrapper also exposes on the instance as self.context."""
+    from hyrax.verbs.model import Model
+
+    h, _ = loopback_hyrax
+    h.train()
+
+    model_verb = Model(h.config)
+    model_verb.run()
+
+    assert model_verb.context["verb"] == "model"
+    assert "results_dir" not in model_verb.context
+
+
+def test_verb_run_signature_survives_the_context_wrapper():
+    """Hyrax.__getattr__ hands verb.run straight to notebook users, who rely on it
+    for help text and completion, so the wrapper must not flatten it to (*args)."""
+    from hyrax.verbs.lookup import Lookup
+
+    parameters = inspect.signature(Lookup.run).parameters
+
+    assert "id" in parameters
+    assert "results_dir" in parameters
+    assert Lookup.run.__doc__ is not None
+
+
+def test_vector_db_keeps_the_context_of_its_own_run(loopback_inferred_hyrax):
+    """A vector database reads its directory from the run context and holds on to
+    that context.
 
     database_connection hands the database object back to the user for interactive
     querying, and ChromaDB re-reads this path at query time to spawn its worker
-    processes. If it followed the live run context, a held connection would start
-    looking for the database inside whatever results directory the next verb made.
+    processes. Because each run gets its own context object, the one the database
+    holds keeps pointing at the database directory however many verbs run later.
     """
     h, _, inference_results = loopback_inferred_hyrax
     h.config["vector_db"]["name"] = "chromadb"
@@ -318,9 +372,9 @@ def test_vector_db_snapshots_its_directory(loopback_inferred_hyrax):
 
     assert db.results_dir == vdb_path
 
-    # Move the run context on to a different directory.
+    # Run another verb, which gets its own context and then releases it.
     h.infer()
-    assert get_context()["results_dir"] != vdb_path
+    assert get_context() == {}
 
     # The held connection must be unaffected and still able to query.
     assert db.results_dir == vdb_path

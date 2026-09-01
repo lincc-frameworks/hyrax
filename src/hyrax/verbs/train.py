@@ -7,7 +7,7 @@ import torch
 from colorama import Back, Fore, Style
 
 from hyrax.config_utils import create_results_dir, log_runtime_config
-from hyrax.context import init_context, update_context
+from hyrax.context import update_context
 from hyrax.gpu_monitor import GpuMonitor
 from hyrax.pytorch_ignite import (
     Events,
@@ -75,7 +75,7 @@ class Train(Verb):
 
         # Create a results directory
         results_dir = create_results_dir(config, "train")
-        init_context(results_dir, "train")
+        update_context(results_dir=results_dir)
         log_runtime_config(config, results_dir)
 
         # Create a tensorboardX logger
@@ -110,9 +110,11 @@ class Train(Verb):
     @staticmethod
     def _training(rank, model, dataset, config, results_dir):
         # idist.Parallel spawns fresh processes, so the run context established in run()
-        # is absent in the child ranks. Repopulate it here, where every rank passes. We
-        # update rather than init so that anything a model stashed in the context during
-        # setup_model survives on the single-process path.
+        # is absent in the child ranks. Repopulate it here, where every rank passes.
+        # On the single-process path this writes into the context run() installed, so
+        # anything a model stashed there during setup_model survives. In a spawned rank
+        # it fills that process's empty context, which needs no release because the
+        # process exits when training finishes.
         update_context(
             results_dir=results_dir,
             verb="train",

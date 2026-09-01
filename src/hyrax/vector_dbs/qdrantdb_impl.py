@@ -56,7 +56,7 @@ class QdrantDB(VectorDB):
                 vectors_config=models.VectorParams(
                     #! This stinks - we should just check the size of the data
                     #! when we call `save_to_database` and then set this automatically
-                    #! as a parameter in self.context["blah"] or something.
+                    #! as a run context key (see hyrax.context.ContextKeys).
                     size=self.config["vector_db"]["qdrant"]["vector_size"],
                     distance=models.Distance.EUCLID,
                     on_disk=True,

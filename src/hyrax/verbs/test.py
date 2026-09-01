@@ -55,7 +55,7 @@ class Test(Verb):
             create_results_dir,
             log_runtime_config,
         )
-        from hyrax.context import init_context
+        from hyrax.context import update_context
         from hyrax.datasets.result_factories import load_results_dataset
         from hyrax.models.model_utils import load_model_weights
         from hyrax.pytorch_ignite import (
@@ -72,7 +72,7 @@ class Test(Verb):
 
         # Create a results directory
         results_dir = create_results_dir(config, "test")
-        init_context(results_dir, "test")
+        update_context(results_dir=results_dir)
 
         # Create a tensorboardX logger
         tensorboardx_logger = SummaryWriter(log_dir=results_dir)

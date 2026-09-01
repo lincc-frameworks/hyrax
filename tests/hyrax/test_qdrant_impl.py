@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from hyrax import Hyrax
-from hyrax.context import init_context
+from hyrax.context import run_context
 from hyrax.vector_dbs.qdrantdb_impl import QdrantDB
 
 
@@ -23,8 +23,8 @@ def qdrant_instance(tmp_path):
     """Create a QdrantDB instance for testing"""
     h = Hyrax()
     h.config["vector_db"]["qdrant"]["vector_size"] = 3
-    init_context(tmp_path, "test")
-    qdrant_instance = QdrantDB(h.config)
+    with run_context("test", results_dir=tmp_path):
+        qdrant_instance = QdrantDB(h.config)
     qdrant_instance.connect()
     qdrant_instance.create()
     return qdrant_instance
@@ -33,8 +33,8 @@ def qdrant_instance(tmp_path):
 def test_connect(tmp_path):
     """Test that we can create a connections to the database"""
     h = Hyrax()
-    init_context(tmp_path, "test")
-    qdrant_instance = QdrantDB(h.config)
+    with run_context("test", results_dir=tmp_path):
+        qdrant_instance = QdrantDB(h.config)
     qdrant_instance.connect()
 
     assert qdrant_instance.collection_name is None

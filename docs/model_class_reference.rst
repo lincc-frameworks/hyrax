@@ -360,9 +360,9 @@ The context is a plain dictionary with these keys:
      - ``int``
      - The number of distributed processes. ``1`` when not distributed.
 
-Call ``get_context()`` wherever you like, including in ``__init__``. It always
-returns the same dictionary object, and Hyrax fills that object in place when a
-verb starts, so you never have to worry about initialization order.
+Call ``get_context()`` at the point where you need a value, rather than saving
+the context in ``__init__``. Each verb run has its own context, and reading it
+when you use it always gives you the run that is actually underway.
 
 .. code-block:: python
 
@@ -374,7 +374,6 @@ verb starts, so you never have to worry about initialization order.
        def __init__(self, config, data_sample=None):
            super().__init__()
            self.config = config
-           self.context = get_context()
            self.activations = []
 
        def train_batch(self, batch):
@@ -384,17 +383,24 @@ verb starts, so you never have to worry about initialization order.
            return {"loss": loss.item()}
 
        def train_post_epoch(self):
-           rank = self.context["rank"]
-           outfile = self.context["results_dir"] / f"activations_rank{rank}.npy"
+           context = get_context()
+           rank = context["rank"]
+           outfile = context["results_dir"] / f"activations_rank{rank}.npy"
            np.save(outfile, np.concatenate(self.activations))
            self.activations.clear()
 
 Note the use of ``rank`` in the filename. Under distributed training every rank
 shares one results directory, so include the rank in any filename you write or
-the ranks will overwrite each other.
+the ranks will overwrite each other. This is also why the example reads the
+context inside ``train_post_epoch``: distributed training runs your model in
+separate processes, and a context saved in ``__init__`` is copied into each of
+them before their ranks are assigned, so it would report rank 0 everywhere.
 
-You may also put your own keys in the context. Hyrax clears it at the start of
-each verb run, so anything you add lasts for that run only.
+You may also put your own keys in the context. Each verb run starts with a fresh
+one and releases it at the end, so anything you add lasts for that run only.
+
+Outside a verb run - if you construct a model yourself, for instance - the
+context is empty, and reading a key from it raises a ``KeyError`` that says so.
 
 .. note::
 

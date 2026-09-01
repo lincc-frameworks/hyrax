@@ -7,7 +7,7 @@ def vector_db_factory(config: dict) -> Union[VectorDB, None]:
     """Factory method to create a database object.
 
     The database directory comes from the Hyrax run context, so point the context
-    at it with :func:`hyrax.context.init_context` before calling this.
+    at it with :func:`hyrax.context.update_context` before calling this.
     """
 
     # if the vector_db name is `False`, return None

@@ -1,6 +1,9 @@
+import functools
 import logging
 from abc import ABC
 from collections.abc import Mapping
+
+from hyrax.context import run_context
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +33,35 @@ class Verb(ABC):  # noqa: B024
         """
         self.config = config
         self.validate_data_request()
+
+    def __init_subclass__(cls, **kwargs):
+        """Give every verb a run context for the duration of its ``run()``.
+
+        Wrapping here rather than in each verb means a verb cannot forget to
+        establish a context, and cannot leave one behind when it finishes or
+        raises. Verbs still record their own results directory, with
+        :func:`hyrax.context.update_context`, once they have created it.
+
+        Only ``run`` is wrapped. Every verb's ``run_cli`` delegates to ``run``,
+        so wrapping both would establish two contexts per CLI invocation.
+        """
+        super().__init_subclass__(**kwargs)
+
+        run = cls.__dict__.get("run")
+        if run is None or getattr(run, "_hyrax_bracketed", False):
+            return
+
+        @functools.wraps(run)
+        def run_with_context(self, *args, **kwargs):
+            with run_context(type(self).cli_name) as context:
+                self.context = context
+                return run(self, *args, **kwargs)
+
+        # functools.wraps sets __wrapped__, so inspect.signature() still reports
+        # the verb's real signature. Hyrax.__getattr__ hands verb.run straight to
+        # notebook users, who rely on that for help text and completion.
+        run_with_context._hyrax_bracketed = True
+        cls.run = run_with_context
 
     @classmethod
     def information(cls):

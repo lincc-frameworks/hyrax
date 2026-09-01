@@ -257,10 +257,10 @@ Each verb that produces output creates its own timestamped results directory.
 
 ## Run context
 
-`src/hyrax/context.py` holds one run context for the process — a plain dict
-describing the run currently underway. Verbs populate it with `init_context()`
-immediately after `create_results_dir()`; everything else reads it with
-`get_context()` (also exported as `hyrax.get_context`).
+`src/hyrax/context.py` holds the run context — a plain dict describing the run
+currently underway. Each verb run gets its own context object, and everything
+else reads the current one with `get_context()` (also exported as
+`hyrax.get_context`).
 
 Keys: `results_dir` (a `Path`), `verb`, `rank`, `world_size`, plus `ml_framework`
 for ONNX export. Consumers are models (writing artifacts that don't fit the
@@ -269,20 +269,28 @@ the ONNX exporter. **Nothing takes a context parameter** — consumers call
 `get_context()` themselves, and whoever starts the work is responsible for
 pointing the context at the right directory first.
 
-- **`get_context()` always returns the same dict object.** `init_context()` clears
-  and repopulates it *in place* rather than rebinding it. That's what lets a model
-  take a handle in `__init__` and still see values a verb adds afterward. Do not
-  "simplify" this by assigning a new dict to the module global.
-- **The context is per-run and cleared on every verb invocation.** A model held
-  across `h.train()` then `h.infer()` sees the infer run's directory during the
-  second call.
-- **Objects that outlive their run must snapshot what they need, not hold the
-  live context.** `VectorDB.__init__` copies `results_dir` into `self.results_dir`
-  for exactly this reason: `database_connection` hands the database back to the
-  user for interactive querying, and ChromaDB re-reads that path at query time to
-  spawn worker processes. A live handle would make a held connection follow
-  whatever verb ran last. Regression test:
-  `test_context.py::test_vector_db_snapshots_its_directory`.
+- **The `Verb` base class owns the lifecycle.** `Verb.__init_subclass__` wraps
+  every verb's `run()` so a fresh context is installed on entry and released in a
+  `finally` — including when the verb raises. Verbs do not call `run_context()`
+  themselves; they record their directory with `update_context(results_dir=...)`
+  right after `create_results_dir()`. A verb that never creates a results
+  directory simply has no `results_dir` key, rather than inheriting the previous
+  run's.
+- **Each run gets a new context object.** This is what lets an object hold a
+  context instead of copying values out of it. `VectorDB.__init__` stores
+  `get_context()` and exposes `results_dir` as a property: `database_connection`
+  hands the database back to the user for interactive querying, and ChromaDB
+  re-reads that path at query time to spawn worker processes. Regression test:
+  `test_context.py::test_vector_db_keeps_the_context_of_its_own_run`.
+- **Work that outlives its run re-installs the context it captured.** Use
+  `use_context()`, as `InferStreamSession.process()` does, so model code driven
+  after the verb returned sees the run it belongs to.
+- **Models should call `get_context()` at the point of use**, not stash it in
+  `__init__`. A saved context is pickled into distributed child processes before
+  their ranks are assigned, so it reports rank 0 everywhere.
+- **Verb runs do not nest.** A context is released to empty, not to whatever was
+  current before, so a verb that calls another verb is left without one. Only the
+  deprecated `umap` verb does this, and it returns immediately after delegating.
 - **`idist.Parallel` spawns fresh processes, so module globals reset in child
   ranks.** `Train._training` repopulates the context per-rank; any new distributed
   entry point must do the same.

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from hyrax import Hyrax
-from hyrax.context import init_context
+from hyrax.context import run_context
 from hyrax.vector_dbs.chromadb_impl import ChromaDB
 
 
@@ -22,8 +22,8 @@ def random_vector_generator(batch_size=1, vector_size=3):
 def chromadb_instance(tmp_path):
     """Create a ChromaDB instance for testing"""
     h = Hyrax()
-    init_context(tmp_path, "test")
-    chromadb_instance = ChromaDB(h.config)
+    with run_context("test", results_dir=tmp_path):
+        chromadb_instance = ChromaDB(h.config)
     chromadb_instance.connect()
     chromadb_instance.create()
     return chromadb_instance
@@ -32,8 +32,8 @@ def chromadb_instance(tmp_path):
 def test_connect(tmp_path):
     """Test that we can create a connections to the database"""
     h = Hyrax()
-    init_context(tmp_path, "test")
-    chromadb_instance = ChromaDB(h.config)
+    with run_context("test", results_dir=tmp_path):
+        chromadb_instance = ChromaDB(h.config)
     chromadb_instance.connect()
 
     assert chromadb_instance.chromadb_client is not None
@@ -106,8 +106,8 @@ def test_insert_does_not_raise_warning(caplog, tmp_path, random_vector_generator
 
     h = Hyrax()
     h.config["vector_db"]["chromadb"]["vector_size_warning"] = False
-    init_context(tmp_path, "test")
-    chromadb_instance = ChromaDB(h.config)
+    with run_context("test", results_dir=tmp_path):
+        chromadb_instance = ChromaDB(h.config)
     chromadb_instance.connect()
     chromadb_instance.create()
 

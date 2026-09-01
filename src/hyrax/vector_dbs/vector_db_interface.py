@@ -19,7 +19,7 @@ class VectorDB(ABC):
         The directory the database lives in is read from the Hyrax run context,
         so callers do not need to pass it. Whoever creates a database is
         responsible for pointing the run context at the right directory first
-        (see :func:`hyrax.context.init_context`).
+        (see :func:`hyrax.context.update_context`).
 
         Parameters
         ----------
@@ -28,12 +28,18 @@ class VectorDB(ABC):
         """
         self.config = config if config else {}
 
-        # Snapshot the directory rather than holding the live run context. A
-        # database object outlives the run that created it - database_connection
-        # hands one back to the user for interactive querying - and subclasses
-        # read this path at query time, long after __init__. Holding the live
-        # context would make a held connection follow whatever verb ran last.
-        self.results_dir: Path = get_context()["results_dir"]
+        # Hold the context of the run that created us. Run contexts are per-run
+        # objects that are released when their verb finishes, so this keeps
+        # pointing at our own database directory however many verbs run later.
+        # That matters because a database object outlives the run that created it
+        # - database_connection hands one back to the user for interactive
+        # querying - and subclasses read results_dir at query time.
+        self.context = get_context()
+
+    @property
+    def results_dir(self) -> Path:
+        """The directory this database lives in."""
+        return self.context["results_dir"]
 
     @abstractmethod
     def connect(self):
