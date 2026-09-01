@@ -15,6 +15,7 @@ with warnings.catch_warnings():
 from collections.abc import Iterator, Sequence
 
 import torch
+import torch.multiprocessing as mp
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
@@ -343,6 +344,13 @@ def dist_data_loader(
         else None
     )
 
+    # Enforce the fork start method for worker processes to avoid issues with CUDA in
+    # child processes. ``multiprocessing_context`` is only valid when multi-process
+    # loading is actually requested (num_workers > 0) - passing it otherwise raises
+    # a ValueError from the underlying DataLoader.
+    if data_loader_kwargs.get("num_workers", 0) > 0:
+        data_loader_kwargs["multiprocessing_context"] = mp.get_context("fork")
+
     return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
 
@@ -542,6 +550,15 @@ def create_validator(
         logger.debug(f"Validation metrics: {validator.state.output}")
         model.final_validation_metrics = validator.state.output
 
+    @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_validate_post_epoch_hooks(validator):
+        hook = getattr(model, "validate_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("validate_post_epoch is not supported for distributed training yet.")
+        hook()
+
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
         with torch.no_grad():
@@ -549,7 +566,7 @@ def create_validator(
 
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
-        for m in trainer.state.output:
+        for m in validator.state.output:
             tensorboardx_logger.add_scalar(f"training/validation/{m}", validator.state.output[m], step)
             mlflow.log_metrics({f"validation/{m}": validator.state.output[m]}, step=step)
 
@@ -604,6 +621,15 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
             return original_run(data, *args, **kwargs)
 
     tester.run = run_with_no_grad
+
+    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_test_post_epoch_hooks(tester):
+        hook = getattr(model, "test_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("test_post_epoch is not supported for distributed use yet.")
+        hook()
 
     @tester.on(Events.COMPLETED)
     def log_test_metrics(engine):
@@ -766,6 +792,15 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
         for m in trainer.state.output:
             tensorboardx_logger.add_scalar(f"training/training/{m}", trainer.state.output[m], step)
             mlflow.log_metrics({f"training/{m}": trainer.state.output[m]}, step=step)
+
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_training_post_epoch_hooks(trainer):
+        hook = getattr(model, "train_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("train_post_epoch is not supported for distributed training yet.")
+        hook()
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss(trainer):

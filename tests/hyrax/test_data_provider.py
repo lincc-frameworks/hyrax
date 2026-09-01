@@ -843,6 +843,33 @@ def test_custom_collate_field_function_applied(custom_field_collate_data_provide
     assert isinstance(collated_batch["object_id"], np.ndarray)
 
 
+def test_custom_collate_function_fails_gracefully(custom_collate_data_provider):
+    """Test that DataProvider correctly raises an error when a custom collate function
+    fails during the DataProvider.collate method.
+    """
+
+    dp = custom_collate_data_provider
+
+    # Create a batch of samples
+    batch_size = len(dp)
+    batch = [dp[i] for i in range(batch_size)]
+
+    # Patch the custom collate function to raise an exception
+    def failing_collate(batch):
+        raise RuntimeError("Custom collate function failed.")
+
+    dp.custom_collate_functions["random_0"] = failing_collate
+
+    # Collate the batch and expect a RuntimeError
+    with pytest.raises(RuntimeError) as excinfo:
+        dp.collate(batch)
+
+    # test that the error message contains the dataset name
+    assert "random_0" in str(excinfo.value)
+    # test that the error message contains the collation function name
+    assert "failing_collate" in str(excinfo.value)
+
+
 def test_object_id_is_string():
     """Ensure that the object_id field is returned as a string at the top level of
     the sample, even if the dataset's get_object_id method returns an int. And
