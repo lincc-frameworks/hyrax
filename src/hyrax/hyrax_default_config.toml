@@ -151,6 +151,41 @@ gaussian_blur_sigma_range = [0.1, 2.0]
 output_classes = 10
 
 
+[model.HyraxTs2Vec]
+# The length of the representation vector produced for each object. This is the
+# width of the latent space that `reduce_dimensions` will consume.
+output_dims = 320
+
+# The channel width inside the dilated convolution encoder.
+hidden_dims = 64
+
+# The number of residual blocks in the encoder. Dilation doubles each block, so the
+# receptive field grows as 2**depth; keep 2**depth at or above the sequence length.
+depth = 10
+
+# How timestamps are masked during training, the augmentation the contrastive loss
+# learns from. Options: "binomial", "continuous", "all_true", "all_false", "mask_last".
+# Masking is disabled automatically during inference.
+mask_mode = "binomial"
+
+# The hierarchy level below which the temporal contrastive term is skipped. Also sets the
+# shortest allowed crop, 2**(temporal_unit + 1), and so the shortest usable sequence.
+temporal_unit = 0
+
+# Weight on the instance-contrastive loss term; (1 - alpha) weights the temporal term.
+alpha = 0.5
+
+# Learning rate for the AdamW optimizer this model builds for itself. HyraxTs2Vec does not
+# use [optimizer]; TS2Vec is specified on AdamW, not the Hyrax default of SGD.
+learning_rate = 0.001
+
+# How per-timestamp representations are pooled into the inference output.
+#   "full_series" -> max-pool the whole series to one vector per object, shape
+#                    (batch, output_dims). This is what `reduce_dimensions` expects.
+#   "multiscale"  -> concatenate max-pools at several scales, keeping the time axis.
+encoding_window = "full_series"
+
+
 [criterion]
 # The name of the built-in criterion to use or the import path to an external criterion
 name = "torch.nn.CrossEntropyLoss"
@@ -425,6 +460,91 @@ credentials_file = false
 [data_set.KafkaStreamDataset.consumer_options]
 
 
+[data_set.LSDBStreamDataset]
+# Which lsdb stream to build over the catalog:
+#   "catalog"  -> lsdb.streams.CatalogStream, a single finite pass over every partition.
+#                 Best for inference: every object is visited exactly once and the run
+#                 ends on its own when the catalog is exhausted.
+#   "infinite" -> lsdb.streams.InfiniteStream, endless random resampling of partitions.
+#                 Best for training: batches keep arriving until you stop the session,
+#                 so training is not bounded by a single pass over the catalog.
+stream_type = "catalog"
+
+# Number of HATS partitions computed per chunk. Larger values amortize per-chunk dask
+# overhead but hold more rows in memory; lsdb clips this to the catalog's partition count.
+# With a dask client attached, set this to at least twice the worker count so a single
+# chunk can occupy the whole cluster.
+partitions_per_chunk = 1
+
+# Hand lsdb an active dask.distributed Client. lsdb submits the next chunk's future before
+# returning the current one, so with a client the next chunk computes in the background
+# while Hyrax trains on this one; with no client it computes inline and every fetch blocks.
+# Hyrax attaches to whatever client is already active, so create one before starting the
+# run. Client(processes=False) is usually the right choice on a single machine: it still
+# gives real futures, but keeps results in-process instead of serializing every chunk back
+# from a worker.
+use_dask_client = true
+
+# Explicit dask scheduler address, e.g. "tcp://127.0.0.1:8786". When false, the active
+# client is used if there is one, and the stream runs synchronously if there is not.
+dask_client_address = false
+
+# Chunks a background thread fetches and decodes ahead of the consumer. This is independent
+# of `use_dask_client` and stacks with it: the client overlaps one chunk's computation, this
+# buffers several finished chunks and also moves the row decoding off the training thread.
+# Each buffered chunk holds `partitions_per_chunk` partitions of decoded rows in memory, so
+# raise it only as far as memory allows. Set to 0 or false to fetch synchronously.
+prefetch_chunks = 2
+
+# Shuffle the partition order and the rows within each chunk. Ignored (and always on)
+# when stream_type = "infinite"; lsdb's InfiniteStream does not accept this option.
+shuffle = true
+
+# Random seed for partition/row shuffling. Set to false for fresh entropy each run.
+seed = false
+
+# Extra keyword arguments passed directly to lsdb.open_catalog. Ignored when
+# data_location is an "lsdb://<name>" reference to a pre-registered catalog.
+[data_set.LSDBStreamDataset.open_catalog_kwargs]
+
+
+[data_set.LightCurveLSDBStreamDataset]
+# Nested light-curve columns are exposed as "<column>_<subcolumn>", so these are the
+# flattened names, not the dotted ones. Defaults follow LSST naming; change them to match
+# whatever catalog you stream, and list the same names in the data request's `fields`.
+time_field = "lightcurve_midpointMjdTai"
+flux_field = "lightcurve_psfFlux"
+flux_err_field = "lightcurve_psfFluxErr"
+
+# Set to `false` for a single-band survey such as TESS or Kepler, which has no band column.
+# The one-hot band block is then dropped and `bands` is ignored, leaving 3 channels.
+band_field = "lightcurve_band"
+
+# The bands to encode, in one-hot channel order. Sets the width of the band block, so the
+# model's input width is 3 + len(bands). Observations in any other band are kept but get an
+# all-zero band indicator and a warning. Integer band codes are read as indices into this
+# list. Extend this when a cross-match brings in additional filters.
+bands = ["u", "g", "r", "i", "z", "y"]
+
+# Observations kept per object. Curves longer than this are truncated to their earliest
+# observations; shorter ones are zero-padded and masked off. This fixes the time axis, so
+# every batch has the same shape.
+max_sequence_length = 256
+
+# Per-object flux normalization, applied to the flux and its error on a shared scale.
+#   "median_mad" -> subtract the median, divide by 1.4826 * MAD (robust to outbursts)
+#   "zscore"     -> subtract the mean, divide by the standard deviation
+#   false        -> leave raw fluxes alone
+# Raw fluxes span orders of magnitude across bands and objects, and TS2Vec applies no
+# normalization of its own, so disabling this will usually stall training.
+normalize = "median_mad"
+
+# The stream itself - stream_type, partitions_per_chunk, shuffle, seed - is configured in
+# [data_set.LSDBStreamDataset] above, which the parent class reads by literal name so that
+# subclasses share one block. Use stream_type = "infinite" for training and "catalog" for
+# inference.
+
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
@@ -441,6 +561,28 @@ model_weights_file = false
 
 # Save the results of inference in the timestamped result directory.
 save_model_output = false
+
+
+[train_stream]
+# Path to warm-start weights to fine-tune from. If false, train from scratch.
+model_weights_file = false
+
+# Filename for saved weights within the timestamped results directory.
+weights_filename = "example_model.pth"
+
+# Persist weights every N processed batches (checkpointing for open-ended streams).
+# If false, weights are saved only on session close.
+save_weights_every = false
+
+# MLflow experiment name (mirrors [train]).
+experiment_name = "notebook"
+
+# MLflow run name; if false, falls back to the results-directory name (mirrors [train]).
+run_name = false
+
+# Skip streaming batches with fewer than this many samples (e.g. tiny timeout batches).
+# If false, every non-empty batch is trained on.
+min_batch_size = false
 
 
 [vector_db]

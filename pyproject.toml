@@ -65,6 +65,7 @@ dependencies = [
     "pyarrow", # Used by lancedb for data interchange
     "pylance", # Used by lancedb for Lance dataset access
     "confluent-kafka", # Kafka consumer used by KafkaStreamDataset
+    "lsdb", # HATS catalog access, used by the HATS, LSST, and LSDB-stream dataset classes
 ]
 
 [project.scripts]
@@ -97,7 +98,6 @@ dev = [
     "sphinx-copybutton",
     "sphinx-togglebutton",
     "sphinx-rtd-theme",
-    "lsdb", # Used to test lsst dataset classes
 ]
 
 [build-system]

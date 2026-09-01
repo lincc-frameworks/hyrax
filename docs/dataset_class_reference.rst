@@ -268,6 +268,75 @@ Complete minimal class
            return str(idx)
 
 
+Streaming datasets
+------------------
+
+Everything above describes a *map-style* dataset: Hyrax knows how many objects
+there are and can ask for any one of them by index. A live alert stream or a
+catalog too large to index does not work that way, so Hyrax has a second, much
+smaller contract for **streaming** datasets.
+
+A streaming dataset inherits from ``torch.utils.data.IterableDataset`` in addition
+to ``HyraxDataset``, and Hyrax routes it to the ``train_stream`` and
+``infer_stream`` verbs instead of ``train``/``infer``:
+
+.. code-block:: python
+
+   import torch
+   from hyrax.datasets import HyraxDataset
+
+
+   class MyStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
+       def __init__(self, config, data_location=None):
+           ...
+           super().__init__(config, metadata_table=None)
+
+There are no ``get_<field>`` methods. Instead you implement four things:
+
+* ``__iter__(self)`` - a generator yielding **batches**, each a ``list`` of flat
+  ``dict``s mapping field name to value, for example
+  ``[{"object_id": "abc", "flux": [...]}, ...]``. The dataset owns batching,
+  because a ``DataLoader`` cannot emit a partial batch when data stops arriving.
+* ``peek_sample(self)`` - return one flat sample ``dict`` **without losing it**.
+  Hyrax uses this to build the model before training starts, and the sample must
+  still show up in the first batch.
+* ``stop(self)`` - signal ``__iter__`` to finish. Called when the session closes.
+* ``__len__(self)`` - must exist, but should raise ``TypeError``; a stream has no
+  length.
+
+Pulling the object id out of each sample and grouping the model input fields is
+handled for you by ``StreamingDataProvider``, driven by the same ``data_request``
+``primary_id_field`` and ``fields`` keys used everywhere else. Your dataset just
+emits flat dicts. ``collate_<field>`` hooks work exactly as they do above.
+
+Streams always run with ``num_workers = 0``, because a plain ``IterableDataset``
+does no sharding across worker processes - with several workers each would open
+its own stream and every object would be seen more than once.
+
+That also means PyTorch's ``prefetch_factor`` does nothing for a stream: with no
+worker processes there is nothing running ahead of the training loop, so by
+default the GPU sits idle for the whole of every fetch. A streaming dataset that
+reads from anywhere slow has to hide that latency itself.
+:class:`~hyrax.datasets.lsdb_stream_dataset.LSDBStreamDataset` does it two ways,
+and its module docstring is the reference for both: it hands lsdb an active
+``dask.distributed`` client so chunk computation is asynchronous, and it runs a
+background thread (``prefetch_chunks``) that keeps finished chunks queued and
+moves row decoding off the consumer's thread.
+
+Prefetching is not free to bolt on to any stream. It is only safe where fetching
+ahead of the consumer has no side effects, and where rows fetched but never
+delivered can be handed back rather than dropped - otherwise a consumer that
+stops early silently loses data.
+:class:`~hyrax.datasets.kafka_stream_dataset.KafkaStreamDataset` deliberately does
+**not** prefetch: it commits offsets only when the generator is resumed, so
+running ahead would break its at-least-once delivery guarantee.
+
+Two streaming datasets ship with Hyrax:
+:class:`~hyrax.datasets.kafka_stream_dataset.KafkaStreamDataset` for live alert
+streams, and :class:`~hyrax.datasets.lsdb_stream_dataset.LSDBStreamDataset` for
+HATS catalogs read through LSDB. Read either one as a worked example.
+
+
 Notebook-first path
 -------------------
 

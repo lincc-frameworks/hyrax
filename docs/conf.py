@@ -116,6 +116,7 @@ nitpick_ignore_regex = [
     (r"^py:.*", r"^pd\..*"),
     (r"^py:.*", r"^threading\..*"),
     (r"^py:.*", r"^enum\..*"),
+    (r"^py:.*", r"^lsdb\..*"),
     (r"^py:class", r"^butler$"),
     # Types and idiomatic ways we document types
     (r"^py:.*", r"^pydantic\.BaseModel$"),
