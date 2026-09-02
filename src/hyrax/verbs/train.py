@@ -7,6 +7,7 @@ import torch
 from colorama import Back, Fore, Style
 
 from hyrax.config_utils import create_results_dir, log_runtime_config
+from hyrax.context import update_context
 from hyrax.gpu_monitor import GpuMonitor
 from hyrax.pytorch_ignite import (
     Events,
@@ -107,6 +108,17 @@ class Train(Verb):
     # this used to be a nested method inside run() without any args except rank (needed for idist.Parallel)
     @staticmethod
     def _training(rank, model, dataset, config, results_dir):
+        # idist.Parallel spawns fresh processes, so the run context established in run()
+        # is absent in the child ranks. Repopulate it here, where every rank passes.
+        # On the single-process path this writes into the context run() installed, so
+        # anything a model stashed there during setup_model survives. In a spawned rank
+        # it fills that process's empty context, which needs no release because the
+        # process exits when training finishes.
+        update_context(
+            results_dir=results_dir,
+            verb="train",
+        )
+
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"

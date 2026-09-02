@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from hyrax.config_utils import find_most_recent_results_dir
@@ -222,3 +224,19 @@ def test_test_saves_weights_file(loopback_hyrax_map_only, tmp_path):
     # Verify that test_weights.pth was saved
     weights_file = test_results_dir / "test_weights.pth"
     assert weights_file.exists(), f"Expected weights file at {weights_file} does not exist"
+
+
+def test_model_writes_to_results_dir_during_test(context_writing_loopback):
+    """The same pattern via test_post_epoch, which lands in the test results dir."""
+    h = context_writing_loopback
+    h.config["test"]["model_weights_file"] = h.config["infer"]["model_weights_file"]
+
+    h.test()
+
+    results_dir = find_most_recent_results_dir(h.config, "test")
+    notes_file = results_dir / "my_notes.json"
+    assert notes_file.exists()
+
+    notes = json.loads(notes_file.read_text())
+    assert notes["verb"] == "test"
+    assert notes["batches_seen"] > 0

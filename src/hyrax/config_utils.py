@@ -648,6 +648,8 @@ def create_results_dir(config: dict, postfix: str) -> Path:
     Path
         The path created by this function
     """
+    from hyrax.context import update_context
+
     results_root = Path(config["general"]["results_dir"]).expanduser().resolve()
     # This date format is chosen specifically to create a lexical search order
     # which matches the date order.
@@ -657,6 +659,7 @@ def create_results_dir(config: dict, postfix: str) -> Path:
     random_str = base64.urlsafe_b64encode(random.randbytes(3)).decode("ascii")
     directory = results_root / f"{timestamp}-{postfix}-{random_str}"
     directory.mkdir(parents=True, exist_ok=False)
+    update_context(results_dir=directory, verb=postfix)
     return directory
 
 

@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from hyrax.config_utils import find_most_recent_results_dir
@@ -512,3 +514,19 @@ def test_train_default_model_weights_file_is_false(loopback_hyrax):
     # Training should succeed without any weights file
     model = h.train()
     assert model is not None
+
+
+def test_model_writes_to_results_dir_during_train(context_writing_loopback):
+    """End-to-end: a model uses the run context to save its own artifact into the
+    train results directory."""
+    h = context_writing_loopback
+
+    h.train()
+
+    results_dir = find_most_recent_results_dir(h.config, "train")
+    notes_file = results_dir / "my_notes.json"
+    assert notes_file.exists()
+
+    notes = json.loads(notes_file.read_text())
+    assert notes["verb"] == "train"
+    assert notes["batches_seen"] > 0

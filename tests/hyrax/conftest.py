@@ -5,9 +5,23 @@ import numpy as np
 import pytest
 
 import hyrax
+from hyrax.context import clear_context
 from hyrax.datasets.data_provider import DataProvider
 
 logger = logging.getLogger(__name__)
+
+
+@pytest.fixture(autouse=True)
+def clean_context():
+    """Keep the run context from leaking between tests.
+
+    Verbs release their own context, but tests that populate one directly - the
+    vector database tests point one at a tmp_path - would otherwise leave it set
+    for whatever runs next in the same worker.
+    """
+    clear_context()
+    yield
+    clear_context()
 
 
 def pytest_configure(config):
@@ -244,3 +258,102 @@ def custom_field_collate_data_provider(multimodal_config):
 
     yield dp
     delattr(HyraxRandomDataset, "collate_image")
+
+
+@pytest.fixture(scope="function")
+def context_writing_loopback(loopback_hyrax):
+    """Use the loopback_hyrax fixture as a starting point and then create a
+    context-writing loopback model on top of that."""
+    import json
+
+    import torch.nn as nn
+
+    from hyrax.context import get_context
+    from hyrax.models.model_registry import hyrax_model
+
+    @hyrax_model
+    class ContextWritingLoopback(nn.Module):
+        """A loopback model that persists something of its own to the results dir.
+
+        Defined at module scope so it survives the pickling that distributed training
+        and the model registry perform.
+        """
+
+        def __init__(self, config, data_sample=None):
+            from functools import partial
+
+            super().__init__()
+            self.config = config
+            self.unused_module = nn.Linear(1, 1)
+            self.batches_seen = 0
+
+            def load(self, weight_file):
+                """This model has no meaningful weights, so loading is a noop."""
+                pass
+
+            # Overridden this way rather than as a method because Torch's __init__
+            # cleverness stomps a load defined in the usual fashion. Same trick as
+            # HyraxLoopback.
+            self.load = partial(load, self)
+
+        def forward(self, x):
+            """Return the input unchanged."""
+            if isinstance(x, (tuple, list)):
+                x, _ = x
+            return x
+
+        def train_batch(self, batch):
+            """Training is a noop; just count the batch."""
+            self.forward(batch)
+            self.batches_seen += 1
+            return {"loss": 0.0}
+
+        def validate_batch(self, batch):
+            """Validation is a noop."""
+            self.forward(batch)
+            return {"loss": 0.0}
+
+        def infer_batch(self, batch):
+            """Inference is just a forward pass."""
+            return self.forward(batch)
+
+        def test_batch(self, batch):
+            """Testing is a noop; just count the batch."""
+            self.forward(batch)
+            self.batches_seen += 1
+            return {"loss": 0.0}
+
+        def train_post_epoch(self):
+            """Persist something that does not fit the TensorBoard/MLflow paradigm."""
+            self._write_notes()
+
+        def test_post_epoch(self):
+            """Same, at the end of the test pass."""
+            self._write_notes()
+
+        def _write_notes(self):
+            """Write accumulated state into the results dir of the run underway.
+
+            Read the context here rather than stashing a handle in __init__: this is
+            the form that reports the right rank under distributed training, where a
+            handle taken in the parent is pickled into each child as a stale copy.
+            """
+            context = get_context()
+            outfile = context["results_dir"] / "my_notes.json"
+            with open(outfile, "w") as f:
+                json.dump({"batches_seen": self.batches_seen, "verb": context["verb"]}, f)
+
+        @staticmethod
+        def prepare_inputs(data_dict):
+            """Simple input prep, matching HyraxLoopback."""
+            import numpy as np
+
+            data = data_dict.get("data")
+            image = data.get("image", np.array([], dtype=np.float32))
+            label = data.get("label", np.array([], dtype=np.float32))
+            return (image, label)
+
+    h, _ = loopback_hyrax
+    h.config["model"]["name"] = "ContextWritingLoopback"
+
+    return h
