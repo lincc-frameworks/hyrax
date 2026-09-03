@@ -39,7 +39,7 @@ class Train(Verb):
     # REQUIRED_DATA_GROUPS must be present in the dataset dict returned by setup_dataset.
     # OPTIONAL_DATA_GROUPS are used when present but do not cause an error if absent.
     REQUIRED_DATA_GROUPS = ("train",)
-    OPTIONAL_DATA_GROUPS = ("validate", "test")
+    OPTIONAL_DATA_GROUPS = ("validate",)
 
     @staticmethod
     def setup_parser(parser):
