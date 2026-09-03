@@ -572,6 +572,11 @@ def create_validator(
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
+    @trainer.on(Events.EXCEPTION_RAISED)
+    def handle_exception(trainer, exception):
+        logger.error(f"Exception occurred during training: {exception}")
+        trainer.terminate()
+
     validator.hyrax_label = "validator"
     return validator
 
