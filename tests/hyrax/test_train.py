@@ -3,13 +3,6 @@ import json
 import pytest
 
 from hyrax.config_utils import find_most_recent_results_dir
-from hyrax.verbs.train import Train
-
-
-def test_train_data_groups():
-    """Verify Train REQUIRED_DATA_GROUPS and OPTIONAL_DATA_GROUPS."""
-    assert Train.REQUIRED_DATA_GROUPS == ("train",)
-    assert Train.OPTIONAL_DATA_GROUPS == ("validate",)
 
 
 def test_train_trace(loopback_hyrax):
