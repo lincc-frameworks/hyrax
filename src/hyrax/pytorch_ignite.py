@@ -574,7 +574,10 @@ def create_validator(
 
     @trainer.on(Events.EXCEPTION_RAISED)
     def handle_exception(trainer, exception):
-        logger.error(f"Exception occurred during training: {exception}")
+        logger.warning(f"Exception occurred during training: {exception}")
+
+        # calling trainer.terminate here will attempt to spin down the training
+        # engine so that it is able to save its state properly.
         trainer.terminate()
 
     validator.hyrax_label = "validator"
@@ -936,3 +939,13 @@ def fixup_engine(engine: Engine):
         # On the last iteration the peekable iterator evaluates as true
         if not engine._dataloader_iter:
             engine.fire_event(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+
+
+class EarlyStopping(Exception):  # noqa: N818
+    """Raised when validation metrics stop improving to prevent overfitting."""
+
+    def __init__(self, message: str = "Early stopping triggered."):
+        super().__init__(message)
+
+    def __str__(self):
+        return f"EarlyStopping: {self.args[0]}"
