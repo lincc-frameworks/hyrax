@@ -1,6 +1,8 @@
 import logging
 from pathlib import Path
 
+from hyrax.context import get_context, use_context
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -177,13 +179,14 @@ class TrainStreamSession:
         self._model = model
         self._config = config
         self._results_dir = results_dir
-        self._close_logger = close_tensorboard_logger
         self.data_loader = data_loader
         self._provider = provider
         self._closed = False
         self._batch_count = 0
         self._tb_logger = get_tensorboard_logger()
+        self._close_logger = close_tensorboard_logger
         self._best_loss = None
+        self._context = get_context()
 
     def __iter__(self):
         """Iterate the configured data source, training on each batch as it arrives.
@@ -259,9 +262,10 @@ class TrainStreamSession:
                 logger.debug(f"Skipping batch of {num_samples} < min_batch_size ({min_batch_size}).")
                 return None
 
-        result = self._process_func(None, batch)
-        self._batch_count += 1
+        with use_context(self._context):
+            result = self._process_func(None, batch)
 
+        self._batch_count += 1
         self._log_metrics(result)
 
         save_every = self._config["train_stream"]["save_weights_every"]
