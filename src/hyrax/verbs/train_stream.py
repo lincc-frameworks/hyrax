@@ -1,8 +1,6 @@
 import logging
 from pathlib import Path
 
-from hyrax.pytorch_ignite import create_trainer
-
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -103,7 +101,6 @@ class TrainStream(Verb):
 
         device = idist_device()
         process_func = create_process_func("train_batch", device, model, config)
-        trainer = create_trainer(model, config, results_dir)
         # Start an MLflow run that spans the whole session. A stream has no fixed end, so we
         # cannot wrap the training loop in a `with mlflow.start_run()` block the way batch
         # train does; the run stays open across the session and is ended in `close()`.
@@ -126,7 +123,6 @@ class TrainStream(Verb):
             results_dir,
             data_loader=data_loader,
             provider=provider,
-            trainer=trainer,
         )
 
     @staticmethod
@@ -174,7 +170,6 @@ class TrainStreamSession:
         results_dir,
         data_loader=None,
         provider=None,
-        trainer=None,
     ):
         from hyrax.tensorboardx_logger import close_tensorboard_logger, get_tensorboard_logger
 
@@ -189,7 +184,6 @@ class TrainStreamSession:
         self._batch_count = 0
         self._tb_logger = get_tensorboard_logger()
         self._best_loss = None
-        self._trainer = trainer
 
     def __iter__(self):
         """Iterate the configured data source, training on each batch as it arrives.
@@ -215,21 +209,16 @@ class TrainStreamSession:
             yield batch, self.process(batch)
 
     def _batch_num_samples(self, batch) -> int | None:
-        """Return the number of samples in a collated batch, or ``None`` if unknown."""
+        """Return the number of samples in a collated batch, or ``None`` if unknown.
+        `batch` should always be a dictionary at this point in the pipeline. And
+        the key ``"object_id"`` is added by Hyrax to track the primary IDs of the samples,
+        so it should always be present as well.
+        """
         if isinstance(batch, dict):
             object_id = batch.get("object_id")
             if object_id is not None:
                 return len(object_id)
         return None
-
-    def getter_batcher(self):
-        """Simple generator yields batches from the data loader for Ignite trainer."""
-        for batch in self.data_loader:
-            yield batch
-
-    def process_with_trainer(self):
-        """Driver function to run the Ignite trainer on the data loader."""
-        self._trainer.run(self.getter_batcher())
 
     def process(self, batch: dict) -> dict | None:
         """Run one training step on a single batch.
@@ -270,7 +259,6 @@ class TrainStreamSession:
                 logger.debug(f"Skipping batch of {num_samples} < min_batch_size ({min_batch_size}).")
                 return None
 
-        # Gradients are required here (unlike inference), so no torch.no_grad().
         result = self._process_func(None, batch)
         self._batch_count += 1
 
@@ -324,6 +312,8 @@ class TrainStreamSession:
 
         # End any in-progress streaming iteration before tearing down.
         self.stop()
+        # Save the current weights and checkpoint if appropriate
+        self.save_weights()
         self.checkpoint()
         self._closed = True
 
@@ -346,7 +336,7 @@ class TrainStreamSession:
         """
         if model_metrics is not None and model_metrics.get("loss") is not None:
             current_loss = model_metrics["loss"]
-            if self._best_loss and current_loss >= self._best_loss:
+            if self._best_loss is not None and current_loss >= self._best_loss:
                 logger.info(
                     f"Checkpoint skipped: current loss {current_loss} >= previous best {self._best_loss}."
                 )
