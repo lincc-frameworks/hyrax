@@ -81,6 +81,10 @@ class TrainStream(Verb):
             raise ValueError(
                 "No [data_request.train_stream] group found. Configure it with a streaming dataset_class."
             )
+
+        # Create a timestamped results directory and start logging.
+        results_dir = create_results_dir(config, "train_stream")
+
         # Pre-flight the model from the stream (peeks one sample without losing it).
         model = setup_model(config, provider)
         data_loader = dist_data_loader(provider, config)
@@ -96,8 +100,6 @@ class TrainStream(Verb):
             load_model_weights(config, model, "train_stream")
             logger.info(f"Loaded warm-start weights: {config['train_stream']['model_weights_file']}")
 
-        # Create a timestamped results directory and start logging.
-        results_dir = create_results_dir(config, "train_stream")
         init_tensorboard_logger(log_dir=results_dir)
         log_runtime_config(config, results_dir)
 
