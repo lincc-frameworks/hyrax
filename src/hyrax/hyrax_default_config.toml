@@ -425,6 +425,54 @@ credentials_file = false
 [data_set.KafkaStreamDataset.consumer_options]
 
 
+[data_set.LSDBStreamDataset]
+# Which lsdb stream to build over the catalog:
+#   "catalog"  -> lsdb.streams.CatalogStream, a single finite pass over every partition.
+#                 Best for inference: every object is visited exactly once and the run
+#                 ends on its own when the catalog is exhausted.
+#   "infinite" -> lsdb.streams.InfiniteStream, endless random resampling of partitions.
+#                 Best for training: batches keep arriving until you stop the session,
+#                 so training is not bounded by a single pass over the catalog.
+stream_type = "catalog"
+
+# Number of HATS partitions computed per chunk. Larger values amortize per-chunk dask
+# overhead but hold more rows in memory; lsdb clips this to the catalog's partition count.
+# With a dask client attached, set this to at least twice the worker count so a single
+# chunk can occupy the whole cluster.
+partitions_per_chunk = 2
+
+# Hand lsdb an active dask.distributed Client. lsdb submits the next chunk's future before
+# returning the current one, so with a client the next chunk computes in the background
+# while Hyrax trains on this one; with no client it computes inline and every fetch blocks.
+# Hyrax attaches to whatever client is already active, so create one before starting the
+# run. Client(processes=False) is usually the right choice on a single machine: it still
+# gives real futures, but keeps results in-process instead of serializing every chunk back
+# from a worker.
+use_dask_client = true
+
+# Explicit dask scheduler address, e.g. "tcp://127.0.0.1:8786". When false, the active
+# client is used if there is one, and the stream runs synchronously if there is not.
+dask_client_address = false
+
+# Chunks a background thread fetches and decodes ahead of the consumer. This is independent
+# of `use_dask_client` and stacks with it: the client overlaps one chunk's computation, this
+# buffers several finished chunks and also moves the row decoding off the training thread.
+# Each buffered chunk holds `partitions_per_chunk` partitions of decoded rows in memory, so
+# raise it only as far as memory allows. Set to 0 or false to fetch synchronously.
+prefetch_chunks = 2
+
+# Shuffle the partition order and the rows within each chunk. Ignored (and always on)
+# when stream_type = "infinite"; lsdb's InfiniteStream does not accept this option.
+shuffle = true
+
+# Random seed for partition/row shuffling. Set to false for fresh entropy each run.
+seed = false
+
+# Extra keyword arguments passed directly to lsdb.open_catalog. Ignored when
+# data_location is an "lsdb://<name>" reference to a pre-registered catalog.
+[data_set.LSDBStreamDataset.open_catalog_kwargs]
+
+
 [data_loader]
 # The number of data points to load at once.
 batch_size = 512
