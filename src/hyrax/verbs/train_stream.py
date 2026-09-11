@@ -59,6 +59,7 @@ class TrainStream(Verb):
         from pathlib import Path
 
         import mlflow
+        from ignite.distributed import auto_model
         from ignite.distributed import device as idist_device
 
         from hyrax.config_utils import create_results_dir, log_runtime_config
@@ -85,40 +86,57 @@ class TrainStream(Verb):
         # Create a timestamped results directory and start logging.
         results_dir = create_results_dir(config, "train_stream")
 
-        # Pre-flight the model from the stream (peeks one sample without losing it).
-        model = setup_model(config, provider)
-        data_loader = dist_data_loader(provider, config)
+        # From this point on, the provider/data stream is live (setup_model peeks a sample).
+        # If any subsequent setup step raises, no caller will get a session to call close()
+        # on, so we must tear down the provider ourselves to avoid leaking the connection.
+        try:
+            model = setup_model(config, provider)
+            data_loader = dist_data_loader(provider, config)
 
-        # Put the model in training mode.
-        model.train()
+            # Put the model in training mode, and place it on the correct device
+            model.train()
+            model = auto_model(model)
 
-        # If a warm-start weights file is specified, load it before wrapping the model with
-        # idist.auto_model (the distributed wrapper) to avoid parameter key name mismatches.
-        if config["train_stream"]["model_weights_file"]:
-            from hyrax.models.model_utils import load_model_weights
+            # If a warm-start weights file is specified, load it before wrapping the model with
+            # idist.auto_model (the distributed wrapper) to avoid parameter key name mismatches.
+            if config["train_stream"]["model_weights_file"]:
+                from hyrax.models.model_utils import load_model_weights
 
-            load_model_weights(config, model, "train_stream")
-            logger.info(f"Loaded warm-start weights: {config['train_stream']['model_weights_file']}")
+                load_model_weights(config, model, "train_stream")
+                logger.info(f"Loaded warm-start weights: {config['train_stream']['model_weights_file']}")
 
-        init_tensorboard_logger(log_dir=results_dir)
-        log_runtime_config(config, results_dir)
+            init_tensorboard_logger(log_dir=results_dir)
+            log_runtime_config(config, results_dir)
 
-        device = idist_device()
-        process_func = create_process_func("train_batch", device, model, config)
-        # Start an MLflow run that spans the whole session. A stream has no fixed end, so we
-        # cannot wrap the training loop in a `with mlflow.start_run()` block the way batch
-        # train does; the run stays open across the session and is ended in `close()`.
-        results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-        (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
-        mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
-        mlflow.set_experiment(str(config["train_stream"]["experiment_name"]))
-        run_name = (
-            str(config["train_stream"]["run_name"])
-            if config["train_stream"]["run_name"]
-            else results_dir.name
-        )
-        mlflow.start_run(log_system_metrics=True, run_name=run_name)
-        TrainStream._log_params(config, results_dir)
+            device = idist_device()
+            process_func = create_process_func("train_batch", device, model, config)
+            # Start an MLflow run that spans the whole session. A stream has no fixed end, so we
+            # cannot wrap the training loop in a `with mlflow.start_run()` block the way batch
+            # train does; the run stays open across the session and is ended in `close()`.
+            results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
+            (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
+            mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
+            mlflow.set_experiment(str(config["train_stream"]["experiment_name"]))
+            run_name = (
+                str(config["train_stream"]["run_name"])
+                if config["train_stream"]["run_name"]
+                else results_dir.name
+            )
+            mlflow.start_run(log_system_metrics=True, run_name=run_name)
+            TrainStream._log_params(config, results_dir)
+        except Exception:
+            # End the MLFlow run, if it was going
+            if mlflow.active_run() is not None:
+                mlflow.end_run()
+
+            # Shut down the data provider
+            close = getattr(provider, "close", None)
+            if callable(close):
+                try:
+                    close()
+                except Exception:
+                    logger.exception("Error closing provider after failed train_stream setup")
+            raise
 
         return TrainStreamSession(
             process_func,
@@ -318,9 +336,7 @@ class TrainStreamSession:
 
         # End any in-progress streaming iteration before tearing down.
         self.stop()
-        # Save the current weights and checkpoint if appropriate
-        self.save_weights()
-        self.checkpoint()
+        self.checkpoint()  # always saved because no model_metric is provided
         self._closed = True
 
         import mlflow
