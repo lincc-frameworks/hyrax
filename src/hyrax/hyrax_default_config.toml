@@ -443,6 +443,28 @@ model_weights_file = false
 save_model_output = false
 
 
+[train_stream]
+# The name of the file where the model weights will be saved.
+weights_filename = "example_model.pth"
+
+# Path to a pre-trained model weights file to warm-start training. If `false`,
+# training starts from randomly initialized weights.
+model_weights_file = false
+
+# The name of the experiment when logging training results to mlflow.
+experiment_name = "notebook"
+
+# The name of the run when logging training results to mlflow.
+# If false, uses result directory string, <timestamp>-train_stream-<uid>, as run name.
+run_name = false
+
+# Save model weights every N processed batches. If `false`, weights are only saved on close().
+save_weights_every = false
+
+# Batches smaller than this are skipped rather than trained on. If `false`, no minimum.
+min_batch_size = false
+
+
 [vector_db]
 # The type of vector db to use. Use "false" to disable vector database.
 name = "chromadb"
