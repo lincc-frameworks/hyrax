@@ -241,6 +241,9 @@ class TrainStreamSession:
             object_id = batch.get("object_id")
             if object_id is not None:
                 return len(object_id)
+            else:
+                logger.error("Batch dictionary does not contain 'object_id' key.")
+                raise KeyError("Batch dictionary does not contain 'object_id' key.")
         return None
 
     def process(self, batch: dict) -> dict | None:

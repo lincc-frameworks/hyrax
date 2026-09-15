@@ -193,6 +193,17 @@ def test_empty_batch_is_skipped(tmp_path):
     assert calls == []
 
 
+def test_missing_object_id_logs_error_and_raises(tmp_path, caplog):
+    """A batch dict without 'object_id' logs an error and raises KeyError."""
+    session = _manual_session(tmp_path, lambda engine, batch: {"loss": 1.0})
+
+    with caplog.at_level("ERROR"):
+        with pytest.raises(KeyError, match="object_id"):
+            session.process({"image": [[1.0]]})
+
+    assert "Batch dictionary does not contain 'object_id' key." in caplog.text
+
+
 def test_min_batch_size_skips_small_batches(tmp_path):
     """Batches smaller than min_batch_size are skipped; larger ones are trained."""
     calls = []
@@ -371,31 +382,6 @@ def test_non_dict_training_result_is_returned_without_logging(tmp_path):
     assert spy.scalars == []
 
 
-# NOTE: I'm unsure if this test is useful. All batches should be a dictionary and
-# should have an "object_id" key that is inserted by Hyrax. So the branch of code
-# this is testing should never happen in practice.
-@pytest.mark.parametrize(
-    "batch",
-    [
-        pytest.param({"data": [1, 2, 3]}, id="dict-without-object-id"),
-        pytest.param(("image_tensor", "label_tensor"), id="non-dict-batch"),
-    ],
-)
-def test_batches_of_unknown_size_are_always_trained(tmp_path, batch):
-    """When the sample count cannot be read from the batch, min_batch_size cannot skip it."""
-    calls = []
-
-    def process_func(engine, batch):
-        calls.append(batch)
-        return {"loss": 1.0}
-
-    session = _manual_session(tmp_path, process_func, min_batch_size=8)
-
-    assert session.process(batch) == {"loss": 1.0}
-    assert calls == [batch]
-
-
-# NOTE: I'm unsure if this test is useful for that same reason as the previous one.
 def test_skipped_batches_do_not_advance_the_save_counter(tmp_path):
     """save_weights_every counts trained batches, not batches offered to the session."""
     session = _manual_session(
