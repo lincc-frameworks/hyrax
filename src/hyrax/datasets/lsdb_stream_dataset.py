@@ -18,12 +18,8 @@ buffers rows across chunks and splits large chunks, so every yielded batch holds
 ``[data_loader] batch_size`` rows. Only the final batch, emitted when a finite stream is
 exhausted or ``stop()`` is called, may be short.
 
-**Specifying the catalog.** ``data_location`` is either a HATS path/URL, which is opened
-with ``lsdb.open_catalog``, or an ``lsdb://<name>`` handle referring to an in-memory
-catalog registered with ``register_catalog()``. The registry exists because derived
-catalogs (``gaia.crossmatch(tess).query(...)``) only live in memory and cannot be placed in
-the config: Hyrax serializes the whole runtime config with ``tomlkit`` when a verb starts,
-which a live ``lsdb.Catalog`` object would break.
+**Specifying the catalog.** ``data_location`` is an ``lsdb://<name>`` handle referring
+to an in-memory catalog registered with ``register_catalog()``.
 
 .. code-block:: python
 
@@ -42,7 +38,7 @@ which a live ``lsdb.Catalog`` object would break.
             "data": {
                 "dataset_class": "LSDBStreamDataset",
                 "data_location": data_location,
-                "primary_id_field": "_healpix_29",
+                "primary_id_field": "gaia_id",
                 "fields": ["ra", "dec", "phot_g_mean_mag"],
             }
         }
@@ -102,10 +98,6 @@ logger = logging.getLogger(__name__)
 
 LSDB_URI_PREFIX = "lsdb://"
 
-# How often the timing breakdown is emitted, in chunks. Purely a logging cadence; the
-# counters themselves are updated on every chunk.
-TIMING_LOG_EVERY_CHUNKS = 20
-
 # Catalogs registered by register_catalog(), keyed by the name used in an "lsdb://<name>"
 # data_location. This is process-local and is not inherited by DataLoader worker processes,
 # which is only safe because dist_data_loader forces num_workers = 0 for iterable datasets.
@@ -116,13 +108,13 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
     """Streams rows from a HATS catalog and yields fixed-size batches.
 
     The stream is configured in ``[data_set.LSDBStreamDataset]``; the catalog itself comes
-    from the ``data_location`` of the data request, either as a HATS path/URL or as an
-    ``lsdb://<name>`` handle into the in-memory catalog registry.
+    from the ``data_location`` of the data request, as an ``lsdb://<name>`` handle
+    of the in-memory catalog registry.
 
     Each row becomes a flat ``dict`` of column name to value (e.g.
-    ``{"_healpix_29": 2787..., "ra": 95.4, "dec": -36.3}``); the wrapping
-    :class:`~hyrax.datasets.streaming_data_provider.StreamingDataProvider` turns each flat
-    sample into the structured form the collation + model machinery expect.
+    ``{"object_id": 2787..., "ra": 95.4, "dec": -36.3}``); the wrapping
+    :class:`~hyrax.datasets.streaming_data_provider.StreamingDataProvider` turns
+    each flat sample into the structured form the collation + model machinery expect.
     """
 
     def __init__(self, config: dict, data_location=None):
@@ -381,10 +373,6 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
             self._exhausted = False
             self._iterator = iter(self._make_stream())
         return self._iterator
-
-    def _convert_chunk(self, chunk) -> list[dict]:
-        """Turn one raw chunk into a list of flat row dicts."""
-        return self._flatten_index(chunk).to_dict(orient="records")
 
     def stop(self):
         """Signal :meth:`__iter__` to flush any pending rows and stop fetching chunks.
