@@ -48,13 +48,11 @@ to an in-memory catalog registered with ``register_catalog()``.
         for batch, results in session:
             ...
 
-.. warning::
-    Nested columns (light curves, spectra) are not supported in this version. A nested
-    column arrives as a per-row sub-DataFrame of varying length, and stacking those into a
-    batch fails in ``numpy`` with "setting an array element with a sequence ...
-    inhomogeneous shape". Request only scalar or fixed-width columns, or define a
-    ``collate_<field>`` method on a subclass to handle the ragged field yourself.
-    Fixed-length nested columns do collate correctly, to shape ``(batch, k, n_columns)``.
+.. note::
+    Nested columns are collated by default. Variable-length nested arrays are padded to the
+    longest row in each batch and accompanied by a ``<field>_mask``; fixed-length nested
+    columns are stacked directly. Define a ``collate_<field>`` method on a subclass when a
+    different representation is needed.
 
 .. warning::
     The stream owns a single in-process iterator, so the loader must run with
