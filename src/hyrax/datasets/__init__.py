@@ -77,6 +77,7 @@ from .nested_pandas_dataset import NestedPandasDataset
 from .lancedb_dataset import LanceDBDataset
 from .kafka_stream_dataset import KafkaStreamDataset
 from .lsdb_stream_dataset import LSDBStreamDataset
+from .lightcurve_lsdb_stream_dataset import LightCurveLSDBStreamDataset
 from .data_cache import DataCache
 
 __all__ = [
@@ -101,5 +102,6 @@ __all__ = [
     "LanceDBDataset",
     "KafkaStreamDataset",
     "LSDBStreamDataset",
+    "LightCurveLSDBStreamDataset",
     "DataCache",
 ]
