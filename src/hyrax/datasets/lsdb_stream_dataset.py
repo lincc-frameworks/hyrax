@@ -194,6 +194,7 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         for nested_column in nested_columns:
             nested_subcols = list(self._catalog[nested_column].columns)
             self._register_nested_getters(nested_column, nested_subcols)
+            self._register_nested_collators(nested_column, nested_subcols)
 
     def _register_getters(self, columns) -> None:
         def _make_getter(field_name: str):
@@ -218,6 +219,32 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
             method_name = f"get_{nested_column}_{subnested_column}"
             if not hasattr(self, method_name):
                 setattr(self, method_name, MethodType(_make_getter(nested_column, subnested_column), self))
+
+    def _register_nested_collators(self, nested_column, nested_subcolumns) -> None:
+        def _make_collator(nested_column: str, subnested_column: str):
+            def collator(self, batch, _nested_name=nested_column, _subnested_name=subnested_column):
+                # Get the length of each subnested array in the batch
+                col_name = f"{_nested_name}_{_subnested_name}"
+                lengths = [len(sample[col_name]) for sample in batch]
+                max_length = max(lengths)
+
+                # Create a padded array and mask with shape (# arrays, max length)
+                padded_batch = np.zeros((len(batch), max_length))
+                mask = np.zeros_like(padded_batch, dtype=bool)
+                for i, sample in enumerate(batch):
+                    padded_batch[i, : lengths[i]] = sample[col_name]
+                    mask[i, : lengths[i]] = True
+                return {
+                    col_name: padded_batch,
+                    f"{col_name}_mask": mask,
+                }
+
+            return collator
+
+        for subnested_column in nested_subcolumns:
+            method_name = f"collate_{nested_column}_{subnested_column}"
+            if not hasattr(self, method_name):
+                setattr(self, method_name, MethodType(_make_collator(nested_column, subnested_column), self))
 
     #
     # In-memory catalog registry
