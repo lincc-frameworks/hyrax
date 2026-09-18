@@ -337,8 +337,13 @@ class TrainStreamSession:
         if self._closed:
             return self._model
 
-        # End any in-progress streaming iteration before tearing down.
+        # End any in-progress streaming iteration and release the provider's
+        # resources (e.g. a dask client or Kafka consumer) before tearing down.
         self.stop()
+        if self._provider is not None:
+            close = getattr(self._provider, "close", None)
+            if callable(close):
+                close()
         self.checkpoint()  # always saved because no model_metric is provided
         self._closed = True
 

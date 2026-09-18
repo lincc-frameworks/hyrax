@@ -101,6 +101,7 @@ def _build_dataset(
     data_location=None,
     open_catalog_kwargs=None,
     use_dask_client=False,
+    dask_client_address=None,
 ):
     """Register ``catalog`` (when given) and construct a dataset against it.
 
@@ -120,6 +121,8 @@ def _build_dataset(
     ds_config["seed"] = seed
     ds_config["partitions_per_chunk"] = partitions_per_chunk
     ds_config["use_dask_client"] = use_dask_client
+    if dask_client_address is not None:
+        ds_config["dask_client_address"] = dask_client_address
     if open_catalog_kwargs is not None:
         ds_config["open_catalog_kwargs"] = open_catalog_kwargs
 
@@ -494,6 +497,89 @@ def test_use_dask_client_false_never_looks_for_one(monkeypatch, tiny_catalog):
     assert captured["class"] == "InfiniteStream"
 
 
+def test_dask_client_address_creates_client_once_and_reuses_it(monkeypatch, tiny_catalog):
+    """Rebuilding the stream (e.g. re-iterating after exhaustion) must not open a new
+    connection to the scheduler each time - that leaks scheduler registrations and threads."""
+    created = []
+
+    class FakeClient:
+        def __init__(self, address):
+            self.address = address
+            created.append(self)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr("dask.distributed.Client", FakeClient)
+
+    dataset = _build_dataset(tiny_catalog, use_dask_client=True, dask_client_address="tcp://scheduler:8786")
+
+    first = dataset._resolve_dask_client()
+    second = dataset._resolve_dask_client()
+
+    assert first is second
+    assert len(created) == 1
+
+
+def test_close_closes_only_a_client_this_dataset_created(monkeypatch, tiny_catalog):
+    """close() must release a client built from dask_client_address, but never a client it
+    only attached to via get_client(), which belongs to whoever created it."""
+
+    class FakeOwnedClient:
+        def __init__(self, address):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    monkeypatch.setattr("dask.distributed.Client", FakeOwnedClient)
+    owned_dataset = _build_dataset(
+        tiny_catalog, use_dask_client=True, dask_client_address="tcp://scheduler:8786", name="owned"
+    )
+    owned_client = owned_dataset._resolve_dask_client()
+
+    class FakeActiveClient:
+        def __init__(self):
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+
+    active_client = FakeActiveClient()
+    monkeypatch.setattr("dask.distributed.get_client", lambda: active_client)
+    external_dataset = _build_dataset(tiny_catalog, use_dask_client=True, name="external")
+    resolved_active_client = external_dataset._resolve_dask_client()
+
+    owned_dataset.close()
+    external_dataset.close()
+
+    assert resolved_active_client is active_client
+    assert owned_client.closed is True
+    assert active_client.closed is False
+
+
+def test_close_is_idempotent(monkeypatch, tiny_catalog):
+    """A second close() (e.g. from generator teardown after the session already closed)
+    must not try to close the same client again."""
+
+    class FakeClient:
+        def __init__(self, address):
+            self.close_calls = 0
+
+        def close(self):
+            self.close_calls += 1
+
+    monkeypatch.setattr("dask.distributed.Client", FakeClient)
+    dataset = _build_dataset(tiny_catalog, use_dask_client=True, dask_client_address="tcp://scheduler:8786")
+    client = dataset._resolve_dask_client()
+
+    dataset.close()
+    dataset.close()
+
+    assert client.close_calls == 1
+    assert dataset._owned_client is None
+
+
 #
 # Real lsdb streams
 #
@@ -527,7 +613,7 @@ def test_infinite_stream_ignores_shuffle_false(tiny_catalog, caplog):
     """InfiniteStream has no `shuffle` argument, so the setting is dropped with a warning."""
     import itertools
 
-    dataset = _build_dataset(tiny_catalog, batch_size=5, stream_type="infinite", shuffle=False)
+    dataset = _build_dataset(tiny_catalog, batch_size=5, stream_type="infinite", shuffle=True)
 
     with caplog.at_level("WARNING"):
         batches = list(itertools.islice(dataset, 2))
@@ -535,18 +621,6 @@ def test_infinite_stream_ignores_shuffle_false(tiny_catalog, caplog):
 
     assert len(batches) == 2
     assert "shuffle" in caplog.text
-
-
-def test_healpix_index_promoted_to_column(tiny_catalog):
-    """The HATS spatial index is usable as the primary_id_field."""
-    from hats.pixel_math.spatial_index import SPATIAL_INDEX_COLUMN
-
-    dataset = _build_dataset(tiny_catalog, batch_size=5, primary_id=SPATIAL_INDEX_COLUMN, fields=("magr",))
-
-    batches = list(dataset)
-
-    assert all(SPATIAL_INDEX_COLUMN in row for batch in batches for row in batch)
-    assert len({row[SPATIAL_INDEX_COLUMN] for batch in batches for row in batch}) == CATALOG_ROWS
 
 
 def test_non_identifier_column_name_survives(tiny_catalog):

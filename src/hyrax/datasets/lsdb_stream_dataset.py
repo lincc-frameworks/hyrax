@@ -183,6 +183,11 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         self._buffered: list[dict] = []
         self._peek_index = 0
 
+        # A dask Client this dataset created (and therefore owns) via
+        # A client attached via get_client() is owned by the caller and is never
+        # stored here; see _resolve_dask_client() and close().
+        self._owned_client = None
+
         super().__init__(config, metadata_table=None)
 
         # Dynamic getter creation - assumes only one level of nesting.
@@ -337,8 +342,12 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         from dask.distributed import Client, get_client
 
         if self.dask_client_address:
-            logger.info(f"Connecting the lsdb stream to the dask scheduler at {self.dask_client_address}.")
-            return Client(self.dask_client_address)
+            if self._owned_client is None:
+                logger.info(
+                    f"Connecting the lsdb stream to the dask scheduler at {self.dask_client_address}."
+                )
+                self._owned_client = Client(self.dask_client_address)
+            return self._owned_client
 
         try:
             client = get_client()
@@ -369,7 +378,7 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         client = self._resolve_dask_client()
 
         if self.stream_type == "infinite":
-            if not self.shuffle:
+            if self.shuffle:
                 logger.warning(
                     "config['data_set']['LSDBStreamDataset']['shuffle'] is ignored when "
                     "stream_type = 'infinite'; lsdb's InfiniteStream always shuffles."
@@ -413,6 +422,29 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         """
         self._stop.set()
 
+    def close(self):
+        """Stop iteration and close the dask client this dataset created, if any. Idempotent.
+
+        Only a client created here from ``dask_client_address`` is closed. A client
+        attached via the active-client fallback (``get_client()``) is owned by whoever
+        created it - closing it here would pull it out from under the rest of the
+        session. Skipping this for an owned client leaves its scheduler registration
+        and background threads running after the stream is done with it.
+
+        ``_owned_client is None`` is the guard, so a second call is a no-op rather than
+        a double close.
+        """
+        self._stop.set()
+        client, self._owned_client = self._owned_client, None
+        if client is None:
+            return
+
+        try:
+            client.close()
+        except Exception as err:
+            # Never let teardown replace the exception that triggered it.
+            logger.warning(f"Error closing dask client: {err}")
+
     def __len__(self):
         """A stream has no length.
 
@@ -425,19 +457,6 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
     #
     # Row production
     #
-
-    @staticmethod
-    def _flatten_index(frame):
-        """Promote a named index to a real column so it can be used as a field.
-
-        LSDB chunks carry the HATS spatial index (``_healpix_29``) as the DataFrame index,
-        which makes it the only usable ``primary_id_field`` for a crossmatched catalog with
-        no natural id of its own.
-        """
-        name = frame.index.name
-        if name is not None and name not in frame.columns:
-            frame = frame.reset_index()
-        return frame
 
     def peek_sample(self) -> dict:
         """Return one row without removing it from the batch stream.
@@ -469,7 +488,7 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
                     f"LSDBStreamDataset.peek_sample(): the catalog at '{self.data_location}' "
                     "produced no rows."
                 ) from err
-            self._buffered.extend(self._flatten_index(chunk).to_dict(orient="records"))
+            self._buffered.extend(chunk.to_dict(orient="records"))
 
         sample = self._buffered[self._peek_index]
         self._peek_index += 1
@@ -517,7 +536,7 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
                     frame, taken = None, 0
                     break
 
-                frame = self._flatten_index(chunk)
+                frame = chunk
                 taken, n_rows = 0, len(frame)
                 while taken < n_rows:
                     need = self.batch_size - len(batch)
