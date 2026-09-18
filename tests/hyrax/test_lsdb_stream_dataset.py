@@ -7,6 +7,7 @@ catalog created with ``lsdb.from_dataframe``.
 """
 
 import lsdb
+import nested_pandas as npd
 import numpy as np
 import pandas as pd
 import pytest
@@ -48,6 +49,32 @@ def source_frame():
 def tiny_catalog(source_frame):
     """An in-memory lsdb catalog over ``source_frame``."""
     return lsdb.from_dataframe(source_frame, ra_column="coord_ra", dec_column="coord_dec")
+
+
+# Per-row lightcurve length for `nested_catalog`, deliberately ragged (1, 2, or 3 points).
+NESTED_LIGHTCURVE_LENGTHS = [1, 2, 3, 1, 2, 3, 1, 2, 3, 1, 2, 3]
+
+
+@pytest.fixture
+def nested_catalog():
+    """An in-memory lsdb catalog with a ragged nested ``lightcurve`` column.
+
+    Row i's lightcurve has ``NESTED_LIGHTCURVE_LENGTHS[i]`` points, with
+    ``flux = [100, 101, ...]`` so a padded value's own magnitude identifies its position.
+    """
+    base = npd.NestedFrame(
+        {
+            "object_id": [f"id{i:02d}" for i in range(CATALOG_ROWS)],
+            "coord_ra": np.linspace(0.0, 350.0, CATALOG_ROWS),
+            "coord_dec": np.linspace(-80.0, 80.0, CATALOG_ROWS),
+        }
+    )
+    nested_rows = [
+        pd.DataFrame({"time": np.arange(n, dtype=float), "flux": np.arange(n, dtype=float) + 100.0})
+        for n in NESTED_LIGHTCURVE_LENGTHS
+    ]
+    nested_frame = base.join_nested(nested_rows, name="lightcurve")
+    return lsdb.from_dataframe(nested_frame, ra_column="coord_ra", dec_column="coord_dec")
 
 
 def _chunk(start, count, value_offset=0.0):
@@ -530,6 +557,52 @@ def test_non_identifier_column_name_survives(tiny_catalog):
 
     assert "mag-r" in first_row
     assert "magr" in first_row
+
+
+#
+# Nested column collation
+#
+
+
+def test_nested_collator_pads_ragged_arrays_and_builds_mask(nested_catalog):
+    """The generated collate_<nested>_<sub> pads each sample to the batch max and masks the fill."""
+    dataset = _build_dataset(nested_catalog, batch_size=5, fields=None, primary_id="object_id", name="nested")
+
+    batch = [
+        {"lightcurve_flux": np.array([1.0, 2.0])},
+        {"lightcurve_flux": np.array([3.0])},
+        {"lightcurve_flux": np.array([4.0, 5.0, 6.0])},
+    ]
+    result = dataset.collate_lightcurve_flux(batch)
+
+    assert result["lightcurve_flux"].shape == (3, 3)
+    assert result["lightcurve_flux"][0].tolist() == [1.0, 2.0, 0.0]
+    assert result["lightcurve_flux"][1].tolist() == [3.0, 0.0, 0.0]
+    assert result["lightcurve_flux"][2].tolist() == [4.0, 5.0, 6.0]
+    assert result["lightcurve_flux_mask"].tolist() == [
+        [True, True, False],
+        [True, False, False],
+        [True, True, True],
+    ]
+
+
+def test_nested_collator_matches_real_ragged_stream_data(nested_catalog):
+    """Real per-row lightcurves of varying length collate to the correct padded values."""
+    dataset = _build_dataset(nested_catalog, batch_size=5, fields=None, primary_id="object_id", name="nested")
+    lengths_by_id = {f"id{i:02d}": n for i, n in enumerate(NESTED_LIGHTCURVE_LENGTHS)}
+
+    rows = [row for batch in dataset for row in batch]
+    samples = [{"lightcurve_flux": dataset.get_lightcurve_flux(row)} for row in rows]
+    result = dataset.collate_lightcurve_flux(samples)
+
+    padded, mask = result["lightcurve_flux"], result["lightcurve_flux_mask"]
+    max_length = max(NESTED_LIGHTCURVE_LENGTHS)
+    assert padded.shape == (CATALOG_ROWS, max_length)
+    for i, row in enumerate(rows):
+        expected_len = lengths_by_id[row["object_id"]]
+        assert mask[i].tolist() == [j < expected_len for j in range(max_length)]
+        assert padded[i, :expected_len].tolist() == [100.0 + j for j in range(expected_len)]
+        assert padded[i, expected_len:].tolist() == [0.0] * (max_length - expected_len)
 
 
 #
