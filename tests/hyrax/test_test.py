@@ -1,10 +1,12 @@
+import json
+
 import pytest
 
 from hyrax.config_utils import find_most_recent_results_dir
 
 
 @pytest.fixture(scope="function")
-def loopback_hyrax_map_only(tmp_path_factory):
+def loopback_hyrax_map_only(tmp_path_factory, num_workers):
     """This generates a loopback hyrax instance with map-style datasets only,
     suitable for testing the test verb which requires explicit test dataset."""
     import hyrax
@@ -15,6 +17,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
     h.config["model"]["name"] = "HyraxLoopback"
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = 5
+    h.config["data_loader"]["num_workers"] = num_workers
     h.config["general"]["results_dir"] = str(results_dir)
     h.config["general"]["dev_mode"] = True
 
@@ -24,7 +27,6 @@ def loopback_hyrax_map_only(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.6,
             },
         },
         "validate": {
@@ -32,7 +34,6 @@ def loopback_hyrax_map_only(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.2,
             },
         },
         "test": {
@@ -40,7 +41,6 @@ def loopback_hyrax_map_only(tmp_path_factory):
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
-                "split_fraction": 0.2,
             },
         },
         "infer": {
@@ -51,6 +51,7 @@ def loopback_hyrax_map_only(tmp_path_factory):
             },
         },
     }
+    h.config["split"] = {"train": 0.6, "validate": 0.2, "test": 0.2}
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
@@ -130,6 +131,26 @@ def test_test(loopback_hyrax_map_only):
     assert (result.data_location / "test_weights.pth").exists()
 
 
+@pytest.mark.parametrize("num_workers", [2], indirect=True)
+def test_test_with_multiple_workers(loopback_hyrax_map_only):
+    """
+    Testing should succeed when the data loader uses multiple worker
+    processes (num_workers=2), not just the default single-process loading.
+    """
+    h, _ = loopback_hyrax_map_only
+    # First train a model to have weights to test
+    h.train()
+
+    # Now test the model
+    result = h.test()
+
+    # Verify we got a ResultDataset back
+    from hyrax.datasets.result_dataset import ResultDataset
+
+    assert result is not None
+    assert isinstance(result, ResultDataset)
+
+
 def test_test_with_explicit_weights(loopback_hyrax_map_only, tmp_path):
     """
     Ensure that testing works when explicitly providing model weights file.
@@ -203,3 +224,19 @@ def test_test_saves_weights_file(loopback_hyrax_map_only, tmp_path):
     # Verify that test_weights.pth was saved
     weights_file = test_results_dir / "test_weights.pth"
     assert weights_file.exists(), f"Expected weights file at {weights_file} does not exist"
+
+
+def test_model_writes_to_results_dir_during_test(context_writing_loopback):
+    """The same pattern via test_post_epoch, which lands in the test results dir."""
+    h = context_writing_loopback
+    h.config["test"]["model_weights_file"] = h.config["infer"]["model_weights_file"]
+
+    h.test()
+
+    results_dir = find_most_recent_results_dir(h.config, "test")
+    notes_file = results_dir / "my_notes.json"
+    assert notes_file.exists()
+
+    notes = json.loads(notes_file.read_text())
+    assert notes["verb"] == "test"
+    assert notes["batches_seen"] > 0

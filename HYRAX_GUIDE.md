@@ -163,6 +163,8 @@ Hyrax discovers components through three registries:
 - Models must inherit from `torch.nn.Module` and implement `__init__`, `forward`,
   `train_batch`, and `prepare_inputs`.
 - The decorator wires up save/load, optimizer, and criterion handling.
+- Models reach run-scoped state (results dir, verb) via
+  `from hyrax import get_context`. See "Run context" below.
 - Built-in: `HyraxAutoencoder`, `HyraxAutoencoderV2`, `HyraxCNN`, `SimCLR`, `ImageDCAE`, `HSCAutoencoder`, `HSCDCAE`, `HyraxLoopback`
 - **External plugins supported** — use a fully qualified import path in the config
   (e.g. `model.name = "my_pkg.my_module.MyModel"`).
@@ -252,6 +254,32 @@ High-level pipeline:
 7. **Vector DB** — store and query latent vectors (ChromaDB or Qdrant).
 
 Each verb that produces output creates its own timestamped results directory.
+
+## Run context
+
+`src/hyrax/context.py` holds the run context — a plain dict describing the run
+currently underway. Each verb run gets its own context object, and everything
+else reads the current one with `get_context()` (also exported as
+`hyrax.get_context`).
+
+Keys: `results_dir` (a `Path`), `verb`, and `ml_framework`.
+Consumers are models, vector database implementations, and
+the ONNX exporter. **Nothing takes a context parameter** — consumers call
+`get_context()` themselves, and whoever starts the work is responsible for
+pointing the context at the right directory first.
+
+- **Each run gets a new context object.** This is what lets an object hold a
+  context instead of copying values out of it. `VectorDB.__init__` stores
+  `get_context()` and exposes `results_dir` as a property: `database_connection`
+  hands the database back to the user for interactive querying, and ChromaDB
+  re-reads that path at query time to spawn worker processes. Regression test:
+  `test_context.py::test_vector_db_keeps_the_context_of_its_own_run`.
+- **Work that outlives its run re-installs the context it captured.** Use
+  `use_context()`, as `InferStreamSession.process()` does, so model code driven
+  after the verb returned sees the run it belongs to.
+- **Models should call `get_context()` at the point of use**, not stash it in
+  `__init__`. A saved context is pickled into distributed child processes before
+  their ranks are assigned, so it reports rank 0 everywhere.
 
 ## Testing Conventions
 

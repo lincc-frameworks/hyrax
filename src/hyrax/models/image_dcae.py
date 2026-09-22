@@ -207,6 +207,7 @@ class ImageDCAE(nn.Module):
 
         # Encode to latent space
         latent, skip_connections, encoded_shape = self.encode(data)
+        latent = self.forward(data)  # forward call required for DDP compatbility
 
         # Decode back to image
         decoded = self.decode(latent, skip_connections, encoded_shape)
@@ -240,6 +241,7 @@ class ImageDCAE(nn.Module):
 
         # Encode to latent space
         latent, skip_connections, encoded_shape = self.encode(data)
+        latent = self.forward(data)  # forward call required for DDP compatbility
 
         # Decode back to image
         decoded = self.decode(latent, skip_connections, encoded_shape)
@@ -271,7 +273,7 @@ class ImageDCAE(nn.Module):
 
         # Encode to latent space
         latent, skip_connections, encoded_shape = self.encode(data)
-
+        latent = self.forward(data)  # forward call required for DDP compatibility
         # Decode back to image
         decoded = self.decode(latent, skip_connections, encoded_shape)
 

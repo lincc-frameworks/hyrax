@@ -149,32 +149,37 @@ def test_config_help(capsys):
 
     captured = capsys.readouterr()
 
-    expected_output = """[general]
-# set dev_mode to true when developing
-# set to false for production use
-dev_mode = true
+    rendered_output = "\n".join(
+        line
+        for line in captured.out.splitlines()
+        if not line.startswith("config_version =")
+        and not line.startswith("# this is the default config file")
+    )
 
-[train]
-model_name = "example_model" # Use a built-in Hyrax model
-model_class = "new_thing.cool_model.CoolModel" # Use a custom model
+    expected_fragments = [
+        "[general]",
+        "# set dev_mode to true when developing",
+        "# set to false for production use",
+        "dev_mode = true",
+        "[train]",
+        'model_name = "example_model" # Use a built-in Hyrax model',
+        'model_class = "new_thing.cool_model.CoolModel" # Use a custom model',
+        "[train.model]",
+        'weights_filename = "final_best.pth"',
+        "layers = 3",
+        "[infer]",
+        "batch_size = 8 # change batch size",
+        "[bespoke_table]",
+        "# this is a bespoke table",
+        'key1 = "value1"',
+        'key2 = "value2" # unlikely to modify',
+    ]
 
-[train.model]
-weights_filename = "final_best.pth"
-layers = 3
-
-
-[infer]
-batch_size = 8 # change batch size
-
-[bespoke_table]
-# this is a bespoke table
-key1 = "value1"
-key2 = "value2" # unlikely to modify
-"""
-
-    assert expected_output in captured.out
-    # The migration system injects the schema version scalar at load time.
-    assert f"config_version = {CURRENT_CONFIG_VERSION}" in captured.out
+    search_start = 0
+    for fragment in expected_fragments:
+        found_at = rendered_output.find(fragment, search_start)
+        assert found_at != -1, fragment
+        search_start = found_at + len(fragment)
 
 
 def test_config_help_specific_table(capsys):

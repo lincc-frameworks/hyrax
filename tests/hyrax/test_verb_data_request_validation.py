@@ -130,10 +130,10 @@ def test_test_requires_test_group():
 
 
 def test_issue_787_train_validate_with_infer_no_split():
-    """Core issue-787 scenario: train+validate share split_fraction, infer does not.
+    """Core issue-787 scenario: train+validate share config['split'] entries, infer does not.
 
     The Train verb only looks at 'train' and 'validate', so the absence of
-    split_fraction on 'infer' must not cause a validation failure.
+    a split entry on 'infer' must not cause a validation failure.
     """
     data_request = {
         "train": {
@@ -141,7 +141,6 @@ def test_issue_787_train_validate_with_infer_no_split():
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": "/tmp/data",
                 "primary_id_field": "id",
-                "split_fraction": 0.8,
             }
         },
         "validate": {
@@ -149,7 +148,6 @@ def test_issue_787_train_validate_with_infer_no_split():
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": "/tmp/data",
                 "primary_id_field": "id",
-                "split_fraction": 0.2,
             }
         },
         "infer": {
@@ -157,11 +155,12 @@ def test_issue_787_train_validate_with_infer_no_split():
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": "/tmp/data",
                 "primary_id_field": "id",
-                # No split_fraction — used for full-dataset inference
+                # No split entry — used for full-dataset inference
             }
         },
     }
     config = _make_config(data_request)
+    config["split"] = {"train": 0.8, "validate": 0.2}
     # Train should only see train+validate — passes
     Train(config)
     # Infer should only see infer — passes
@@ -176,10 +175,9 @@ def test_inactive_groups_do_not_affect_validation():
                 "dataset_class": "HyraxRandomDataset",
                 "data_location": "/tmp/data",
                 "primary_id_field": "id",
-                "split_fraction": 0.8,
             }
         },
-        # 'infer' is outside Train's active groups — its absence of split_fraction
+        # 'infer' is outside Train's active groups — its absence of a split entry
         # must not cause a consistency failure for Train
         "infer": {
             "data": {
@@ -190,6 +188,7 @@ def test_inactive_groups_do_not_affect_validation():
         },
     }
     config = _make_config(data_request)
+    config["split"] = {"train": 0.8}
     Train(config)  # should not raise
 
 
@@ -227,7 +226,7 @@ def test_structurally_invalid_data_request_raises():
             "dataset_class": "HyraxRandomDataset",
             "data_location": "/tmp/data",
             "primary_id_field": "id",
-            "split_fraction": 1.5,  # also out of range (le=1.0)
+            "invalid_config_key": 1.5,
         }
     }
     with pytest.raises(RuntimeError, match="Invalid data_request"):

@@ -4,7 +4,9 @@
 from hyrax.verbs.database_connection import DatabaseConnection
 from hyrax.verbs.umap import Umap
 from hyrax.verbs.infer import Infer
+from hyrax.verbs.infer_stream import InferStream
 from hyrax.verbs.train import Train
+from hyrax.verbs.train_stream import TrainStream
 from hyrax.verbs.test import Test
 from hyrax.verbs.visualize import Visualize
 from hyrax.verbs.visualize_v2 import VisualizeV2
@@ -14,6 +16,8 @@ from hyrax.verbs.model import Model
 from hyrax.verbs.to_onnx import ToOnnx
 from hyrax.verbs.engine import Engine
 from hyrax.verbs.prepare import Prepare
+from hyrax.verbs.reduce_dimensions import ReduceDimensions
+from hyrax.verbs.create_splits import CreateSplits
 from hyrax.verbs.verb_registry import Verb
 from hyrax.verbs.verb_registry import all_class_verbs, all_verbs, fetch_verb_class, is_verb_class
 
@@ -28,13 +32,17 @@ __all__ = [
     "Visualize",
     "VisualizeV2",
     "Infer",
+    "InferStream",
     "Train",
+    "TrainStream",
     "Test",
     "SaveToDatabase",
+    "ReduceDimensions",
     "Verb",
     "DatabaseConnection",
     "Model",
     "ToOnnx",
     "Engine",
     "Prepare",
+    "CreateSplits",
 ]

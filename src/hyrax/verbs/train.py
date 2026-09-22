@@ -1,9 +1,25 @@
 import logging
-import warnings
 from pathlib import Path
 
+import ignite.distributed as idist
+import mlflow
+import torch
 from colorama import Back, Fore, Style
 
+from hyrax.config_utils import create_results_dir, log_runtime_config
+from hyrax.context import update_context
+from hyrax.gpu_monitor import GpuMonitor
+from hyrax.pytorch_ignite import (
+    Events,
+    attach_best_checkpoint,
+    create_trainer,
+    create_validator,
+    dist_data_loader,
+    setup_dataset,
+    setup_model,
+)
+from hyrax.splitting_utils import create_splits
+from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 from hyrax.trace import trace_verb_data
 
 from .verb_registry import Verb, hyrax_verb
@@ -23,7 +39,7 @@ class Train(Verb):
     # REQUIRED_DATA_GROUPS must be present in the dataset dict returned by setup_dataset.
     # OPTIONAL_DATA_GROUPS are used when present but do not cause an error if absent.
     REQUIRED_DATA_GROUPS = ("train",)
-    OPTIONAL_DATA_GROUPS = ("validate", "test")
+    OPTIONAL_DATA_GROUPS = ("validate",)
 
     @staticmethod
     def setup_parser(parser):
@@ -43,20 +59,6 @@ class Train(Verb):
         Returns the trained model.
 
         """
-
-        import mlflow
-
-        from hyrax.config_utils import create_results_dir, log_runtime_config
-        from hyrax.gpu_monitor import GpuMonitor
-        from hyrax.pytorch_ignite import (
-            attach_best_checkpoint,
-            create_trainer,
-            create_validator,
-            dist_data_loader,
-            setup_dataset,
-            setup_model,
-        )
-        from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
 
@@ -83,7 +85,40 @@ class Train(Verb):
             config,
             splits=Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS,
         )
+        create_splits(config, dataset, results_dir=results_dir, persist=True)
         model = setup_model(config, dataset["train"])
+
+        # we separate out the cases here for two reasons:
+        # 1. GitHub merge checks don't pass with idist.Parallel
+        # 2. idist.Parallel doesn't play nice with mps;
+        #    there are lots of pickling errors including possibly from user code.
+        #    Case separation here guarantees that we will only ever use
+        #    idist.Parallel when there are multiple GPUs.
+        nproc_per_node = torch.cuda.device_count()
+        if config["general"]["distributed"] and nproc_per_node > 1:
+            logger.info(f"Using {nproc_per_node} processes for distributed training.")
+            with idist.Parallel(backend="nccl", nproc_per_node=nproc_per_node) as parallel:
+                parallel.run(Train._training, model, dataset, config, results_dir)
+        else:
+            logger.info("Using a single process for training.")
+            Train._training(0, model, dataset, config, results_dir)
+
+        return model
+
+    # this used to be a nested method inside run() without any args except rank (needed for idist.Parallel)
+    @staticmethod
+    def _training(rank, model, dataset, config, results_dir):
+        # idist.Parallel spawns fresh processes, so the run context established in run()
+        # is absent in the child ranks. Repopulate it here, where every rank passes.
+        # On the single-process path this writes into the context run() installed, so
+        # anything a model stashed there during setup_model survives. In a spawned rank
+        # it fills that process's empty context, which needs no release because the
+        # process exits when training finishes.
+        update_context(
+            results_dir=results_dir,
+            verb="train",
+        )
+
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"
@@ -108,99 +143,27 @@ class Train(Verb):
 
         train_shuffle = config["train"]["shuffle"]
 
-        # We know that `dataset` will always be returned as a dictionary with at least
-        # a `train` key. There may be `validate` or `test` keys as well.
-        #
-        # There are three ways splits can be defined:
-        #
-        # 1) Separate dataset groups: the user defined distinct "train" and
-        #    "validate" groups in their data_request (possibly pointing to
-        #    different data_locations).  Each DataProvider is loaded
-        #    independently and we pass split=False to dist_data_loader.
-        #
-        # 2) split_fraction on shared data: the user defined "train" and
-        #    "validate" groups pointing to the *same* data_location with
-        #    split_fraction values.  setup_dataset has already computed
-        #    non-overlapping split_indices on each DataProvider, so
-        #    dist_data_loader with split=False will automatically apply a sampler.
-        #    The train split sampler honors train.shuffle; other splits are sequential.
-        #
-        # 3) Legacy percentage-based splits: only a "train" group exists and
-        #    no split_fraction is set.  We fall back to the old behaviour of
-        #    calling dist_data_loader with split=["train", "validate"] which
-        #    uses config["data_set"] train_size / validate_size.
+        dataset_splits = [s for s in Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS if s in dataset]
 
-        # Collect split names in two ways:
-        # - all_splits: all split names that this verb knows about
-        #   (required + optional), used for legacy percentage-based
-        #   splitting where only a "train" group may be defined.
-        # - dataset_splits: those desired splits that are actually present
-        #   in the dataset dict returned by setup_dataset, used by the
-        #   multi-provider path where each split is an explicit group.
-        all_splits = list(Train.REQUIRED_DATA_GROUPS) + list(Train.OPTIONAL_DATA_GROUPS)
-        dataset_splits = [s for s in all_splits if s in dataset]
-
-        # Check whether split_fraction was used (path 2 above).
-        # This is true when the required split's DataProvider has split_indices assigned.
-        # Path 1 (separate groups without split_fraction) will be handled in the else block.
-        has_split_groups = isinstance(dataset, dict) and any(
-            hasattr(dataset.get(s), "split_indices") and dataset[s].split_indices is not None
-            for s in Train.REQUIRED_DATA_GROUPS
-        )
-
-        data_loaders: dict[str, tuple] = {}
-
-        if has_split_groups:
-            # Path 2: split_fraction was used — each DataProvider has split_indices.
-            # Create a dataloader per group with split_indices already applied.
-            # NOTE: Paths 1 and 3 will be completely deprecated in a future release,
-            # and this will be the only path for training.
-            for split_name in dataset_splits:
-                data_loaders[split_name] = dist_data_loader(
-                    dataset[split_name],
-                    config,
-                    False,
-                    split_name == "train" and train_shuffle,
-                )
-        elif len(dataset) > 1:
-            # Path 1: separate dataset groups defined in data_request without split_fraction.
-            # Each group is an independent DataProvider pointing to different data_locations.
-            # Create a dataloader per group, shuffling only the train group when requested.
-            for split_name in dataset_splits:
-                data_loaders[split_name] = dist_data_loader(
-                    dataset[split_name],
-                    config,
-                    False,
-                    split_name == "train" and train_shuffle,
-                )
-        else:
-            # Path 3 (legacy): only "train" exists — use percentage-based
-            # splitting from config["data_set"].
-            warnings.warn(
-                "Defining dataset splits via config['data_set'] "
-                "(train_size / validate_size / test_size) is deprecated. "
-                "Please define separate dataset groups with 'split_fraction' "
-                "in the [data_request] configuration instead. "
-                "See https://hyrax.readthedocs.io for migration guidance.",
-                DeprecationWarning,
-                stacklevel=1,
+        data_loaders = {}
+        for split_name in dataset_splits:
+            data_loaders[split_name] = dist_data_loader(
+                dataset[split_name],
+                config,
+                shuffle=split_name == "train" and train_shuffle,
             )
-            raw = dist_data_loader(dataset["train"], config, all_splits, train_shuffle)
-            # dist_data_loader returns a bare (DataLoader, indices) tuple
-            # when given a single split name, or a dict when given multiple.
-            if isinstance(raw, dict):
-                for split_name in all_splits:
-                    if split_name in raw:
-                        data_loaders[split_name] = raw[split_name]
-            else:
-                # Single split — raw is already the (DataLoader, indices) tuple.
-                data_loaders[all_splits[0]] = raw
 
-        train_data_loader, _ = data_loaders["train"]
-        validation_data_loader, _ = data_loaders.get("validate", (None, None))
+        train_data_loader = data_loaders["train"]
+        validation_data_loader = data_loaders.get("validate")
 
         # Create trainer, a pytorch-ignite `Engine` object
         trainer = create_trainer(model, config, results_dir)
+
+        # Dispatch on_epoch_start to all DataProviders at the start of each epoch.
+        @trainer.on(Events.EPOCH_STARTED)
+        def dispatch_epoch_start(engine):
+            for provider in dataset.values():
+                provider.on_epoch_start("train")
 
         # Create a validator if a validation data loader is available
         if validation_data_loader is not None:
@@ -211,35 +174,35 @@ class Train(Verb):
 
         monitor = GpuMonitor()
 
-        # Go up to the parent of the results dir so all mlflow results show up in the same directory.
-        results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-        (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
-        mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
+        try:
+            # Go up to the parent of the results dir so all mlflow results show up in the same directory.
+            results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
+            (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
+            mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
 
-        # Get experiment_name and cast to string (it's a tomlkit.string by default)
-        experiment_name = str(config["train"]["experiment_name"])
+            # Get experiment_name and cast to string (it's a tomlkit.string by default)
+            experiment_name = str(config["train"]["experiment_name"])
 
-        # This will create the experiment if it doesn't exist
-        mlflow.set_experiment(experiment_name)
+            # This will create the experiment if it doesn't exist
+            mlflow.set_experiment(experiment_name)
 
-        # If run_name is not `false` in the config, use it as the MLFlow run name in
-        # this experiment. Otherwise use the name of the results directory
-        run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
+            # If run_name is not `false` in the config, use it as the MLFlow run name in
+            # this experiment. Otherwise use the name of the results directory
+            run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
 
-        with mlflow.start_run(log_system_metrics=True, run_name=run_name):
-            Train._log_params(config, results_dir)
+            with mlflow.start_run(log_system_metrics=True, run_name=run_name):
+                Train._log_params(config, results_dir)
 
-            # Run the training process
-            trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
+                # Run the training process
+                trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
 
-        # Save the trained model
-        model.save(results_dir / config["train"]["weights_filename"])
-        monitor.stop()
+            # Save the trained model
+            model.save(results_dir / config["train"]["weights_filename"])
+        finally:
+            monitor.stop()
 
         logger.info("Finished Training")
         close_tensorboard_logger()
-
-        return model
 
     @staticmethod
     def _log_params(config, results_dir):

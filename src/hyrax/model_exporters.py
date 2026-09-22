@@ -4,11 +4,17 @@ import onnx
 import onnxruntime
 from numpy import allclose
 
+from hyrax.context import get_context
+
 logger = logging.getLogger(__name__)
 
 
-def export_to_onnx(model, sample, config, ctx):
+def export_to_onnx(model, sample, config):
     """Dispatching function to convert a ML framework model into an ONNX model.
+
+    The output directory and source framework are read from the Hyrax run
+    context, which the calling verb populates with ``results_dir`` and
+    ``ml_framework``. See :class:`hyrax.context.ContextKeys`.
 
     Parameters
     ----------
@@ -20,17 +26,16 @@ def export_to_onnx(model, sample, config, ctx):
         output of the ONNX model against the output of the PyTorch model.
     config : dict
         The parsed config file as a nested dict
-    ctx : dict
-        A context dictionary containing info needed for the conversion to ONNX.
     """
+    context = get_context()
 
     # build the output ONNX file path
     onnx_opset_version = config["onnx"]["opset_version"]
-    onnx_output_filepath = ctx["results_dir"] / "model.onnx"
+    onnx_output_filepath = context["results_dir"] / "model.onnx"
 
     # use the "ml_framework" context value to determine how to convert to ONNX.
     sample_out = None
-    if ctx["ml_framework"] == "pytorch":
+    if context["ml_framework"] == "pytorch":
         sample_out = _export_pytorch_to_onnx(model, sample, onnx_output_filepath, onnx_opset_version)
     else:
         logger.warning("No ONNX export implementation for the given ML framework.")
@@ -41,7 +46,7 @@ def export_to_onnx(model, sample, config, ctx):
         onnx_model = onnx.load(onnx_output_filepath)
         onnx.checker.check_model(onnx_model)
     except:  # noqa E722
-        logger.error(f"Failed to create ONNX model. {ctx['ml_framework']} implementation has been saved.")
+        logger.error(f"Failed to create ONNX model. {context['ml_framework']} implementation has been saved.")
 
     # Check the ONNX model against the PyTorch model. Note that `sample` was
     # converted to numpy array when the model was converted to ONNX

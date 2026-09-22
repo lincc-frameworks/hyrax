@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import hyrax
+import hyrax.datasets.data_provider as dp
 from hyrax.datasets.data_provider import _handle_nans
 
 
@@ -26,7 +27,6 @@ def loopback_hyrax_nan(tmp_path_factory, request):
                 "dataset_class": request.param,
                 "data_location": str(tmp_path_factory.mktemp("data")),
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
             },
         },
         "infer": {
@@ -37,6 +37,7 @@ def loopback_hyrax_nan(tmp_path_factory, request):
             },
         },
     }
+    h.config["split"] = {"train": 1.0}
     h.config["data_set"]["HyraxRandomDataset"]["size"] = 20
     h.config["data_set"]["HyraxRandomDataset"]["seed"] = 0
     h.config["data_set"]["HyraxRandomDataset"]["shape"] = [2, 3]
@@ -225,3 +226,28 @@ def test_nan_handling_tuple_preserves_order(loopback_hyrax_nan):
     assert isinstance(output[3], np.ndarray)
     assert not np.any(np.isnan(output[3]))
     assert output[4] == elem5
+
+
+def test_nan_warning_limit(loopback_hyrax_nan, caplog, monkeypatch):
+    """Test that the NaN warning is only emitted up to _NAN_WARNING_MAX times,
+    then a silencing message is emitted once, and no further warnings appear."""
+    # Reset the global counter so this test is independent of execution order
+    monkeypatch.setattr(dp, "_nan_warning_count", 0)
+
+    h, _ = loopback_hyrax_nan
+    h.config["data_set"]["nan_mode"] = False
+
+    batch_with_nan = np.array([1.0, float("nan"), 3.0])
+    config = h.config
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="hyrax.datasets.data_provider"):
+        for _ in range(dp._NAN_WARNING_MAX + 5):
+            _handle_nans(batch_with_nan, config)
+
+    nan_warnings = [r for r in caplog.records if "NaN values" in r.message]
+    silencing_warnings = [r for r in caplog.records if "Silencing additional" in r.message]
+
+    assert len(nan_warnings) == dp._NAN_WARNING_MAX
+    assert len(silencing_warnings) == 1

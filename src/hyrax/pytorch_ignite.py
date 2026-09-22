@@ -3,7 +3,7 @@ import logging
 import warnings
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Union
+from typing import Any
 
 import ignite.distributed as idist
 import numpy as np
@@ -15,17 +15,61 @@ with warnings.catch_warnings():
 from collections.abc import Iterator, Sequence
 
 import torch
+import torch.multiprocessing as mp
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
+from torch.nn import Module
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-from torch.utils.data import DataLoader, Dataset, Sampler, SubsetRandomSampler
+from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
 
 from hyrax.datasets.data_provider import DataProvider, generate_data_request_from_config
 from hyrax.models.model_registry import fetch_model_class
 from hyrax.tensorboardx_logger import get_tensorboard_logger
+from hyrax.trace import get_trace
 
 logger = logging.getLogger(__name__)
+
+_LEGACY_SPLIT_KEYS = ("train_size", "validate_size", "test_size")
+
+
+# We define a custom __getattr__ method on DistributedDataParallel so that
+# functions like train_batch can access required attributes without
+# explicitly copying them from the original module to the DDP instance.
+# DDP simply uses the torch.nn.Module.__getattr__ method, so we define a new
+# one that returns an attribute from DistributedDataParallel.module should
+# the existing __getattr__ fail.
+_old__getattr__ = Module.__getattr__
+
+
+# There is an identical version of this function used in
+# test_train.py::test_training_info_returned_on_model.
+# If this method is ever updated, make sure to update the version
+# there too.
+def _new__getattr__(self, name: str):
+    try:
+        return _old__getattr__(self, name)
+    except AttributeError:
+        if hasattr(self.module, name):
+            return getattr(self.module, name)
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+
+DistributedDataParallel.__getattr__ = _new__getattr__
+
+
+# Helper method to wrap a model in DistributedDataParallel if needed.
+# Uses idist.auto_model to do the wrapping, then ignore the result if it is a DataParallel instance.
+# For more info, see https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_model.html.
+# Arguments are identical to idist.auto_model.
+def _auto_model(model: torch.nn.Module, sync_bn: bool = False, **kwargs: Any) -> torch.nn.Module:
+    wrapped_model = idist.auto_model(model, sync_bn=sync_bn, **kwargs)
+    if type(wrapped_model) is DataParallel:
+        logger.info(
+            'Ignore previous message "Apply torch DataParallel on model". Hyrax does not use DataParallel'
+        )
+        return model
+    return wrapped_model
 
 
 class SubsetSequentialSampler(Sampler[int]):
@@ -56,61 +100,71 @@ def setup_dataset(
     splits: tuple[str, ...] | None = None,
     shuffle: bool = True,
 ) -> dict[str, DataProvider]:
-    """This function creates an instance of the requested dataset(s) specified in the
-    runtime configuration for the given splits (data_groups).
-
-    It will create an instance of a DataProvider, and return that as the dataset.
+    """Create DataProvider instances for each requested data group.
 
     Parameters
     ----------
     config : dict
-        The runtime configuration
+        The runtime configuration.
     splits : tuple[str, ...] | None, optional
-        When provided, only create DataProvider instances for the groups whose
-        names appear in *splits*.  Groups present in the data_request but not
-        listed here are silently skipped.  When ``None`` (the default) every
-        group in the data_request is loaded — preserving backward compatibility.
+        When provided, only create DataProvider instances for the listed groups.
+        When ``None`` every group in the data_request is loaded.
     shuffle : bool, optional
-        Whether to shuffle indices when computing ``split_fraction``-based
-        partitions via :func:`create_splits_from_fractions`.  Defaults to
-        ``True``.  Set to ``False`` for inference / test verbs where
-        deterministic ordering is required.
+        Unused; kept for backward-compatibility with call sites that still pass
+        it.  Split shuffling is now handled by ``splitting_utils.create_splits``.
 
     Returns
     -------
     dict[str, DataProvider]
-        A dictionary mapping data group names to DataProvider instances.
+        Mapping of data group names to DataProvider instances.
     """
 
-    dataset = {}
+    found = [k for k in _LEGACY_SPLIT_KEYS if k in config.get("data_set", {})]
+    if found:
+        raise RuntimeError(
+            f"Legacy split configuration keys found in [data_set]: {found}\n\n"
+            "The train_size/validate_size/test_size configuration style has been removed.\n"
+            "Please migrate your split configuration to [split].\n\n"
+            "Example:\n"
+            "  [data_request.train.data]\n"
+            "  dataset_class = 'YourDataset'\n"
+            "  data_location = '/path/to/data'\n"
+            "  primary_id_field = 'id'\n\n"
+            "  [data_request.validate.data]\n"
+            "  dataset_class = 'YourDataset'\n"
+            "  data_location = '/path/to/data'\n"
+            "  primary_id_field = 'id'\n\n"
+            "  [split]\n"
+            "  train = 0.8\n"
+            "  validate = 0.2\n\n"
+            "For more information, see: https://hyrax.readthedocs.io/en/stable/dataset_splits.html"
+        )
+
     data_request = generate_data_request_from_config(config)
+    keys = splits if splits is not None else tuple(data_request.keys())
+    return {k: _build_data_provider(config, data_request[k]) for k in keys if k in data_request}
 
-    # Create DataProvider instances for the requested splits.  When
-    # ``splits`` is None we load every group in the data_request.
-    keys_to_load = splits if splits is not None else tuple(data_request.keys())
-    for key in keys_to_load:
-        if key not in data_request:
-            continue
-        ds = DataProvider(config, data_request[key])
-        dataset[key] = ds
 
-    # --- Compute split indices for providers that define split_fraction ---
-    # Group DataProvider instances by their primary_data_location.  Only
-    # providers whose split_fraction is set participate in the partitioning.
-    from collections import defaultdict
+def _build_data_provider(config: dict, request: dict):
+    """Build the right provider for a data-request group.
 
-    providers_by_location: dict[str, dict[str, DataProvider]] = defaultdict(dict)
-    for group_name, provider in dataset.items():
-        if isinstance(provider, DataProvider) and provider.split_fraction is not None:
-            loc = provider.primary_data_location
-            providers_by_location[loc][group_name] = provider
+    Streaming (``IterableDataset``) datasets are wrapped in a
+    :class:`~hyrax.datasets.streaming_data_provider.StreamingDataProvider`; all other
+    (map-style) datasets use :class:`~hyrax.datasets.data_provider.DataProvider`.
+    """
+    from hyrax.datasets.dataset_registry import fetch_dataset_class
+    from hyrax.datasets.streaming_data_provider import StreamingDataProvider
 
-    for _loc, providers in providers_by_location.items():
-        split_indices = create_splits_from_fractions(providers, config, shuffle=shuffle)
-        for group_name, indices in split_indices.items():
-            providers[group_name].split_indices = indices
+    is_streaming = any(
+        isinstance(definition, dict)
+        and definition.get("dataset_class")
+        and issubclass(fetch_dataset_class(definition["dataset_class"]), IterableDataset)
+        for definition in request.values()
+    )
 
-    return dataset
+    if is_streaming:
+        return StreamingDataProvider(config, request)
+    return DataProvider(config, request)
 
 
 def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
@@ -154,41 +208,89 @@ def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
     return retval
 
 
+def setup_model_from_sample(config: dict, sample_batch: dict) -> torch.nn.Module:
+    """Create a model from a pre-formatted batch dict instead of a DataProvider.
+
+    Like :func:`setup_model` but accepts a batch dict directly, bypassing the
+    DataLoader/DataProvider pipeline.  Used by
+    :class:`~hyrax.verbs.infer_stream.InferStream` to pre-flight model
+    architecture without a dataset.
+
+    Parameters
+    ----------
+    config : dict
+        The runtime configuration.
+    sample_batch : dict
+        A representative batch with the same structure as batches that will be
+        processed later (e.g. ``{"object_id": [...], "data": {...}}``).
+
+    Returns
+    -------
+    torch.nn.Module
+        An instance of the model class specified in the configuration.
+    """
+    from hyrax.trace import reset_trace
+
+    model_cls = fetch_model_class(config)
+    prepared_sample = model_cls.prepare_inputs(sample_batch)
+    model_instance = model_cls(config=config, data_sample=prepared_sample)
+    reset_trace()
+    return model_instance
+
+
 def dist_data_loader(
     dataset: Dataset,
     config: dict,
-    split: Union[str, list[str], bool] = False,
     shuffle: bool = False,
-):
-    """Create Pytorch Ignite distributed data loaders
+) -> DataLoader:
+    """Create Pytorch Ignite distributed data loaders.
 
     It is recommended that each verb needing dataloaders only call this function once.
 
     Parameters
     ----------
     dataset : hyrax.datasets.dataset_registry.HyraxDataset
-        A Hyrax dataset instance
+        A Hyrax dataset instance.  When *dataset* is a :class:`hyrax.datasets.data_provider.DataProvider`
+        with ``split_indices`` set (by :func:`~hyrax.splitting_utils.create_splits`),
+        the loader is restricted to those indices via a :class:`~torch.utils.data.Subset`.
+        When ``split_weights`` is also set, a
+        :class:`~torch.utils.data.WeightedRandomSampler` is used so that
+        under-represented classes are over-sampled to achieve the configured
+        class distribution.
     config : dict
         Hyrax runtime configuration
-    split : Union[str, list[str]], Optional
-        The name(s) of the split we want to use from the data set.
-        If this is false or not passed, then a single data loader is returned
-        that corresponds to the entire dataset.
     shuffle : bool, optional
-        If ``True``, selected training indices are sampled with
-        ``SubsetRandomSampler``. If ``False``, selected indices are sampled with
-        ``SubsetSequentialSampler``. Defaults to ``False`` so non-training verbs
-        preserve deterministic order.
+        If ``True`` and no weights are present, a
+        :class:`~torch.utils.data.SubsetRandomSampler` is used for uniform
+        shuffling.  If ``False`` and no weights, a sequential sampler preserves
+        deterministic order.  Ignored when ``split_weights`` is set (weighted
+        sampling always draws with replacement).  Defaults to ``False`` so
+        non-training verbs preserve deterministic order.
 
     Returns
     -------
-    Dataloader (or an ignite-wrapped equivalent)
-        This is the distributed dataloader, formed by calling ignite.distributed.auto_dataloader
-
-    For multiple splits, we return a dictionary where the keys are the names of the splits
-    and the value is either a Dataloader as described above or the value None if the split
-    was not configured.
+    DataLoader
+        The distributed dataloader.
     """
+
+    # Iterable (streaming) datasets have no length and cannot be indexed, so the
+    # map-style machinery below (len/Subset/samplers) does not apply. Such a dataset
+    # owns its own batching and yields ``list[dict]`` items; disable automatic batching
+    # (``batch_size=None``) so the dataset's ``collate`` is applied to each yielded item.
+    # A single in-process consumer is assumed, so default to ``num_workers=0``.
+    if isinstance(dataset, IterableDataset):
+        stream_kwargs = dict(config["data_loader"])
+        stream_kwargs.pop("shuffle", None)
+        stream_kwargs["batch_size"] = None
+        stream_kwargs["collate_fn"] = dataset.collate
+        # TODO: Revisit this to determine if we can support num_workers > 0.
+        if stream_kwargs.get("num_workers", 0) != 0:
+            logger.warning(
+                "num_workers > 0 is not supported for streaming datasets. "
+                "Setting num_workers=0 to avoid issues with Kafka consumers."
+            )
+        stream_kwargs["num_workers"] = 0
+        return idist.auto_dataloader(dataset, **stream_kwargs)
 
     # Extract the config dictionary that will be provided as kwargs to the DataLoader.
     # Hyrax controls ordering through explicit samplers; warn and ignore legacy
@@ -206,310 +308,50 @@ def dist_data_loader(
     # TODO: Actually DataProvider.collate. Callsites and parameter signature above have not been updated.
     data_loader_kwargs["collate_fn"] = dataset.collate
 
-    torch_rng = torch.Generator(device=idist.device())
+    torch_rng = torch.Generator()
+
     seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
     if seed is not None:
         torch_rng.manual_seed(seed)
 
-    def make_sampler(indexes: Sequence[int], sampler_shuffle: bool):
-        if not indexes:
-            return None
-        if sampler_shuffle:
-            return SubsetRandomSampler(indexes, generator=torch_rng)
-        return SubsetSequentialSampler(indexes)
+    indexes = list(range(len(dataset)))
+    weights = None
+    if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
+        indexes = dataset.split_indices
+        weights = dataset.split_weights
 
-    # Handle case where no split is needed.
-    if isinstance(split, bool):
-        # We still need to return the list of indexes used by the dataloader,
-        # but here, it will simply be the indexes for the entire dataset.
-        indexes = list(range(len(dataset)))
-        # If the dataset is a DataProvider with pre-computed split_indices
-        # (set by setup_dataset from split_fraction), restrict the dataloader
-        # to only those indices. Otherwise, sample the full dataset in the
-        # requested order.
-        if isinstance(dataset, DataProvider) and dataset.split_indices is not None:
-            indexes = dataset.split_indices
+    sub_dataset = Subset(dataset, indexes)
+    n = len(indexes)
 
-        sampler = make_sampler(indexes, shuffle)
+    # If no weights come from the split, then substitute with the correct number of 1's
+    if weights is None:
+        weights = np.ones(n, dtype=np.float32)
 
-        return idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes
+    # If we are in trace mode, the sampler should stop after the batch size
+    # since the batch size has been set to the number of rows the user wanted to trace
+    if get_trace():
+        trace_limit = data_loader_kwargs.get("batch_size", 1)
+        if shuffle:
+            # Limit via WeightedRandomSampler
+            n = trace_limit
+        else:
+            # Limit via Subset
+            sub_dataset = Subset(sub_dataset, list(range(trace_limit)))
 
-    # NOTE: The logic below is deprecated. It is kept for backward compatibility
-    # with older configuration that define data splits with ["data_set"]["train_size"],
-    # ["data_set"]["validate_size"], ["data_set"]["test_size"] rather than defining
-    # separate groups in the data_request with split_fraction.
-    # We should anticipate removing this legacy logic in a future release once
-    # users have had time to migrate their configs to the new style of defining
-    # splits.
-    if isinstance(split, str):
-        split = [split]
-
-    # Create the indexes for all splits based on config.
-    indexes = create_splits(dataset, config)
-
-    # Create samplers and dataloaders for each split we are interested in.
-    # In the legacy multi-split path, the train split is the only split that
-    # honors the shuffle option; validation/test remain deterministic.
-    samplers = {
-        s: make_sampler(indexes[s], shuffle and s == "train") if indexes.get(s) else None for s in split
-    }
-
-    dataloaders = {
-        split: (idist.auto_dataloader(dataset, sampler=sampler, **data_loader_kwargs), indexes[split])
-        if sampler
+    sampler = (
+        WeightedRandomSampler(weights=weights, num_samples=n, generator=torch_rng, replacement=True)
+        if shuffle
         else None
-        for split, sampler in samplers.items()
-    }
-
-    none_keys = [k for k, v in dataloaders.items() if v is None]
-    for key in none_keys:
-        del dataloaders[key]
-
-    # Return only one if we were only passed one split in, return the dictionary otherwise.
-    return dataloaders[split[0]] if len(split) == 1 else dataloaders
-
-
-def create_splits(data_set: Dataset, config: dict):
-    """Returns train, test, and validation indexes constructed to be used with the passed in
-    dataset. The allocation of indexes in the underlying dataset to samplers depends on
-    the data_set section of the config dict.
-
-    .. deprecated::
-        This function and the associated configuration style using
-        ``config["data_set"]["train_size"]``, ``config["data_set"]["validate_size"]``,
-        and ``config["data_set"]["test_size"]`` is deprecated and will be removed in a
-        future release. Please migrate to defining separate dataset groups in
-        ``[data_request]`` with ``split_fraction`` for each group.
-
-    Parameters
-    ----------
-    data_set : Dataset
-        The data set to use
-    config : dict
-        Configuration that defines dataset splits
-    split : str
-        Name of the split to use.
-    """
-    warnings.warn(
-        "\n\n"
-        "DEPRECATION WARNING: Legacy split configuration detected\n\n"
-        "Defining dataset splits via config['data_set'] fields (train_size,\n"
-        "validate_size, test_size) is DEPRECATED and will be removed in a future\n"
-        "release.\n\n"
-        "Please migrate to the new split_fraction approach by:\n"
-        "  1. Defining separate dataset groups in [data_request] (e.g., [data_request.train],\n"
-        "     [data_request.validate], [data_request.test])\n"
-        "  2. Adding 'split_fraction' to each group's configuration\n"
-        "  3. Ensuring all groups share the same 'data_location' and 'primary_id_field'\n\n"
-        "Example migration:\n"
-        "  OLD STYLE:\n"
-        "    [data_set]\n"
-        "    train_size = 0.7\n"
-        "    validate_size = 0.15\n"
-        "    test_size = 0.15\n\n"
-        "  NEW STYLE:\n"
-        "    [data_request.train.data]\n"
-        "    dataset_class = 'YourDataset'\n"
-        "    data_location = '/path/to/data'\n"
-        "    primary_id_field = 'id'\n"
-        "    split_fraction = 0.7\n\n"
-        "    [data_request.validate.data]\n"
-        "    dataset_class = 'YourDataset'\n"
-        "    data_location = '/path/to/data'\n"
-        "    primary_id_field = 'id'\n"
-        "    split_fraction = 0.15\n\n"
-        "    [data_request.test.data]\n"
-        "    dataset_class = 'YourDataset'\n"
-        "    data_location = '/path/to/data'\n"
-        "    primary_id_field = 'id'\n"
-        "    split_fraction = 0.15\n\n"
-        "For more information, see: https://hyrax.readthedocs.io/\n",
-        FutureWarning,
-        stacklevel=2,
     )
 
-    data_set_size = len(data_set)  # type: ignore[arg-type]
+    # Enforce the fork start method for worker processes to avoid issues with CUDA in
+    # child processes. ``multiprocessing_context`` is only valid when multi-process
+    # loading is actually requested (num_workers > 0) - passing it otherwise raises
+    # a ValueError from the underlying DataLoader.
+    if data_loader_kwargs.get("num_workers", 0) > 0:
+        data_loader_kwargs["multiprocessing_context"] = mp.get_context("fork")
 
-    # Init the splits based on config values
-    train_size = config["data_set"]["train_size"] if config["data_set"]["train_size"] else None
-    test_size = config["data_set"]["test_size"] if config["data_set"]["test_size"] else None
-    validate_size = config["data_set"]["validate_size"] if config["data_set"]["validate_size"] else None
-
-    # Convert all values specified as counts into ratios of the underlying container
-    if isinstance(train_size, int):
-        train_size = train_size / data_set_size
-    if isinstance(test_size, int):
-        test_size = test_size / data_set_size
-    if isinstance(validate_size, int):
-        validate_size = validate_size / data_set_size
-
-    # Initialize Test size when not provided
-    if test_size is None:
-        if train_size is None:
-            train_size = 0.25
-
-        if validate_size is None:  # noqa: SIM108
-            test_size = 1.0 - train_size
-        else:
-            test_size = 1.0 - (train_size + validate_size)
-
-    # Initialize train size when not provided, and can be inferred from test_size and validate_size.
-    if train_size is None:
-        if validate_size is None:  # noqa: SIM108
-            train_size = 1.0 - test_size
-        else:
-            train_size = 1.0 - (test_size + validate_size)
-
-    # If splits cover more than the entire dataset, error out.
-    if validate_size is None:
-        if np.round(train_size + test_size, decimals=5) > 1.0:
-            raise RuntimeError("Split fractions add up to more than 1.0")
-    elif np.round(train_size + test_size + validate_size, decimals=5) > 1.0:
-        raise RuntimeError("Split fractions add up to more than 1.0")
-
-    # If any split is less than 0.0 also error out
-    if (
-        np.round(test_size, decimals=5) < 0.0
-        or np.round(train_size, decimals=5) < 0.0
-        or (validate_size is not None and np.round(validate_size, decimals=5) < 0.0)
-    ):
-        raise RuntimeError("One of the Split fractions configured is negative.")
-
-    indices = list(range(data_set_size))
-
-    # shuffle the indices
-    seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
-    np.random.seed(seed)
-    np.random.shuffle(indices)
-
-    # Given the number of samples in the dataset and the ratios of the splits
-    # we can calculate the number of samples in each split.
-    num_test = int(np.round(data_set_size * test_size))
-    num_train = int(np.round(data_set_size * train_size))
-
-    # split the indices
-    test_idx = indices[:num_test]
-    train_idx = indices[num_test : num_test + num_train]
-
-    # assume that validate gets all the remaining indices
-    if validate_size:
-        num_validate = int(np.round(data_set_size * validate_size))
-        valid_idx = indices[num_test + num_train : num_test + num_train + num_validate]
-
-    split_inds = {"train": train_idx, "test": test_idx}
-    if validate_size:
-        split_inds["validate"] = valid_idx
-
-    return split_inds
-
-
-def create_splits_from_fractions(
-    dataset_providers: dict[str, Any],
-    config: dict,
-    *,
-    shuffle: bool = True,
-) -> dict[str, list[int]]:
-    """Partition a shared set of indices across dataset groups using the
-    ``split_fraction`` defined on each ``DataProvider``.
-
-    All providers in *dataset_providers* are expected to wrap the **same
-    underlying data source** (same ``data_location``).  The full index range
-    ``[0, len)`` of the first provider is shuffled deterministically (when
-    *shuffle* is ``True``) using ``config["data_set"]["seed"]``, then sliced
-    into contiguous, non-overlapping segments proportional to each provider's
-    ``split_fraction``.
-
-    Parameters
-    ----------
-    dataset_providers : dict[str, Any]
-        Mapping of group name (e.g. ``"train"``, ``"validate"``) to a
-        ``DataProvider`` instance whose ``split_fraction`` is set.
-    config : dict
-        The Hyrax runtime configuration.  Only ``config["data_set"]["seed"]``
-        is used here.
-    shuffle : bool, optional
-        Whether to shuffle the index array before slicing.  Defaults to
-        ``True``.  Set to ``False`` for inference / test workloads where
-        deterministic sequential ordering is required.
-
-    Returns
-    -------
-    dict[str, list[int]]
-        Mapping of group name → list of indices assigned to that group.
-
-    Raises
-    ------
-    RuntimeError
-        If any provider is missing a ``split_fraction``, if the fractions
-        sum to more than 1.0, or if providers have mismatched lengths.
-    """
-
-    # --- Validate inputs ---------------------------------------------------
-    fractions: dict[str, float] = {}
-    for name, provider in dataset_providers.items():
-        frac = getattr(provider, "split_fraction", None)
-        if frac is None:
-            raise RuntimeError(
-                f"DataProvider for group '{name}' does not have a split_fraction set. "
-                "All providers passed to create_splits_from_fractions must define one."
-            )
-        fractions[name] = frac
-
-    total = sum(fractions.values())
-    if np.round(total, decimals=5) > 1.0:
-        raise RuntimeError(f"split_fraction values sum to {total}, which exceeds 1.0. Fractions: {fractions}")
-
-    # --- Validate that all providers have the same length ------------------
-    # Even though providers sharing the same data_location are expected to
-    # wrap identical underlying data, configuration differences (e.g.,
-    # dataset_config filters, caching issues, or implementation bugs) could
-    # lead to length mismatches. We validate this assumption explicitly to
-    # prevent silent out-of-range errors or incorrect data access.
-    provider_lengths = {name: len(provider) for name, provider in dataset_providers.items()}
-    unique_lengths = set(provider_lengths.values())
-    if len(unique_lengths) > 1:
-        raise RuntimeError(
-            f"All providers passed to create_splits_from_fractions must have the same length. "
-            f"Got lengths: {provider_lengths}"
-        )
-
-    # --- Determine the full index set from the first provider ---------------
-    # We have verified that all providers have the same length, so we can safely
-    # use the length of the first provider to determine the full index range.
-    first_provider = next(iter(dataset_providers.values()))
-    data_set_size = len(first_provider)
-    indices = list(range(data_set_size))
-
-    # --- Optionally shuffle using the configured seed -----------------------
-    if shuffle:
-        seed = config["data_set"]["seed"] if config["data_set"]["seed"] else None
-        np.random.seed(seed)
-        np.random.shuffle(indices)
-
-    # --- Slice indices proportionally ---------------------------------------
-    # The iteration order over fractions.items() determines which split receives
-    # which contiguous block of indices. Since dicts maintain insertion order
-    # (Python 3.7+), this preserves the order from setup_dataset's `splits`
-    # parameter. When splits is None, the order comes from data_request.keys()
-    # (TOML table order). This ensures deterministic, reproducible partitioning.
-    split_indices: dict[str, list[int]] = {}
-    offset = 0
-    last_split_name = None
-    for name, frac in fractions.items():
-        count = int(np.round(data_set_size * frac))
-        # Clamp to avoid overrunning the index list
-        count = min(count, data_set_size - offset)
-        split_indices[name] = indices[offset : offset + count]
-        offset += count
-        last_split_name = name
-
-    # Assign any leftover indices to the last split, but only if the fractions
-    # sum to approximately 1.0 (i.e., the user intended to use all indices).
-    # When fractions sum to < 1.0, leftover indices should remain unassigned.
-    if offset < data_set_size and last_split_name is not None and total >= 1.0 - 1e-5:
-        split_indices[last_split_name].extend(indices[offset:])
-
-    return split_indices
+    return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
 
 # TODO: Clean up the input variables here.
@@ -537,11 +379,23 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     return func(batch)
 
 
-def _create_process_func(funcname, device, model, config):
+def create_process_func(funcname, device, model, config):
+    """Build the per-batch processing function used by the Ignite engine loop.
+
+    Returns a partial of ``_inner_loop`` with ``func``, ``prepare_inputs``,
+    ``device``, and ``config`` already bound.  The remaining signature is
+    ``(engine, batch)`` — pass ``None`` for *engine* when calling outside an
+    Ignite engine (e.g. from :class:`~hyrax.verbs.infer_stream.InferStreamSession`).
+    """
     inner_step = extract_model_method(model, funcname)
     prepare_inputs = extract_model_method(model, "prepare_inputs")
     inner_loop = functools.partial(_inner_loop, inner_step, prepare_inputs, device, config)
     return inner_loop
+
+
+# Keep the old private name as an alias so any external callers are unaffected.
+# TODO: I think we can simply rename this function. It's only used here.
+_create_process_func = create_process_func
 
 
 def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, config: dict) -> Engine:
@@ -563,18 +417,16 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
     config : dict
         The runtime config in use
     """
-    torch.set_default_device(device.type)
-    return Engine(_create_process_func(funcname, device, model, config))
+    return Engine(create_process_func(funcname, device, model, config))
 
 
 def extract_model_method(model, method_name):
-    """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-    or DataParallel object. For instance, method_name could be `train_batch` or
-    `infer_batch`.
+    """Extract a method from a model, which may be wrapped in DistributedDataParallel.
+    For instance, method_name could be `train_batch` or `infer_batch`.
 
     Parameters
     ----------
-    model : nn.Module, DistributedDataParallel, or DataParallel
+    model : nn.Module
         The model to extract the method from
     method_name : str
         Name of the method to extract
@@ -584,13 +436,13 @@ def extract_model_method(model, method_name):
     Callable
         The method extracted from the model
     """
-    wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
 
-    # Check to see if the model has the requested method
+    wrapped = type(model) is DistributedDataParallel
+
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
 
-    return getattr(model.module if wrapped else model, method_name)
+    return getattr(model if hasattr(model, method_name) else model.module, method_name)
 
 
 def create_evaluator(
@@ -618,7 +470,7 @@ def create_evaluator(
     """
     device = idist.device()
     model.eval()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     evaluator = create_engine("infer_batch", device, wrapped_model, config)
 
     @evaluator.on(Events.STARTED)
@@ -672,10 +524,16 @@ def create_validator(
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
-    tensorboardx_logger = get_tensorboard_logger()
+    wrapped_model = _auto_model(model)
+
+    wrapped = type(wrapped_model) is DistributedDataParallel
+
+    if wrapped:
+        # bind the validate_batch function to the DDP model
+        wrapped_model.validate_batch = model.validate_batch.__get__(wrapped_model)
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
+    tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(validator)
 
     @validator.on(Events.STARTED)
@@ -692,6 +550,15 @@ def create_validator(
         logger.debug(f"Validation metrics: {validator.state.output}")
         model.final_validation_metrics = validator.state.output
 
+    @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_validate_post_epoch_hooks(validator):
+        hook = getattr(model, "validate_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("validate_post_epoch is not supported for distributed training yet.")
+        hook()
+
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
         with torch.no_grad():
@@ -699,11 +566,19 @@ def create_validator(
 
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
-        for m in trainer.state.output:
+        for m in validator.state.output:
             tensorboardx_logger.add_scalar(f"training/validation/{m}", validator.state.output[m], step)
             mlflow.log_metrics({f"validation/{m}": validator.state.output[m]}, step=step)
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
+
+    @trainer.on(Events.EXCEPTION_RAISED)
+    def handle_exception(trainer, exception):
+        logger.warning(f"Exception occurred during training: {exception}")
+
+        # calling trainer.terminate here will attempt to spin down the training
+        # engine so that it is able to save its state properly.
+        trainer.terminate()
 
     validator.hyrax_label = "validator"
     return validator
@@ -727,7 +602,7 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     tester = create_engine("test_batch", device, wrapped_model, config)
@@ -736,11 +611,6 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     @tester.on(Events.STARTED)
     def set_model_to_eval_mode():
         wrapped_model.eval()
-
-    # Track average loss
-    from ignite.metrics import RunningAverage
-
-    RunningAverage(output_transform=lambda x: x["loss"]).attach(tester, "avg_loss")
 
     @tester.on(Events.STARTED)
     def log_test_start(engine):
@@ -755,19 +625,30 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
 
     tester.run = run_with_no_grad
 
-    @tester.on(Events.COMPLETED)
-    def log_test_metrics(engine):
+    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_test_post_epoch_hooks(tester):
+        hook = getattr(model, "test_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("test_post_epoch is not supported for distributed use yet.")
+        hook()
+
+    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def log_test_metrics(tester):
         from colorama import Fore, Style
 
-        metrics = engine.state.metrics
+        # send metrics to pretty printing, tensorboard, and mlflow
+        metrics = tester.state.output
         logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
-        logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
+        for m in metrics:
+            logger.info(f"  {m}: {metrics[m]:.4f}")
+            tensorboardx_logger.add_scalar(f"training/test/{m}", metrics[m], 1)
+            mlflow.log_metrics({f"test/{m}": metrics[m]}, step=1)
 
-        # Log metrics to MLflow
-        mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
-
-        # Log to tensorboard
-        tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
+        # debug log the run times
+        logger.debug(f"Test run time: {tester.state.times['EPOCH_COMPLETED']:.2f}[s]")
+        logger.debug(f"Test metrics: {tester.state.output}")
 
     tester.hyrax_label = "tester"
     return tester
@@ -805,7 +686,7 @@ def attach_best_checkpoint(
     results_directory : Path
         Directory where checkpoint files are written.
     """
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
     to_save = {
         "model": wrapped_model,
@@ -859,9 +740,21 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pytorch-ignite.Engine
         Engine object that will be used to train the model.
     """
+
+    # remove in future when adding support for multi-node configurations
+    if idist.get_nnodes() > 1:
+        raise RuntimeError("Multi-node configurations not supported")
+
     device = idist.device()
     model.train()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
+
+    wrapped = type(wrapped_model) is DistributedDataParallel
+
+    if wrapped:
+        # bind the train_batch function to the DDP model
+        wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
+
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
     fixup_engine(trainer)
@@ -904,6 +797,15 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
         for m in trainer.state.output:
             tensorboardx_logger.add_scalar(f"training/training/{m}", trainer.state.output[m], step)
             mlflow.log_metrics({f"training/{m}": trainer.state.output[m]}, step=step)
+
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_training_post_epoch_hooks(trainer):
+        hook = getattr(model, "train_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("train_post_epoch is not supported for distributed training yet.")
+        hook()
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss(trainer):
@@ -1042,3 +944,13 @@ def fixup_engine(engine: Engine):
         # On the last iteration the peekable iterator evaluates as true
         if not engine._dataloader_iter:
             engine.fire_event(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+
+
+class EarlyStopping(Exception):  # noqa: N818
+    """Raised when validation metrics stop improving to prevent overfitting."""
+
+    def __init__(self, message: str = "Early stopping triggered."):
+        super().__init__(message)
+
+    def __str__(self):
+        return f"EarlyStopping: {self.args[0]}"

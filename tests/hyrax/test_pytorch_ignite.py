@@ -14,6 +14,7 @@ class TestSetupDataset:
         """Test that missing dataset_class raises appropriate RuntimeError."""
         # Create a minimal config that omits dataset_class in data_request
         config = {
+            "data_set": {"seed": False},
             "data_request": {
                 "train": {
                     "test_dataset": {
@@ -27,7 +28,7 @@ class TestSetupDataset:
                         "data_location": "/some/path"
                     },
                 },
-            }
+            },
         }
 
         # This should raise RuntimeError from DataProvider when dataset_class is missing
@@ -40,6 +41,7 @@ class TestSetupDataset:
         """Test that providing an invalid dataset_class raises appropriate ValueError."""
         # Create a config with an invalid dataset_class
         config = {
+            "data_set": {"seed": False},
             "data_request": {
                 "train": {
                     "test_dataset": {
@@ -53,7 +55,7 @@ class TestSetupDataset:
                         "data_location": "/some/path",
                     },
                 },
-            }
+            },
         }
 
         # DataProvider will try to look up the class in the registry and fail
@@ -85,7 +87,6 @@ class TestSetupDataset:
         # Use a real class (not MagicMock) so isinstance() in setup_dataset doesn't TypeError.
         # __new__ intercepts construction and returns our sentinel instance.
         sentinel = MagicMock()
-        sentinel.split_fraction = None
         provider_calls = []
 
         class MockDataProvider:
@@ -125,7 +126,6 @@ class TestSetupDataset:
 
         # Use a real class (not MagicMock) so isinstance() in setup_dataset doesn't TypeError.
         sentinel = MagicMock()
-        sentinel.split_fraction = None
         provider_calls = []
 
         class MockDataProvider:

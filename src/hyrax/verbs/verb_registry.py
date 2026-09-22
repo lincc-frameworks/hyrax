@@ -1,6 +1,9 @@
+import functools
 import logging
 from abc import ABC
 from collections.abc import Mapping
+
+from hyrax.context import run_context
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +34,34 @@ class Verb(ABC):  # noqa: B024
         self.config = config
         self.validate_data_request()
 
+    def __init_subclass__(cls, **kwargs):
+        """Give every verb a run context for the duration of its ``run()``.
+
+        Wrapping here rather than in each verb means a verb cannot forget to
+        establish a context, and cannot leave one behind when it finishes or
+        raises. Verbs still record their own results directory, with
+        :func:`hyrax.context.update_context`, once they have created it.
+
+        Only ``run`` is wrapped. Every verb's ``run_cli`` delegates to ``run``,
+        so wrapping both would establish two contexts per CLI invocation.
+        """
+        super().__init_subclass__(**kwargs)
+
+        run = cls.__dict__.get("run")
+        if run is None or getattr(run, "_hyrax_bracketed", False):
+            return
+
+        @functools.wraps(run)
+        def run_with_context(self, *args, **kwargs):
+            with run_context(type(self).cli_name):
+                return run(self, *args, **kwargs)
+
+        # functools.wraps sets __wrapped__, so inspect.signature() still reports
+        # the verb's real signature. Hyrax.__getattr__ hands verb.run straight to
+        # notebook users, who rely on that for help text and completion.
+        run_with_context._hyrax_bracketed = True
+        cls.run = run_with_context
+
     @classmethod
     def information(cls):
         """Returns a string describing this verb. Includes the following:
@@ -55,22 +86,15 @@ class Verb(ABC):  # noqa: B024
     def validate_data_request(self) -> None:
         """Validate the data_request configuration for this verb's known groups.
 
-        Reads ``data_request`` from the verb's config and checks:
-
-        1. All groups listed in ``REQUIRED_DATA_GROUPS`` are present.
-        2. Cross-group split_fraction constraints (sum ≤ 1.0, consistency) hold
-           for the active groups only — groups outside
-           ``REQUIRED_DATA_GROUPS + OPTIONAL_DATA_GROUPS`` are ignored so that
-           unrelated groups in a shared config do not cause false failures.
-
-        Verbs that define neither ``REQUIRED_DATA_GROUPS`` nor
-        ``OPTIONAL_DATA_GROUPS`` skip validation entirely.
+        Reads ``data_request`` from the verb's config and verifies that every
+        group listed in ``REQUIRED_DATA_GROUPS`` is present.  Verbs that define
+        neither ``REQUIRED_DATA_GROUPS`` nor ``OPTIONAL_DATA_GROUPS`` skip
+        validation entirely.
 
         Raises
         ------
         RuntimeError
-            If a required group is absent, or if cross-group split_fraction
-            constraints are violated for the active groups.
+            If a required group is absent from the data_request config.
         """
         if not self.REQUIRED_DATA_GROUPS and not self.OPTIONAL_DATA_GROUPS:
             return
@@ -94,29 +118,19 @@ class Verb(ABC):  # noqa: B024
                 f"Available groups: {sorted(data_request.keys())}."
             )
 
-        # Build a DataRequestDefinition so we can call validate_cross_group.
-        # If the stored config is structurally invalid, surface the problem as a
-        # runtime error so that verb-time validation does not get silently skipped.
+        # Run Pydantic structural validation so that a structurally invalid
+        # data_request injected after set_config is caught at verb-instantiation
+        # time rather than silently skipped.
         from pydantic import ValidationError
 
         from hyrax.config_schemas.data_request import DataRequestDefinition
 
         try:
-            definition = DataRequestDefinition.model_validate(data_request)
+            DataRequestDefinition.model_validate(data_request)
         except ValidationError as exc:
             raise RuntimeError(
                 f"Invalid data_request configuration for {type(self).__name__}: {exc}"
             ) from exc
-
-        # Restrict cross-group validation to the groups this verb actually uses.
-        # Groups outside REQUIRED + OPTIONAL (e.g. 'infer' for a Train verb) are
-        # ignored so that their configs cannot cause false validation failures.
-        all_verb_groups = set(self.REQUIRED_DATA_GROUPS + self.OPTIONAL_DATA_GROUPS)
-        active_groups = all_verb_groups & set(data_request.keys())
-        try:
-            definition.validate_cross_group(active_groups)
-        except ValueError as exc:
-            raise RuntimeError(f"Data request validation failed for {type(self).__name__}: {exc}") from exc
 
 
 # Verbs with no class are assumed to have a function in hyrax.py which

@@ -302,9 +302,6 @@ class TraceResult(TracePrintable):
                         self.instrument_class_data_handler(model_cls, trace_def)
 
         # Drop the length of the dataprovider so we end train/inference/test/engine runs early
-        from hyrax.datasets.data_provider import DataProvider
-
-        self.reduce_len(DataProvider)
 
         # Clear our representation of calls.
         self.reset()
@@ -315,6 +312,7 @@ class TraceResult(TracePrintable):
         self.stages = {
             "dataset_getter": TraceStage(),
             "resolve_data": TraceStage(),
+            "field_level_collation": TraceStage(),
             "collate": TraceStage(),
             "prepare_inputs": TraceStage(),
             "evaluation": TraceStage(),
@@ -325,39 +323,6 @@ class TraceResult(TracePrintable):
 
     def _valid_keys(self):
         return list(self.stages.keys())
-
-    def reduce_len(self, cls):
-        """
-        Inserts a len method which reduces the length of the passed in class in order to
-        accommodate early return in trace mode.
-
-        This is necessary because hyrax does not control the main loop of inference/training
-        for most ML verbs, so the layer that does control it must get an appropriate stop condition
-        from Hyrax's data structures
-        """
-        raw_func = cls.__dict__.get("__len__")
-
-        def new_len(obj):
-            import numpy as np
-
-            # We actually need the length to be one-past-the-end of whever split index we will
-            # encounter at the end of the first (and only) batch
-            #
-            # This accommodates the situation where there is a split_fraction defined in the data
-            # definition.
-            if obj.split_indices is not None:
-                return obj.split_indices[self.trace_batch_size - 1] + 1
-
-            split_fraction = 1.0 if obj.split_fraction is None else obj.split_fraction
-            max_len = int(np.ceil(self.trace_batch_size / split_fraction))
-
-            # Don't ever make the new length longer than the old length
-            # Can happen in some weird split situations on small datasets (like RandomDataset)
-            # in testing contexts
-            return min(max_len, raw_func(obj))
-
-        cls.__len__ = new_len
-        self.shimmed_funcs.append((cls, "__len__", raw_func))
 
     def remove_class_level_shims(self):
         """
@@ -451,7 +416,7 @@ class TraceResult(TracePrintable):
     def instrument_dataset_getter(self, dataset, getter, friendly_name, field_name):
         """
         Instrument a dataset get_* function. Called by DataProvider to insert shims before
-        any betters are called
+        any getters are called
         """
         trace_def = TraceDef(
             disp_name=f"{friendly_name}__get_{field_name}",
@@ -462,6 +427,20 @@ class TraceResult(TracePrintable):
         )
         return self.instrument_instance_data_handler(dataset, getter, trace_def)
 
+    def instrument_field_collate(self, dataset, field_collate_fn, friendly_name, field_name):
+        """
+        Instrument a collate_* function. Also called by DataProvider to insert shims
+        into all the collate_* functions it finds during dataset preparation.
+        """
+        trace_def = TraceDef(
+            disp_name=f"{friendly_name}__collate_{field_name}",
+            func_name=f"collate_{field_name}",
+            params_to_capture={"samples": 1},
+            result_name="batch_dict",
+            stage_name="field_level_collation",
+        )
+        return self.instrument_instance_data_handler(dataset, field_collate_fn, trace_def)
+
     def instrument_dataset_collate(self, dataset, collate_fn, friendly_name):
         """
         Instrument a dataset collate function. Also called by DataProvider to insert shims
@@ -470,7 +449,7 @@ class TraceResult(TracePrintable):
         trace_def = TraceDef(
             disp_name=f"{friendly_name}__collate",
             func_name="collate",
-            params_to_capture={"samples": 0},
+            params_to_capture={"samples": 1},
             result_name="batch_dict",
             stage_name="collate",
         )
@@ -764,6 +743,17 @@ class TraceCall(TracePrintable):
         # careful with names given to TraceDef() calls.
         return list(self.params.keys()) + list(self.retval.keys())
 
+    @staticmethod
+    def _hash_tensor(tensor):
+        if hasattr(tensor, "hash_tensor"):
+            return tensor.hash_tensor()
+        import hashlib
+
+        arr = tensor.detach().numpy(force=False)
+        h = hashlib.sha256()
+        h.update(arr)
+        return hash(h.digest())
+
     def _repr_value(self, param_value):
         import numpy as np
         import torch
@@ -810,7 +800,7 @@ class TraceCall(TracePrintable):
                 # Have to pull to CPU to perform hash calc
                 as_torch = param_value.to("cpu")
 
-            hash_val = as_torch.hash_tensor()
+            hash_val = self._hash_tensor(as_torch)
 
             shape = tuple(param_value.shape)
             # type_name = type(param_value).__name__

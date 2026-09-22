@@ -1,6 +1,5 @@
-"""Tests for the versioned config migration system."""
+"""Tests for migration helper functions and registry metadata."""
 
-import logging
 import warnings
 
 import pytest
@@ -78,24 +77,6 @@ def test_move_key_missing_source_is_noop():
 # ---------------------------------------------------------------------------
 
 
-def test_migrate_config_legacy_model_inputs_warns_and_renames(caplog):
-    """A v1-era config (no config_version, uses [model_inputs]) is upgraded."""
-    cfg = tomlkit.parse("config_version = 1\n[model_inputs]\ntrain = 1\n")
-
-    with warnings.catch_warnings(record=True) as caught, caplog.at_level(logging.WARNING):
-        warnings.simplefilter("always")
-        migrated = migrate_config(cfg)
-
-    assert "model_inputs" not in migrated
-    assert migrated["data_request"]["train"] == 1
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-
-    assert any(
-        issubclass(w.category, DeprecationWarning) and "model_inputs" in str(w.message) for w in caught
-    )
-    assert "model_inputs" in caplog.text
-
-
 def test_migrate_config_current_version_is_noop():
     """A clean current-version config is stamped through migrate_config unchanged."""
     cfg = tomlkit.parse(f"config_version = {CURRENT_CONFIG_VERSION}\n[data_request]\ntrain = 1\n")
@@ -105,29 +86,6 @@ def test_migrate_config_current_version_is_noop():
     assert migrated["config_version"] == CURRENT_CONFIG_VERSION
     assert migrated["data_request"]["train"] == 1
     assert not any(issubclass(w.category, DeprecationWarning) for w in caught)
-
-
-def test_migrate_config_moves_data_loader_shuffle_to_train():
-    """A v2 config moves global data_loader.shuffle to train.shuffle."""
-    cfg = tomlkit.parse("config_version = 2\n[data_loader]\nshuffle = false\nbatch_size = 8\n")
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert "shuffle" not in migrated["data_loader"]
-    assert migrated["data_loader"]["batch_size"] == 8
-    assert migrated["train"]["shuffle"] is False
-
-
-def test_migrate_config_without_data_loader_shuffle_keeps_existing_train_shuffle():
-    """The shuffle migration is a no-op when the legacy key is absent."""
-    cfg = tomlkit.parse("config_version = 2\n[train]\nshuffle = true\n[data_loader]\nbatch_size = 8\n")
-
-    migrated = migrate_config(cfg)
-
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
-    assert migrated["train"]["shuffle"] is True
-    assert "shuffle" not in migrated["data_loader"]
 
 
 def test_migrate_config_future_version_raises():

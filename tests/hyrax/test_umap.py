@@ -3,8 +3,6 @@ import unittest.mock as mock
 import numpy as np
 import pytest
 
-from hyrax.verbs.umap import Umap
-
 
 class FakeUmap:
     """
@@ -85,7 +83,9 @@ def test_umap_load(loopback_inferred_hyrax):
     fake_umap_instance.n_components = 2
 
     with (
-        mock.patch.object(Umap, "_load_pickle", return_value=fake_umap_instance),
+        mock.patch(
+            "hyrax.verbs.reduction_algorithms.umap.UMAP._load_pickle", return_value=fake_umap_instance
+        ),
         mock.patch("pathlib.Path.is_file", return_value=True),
     ):
         umap_result = h.umap(model_path="pretend_model_exists.pickle")
@@ -98,7 +98,7 @@ def test_umap_load(loopback_inferred_hyrax):
 
     # Test loading a non-UMAP object raises ValueError
     with (
-        mock.patch.object(Umap, "_load_pickle", return_value=object()),
+        mock.patch("hyrax.verbs.reduction_algorithms.umap.UMAP._load_pickle", return_value=object()),
         mock.patch("pathlib.Path.is_file", return_value=True),
     ):
         with pytest.raises(ValueError, match="loaded model is not a UMAP instance"):
@@ -110,7 +110,9 @@ def test_umap_load(loopback_inferred_hyrax):
     fake_umap_wrong_input.n_components = 2
 
     with (
-        mock.patch.object(Umap, "_load_pickle", return_value=fake_umap_wrong_input),
+        mock.patch(
+            "hyrax.verbs.reduction_algorithms.umap.UMAP._load_pickle", return_value=fake_umap_wrong_input
+        ),
         mock.patch("pathlib.Path.is_file", return_value=True),
     ):
         with pytest.raises(ValueError, match="input dimension of the loaded UMAP model"):
@@ -122,7 +124,9 @@ def test_umap_load(loopback_inferred_hyrax):
     fake_umap_wrong_output.n_components = 3
 
     with (
-        mock.patch.object(Umap, "_load_pickle", return_value=fake_umap_wrong_output),
+        mock.patch(
+            "hyrax.verbs.reduction_algorithms.umap.UMAP._load_pickle", return_value=fake_umap_wrong_output
+        ),
         mock.patch("pathlib.Path.is_file", return_value=True),
     ):
         with pytest.raises(ValueError, match="output dimension of the loaded UMAP model"):

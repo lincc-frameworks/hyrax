@@ -49,7 +49,6 @@ class Test(Verb):
         """
 
         import mlflow
-        from tensorboardX import SummaryWriter
 
         from hyrax.config_utils import (
             create_results_dir,
@@ -65,6 +64,8 @@ class Test(Verb):
             setup_dataset,
             setup_model,
         )
+        from hyrax.splitting_utils import create_splits
+        from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
 
@@ -72,7 +73,7 @@ class Test(Verb):
         results_dir = create_results_dir(config, "test")
 
         # Create a tensorboardX logger
-        tensorboardx_logger = SummaryWriter(log_dir=results_dir)
+        init_tensorboard_logger(log_dir=results_dir)
 
         # Instantiate the model and dataset
         dataset = setup_dataset(
@@ -80,6 +81,7 @@ class Test(Verb):
             splits=Test.REQUIRED_DATA_GROUPS + Test.OPTIONAL_DATA_GROUPS,
             shuffle=False,
         )
+        create_splits(config, dataset, persist=False)
 
         # Verify that test dataset exists
         if not isinstance(dataset, dict) or "test" not in dataset:
@@ -101,8 +103,11 @@ class Test(Verb):
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Test dataset:{Style.RESET_ALL}\n{dataset['test']}"
         )
 
+        for provider in dataset.values():
+            provider.on_epoch_start("test")
+
         # Determine which dataset to use for testing
-        test_data_loader, _ = dist_data_loader(dataset["test"], config, False)
+        test_data_loader = dist_data_loader(dataset["test"], config)
 
         # Save the loaded model weights to the test results directory
         model.save(results_dir / "test_weights.pth")
@@ -139,7 +144,7 @@ class Test(Verb):
         save_batch_callback.data_writer.commit()  # type: ignore[attr-defined]
 
         logger.info("Finished Testing")
-        tensorboardx_logger.close()
+        close_tensorboard_logger()
 
         # Return the ResultDataset for further analysis
         return load_results_dataset(config, results_dir)

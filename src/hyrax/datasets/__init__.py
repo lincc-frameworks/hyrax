@@ -59,6 +59,7 @@ functionality to make custom datasets easier to write. See the
 from .fits_image_dataset import FitsImageDataset
 from .lsst_dataset import LSSTDataset
 from .downloaded_lsst_dataset import DownloadedLSSTDataset
+from .range_read_lsst_dataset import RangeReadLSSTDataset
 from .hsc_dataset import HSCDataset
 from .hyrax_cifar_dataset import HyraxCifarDataset
 from .random.hyrax_random_dataset import (
@@ -74,6 +75,7 @@ from .hats_dataset import HyraxHATSDataset
 from .mmu_dataset import MultimodalUniverseDataset
 from .nested_pandas_dataset import NestedPandasDataset
 from .lancedb_dataset import LanceDBDataset
+from .kafka_stream_dataset import KafkaStreamDataset
 from .data_cache import DataCache
 
 __all__ = [
@@ -88,6 +90,7 @@ __all__ = [
     "HyraxDataset",
     "LSSTDataset",
     "DownloadedLSSTDataset",
+    "RangeReadLSSTDataset",
     "HyraxRandomDataset",
     "HyraxRandomDatasetBase",
     "HyraxCSVDataset",
@@ -95,5 +98,6 @@ __all__ = [
     "MultimodalUniverseDataset",
     "NestedPandasDataset",
     "LanceDBDataset",
+    "KafkaStreamDataset",
     "DataCache",
 ]

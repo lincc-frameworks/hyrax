@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
+import ignite.distributed as idist
 import numpy as np
 import torch.nn as nn
 import torch.optim as optim
@@ -55,7 +56,6 @@ def _torch_save(self: nn.Module, save_path: Path):
 
 
 def _torch_load(self: nn.Module, load_path: Path):
-    import ignite.distributed as idist
     import torch
 
     # Use ignite's device detection which handles distributed training and device availability
@@ -205,7 +205,9 @@ def hyrax_model(cls):
         original_init(self, config, *args, **kwargs)
 
         if not hasattr(self, "optimizer"):
-            self.optimizer = _torch_optimizer(self)
+            # auto_optim is no-op for non-distributed and torch native distributed configuration.
+            # more info at https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_optim.html
+            self.optimizer = idist.auto_optim(_torch_optimizer(self))
         else:
             if config["optimizer"]["name"]:
                 logger.warning(

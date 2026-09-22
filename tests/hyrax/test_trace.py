@@ -10,7 +10,6 @@ These tests cover:
      ordinary return value when trace is not supplied.
 """
 
-import pytest
 
 # ---------------------------------------------------------------------------
 # Minimal config helper
@@ -89,49 +88,6 @@ def test_trace_context_modifies_config():
 
 
 # ---------------------------------------------------------------------------
-# TraceContext – DataProvider.__len__ shim is applied and removed
-# ---------------------------------------------------------------------------
-
-
-def test_trace_context_restores_dataprovider_len_after_exit():
-    """
-    During an active trace TraceContext shims DataProvider.__len__.
-    After __exit__ the original method is restored.
-    """
-    from hyrax.datasets.data_provider import DataProvider
-    from hyrax.trace import TraceContext
-
-    original_len = DataProvider.__dict__.get("__len__")
-
-    config = _make_config()
-    with TraceContext(3, config):
-        # The shim should replace the original __len__
-        assert DataProvider.__dict__.get("__len__") is not original_len
-
-    # After the context the original should be back
-    assert DataProvider.__dict__.get("__len__") is original_len
-
-
-def test_trace_context_restores_dataprovider_len_on_exception():
-    """
-    TraceContext restores DataProvider.__len__ even when an exception is raised
-    inside the context block.
-    """
-    from hyrax.datasets.data_provider import DataProvider
-    from hyrax.trace import TraceContext, get_trace
-
-    original_len = DataProvider.__dict__.get("__len__")
-
-    with pytest.raises(RuntimeError, match="test error"):
-        with TraceContext(3, _make_config()):
-            raise RuntimeError("test error")
-
-    # Cleanup must have run despite the exception
-    assert get_trace() is None
-    assert DataProvider.__dict__.get("__len__") is original_len
-
-
-# ---------------------------------------------------------------------------
 # trace_verb_data decorator
 # ---------------------------------------------------------------------------
 
@@ -178,6 +134,7 @@ def test_trace_result_populates_resolve_data_stage(loopback_hyrax):
     stage = trace_result["resolve_data"]
     assert isinstance(stage, TraceStage)
     assert len(stage) > 0, "resolve_data stage should have at least one captured call"
+    assert len(stage) == 3, f"trace=3 should produce exactly 3 resolve_data calls, got {len(stage)}"
 
     # Each call should be printable
     first_call = stage[0]

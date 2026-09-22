@@ -36,22 +36,37 @@ class HyraxLoopback(nn.Module):
             x, _ = x
         return x
 
+    # dummy self.forward() called for DDP compatibility
     def train_batch(self, batch):
         """Training is a noop"""
         logger.debug(f"Batch length: {len(batch)}")
+        self.forward(batch)
         return {"loss": 0.0}
 
     def validate_batch(self, batch):
-        """Validation is just a forward pass"""
+        """Validation is a noop"""
         logger.debug(f"Batch length: {len(batch)}")
+        self.forward(batch)
         return {"loss": 0.0}
 
     def test_batch(self, batch):
-        """Testing is just a forward pass"""
+        """Testing is a noop"""
         logger.debug(f"Batch length: {len(batch)}")
+        self.forward(batch)
         return {"loss": 0.0}
 
     def infer_batch(self, batch):
         """Inference is just a forward pass"""
         logger.debug(f"Batch length: {len(batch)}")
         return self.forward(batch)
+
+    @staticmethod
+    def prepare_inputs(data_dict):
+        """Simple input prep for the loopback model"""
+        import numpy as np
+
+        data = data_dict.get("data")
+        image = data.get("image", np.array([], dtype=np.float32))
+        label = data.get("label", np.array([], dtype=np.float32))
+
+        return (image, label)

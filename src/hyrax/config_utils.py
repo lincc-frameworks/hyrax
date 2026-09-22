@@ -181,6 +181,11 @@ class ConfigManager:
 
     PYDANTIC_VALIDATED_KEYS = ("data_request",)
 
+    # Tables whose child keys are user-defined (group names, class labels) and
+    # legitimately have no entry in the default config.  Children of these tables
+    # are skipped by _validate_runtime_config.
+    DYNAMIC_KEY_TABLES = ("split", "distribution", "label")
+
     def __init__(
         self,
         runtime_config_filepath: Union[Path, str] | None = None,
@@ -536,6 +541,8 @@ class ConfigManager:
                     msg += "value in the default config. Please choose another name for this section."
                     logger.warning(msg)
                     continue
+                if key in ConfigManager.DYNAMIC_KEY_TABLES:
+                    continue
                 ConfigManager._validate_runtime_config(runtime_config[key], default_config[key])
 
     @staticmethod
@@ -641,6 +648,8 @@ def create_results_dir(config: dict, postfix: str) -> Path:
     Path
         The path created by this function
     """
+    from hyrax.context import update_context
+
     results_root = Path(config["general"]["results_dir"]).expanduser().resolve()
     # This date format is chosen specifically to create a lexical search order
     # which matches the date order.
@@ -650,6 +659,7 @@ def create_results_dir(config: dict, postfix: str) -> Path:
     random_str = base64.urlsafe_b64encode(random.randbytes(3)).decode("ascii")
     directory = results_root / f"{timestamp}-{postfix}-{random_str}"
     directory.mkdir(parents=True, exist_ok=False)
+    update_context(results_dir=directory, verb=postfix)
     return directory
 
 

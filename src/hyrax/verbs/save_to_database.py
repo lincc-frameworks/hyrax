@@ -70,6 +70,7 @@ class SaveToDatabase(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
+        from hyrax.context import update_context
         from hyrax.datasets.result_factories import load_results_dataset
         from hyrax.tensorboardx_logger import (
             close_tensorboard_logger,
@@ -118,8 +119,12 @@ class SaveToDatabase(Verb):
 
         logger.info(f"Saving vector database at {vector_db_dir}")
 
+        # Point the run context at the database directory before building the
+        # database - that is where it reads its location from.
+        update_context(results_dir=vector_db_path, verb="vector-db")
+
         # Create an instance of the vector database to insert into
-        vector_db = vector_db_factory(config, context={"results_dir": str(vector_db_path)})
+        vector_db = vector_db_factory(config)
         if vector_db:
             vector_db.create()
         else:

@@ -6,6 +6,7 @@ import os
 import pickle
 import time
 from concurrent.futures import ThreadPoolExecutor
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +17,9 @@ from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
 tensorboardx_logger = get_tensorboard_logger()
+
+_NAN_WARNING_MAX = 3
+_nan_warning_count = 0
 
 
 @functools.singledispatch
@@ -62,12 +66,18 @@ def _handle_nans_logic_numpy(batch, config):
         return batch
 
     if config["data_set"]["nan_mode"] is False:
+        global _nan_warning_count
         if np.any(np.isnan(batch)):
-            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
-            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
-            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
-            msg += "to get started."
-            logger.warning(msg)
+            if _nan_warning_count < _NAN_WARNING_MAX:
+                msg = "Input data contains NaN values. This may mean your model output is all NaNs. "
+                msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
+                msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
+                msg += "to get started."
+                logger.warning(msg)
+                _nan_warning_count += 1
+            elif _nan_warning_count == _NAN_WARNING_MAX:
+                logger.warning("Silencing additional NaN warnings.")
+                _nan_warning_count += 1
         return batch
 
     if config["data_set"]["nan_mode"] == "quantile":
@@ -265,7 +275,236 @@ Example configuration:
     return data_request
 
 
-class DataProvider:
+class CollationMixin:
+    """Shared collation behavior for map-style and streaming data providers.
+
+    Provides ``collate`` (``list[dict]`` -> batch ``dict``) and ``handle_nans``.
+    Both rely only on instance attributes (``custom_collate_functions``,
+    ``field_collate_functions``, ``config``), so any class that populates those
+    can reuse this collation logic.  :class:`DataProvider` uses it for map-style
+    datasets; :class:`~hyrax.datasets.streaming_data_provider.StreamingDataProvider`
+    uses it for streaming datasets.
+    """
+
+    @staticmethod
+    def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
+        """Default field-level collate function for a single field.
+
+        Parameters
+        ----------
+        samples : list of dict
+            A list of data samples, where each sample is a
+            dictionary mapping some attribute to one of its values.
+
+        field : str
+            The name of the field to collate.
+
+        friendly_name : str
+            The friendly name of the dataset.
+
+        Returns
+        -------
+        dict
+            A dictionary containing the collated field values.
+
+        """
+        retval = {}
+        if field not in samples[0]:
+            raise RuntimeError(f"Requested field '{field}' not in dataset '{friendly_name}'")
+
+        values = [s[field] for s in samples]
+
+        if all(isinstance(v, np.ndarray) for v in values):
+            shapes = [v.shape for v in values]
+            if all(s == shapes[0] for s in shapes):
+                try:
+                    retval[field] = np.stack(values, axis=0)
+                    return retval
+                except Exception as err:
+                    logger.warning(
+                        f"Could not stack numpy arrays for field '{field}' "
+                        f"in dataset '{friendly_name}'. Consider implementing "
+                        "a custom collation function for this field."
+                    )
+                    raise RuntimeError(
+                        f"Could not stack numpy arrays for field '{field}' "
+                        f"in dataset '{friendly_name}'. Consider implementing "
+                        "a custom collation function for this field."
+                    ) from err
+
+        # if values is a list of numpy scalars convert to numpy array
+        retval[field] = np.array(values)
+        return retval
+
+    @staticmethod
+    def dataset_collate(field_collate_functions: dict, friendly_name: str, samples: list[dict]) -> dict:
+        """Template for dataset-level collate function which Hyrax constructs by binding first two arguments.
+
+        Parameters
+        ----------
+        field_collate_functions : dict
+            A dictionarity mapping field names to user-defined field-level collate functions.
+            Fields for which the user did not define a collate function will have a value of None.
+
+        friendly_name : str
+            The friendly name of the dataset
+
+        samples : list of dict
+            A list of data samples, where each sample is a
+            dictionary mapping some attribute to one of its values.
+
+        Returns
+        -------
+        dict
+            A dictionary of the collated data, where the keys include the requested fields
+            as well as fields denoting padding (if applicable), and the values include
+            all values from samples.
+        """
+        retval = {}
+        for field, field_collate_fcn in field_collate_functions.items():
+            if field_collate_fcn is not None:
+                retval.update(field_collate_fcn(samples))
+            else:
+                retval.update(DataProvider.default_field_collate(samples, field, friendly_name))
+        return retval
+
+    def collate(self, batch: list[dict]) -> dict:
+        """Custom collate function to be used outside the context of a PyTorch
+        DataLoader.
+
+        This function takes a list of data samples (each sample is a dictionary)
+        and combines them into a single batch dictionary.
+
+        Parameters
+        ----------
+        batch : list of dict
+            A list of data samples, where each sample is a dictionary.
+
+        Returns
+        -------
+        dict
+            A dictionary where each key corresponds to a field and the value is
+            a list of values for that field across the batch.
+        """
+
+        batch_dict: dict[str, dict[str, list] | list] = {}
+        custom_collate: dict[str, list] = {}
+
+        # Track which batch positions are None per friendly_name (left outer
+        # join misses).  Only populated for names that have at least one None.
+        none_masks: dict[str, list[bool]] = {}
+
+        # Aggregate values per friendly_name -> field -> list(values)
+        for sample_idx, sample in enumerate(batch):
+            for friendly_name, fields in sample.items():
+                # Special handling for "object_id" for the time being. "object_id"
+                # hangs on the edge of the data dictionary so that it can be consumed
+                # during `infer`, specifically `_save_batch`. Originally it was
+                # there to protect against missing ids. We have much more control
+                # now with DataProvider, and should remove the special logic for
+                # "object_id" from the assorted places it's used.
+                if friendly_name == "object_id":
+                    val = fields[""] if isinstance(fields, dict) and "" in fields else fields
+                    batch_dict.setdefault("object_id", []).append(str(val))
+                    continue
+
+                # Left outer join: None means no match in this secondary.
+                if fields is None:
+                    if friendly_name not in none_masks:
+                        none_masks[friendly_name] = [True] * sample_idx
+                    none_masks[friendly_name].append(False)
+                    continue
+
+                # Track matched position if we're already tracking this name.
+                if friendly_name in none_masks:
+                    none_masks[friendly_name].append(True)
+
+                # If we find that `friendly_name` is not in self.custom_collate_functions
+                # we construct a collate function using
+                # field-level collate functions if provided, using the
+                # defauly field collate function otherwise
+                custom_collate.setdefault(friendly_name, []).append(fields)
+                if friendly_name not in self.custom_collate_functions:
+                    # construct the dataset collate function and set it in self.custom_collate_functions
+                    self.custom_collate_functions[friendly_name] = partial(
+                        DataProvider.dataset_collate,
+                        self.field_collate_functions[friendly_name],
+                        friendly_name,
+                    )
+
+        # Pad any none_masks that are shorter than the batch (trailing matches).
+        batch_size = len(batch)
+        for name in none_masks:
+            while len(none_masks[name]) < batch_size:
+                none_masks[name].append(True)
+
+        # Convert object_id list -> numpy array of strings
+        if "object_id" in batch_dict:
+            batch_dict["object_id"] = np.asarray(batch_dict["object_id"], dtype=str)
+
+        # Handle custom collate functions for datasets that define them.
+        # For joined datasets with None entries, filter out the Nones before
+        # calling the custom function.
+        for friendly_name, samples in custom_collate.items():
+            custom_collate_fn = self.custom_collate_functions[friendly_name]
+            try:
+                custom_collated_data = custom_collate_fn(samples)
+            except Exception as err:
+                func_name = (
+                    custom_collate_fn.func.__name__
+                    if hasattr(custom_collate_fn, "func")
+                    else str(custom_collate_fn)
+                )
+                logger.error(
+                    f"Error occurred while collating batch for dataset '{friendly_name}' "
+                    f"using its '{func_name}' collate function."
+                )
+                # TODO: make this better when we're using the default collate function
+                raise RuntimeError(
+                    f"Error occurred while collating batch for dataset '{friendly_name}' "
+                    f"using its '{func_name}' collate function."
+                ) from err
+
+            batch_dict[friendly_name] = custom_collated_data
+
+        # Add __matched masks for joined datasets that had any None entries.
+        for friendly_name, mask in none_masks.items():
+            batch_dict[f"{friendly_name}__matched"] = np.array(mask, dtype=bool)
+
+        return self.handle_nans(batch_dict)
+
+    def handle_nans(self, batch_dict):
+        """Apply nan handling to a batch dictionary
+
+        Parameters
+        ----------
+        batch_dict : dict[str, np.ndarray]
+            Dictionary from data column to an entire batch of data in np.ndarray form
+
+        Returns
+        -------
+        dict[str, np.ndarray]
+            The same batch dict but with NaNs altered according to the Hyrax configuration.
+        """
+        # Apply NaN handling to all numpy array fields in the batch,
+        # including data produced by custom collate functions.
+        for friendly_name, fields in batch_dict.items():
+            if friendly_name == "object_id":
+                continue
+
+            # Handle dict of fields (normal case)
+            if isinstance(fields, dict):
+                for field, value in fields.items():
+                    if isinstance(value, np.ndarray):
+                        batch_dict[friendly_name][field] = _handle_nans(value, self.config)
+            # Handle direct numpy arrays (e.g., from custom collate that returns arrays directly)
+            elif isinstance(fields, np.ndarray):
+                batch_dict[friendly_name] = _handle_nans(fields, self.config)
+
+        return batch_dict
+
+
+class DataProvider(CollationMixin):
     """This class presents itself as a PyTorch Dataset, but acts like a GraphQL
     gateway that fetches data from multiple datasets based on the `data_request`
     dictionary provided during initialization.
@@ -309,13 +548,30 @@ class DataProvider:
 
         self.primary_dataset = None
         self.primary_dataset_id_field_name = None
-        self.split_fraction = None
         self.primary_data_location = None
 
-        # Assigned externally by setup_dataset after construction when
-        # split_fraction-based partitioning is in use.  When set, this
-        # contains the list of indices that this provider should serve.
+        # Augmentation support
+        self.augment_getters = {}  # friendly_name -> {field_name: augment_func}
+        self.augment_enabled = {}  # friendly_name -> list[str]
+        self._has_any_augmentation = False
+        # _augment_rng advances once per epoch (in on_epoch_start) to produce a fresh
+        # _epoch_rng for that epoch.  _epoch_rng is drawn from sequentially in
+        # resolve_data — one integer per call — so call order within an epoch determines
+        # the seed sequence.  Single-threaded access is reproducible; multi-threaded
+        # access is intentionally non-reproducible (no locks on this hot path).
+        # config["data_set"]["seed"] uses false as the Hyrax sentinel for "not set";
+        # treat it as None so numpy seeds from OS entropy rather than silently using 0.
+        _raw_seed = config["data_set"]["seed"]
+        _master_seed = None if _raw_seed is False else _raw_seed
+        self._augment_rng = np.random.default_rng(_master_seed)
+        self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
+        self._current_epoch = 0
+
+        # Assigned externally by create_splits after construction.
+        # split_indices: list of dataset indices this provider should serve.
+        # split_weights: per-sample WRS weights (ndarray) or None when unbalanced.
         self.split_indices = None
+        self.split_weights = None
 
         # Join support: populated by _build_join_indices after prepare_datasets.
         # Maps friendly_name → join_field name for datasets that use joining.
@@ -338,8 +594,8 @@ class DataProvider:
         # Required because of circular import.
         from hyrax.datasets.data_cache import DataCache
 
-        self.data_cache = DataCache(config, self)
-        self.data_cache.start_preload_thread()
+        augment_active = {fn: bool(self.augment_getters.get(fn)) for fn in self.prepped_datasets}
+        self.data_cache = DataCache(config, self.prepped_datasets, augment_active)
 
     def pull_up_primary_dataset_methods(self):
         """If a primary dataset is defined, we will pull up some of its methods
@@ -361,6 +617,17 @@ class DataProvider:
             for method_name in lifted_methods:
                 if not hasattr(self, method_name):
                     setattr(self, method_name, getattr(primary_dataset_instance, method_name))
+
+    def _augment_rng_seed(self) -> np.int64:
+        """Draw the next seed from the epoch RNG for one resolve_data call."""
+        return self._epoch_rng.integers(np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64)
+
+    def on_epoch_start(self, verb: str):
+        """Reset the epoch RNG and dispatch on_epoch_start to all dataset instances."""
+        self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
+        self._current_epoch += 1
+        for dataset in self.prepped_datasets.values():
+            dataset.on_epoch_start(verb)
 
     def __getitem__(self, idx) -> dict:
         """This method returns data for a given index.
@@ -398,8 +665,11 @@ class DataProvider:
                 repr_str += f"  Dataset class: {data['dataset_class']}\n"
                 if "data_location" in data:
                     repr_str += f"  Data location: {data['data_location']}\n"
-                if "split_fraction" in data:
-                    repr_str += f"  Fraction of data to use: {data['split_fraction']}\n"
+                if self.primary_dataset == friendly_name and self.split_indices is not None:
+                    repr_str += f"  Selected items: {len(self.split_indices)}"
+                    if self.split_weights is not None:
+                        repr_str += " (rebalanced)"
+                    repr_str += "\n"
                 primary_id_field = data.get("primary_id_field")
                 if primary_id_field not in (None, False):
                     repr_str += f"  Primary ID field: {primary_id_field}\n"
@@ -442,6 +712,15 @@ class DataProvider:
                 for field_name, getter in self.dataset_getters[friendly_name].items():
                     new_getter = trace.instrument_dataset_getter(dataset, getter, friendly_name, field_name)
                     self.dataset_getters[friendly_name][field_name] = new_getter
+
+            for friendly_name, field_to_fcn_map in self.field_collate_functions.items():
+                dataset = self.prepped_datasets[friendly_name]
+                for field_name, field_collate_fn in field_to_fcn_map.items():
+                    if field_collate_fn is not None:
+                        new_field_collate_fn = trace.instrument_field_collate(
+                            dataset, field_collate_fn, friendly_name, field_name
+                        )
+                        self.field_collate_functions[friendly_name][field_name] = new_field_collate_fn
 
             for friendly_name, collate_fn in self.custom_collate_functions.items():
                 dataset = self.prepped_datasets[friendly_name]
@@ -544,12 +823,6 @@ class DataProvider:
                 self.primary_dataset = friendly_name
                 self.primary_dataset_id_field_name = primary_id_field
 
-                # Store the split_fraction and data_location from the primary
-                # dataset's definition.  The Pydantic validator on
-                # DataRequestConfig guarantees that split_fraction is only
-                # present when primary_id_field is set, so we only need to
-                # look for it here.
-                self.split_fraction = dataset_definition.get("split_fraction", None)
                 self.primary_data_location = dataset_definition.get("data_location", None)
 
             # Record join_field for secondary datasets that join by key.
@@ -561,6 +834,40 @@ class DataProvider:
             # provide slightly faster iteration than lists, which is beneficial
             # for repeated access in `resolve_data`.
             self.requested_fields[friendly_name] = tuple(dataset_definition.get("fields", []))
+
+            # Discover augment_<field> methods if augmentation is enabled for this dataset.
+            augment_cfg = dataset_definition.get("augment")
+            if augment_cfg:
+                self._has_any_augmentation = True
+                self.augment_getters[friendly_name] = {}
+
+                # Normalize bool to a list of requested field names that have augment methods.
+                if augment_cfg is True:
+                    available = {
+                        name.removeprefix("augment_")
+                        for name in dir(dataset_instance)
+                        if name.startswith("augment_") and callable(getattr(dataset_instance, name, None))
+                    }
+                    augment_cfg = [f for f in self.requested_fields[friendly_name] if f in available]
+
+                self.augment_enabled[friendly_name] = augment_cfg
+
+                for field_name in augment_cfg:
+                    if field_name not in self.requested_fields[friendly_name]:
+                        raise RuntimeError(
+                            f"augment list requests augmentation for field '{field_name}' "
+                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                            f"but '{field_name}' is not a field on this dataset."
+                        )
+                    method_name = f"augment_{field_name}"
+                    augment_fn = getattr(dataset_instance, method_name, None)
+                    if augment_fn is None or not callable(augment_fn):
+                        raise RuntimeError(
+                            f"augment list requests augmentation for field '{field_name}' "
+                            f"on dataset '{friendly_name}' (class {type(dataset_instance).__name__}), "
+                            f"but no callable '{method_name}' method was found."
+                        )
+                    self.augment_getters[friendly_name][field_name] = augment_fn
 
     def _build_join_indices(self):
         """Build reverse-index mappings for datasets that declare a ``join_field``.
@@ -781,6 +1088,27 @@ class DataProvider:
         """
         return [self.get_object_id(idx) for idx in range(len(self))]
 
+    def _apply_augmentation(
+        self,
+        friendly_name: str,
+        base_data: dict[str, Any],
+        real_idx: int,
+        rng_seed: np.int64,
+    ) -> dict[str, Any]:
+        """Apply augmentation to base field data for a single dataset.
+
+        Passes read-only ndarray views to augment functions to protect
+        cached base data from mutation.
+        """
+        new_fields: dict[str, Any] = {}
+        for field, value in base_data.items():
+            augment_fn = self.augment_getters.get(friendly_name, {}).get(field)
+            if augment_fn is not None and isinstance(value, np.ndarray):
+                value = value.view()
+                value.flags.writeable = False
+            new_fields[field] = augment_fn(value, real_idx, rng_seed) if augment_fn is not None else value
+        return new_fields
+
     def resolve_data(self, idx: int) -> dict[str, dict[str, Any] | str | None]:
         """This method requests the field data from the prepared datasets by index.
 
@@ -805,54 +1133,77 @@ class DataProvider:
         """
         start_time = time.monotonic_ns()
         prefix = self.__class__.__name__
-        cached_data = self.data_cache.try_fetch(idx)
-        if cached_data is not None:
-            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
-            return cached_data
 
-        # Pre-fetch the primary object ID when any joins are configured.
+        rng_seed = self._augment_rng_seed() if self._has_any_augmentation else None
+
+        # Pre-fetch primary object ID when any joins are configured.
         if self._join_maps:
             primary_id_getter = self.dataset_getters[self.primary_dataset][self.primary_dataset_id_field_name]
             object_id_str = str(primary_id_getter(idx))
         else:
-            object_id_str = None  # computed lazily below if needed
+            object_id_str = None
 
-        returned_data: dict[str, dict[str, Any] | str | None] = {}
+        result: dict[str, dict[str, Any] | str | None] = {}
+        had_any_miss = False
 
         for friendly_name, fields in self.requested_fields.items():
             getters = self.dataset_getters[friendly_name]
 
-            # Determine the real index for this dataset.
+            # Determine real index (join mapping).
             if friendly_name in self._join_maps:
                 real_idx = self._join_maps[friendly_name].get(object_id_str)
                 if real_idx is None:
-                    # Left outer join: no match in this secondary.
-                    returned_data[friendly_name] = None
+                    result[friendly_name] = None
                     continue
             else:
                 real_idx = idx
 
-            data_dict = {field: getters[field](real_idx) for field in fields}
-            returned_data[friendly_name] = data_dict
+            # Determine effective rng_seed for this dataset.
+            effective_rng = rng_seed if self.augment_enabled.get(friendly_name) else None
 
-        # Because there is machinery in the consuming code that expects an "object_id"
-        # key in the returned data, we will add that here if a primary dataset.
+            cached_data, already_augmented = self.data_cache.try_fetch(friendly_name, real_idx, effective_rng)
+
+            if cached_data is not None and (already_augmented or effective_rng is None):
+                result[friendly_name] = cached_data
+            elif cached_data is not None:
+                augment_start = time.monotonic_ns()
+                augmented = self._apply_augmentation(friendly_name, cached_data, real_idx, rng_seed)
+                tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
+                self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
+                result[friendly_name] = augmented
+            else:
+                had_any_miss = True
+                base_data = {field: getters[field](real_idx) for field in fields}
+                self.data_cache.insert_base(friendly_name, real_idx, base_data)
+
+                if effective_rng is not None:
+                    augment_start = time.monotonic_ns()
+                    augmented = self._apply_augmentation(friendly_name, base_data, real_idx, rng_seed)
+                    tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
+                    self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
+                    result[friendly_name] = augmented
+                else:
+                    result[friendly_name] = base_data
+
+        # Add object_id.
         if self.primary_dataset:
-            # If the primary id field wasn't already requested, we fetch it now.
-            if self.primary_dataset_id_field_name not in returned_data.get(self.primary_dataset, {}):
+            if self.primary_dataset_id_field_name not in result.get(self.primary_dataset, {}):
                 if object_id_str is not None:
                     object_id = object_id_str
                 else:
                     primary_getter = self.dataset_getters[self.primary_dataset]
                     object_id = str(primary_getter[self.primary_dataset_id_field_name](idx))
             else:
-                object_id = returned_data[self.primary_dataset][self.primary_dataset_id_field_name]
+                object_id = result[self.primary_dataset][self.primary_dataset_id_field_name]
+            result["object_id"] = str(object_id)
 
-            returned_data["object_id"] = str(object_id)
+        # Timing metrics.
+        if had_any_miss:
+            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
+        else:
+            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
 
-        self.data_cache.insert_into_cache(idx, returned_data)
-        tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
-        return returned_data
+        return result
 
     # ^ If we move toward supporting get_<metadata_column_name> methods in datasets,
     # ^ we should be able to remove most or all of this method and the metadata_fields method.
@@ -1012,172 +1363,3 @@ class DataProvider:
         dataset_to_use = self.primary_dataset if self.primary_dataset else keys[0]
 
         return self.prepped_datasets[dataset_to_use]
-
-    def collate(self, batch: list[dict]) -> dict:
-        """Custom collate function to be used outside the context of a PyTorch
-        DataLoader.
-
-        This function takes a list of data samples (each sample is a dictionary)
-        and combines them into a single batch dictionary.
-
-        Parameters
-        ----------
-        batch : list of dict
-            A list of data samples, where each sample is a dictionary.
-
-        Returns
-        -------
-        dict
-            A dictionary where each key corresponds to a field and the value is
-            a list of values for that field across the batch.
-        """
-
-        def default_field_collate(samples: list[dict], field: str, friendly_name: str) -> dict:
-            retval = {}
-            if field not in samples[0]:
-                raise RuntimeError(f"Requested field '{field}' not in dataset '{friendly_name}'")
-
-            values = [s[field] for s in samples]
-
-            if all(isinstance(v, np.ndarray) for v in values):
-                shapes = [v.shape for v in values]
-                if all(s == shapes[0] for s in shapes):
-                    try:
-                        retval[field] = np.stack(values, axis=0)
-                        return retval
-                    except Exception as err:
-                        logger.warning(
-                            f"Could not stack numpy arrays for field '{field}' "
-                            f"in dataset '{friendly_name}'. Consider implementing "
-                            "a custom collation function for this field."
-                        )
-                        raise RuntimeError(
-                            f"Could not stack numpy arrays for field '{field}' "
-                            f"in dataset '{friendly_name}'. Consider implementing "
-                            "a custom collation function for this field."
-                        ) from err
-
-            # if values is a list of numpy scalars convert to numpy array
-            retval[field] = np.array(values)
-            return retval
-
-        batch_dict: dict[str, dict[str, list] | list] = {}
-        custom_collate: dict[str, list] = {}
-
-        # Track which batch positions are None per friendly_name (left outer
-        # join misses).  Only populated for names that have at least one None.
-        none_masks: dict[str, list[bool]] = {}
-
-        # Aggregate values per friendly_name -> field -> list(values)
-        for sample_idx, sample in enumerate(batch):
-            for friendly_name, fields in sample.items():
-                # Special handling for "object_id" for the time being. "object_id"
-                # hangs on the edge of the data dictionary so that it can be consumed
-                # during `infer`, specifically `_save_batch`. Originally it was
-                # there to protect against missing ids. We have much more control
-                # now with DataProvider, and should remove the special logic for
-                # "object_id" from the assorted places it's used.
-                if friendly_name == "object_id":
-                    val = fields[""] if isinstance(fields, dict) and "" in fields else fields
-                    batch_dict.setdefault("object_id", []).append(str(val))
-                    continue
-
-                # Left outer join: None means no match in this secondary.
-                if fields is None:
-                    if friendly_name not in none_masks:
-                        none_masks[friendly_name] = [True] * sample_idx
-                    none_masks[friendly_name].append(False)
-                    continue
-
-                # Track matched position if we're already tracking this name.
-                if friendly_name in none_masks:
-                    none_masks[friendly_name].append(True)
-
-                # If we find that `friendly_name` is not in self.custom_collate_functions
-                # we construct a collate function using
-                # field-level collate functions if provided, using the
-                # defauly field collate function otherwise
-                custom_collate.setdefault(friendly_name, []).append(fields)
-                if friendly_name not in self.custom_collate_functions:
-                    # construct the dataset collate function and set it in self.custom_collate_functions
-                    def make_dataset_collate(field_collate_functions: dict, friendly_name: str):
-                        def dataset_collate(samples: list[dict]) -> dict:
-                            retval = {}
-                            for field, field_collate_fcn in field_collate_functions.items():
-                                if field_collate_fcn is not None:
-                                    retval.update(field_collate_fcn(samples))
-                                else:
-                                    retval.update(default_field_collate(samples, field, friendly_name))
-                            return retval
-
-                        return dataset_collate
-
-                    self.custom_collate_functions[friendly_name] = make_dataset_collate(
-                        self.field_collate_functions[friendly_name], friendly_name
-                    )
-
-        # Pad any none_masks that are shorter than the batch (trailing matches).
-        batch_size = len(batch)
-        for name in none_masks:
-            while len(none_masks[name]) < batch_size:
-                none_masks[name].append(True)
-
-        # Convert object_id list -> numpy array of strings
-        if "object_id" in batch_dict:
-            batch_dict["object_id"] = np.asarray(batch_dict["object_id"], dtype=str)
-
-        # Handle custom collate functions for datasets that define them.
-        # For joined datasets with None entries, filter out the Nones before
-        # calling the custom function.
-        for friendly_name, samples in custom_collate.items():
-            custom_collate_fn = self.custom_collate_functions[friendly_name]
-
-            try:
-                custom_collated_data = custom_collate_fn(samples)
-            except Exception as err:
-                logger.error(
-                    f"Error occurred while collating batch for dataset '{friendly_name}' "
-                    "using its custom collate function."
-                )
-                raise RuntimeError(
-                    f"Error occurred while collating batch for dataset '{friendly_name}' "
-                    "using its custom collate function."
-                ) from err
-
-            batch_dict[friendly_name] = custom_collated_data
-
-        # Add __matched masks for joined datasets that had any None entries.
-        for friendly_name, mask in none_masks.items():
-            batch_dict[f"{friendly_name}__matched"] = np.array(mask, dtype=bool)
-
-        return self.handle_nans(batch_dict)
-
-    def handle_nans(self, batch_dict):
-        """Apply nan handling to a batch dictionary
-
-        Parameters
-        ----------
-        batch_dict : dict[str, np.ndarray]
-            Dictionary from data column to an entire batch of data in np.ndarray form
-
-        Returns
-        -------
-        dict[str, np.ndarray]
-            The same batch dict but with NaNs altered according to the Hyrax configuration.
-        """
-        # Apply NaN handling to all numpy array fields in the batch,
-        # including data produced by custom collate functions.
-        for friendly_name, fields in batch_dict.items():
-            if friendly_name == "object_id":
-                continue
-
-            # Handle dict of fields (normal case)
-            if isinstance(fields, dict):
-                for field, value in fields.items():
-                    if isinstance(value, np.ndarray):
-                        batch_dict[friendly_name][field] = _handle_nans(value, self.config)
-            # Handle direct numpy arrays (e.g., from custom collate that returns arrays directly)
-            elif isinstance(fields, np.ndarray):
-                batch_dict[friendly_name] = _handle_nans(fields, self.config)
-
-        return batch_dict

@@ -37,10 +37,10 @@ def test_hyrax_hats_dataset(hats_catalog_path: Path):
                 "dataset_class": "HyraxHATSDataset",
                 "data_location": str(hats_catalog_path),
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
             }
         }
     }
+    h.config["split"] = {"train": 1.0}
     return h
 
 
@@ -92,10 +92,10 @@ def test_hats_dataset_with_data_request_fields_only_builds_requested_getters(hat
                 "data_location": str(hats_catalog_path),
                 "fields": ["coord_ra"],
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
             }
         }
     }
+    h.config["split"] = {"train": 1.0}
 
     dataset = h.prepare()
     hats_dataset = dataset["train"]._primary_or_first_dataset()
@@ -116,7 +116,6 @@ def test_hats_dataset_open_catalog_filters_from_dataset_config(hats_catalog_path
                 "data_location": str(hats_catalog_path),
                 "fields": ["coord_ra"],
                 "primary_id_field": "object_id",
-                "split_fraction": 1.0,
                 "dataset_config": {
                     "HyraxHATSDataset": {
                         "open_catalog_kwargs": {
@@ -127,6 +126,7 @@ def test_hats_dataset_open_catalog_filters_from_dataset_config(hats_catalog_path
             }
         }
     }
+    h.config["split"] = {"train": 1.0}
 
     dataset = h.prepare()
     hats_dataset = dataset["train"]._primary_or_first_dataset()

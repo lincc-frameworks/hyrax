@@ -104,7 +104,6 @@ def test_validate_request_bad_field(multimodal_config, caplog):
     c = multimodal_config
     c["train"]["random_0"]["fields"] = ["image", "no_such_field"]
     h.config["data_request"] = c
-    h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
     with caplog.at_level("ERROR"):
         DataProvider(h.config, c["train"])
 
@@ -119,7 +118,6 @@ def test_validate_request_dataset_missing_getters(multimodal_config, caplog):
     c = multimodal_config
     c["train"]["random_0"].pop("fields", None)
     h.config["data_request"] = c
-    h.config["data_set"]["preload_cache"] = False  # This reduces warnings on this test
 
     # Fake methods to return from `dir`, none of which start with `get_*`.
     fake_methods = ["fake_one", "fake_two", "fake_three"]
@@ -843,6 +841,33 @@ def test_custom_collate_field_function_applied(custom_field_collate_data_provide
 
     # assert that the object_id key is a numpy array
     assert isinstance(collated_batch["object_id"], np.ndarray)
+
+
+def test_custom_collate_function_fails_gracefully(custom_collate_data_provider):
+    """Test that DataProvider correctly raises an error when a custom collate function
+    fails during the DataProvider.collate method.
+    """
+
+    dp = custom_collate_data_provider
+
+    # Create a batch of samples
+    batch_size = len(dp)
+    batch = [dp[i] for i in range(batch_size)]
+
+    # Patch the custom collate function to raise an exception
+    def failing_collate(batch):
+        raise RuntimeError("Custom collate function failed.")
+
+    dp.custom_collate_functions["random_0"] = failing_collate
+
+    # Collate the batch and expect a RuntimeError
+    with pytest.raises(RuntimeError) as excinfo:
+        dp.collate(batch)
+
+    # test that the error message contains the dataset name
+    assert "random_0" in str(excinfo.value)
+    # test that the error message contains the collation function name
+    assert "failing_collate" in str(excinfo.value)
 
 
 def test_object_id_is_string():
