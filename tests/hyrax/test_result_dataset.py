@@ -86,8 +86,8 @@ def test_writer_multiple_batches_preserves_nan_and_inf(tmp_path):
     h = hyrax.Hyrax()
     dataset = ResultDataset(h.config, tmp_path)
 
-    np.testing.assert_array_equal(dataset[2], expected_second_batch[0])
-    np.testing.assert_array_equal(dataset[3], expected_second_batch[1])
+    np.testing.assert_array_equal(dataset[2]["data"], expected_second_batch[0])
+    np.testing.assert_array_equal(dataset[3]["data"], expected_second_batch[1])
 
 
 def test_schema_remains_fixed_size_list_after_append_and_commit(tmp_path):
@@ -126,9 +126,9 @@ def test_tensor_metadata_survives_append_and_reopen(tmp_path, multidim_data):
     h = hyrax.Hyrax()
     dataset = ResultDataset(h.config, tmp_path)
 
-    assert dataset.tensor_shape == [2, 2]
-    assert dataset.tensor_dtype == np.dtype(np.float32)
-    np.testing.assert_array_equal(dataset[2], data[2])
+    assert dataset.tensor_shape == {"data": [2, 2]}
+    assert dataset.tensor_dtype == {"data": np.dtype(np.float32)}
+    np.testing.assert_array_equal(dataset[2]["data"], data[2])
 
 
 def test___get_all___preserves_special_values_and_dtype(tmp_path):
@@ -173,7 +173,7 @@ def test_appended_batches_preserve_row_order_with_special_values(tmp_path):
 
     assert list(dataset.ids()) == expected_ids.tolist()
     for idx, expected in enumerate(expected_data):
-        np.testing.assert_array_equal(dataset[idx], expected)
+        np.testing.assert_array_equal(dataset[idx]["data"], expected)
 
 
 def test_writer_multidim_tensors(tmp_path, multidim_data):
@@ -324,7 +324,7 @@ def test_reader_get_data(tmp_path, sample_data):
     for i in range(len(data)):
         get_data_result = dataset.get_data(i)
         getitem_result = dataset[i]
-        np.testing.assert_array_equal(get_data_result["data"], getitem_result["data"])
+        np.testing.assert_array_equal(get_data_result, getitem_result["data"])
 
 
 def test_reader_ids(tmp_path, sample_data):

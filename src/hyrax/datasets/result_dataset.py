@@ -334,7 +334,9 @@ class ResultDataset(HyraxDataset):
         flat_np = arrow_col.values.to_numpy(zero_copy_only=False)
 
         # Reshape is O(1) (a view, no data copy)
-        tensors = flat_np.reshape(-1, *self.tensor_shape).astype(self.tensor_dtype, copy=False)
+        tensors = flat_np.reshape(-1, *self.tensor_shape["data"]).astype(
+            self.tensor_dtype["data"], copy=False
+        )
         return tensors
 
     def get_data(self, idx: int):
@@ -350,7 +352,7 @@ class ResultDataset(HyraxDataset):
         np.ndarray
             Data tensor
         """
-        return self.__getitem__(idx)
+        return self.__getitem__(idx)["data"]
 
     def get_object_id(self, idx: int) -> str:
         """Get object ID at index (HyraxQL getter).
