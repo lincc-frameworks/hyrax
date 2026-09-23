@@ -122,9 +122,8 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
 
         if data_location is None or data_location is False:
             raise ValueError(
-                "LSDBStreamDataset requires a `data_location`: either a path/URL to a HATS "
-                "catalog, or 'lsdb://<name>' naming a catalog passed to "
-                "LSDBStreamDataset.register_catalog()."
+                "LSDBStreamDataset requires a `data_location` as a 'lsdb://<name>' "
+                "naming a catalog passed to LSDBStreamDataset.register_catalog()."
             )
 
         # Kept as the raw string (including any "lsdb://" prefix) because
@@ -434,12 +433,13 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         a double close.
         """
         self._stop.set()
-        client, self._owned_client = self._owned_client, None
-        if client is None:
-            return
 
         try:
-            client.close()
+            if self._owned_client is None:
+                return
+            else:
+                self._owned_client.close()
+                self._owned_client = None
         except Exception as err:
             # Never let teardown replace the exception that triggered it.
             logger.warning(f"Error closing dask client: {err}")
