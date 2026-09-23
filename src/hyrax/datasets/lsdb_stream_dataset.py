@@ -345,7 +345,7 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
                     f"Connecting the lsdb stream to the dask scheduler at {self.dask_client_address}."
                 )
                 self._owned_client = Client(self.dask_client_address)
-                logger.info(f"Dask client dashboard: {self._owned_client.dashboard_link}") 
+                logger.info(f"Dask client dashboard: {self._owned_client.dashboard_link}")
             return self._owned_client
 
         try:
@@ -537,7 +537,9 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
 
                 frame = chunk
                 logger.debug(f"Most recent chunk size: {len(chunk)}")
-                logger.debug(f"Will produce {np.floor(len(chunk)/self.batch_size)} batches of size {self._batch_size}")  
+                logger.debug(
+                    f"Will produce {np.floor(len(chunk) / self.batch_size)} batches of size {self.batch_size}"
+                )
                 taken, n_rows = 0, len(frame)
                 while taken < n_rows:
                     need = self.batch_size - len(batch)

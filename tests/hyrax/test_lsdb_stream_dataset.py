@@ -505,6 +505,7 @@ def test_dask_client_address_creates_client_once_and_reuses_it(monkeypatch, tiny
     class FakeClient:
         def __init__(self, address):
             self.address = address
+            self.dashboard_link = address
             created.append(self)
 
         def close(self):
@@ -527,6 +528,7 @@ def test_close_closes_only_a_client_this_dataset_created(monkeypatch, tiny_catal
 
     class FakeOwnedClient:
         def __init__(self, address):
+            self.dashboard_link = address
             self.closed = False
 
         def close(self):
@@ -564,6 +566,7 @@ def test_close_is_idempotent(monkeypatch, tiny_catalog):
 
     class FakeClient:
         def __init__(self, address):
+            self.dashboard_link = address
             self.close_calls = 0
 
         def close(self):
