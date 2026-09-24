@@ -14,22 +14,36 @@ at the same timestamp (instance contrast). No labels are required.
 
 Input convention
 ----------------
-The model consumes a single ``(batch, time, channels)`` float32 array in which **NaN marks a
-missing or padded timestep**. :class:`TSEncoder` detects those positions and excludes them
-from the convolution, so ragged light curves need no separate mask tensor once they reach
-the model.
+:class:`TSEncoder` consumes a single ``(batch, time, channels)`` float32 array in which
+**NaN marks a missing or padded timestep**, and excludes those positions from the
+convolution - so ragged light curves need no separate mask tensor once they reach the
+encoder.
 
-Because Hyrax's ``handle_nans`` runs over every float array produced by collation - warning
-when ``data_set.nan_mode`` is ``false`` and *overwriting* NaN when it is ``"zero"`` or
-``"quantile"`` - a dataset must not emit the NaN sentinel itself. It emits zero padding plus
-a boolean mask, and :meth:`HyraxTs2Vec.prepare_inputs` applies that mask as NaN afterwards,
-downstream of the hook. See
-:class:`~hyrax.datasets.lightcurve_lsdb_stream_dataset.LightCurveLSDBStreamDataset`.
+:func:`build_event_sequence` produces that array from ordinary padded light-curve columns,
+and :meth:`HyraxTs2Vec.prepare_inputs` calls it. No per-survey dataset subclass is needed:
+:class:`~hyrax.datasets.lsdb_stream_dataset.LSDBStreamDataset` already collates every nested
+column into ``<column>_<subcolumn>`` plus a boolean ``<column>_<subcolumn>_mask``, and the
+column names, band list, sequence length and normalization are read from
+``[model.HyraxTs2Vec]``.
+
+Encoding in ``prepare_inputs`` rather than in collation is deliberate. Hyrax's
+``handle_nans`` runs over every float array produced by collation - warning when
+``data_set.nan_mode`` is ``false`` and *overwriting* NaN when it is ``"zero"`` or
+``"quantile"`` - and ``prepare_inputs`` is the first hook downstream of it, so it is the
+earliest point at which the NaN sentinel is safe to emit.
+
+.. warning::
+    Leave ``data_set.nan_mode`` at ``false`` for this pipeline. The raw flux column reaches
+    ``handle_nans`` with its own NaNs still in it, and ``"zero"`` or ``"quantile"`` would
+    overwrite a missing measurement at a *valid* timestep with a number indistinguishable
+    from a real one. With ``false`` those NaNs are dropped here instead, by the validity
+    mask. Better still, drop them upstream in LSDB and avoid the per-batch warning.
 """
 
 # ruff: noqa: D101, D102
 
 import logging
+import warnings
 
 import numpy as np
 import torch
@@ -331,6 +345,306 @@ def take_per_row(tensor: torch.Tensor, indices, num_elem: int) -> torch.Tensor:
 
 
 #
+# Light-curve input encoding
+#
+
+# Channel layout ahead of the one-hot band block.
+FLUX_CHANNEL = 0
+FLUX_ERR_CHANNEL = 1
+DELTA_TIME_CHANNEL = 2
+N_LEADING_CHANNELS = 3
+
+NORMALIZE_MODES = ("median_mad", "zscore")
+
+# 1.4826 * MAD estimates the standard deviation of normally distributed data.
+MAD_TO_SIGMA = 1.4826
+
+
+class EncodingSettings:
+    """The ``[model.HyraxTs2Vec]`` keys that describe the input rather than the architecture.
+
+    Resolved and validated in one place so that :func:`build_event_sequence` and
+    :class:`HyraxTs2Vec` agree on the channel count, and so a bad setting is caught during
+    model pre-flight rather than midway through a run.
+
+    ``time_field``, ``flux_field`` and ``flux_err_field`` are flattened column names, as
+    ``LSDBStreamDataset`` exposes nested columns. ``band_field`` is ``None`` for a
+    single-band survey, where the one-hot block is dropped entirely and ``bands`` is empty;
+    otherwise ``bands`` gives the one-hot channel order. ``max_sequence_length`` is how many
+    observations are kept per object, which fixes the width of the time axis, and
+    ``normalize`` is one of :data:`NORMALIZE_MODES` or ``False``. ``n_channels`` is
+    ``3 + len(bands)``, the model's input width.
+
+    Parameters
+    ----------
+    config : dict
+        The runtime configuration.
+    """
+
+    def __init__(self, config: dict):
+        model_config = config["model"]["HyraxTs2Vec"]
+
+        self.time_field = str(model_config["time_field"])
+        self.flux_field = str(model_config["flux_field"])
+        self.flux_err_field = str(model_config["flux_err_field"])
+
+        # `false` means a single-band survey (TESS, Kepler): there is no band column to
+        # read, so the one-hot block is dropped and a series is just flux, flux error, and
+        # time gap.
+        band_field = model_config["band_field"]
+        self.band_field = None if band_field is False else str(band_field)
+
+        self.light_curve_fields = tuple(
+            field
+            for field in (self.time_field, self.flux_field, self.flux_err_field, self.band_field)
+            if field is not None
+        )
+
+        self.bands = [] if self.band_field is None else [str(band) for band in model_config["bands"]]
+        if self.band_field is not None and not self.bands:
+            raise ValueError(
+                "config['model']['HyraxTs2Vec']['bands'] must list at least one band; it "
+                "sets the width of the one-hot band channels. Set band_field = false "
+                "instead if the catalog is single-band."
+            )
+        self.band_index = {band: index for index, band in enumerate(self.bands)}
+
+        max_sequence_length = model_config["max_sequence_length"]
+        # `false` is the TOML "not set" sentinel and bool is a subclass of int, so
+        # int(False) would silently become a zero-length sequence here.
+        if max_sequence_length is False or int(max_sequence_length) < 1:
+            raise ValueError(
+                "config['model']['HyraxTs2Vec']['max_sequence_length'] must be a positive "
+                f"integer, got {max_sequence_length!r}."
+            )
+        self.max_sequence_length = int(max_sequence_length)
+
+        self.normalize = model_config["normalize"]
+        if self.normalize is not False and self.normalize not in NORMALIZE_MODES:
+            raise ValueError(
+                "config['model']['HyraxTs2Vec']['normalize'] must be one of "
+                f"{NORMALIZE_MODES}, or false to disable it. Got {self.normalize!r}."
+            )
+
+        self.n_channels = N_LEADING_CHANNELS + len(self.bands)
+
+
+def _select_columns(data: dict, settings: EncodingSettings):
+    """Pull the light-curve columns and the validity mask out of a collated batch.
+
+    Returns ``(time, flux, flux_err, band, valid)``, each ``(batch, length)``. ``band`` is
+    ``None`` for a single-band catalog. ``valid`` starts from the collation mask and then
+    drops non-finite observations, so it is the single source of truth for what is real.
+    """
+    missing = [field for field in settings.light_curve_fields if field not in data]
+    if missing:
+        raise RuntimeError(
+            f"HyraxTs2Vec could not find the field(s) {missing} in the collated batch. "
+            f"Available fields: {sorted(data)}. Nested columns are exposed as "
+            "'<column>_<subcolumn>', so set time_field / flux_field / flux_err_field / "
+            "band_field in [model.HyraxTs2Vec] to those flattened names, and list them in "
+            "the data request's 'fields'."
+        )
+
+    # Upcast for the arithmetic below. This does not recover precision already lost: the
+    # streaming provider casts float columns to float32 before collation, which leaves an
+    # MJD timestamp good to roughly six minutes. That is fine for the gap channel on a
+    # survey with nightly cadence, and worth knowing about for one with finer sampling.
+    time = np.asarray(data[settings.time_field], dtype=np.float64)
+    flux = np.asarray(data[settings.flux_field], dtype=np.float64)
+    flux_err = np.asarray(data[settings.flux_err_field], dtype=np.float64)
+    band = None if settings.band_field is None else np.asarray(data[settings.band_field])
+
+    # A fixed-length nested column is stacked directly and has no mask; everything in it
+    # is then a real observation.
+    mask = data.get(f"{settings.time_field}_mask")
+    valid = np.ones(time.shape, dtype=bool) if mask is None else np.asarray(mask).astype(bool)
+
+    shapes = {array.shape for array in (time, flux, flux_err, valid)}
+    if band is not None:
+        shapes.add(band.shape)
+    if len(shapes) > 1:
+        raise RuntimeError(
+            f"HyraxTs2Vec expects the light-curve columns to collate to a common shape, "
+            f"but got {sorted(shapes)}. Every column must come from the same nested "
+            "column, so that one padded row describes one object's observations."
+        )
+
+    # Drop non-finite observations rather than carrying NaN into the series: the mask is
+    # the single source of truth, and the encoder reads NaN as "padding".
+    valid = valid & np.isfinite(time) & np.isfinite(flux) & np.isfinite(flux_err)
+
+    return time, flux, flux_err, band, valid
+
+
+def _sort_and_trim(columns, valid, length):
+    """Sort each row by time and fit it to exactly ``length`` timesteps.
+
+    Invalid entries sort to the tail, so the kept observations are the earliest real ones,
+    matching what a per-object sort-then-truncate would give.
+    """
+    time = columns[0]
+
+    # +inf as the sort key pushes padding and non-finite observations past everything real.
+    key = np.where(valid, time, np.inf)
+    order = np.argsort(key, axis=1, kind="stable")
+
+    columns = [np.take_along_axis(column, order, axis=1) for column in columns]
+    valid = np.take_along_axis(valid, order, axis=1)
+
+    current = valid.shape[1]
+    if current > length:
+        columns = [column[:, :length] for column in columns]
+        valid = valid[:, :length]
+    elif current < length:
+        pad = ((0, 0), (0, length - current))
+        columns = [np.pad(column, pad) for column in columns]
+        valid = np.pad(valid, pad, constant_values=False)
+
+    return columns, valid
+
+
+def _normalize_flux(flux, flux_err, valid, mode):
+    """Center and rescale each object's flux, applying the same scale to its error.
+
+    Per-object rather than per-batch: raw fluxes span orders of magnitude across bands and
+    objects, and TS2Vec applies no normalization of its own. The shared scale is what keeps
+    the error interpretable next to the flux.
+    """
+    if mode is False:
+        return flux, flux_err
+
+    observed = np.where(valid, flux, np.nan)
+
+    # An object with no valid observations makes every reduction below an all-NaN slice.
+    # Those rows are masked off entirely at the end, so warning about them is just noise.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", RuntimeWarning)
+        if mode == "median_mad":
+            center = np.nanmedian(observed, axis=1, keepdims=True)
+            scale = MAD_TO_SIGMA * np.nanmedian(np.abs(observed - center), axis=1, keepdims=True)
+            # A MAD of zero means over half the points are identical; fall back to std.
+            scale = np.where(scale > 0.0, scale, np.nanstd(observed, axis=1, keepdims=True))
+        else:  # "zscore", validated by EncodingSettings
+            center = np.nanmean(observed, axis=1, keepdims=True)
+            scale = np.nanstd(observed, axis=1, keepdims=True)
+
+    # A constant light curve: centering still means something, rescaling does not. This
+    # also catches the NaN scale of an all-invalid row.
+    scale = np.where(scale > 0.0, scale, 1.0)
+    center = np.where(np.isfinite(center), center, 0.0)
+
+    return (flux - center) / scale, flux_err / scale
+
+
+def _band_indices(band, valid, settings: EncodingSettings):
+    """Map band values to one-hot column offsets, returning ``-1`` for unrecognized ones.
+
+    Accepts integer band codes directly and matches everything else against the configured
+    band names. Mapping goes through ``np.unique`` so the dict lookups cost one per distinct
+    band rather than one per observation. Unrecognized bands are reported only where the
+    mask says there is a real observation, so zero padding is not mistaken for a band.
+    """
+    if np.issubdtype(band.dtype, np.integer):
+        codes = band.astype(np.int64)
+        known = (codes >= 0) & (codes < len(settings.bands))
+        unknown = {int(code) for code in np.unique(codes[valid & ~known])}
+        return np.where(known, codes, -1), unknown
+
+    keys = np.char.decode(band) if band.dtype.kind == "S" else band.astype(str)
+    keys = np.char.strip(keys)
+
+    uniques, inverse = np.unique(keys, return_inverse=True)
+    mapped = np.array([settings.band_index.get(str(u), -1) for u in uniques], dtype=np.int64)
+    # numpy < 2 flattens `inverse`; reshaping is a no-op on numpy >= 2.
+    codes = mapped[inverse.reshape(keys.shape)]
+
+    unknown = {str(key) for key in np.unique(keys[valid & (codes < 0)])}
+    return codes, unknown
+
+
+def build_event_sequence(data_dict: dict, config: dict) -> np.ndarray:
+    """Turn padded light-curve columns into the event sequence :class:`TSEncoder` consumes.
+
+    Observations are sorted by time and laid out as an ordered sequence of events, one
+    timestep per observation, with channels::
+
+        0                      flux, normalized per object
+        1                      flux error, on the same scale as the flux
+        2                      log1p of the gap since the previous observation (0 for the first)
+        3 .. 3 + len(bands)    one-hot band indicator
+
+    Uneven sampling is therefore carried as a *feature* (channel 2) rather than being
+    resampled away, and a light curve that spans several filters stays a single sequence.
+    Cross-matching more surveys to add bands only widens the one-hot block; the encoder
+    sizes its input layer from ``bands``, so no architecture change is needed.
+
+    The input columns are whatever the dataset collated under the names configured in
+    ``[model.HyraxTs2Vec]``. ``LSDBStreamDataset`` produces them for every nested column
+    without any per-survey subclass: ``<column>_<subcolumn>`` padded to the batch's longest
+    row, plus a boolean ``<column>_<subcolumn>_mask``.
+
+    Parameters
+    ----------
+    data_dict : dict
+        The collated batch, with a ``"data"`` key holding the light-curve columns.
+    config : dict
+        The runtime configuration.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``(batch, max_sequence_length, 3 + len(bands))`` float32, NaN at every padded or
+        missing timestep.
+    """
+    if "data" not in data_dict:
+        raise RuntimeError(
+            "HyraxTs2Vec could not find a 'data' key in the collated batch. Name the "
+            "dataset in your [data_request] group 'data', e.g. "
+            "{'train_stream': {'data': {...}}}."
+        )
+
+    settings = EncodingSettings(config)
+    time, flux, flux_err, band, valid = _select_columns(data_dict["data"], settings)
+
+    columns = [time, flux, flux_err] if band is None else [time, flux, flux_err, band]
+    columns, valid = _sort_and_trim(columns, valid, settings.max_sequence_length)
+    time, flux, flux_err = columns[0], columns[1], columns[2]
+    band = columns[3] if band is not None else None
+
+    flux, flux_err = _normalize_flux(flux, flux_err, valid, settings.normalize)
+
+    # Log-compressed because season-length gaps otherwise dwarf intra-night cadence. The
+    # first observation of each object has no predecessor, and neither does one whose
+    # predecessor was dropped, so both get a gap of zero.
+    gaps = np.zeros(time.shape, dtype=np.float64)
+    gaps[:, 1:] = np.where(valid[:, :-1], np.diff(time, axis=1), 0.0)
+    gaps = np.log1p(np.clip(gaps, 0.0, None))
+
+    series = np.zeros((*time.shape, settings.n_channels), dtype=np.float32)
+    series[..., FLUX_CHANNEL] = flux
+    series[..., FLUX_ERR_CHANNEL] = flux_err
+    series[..., DELTA_TIME_CHANNEL] = gaps
+
+    if band is not None:
+        codes, unknown = _band_indices(band, valid, settings)
+        if unknown:
+            logger.warning(
+                f"Ignoring observations in unrecognized band(s) {sorted(unknown)}; they get "
+                f"an all-zero band indicator. Configured bands: {settings.bands}. Add them "
+                "to config['model']['HyraxTs2Vec']['bands'] to encode them."
+            )
+        known = valid & (codes >= 0)
+        rows, timesteps = np.nonzero(known)
+        series[rows, timesteps, N_LEADING_CHANNELS + codes[known]] = 1.0
+
+    # NaN marks padding for the encoder. Applying it here rather than during collation is
+    # deliberate: Hyrax's handle_nans runs over every collated float array and would warn
+    # about the sentinel (data_set.nan_mode = false) or overwrite it ("zero"/"quantile").
+    return np.where(valid[..., None], series, np.float32("nan"))
+
+
+#
 # The Hyrax model (reference: ts2vec.py)
 #
 
@@ -343,9 +657,8 @@ class HyraxTs2Vec(nn.Module):
     timestep, and produces one fixed-length representation per object from
     :meth:`infer_batch` - ready for ``reduce_dimensions`` and the ``visualize`` verbs.
 
-    For light curves, ``channels`` is the event-sequence encoding built by
-    :class:`~hyrax.datasets.lightcurve_lsdb_stream_dataset.LightCurveLSDBStreamDataset`:
-    flux, flux error, log-scaled time gap, then a one-hot band indicator. Adding bands (by
+    ``channels`` is the event-sequence encoding built by :func:`build_event_sequence`: flux,
+    flux error, log-scaled time gap, then a one-hot band indicator. Adding bands (by
     cross-matching more surveys) only widens ``channels``; no architecture change is needed.
 
     Notes
@@ -384,8 +697,9 @@ class HyraxTs2Vec(nn.Module):
         if getattr(data_sample, "ndim", None) != 3:
             raise RuntimeError(
                 "HyraxTs2Vec expects a 3-dimensional (batch, time, channels) data sample, but "
-                f"got shape {getattr(data_sample, 'shape', type(data_sample))}. Check that your "
-                "dataset's collate function emits a 'series' field of that shape."
+                f"got shape {getattr(data_sample, 'shape', type(data_sample))}. Hyrax builds "
+                "it with build_event_sequence(); pass an array of that shape when "
+                "constructing the model by hand."
             )
 
         self.input_dims = int(data_sample.shape[-1])
@@ -449,8 +763,8 @@ class HyraxTs2Vec(nn.Module):
         if ts_l < min_length:
             raise RuntimeError(
                 f"HyraxTs2Vec needs sequences of at least {min_length} timesteps for "
-                f"temporal_unit={self.temporal_unit}, but got {ts_l}. Either raise the "
-                "dataset's max_sequence_length or lower "
+                f"temporal_unit={self.temporal_unit}, but got {ts_l}. Either raise "
+                "config['model']['HyraxTs2Vec']['max_sequence_length'] or lower "
                 "config['model']['HyraxTs2Vec']['temporal_unit']."
             )
 
@@ -584,55 +898,29 @@ class HyraxTs2Vec(nn.Module):
 
     @staticmethod
     def prepare_inputs(data_dict):
-        """Extract the padded series from the batch and mark padding with NaN.
+        """Build the event sequence this model consumes from a collated batch.
 
-        This is the interface between the data pipeline and the model. It is deliberately
-        thin: the dataset's collate function owns the survey-specific work of turning ragged
-        multi-band observations into a fixed-width array, and this only applies the padding
-        mask.
-
-        The mask has to be applied *here* rather than in collation because Hyrax's
-        ``handle_nans`` runs over every collated float array and would either warn about the
-        NaN sentinel (``data_set.nan_mode = false``) or overwrite it outright
-        (``"zero"``/``"quantile"``).
+        The real work is in :func:`build_event_sequence`; this is a shim so that the
+        function written out to ``prepare_inputs.py`` next to the saved weights stays short
+        and self-contained. That does mean a checkpoint pins the *settings* of the encoding
+        - they are saved in the run's ``runtime_config.toml`` - rather than its code, which
+        tracks the installed Hyrax.
 
         Parameters
         ----------
         data_dict : dict
-            The collated batch. Expected to hold a ``"data"`` key with a ``"series"`` field
-            of shape ``(batch, time, channels)`` and, optionally, a ``"series_mask"`` field
-            of shape ``(batch, time)`` where 1 marks a real observation.
+            The collated batch, with a ``"data"`` key holding the padded light-curve
+            columns named in ``[model.HyraxTs2Vec]``.
 
         Returns
         -------
         numpy.ndarray
-            Shape ``(batch, time, channels)``, float32, NaN at padded timesteps. Hyrax
-            converts this to a tensor and moves it to the right device.
+            Shape ``(batch, max_sequence_length, channels)``, float32, NaN at padded
+            timesteps. Hyrax converts this to a tensor and moves it to the right device.
         """
         # This function's source is written out to prepare_inputs.py next to the saved
         # weights and re-executed at load time, so it must import what it needs itself.
-        import numpy as np  # noqa: F811
+        from hyrax import get_context
+        from hyrax.models.hyrax_ts2vec import build_event_sequence
 
-        if "data" not in data_dict:
-            raise RuntimeError(
-                "HyraxTs2Vec could not find a 'data' key in the collated batch. Name the "
-                "dataset in your [data_request] group 'data', e.g. "
-                "{'train_stream': {'data': {...}}}."
-            )
-
-        data = data_dict["data"]
-        if "series" not in data:
-            raise RuntimeError(
-                "HyraxTs2Vec expects a 'series' field of shape (batch, time, channels). "
-                f"Available fields: {sorted(data)}. LightCurveLSDBStreamDataset produces it; "
-                "for another dataset, add a collate function that does."
-            )
-
-        series = np.asarray(data["series"], dtype=np.float32)
-
-        mask = data.get("series_mask")
-        if mask is not None:
-            valid = np.asarray(mask).astype(bool)[..., None]
-            series = np.where(valid, series, np.float32("nan"))
-
-        return series
+        return build_event_sequence(data_dict, get_context()["config"])

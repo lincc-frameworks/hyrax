@@ -72,6 +72,11 @@ class ToOnnx(Verb):
         config_manager = ConfigManager(runtime_config_filepath=config_file)
         config_from_training = config_manager.config
 
+        # Everything below runs against the training config rather than this verb's own,
+        # so put that in the context too - a model's prepare_inputs reads it from there
+        # and must see the settings the weights were trained with.
+        update_context(config=config_from_training)
+
         # copy the prepare_inputs.py file (or to_tensor.py for backward compatibility)
         # from the input directory to the output directory
         prepare_inputs_src = input_directory / "prepare_inputs.py"

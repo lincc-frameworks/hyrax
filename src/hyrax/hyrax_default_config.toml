@@ -185,6 +185,42 @@ learning_rate = 0.001
 #   "multiscale"  -> concatenate max-pools at several scales, keeping the time axis.
 encoding_window = "full_series"
 
+# --- Light-curve input encoding -------------------------------------------------------
+# The keys below describe the data rather than the architecture: prepare_inputs reads them
+# to turn padded light-curve columns into the (batch, time, channels) event sequence the
+# encoder consumes. They live here, with the model, because the encoding is part of this
+# model's input contract - any dataset that supplies the named columns will work.
+
+# Nested light-curve columns are exposed as "<column>_<subcolumn>", so these are the
+# flattened names, not the dotted ones. Defaults follow LSST naming; change them to match
+# whatever catalog you stream, and list the same names in the data request's `fields`.
+time_field = "lightcurve_midpointMjdTai"
+flux_field = "lightcurve_psfFlux"
+flux_err_field = "lightcurve_psfFluxErr"
+
+# Set to `false` for a single-band survey such as TESS or Kepler, which has no band column.
+# The one-hot band block is then dropped and `bands` is ignored, leaving 3 channels.
+band_field = "lightcurve_band"
+
+# The bands to encode, in one-hot channel order. Sets the width of the band block, so the
+# model's input width is 3 + len(bands). Observations in any other band are kept but get an
+# all-zero band indicator and a warning. Integer band codes are read as indices into this
+# list. Extend this when a cross-match brings in additional filters.
+bands = ["u", "g", "r", "i", "z", "y"]
+
+# Observations kept per object. Curves longer than this are truncated to their earliest
+# observations; shorter ones are padded and masked off. This fixes the time axis, so every
+# batch has the same shape.
+max_sequence_length = 256
+
+# Per-object flux normalization, applied to the flux and its error on a shared scale.
+#   "median_mad" -> subtract the median, divide by 1.4826 * MAD (robust to outbursts)
+#   "zscore"     -> subtract the mean, divide by the standard deviation
+#   false        -> leave raw fluxes alone
+# Raw fluxes span orders of magnitude across bands and objects, and TS2Vec applies no
+# normalization of its own, so disabling this will usually stall training.
+normalize = "median_mad"
+
 
 [criterion]
 # The name of the built-in criterion to use or the import path to an external criterion
@@ -499,38 +535,6 @@ seed = false
 # Extra keyword arguments passed directly to lsdb.open_catalog. Ignored when
 # data_location is an "lsdb://<name>" reference to a pre-registered catalog.
 [data_set.LSDBStreamDataset.open_catalog_kwargs]
-
-
-[data_set.LightCurveLSDBStreamDataset]
-# Nested light-curve columns are exposed as "<column>_<subcolumn>", so these are the
-# flattened names, not the dotted ones. Defaults follow LSST naming; change them to match
-# whatever catalog you stream, and list the same names in the data request's `fields`.
-time_field = "lightcurve_midpointMjdTai"
-flux_field = "lightcurve_psfFlux"
-flux_err_field = "lightcurve_psfFluxErr"
-
-# Set to `false` for a single-band survey such as TESS or Kepler, which has no band column.
-# The one-hot band block is then dropped and `bands` is ignored, leaving 3 channels.
-band_field = "lightcurve_band"
-
-# The bands to encode, in one-hot channel order. Sets the width of the band block, so the
-# model's input width is 3 + len(bands). Observations in any other band are kept but get an
-# all-zero band indicator and a warning. Integer band codes are read as indices into this
-# list. Extend this when a cross-match brings in additional filters.
-bands = ["u", "g", "r", "i", "z", "y"]
-
-# Observations kept per object. Curves longer than this are truncated to their earliest
-# observations; shorter ones are zero-padded and masked off. This fixes the time axis, so
-# every batch has the same shape.
-max_sequence_length = 256
-
-# Per-object flux normalization, applied to the flux and its error on a shared scale.
-#   "median_mad" -> subtract the median, divide by 1.4826 * MAD (robust to outbursts)
-#   "zscore"     -> subtract the mean, divide by the standard deviation
-#   false        -> leave raw fluxes alone
-# Raw fluxes span orders of magnitude across bands and objects, and TS2Vec applies no
-# normalization of its own, so disabling this will usually stall training.
-normalize = "median_mad"
 
 
 [data_loader]

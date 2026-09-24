@@ -660,6 +660,43 @@ def test_nested_collator_pads_ragged_arrays_and_builds_mask(nested_catalog):
     ]
 
 
+def test_nested_collator_preserves_string_dtype(nested_catalog):
+    """A ragged string column pads without raising, and keeps its dtype.
+
+    Padding a string column into a float array is what the collator used to do, and it
+    raised. A photometric band column is the common case.
+    """
+    dataset = _build_dataset(nested_catalog, batch_size=5, fields=None, primary_id="object_id", name="nested")
+
+    batch = [
+        {"lightcurve_flux": np.array(["g", "r"])},
+        {"lightcurve_flux": np.array(["i"])},
+        {"lightcurve_flux": np.array(["u", "z", "y"])},
+    ]
+    result = dataset.collate_lightcurve_flux(batch)
+
+    padded = result["lightcurve_flux"]
+    assert padded.dtype.kind == "U"
+    assert padded.shape == (3, 3)
+    # A string column zero-initializes to the empty string; the mask marks it as padding.
+    assert padded[1].tolist() == ["i", "", ""]
+    assert result["lightcurve_flux_mask"][1].tolist() == [True, False, False]
+
+
+def test_nested_collator_preserves_integer_dtype(nested_catalog):
+    """An integer column is not silently widened to float."""
+    dataset = _build_dataset(nested_catalog, batch_size=5, fields=None, primary_id="object_id", name="nested")
+
+    batch = [
+        {"lightcurve_flux": np.array([1, 2], dtype=np.int64)},
+        {"lightcurve_flux": np.array([3], dtype=np.int64)},
+    ]
+    result = dataset.collate_lightcurve_flux(batch)
+
+    assert result["lightcurve_flux"].dtype == np.int64
+    assert result["lightcurve_flux"].tolist() == [[1, 2], [3, 0]]
+
+
 def test_nested_collator_matches_real_ragged_stream_data(nested_catalog):
     """Real per-row lightcurves of varying length collate to the correct padded values."""
     dataset = _build_dataset(nested_catalog, batch_size=5, fields=None, primary_id="object_id", name="nested")
