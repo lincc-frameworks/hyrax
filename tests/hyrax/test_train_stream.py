@@ -504,6 +504,29 @@ def test_close_tolerates_a_provider_without_stop(tmp_path):
     assert session._model.saved
 
 
+def test_close_also_closes_the_provider(tmp_path):
+    """close() must release provider resources (e.g. a dask client), not just stop iteration.
+
+    Without this, a streaming dataset that owns a resource (a dask Client, a Kafka
+    consumer) leaks it on every normal train_stream teardown, even though the dataset
+    itself defines a close().
+    """
+    events = []
+
+    class _SpyProvider:
+        def stop(self):
+            events.append("stop")
+
+        def close(self):
+            events.append("close")
+
+    session = _manual_session(tmp_path, lambda engine, batch: {"loss": 1.0}, provider=_SpyProvider())
+
+    session.close()
+
+    assert events == ["stop", "close"]
+
+
 def test_weights_are_persisted_when_the_with_body_raises(tmp_path):
     """An exception inside the `with` block still closes the session and saves the model."""
     session = _manual_session(tmp_path, lambda engine, batch: {"loss": 1.0})
