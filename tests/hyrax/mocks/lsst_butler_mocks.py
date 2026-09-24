@@ -496,6 +496,7 @@ class MockButler:
         cls.band_fail_after_n = {} if band_fail_after_n is None else band_fail_after_n
         cls.band_fail_before_n = {} if band_fail_before_n is None else band_fail_before_n
         cls._fits_dir = fits_dir
+        cls.get_calls = []
 
     def __init__(self, repo=None, collections=None):
         """Initialize mock butler.
@@ -559,17 +560,19 @@ class MockButler:
         else:
             self.band_request_count[band] += 1
 
-    def get(self, dataset_type, data_id=None):
+    def get(self, dataset_type, data_id=None, **kwargs):
         """Retrieve mock data product.
 
         Args:
             dataset_type: Type of data to retrieve (e.g., "skyMap", "deep_coadd")
             data_id: Dictionary identifying which data to get
+            **kwargs: Additional Butler keyword arguments such as storageClass.
 
         Returns:
             Mock object depending on dataset_type
         """
         data_id = {} if data_id is None else data_id
+        MockButler.get_calls.append({"dataset_type": dataset_type, "data_id": data_id, "kwargs": kwargs})
 
         if dataset_type == "skyMap":
             # Return a mock skymap
