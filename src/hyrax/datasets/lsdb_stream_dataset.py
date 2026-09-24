@@ -50,9 +50,11 @@ to an in-memory catalog registered with ``register_catalog()``.
 
 .. note::
     Nested columns are collated by default. Variable-length nested arrays are padded to the
-    longest row in each batch and accompanied by a ``<field>_mask``; fixed-length nested
-    columns are stacked directly. Define a ``collate_<field>`` method on a subclass when a
-    different representation is needed.
+    longest row in each batch, in the column's own dtype, and accompanied by a boolean
+    ``<field>_mask``; fixed-length nested columns are stacked directly. Padding is whatever
+    ``numpy`` zero-initializes that dtype to (``0``, or ``""`` for a string column), so the
+    mask is the only reliable record of what is real. Define a ``collate_<field>`` method on
+    a subclass when a different representation is needed.
 
 .. warning::
     The stream owns a single in-process iterator, so the loader must run with
@@ -227,14 +229,20 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
             def collator(self, batch, _nested_name=nested_column, _subnested_name=subnested_column):
                 # Get the length of each subnested array in the batch
                 col_name = f"{_nested_name}_{_subnested_name}"
-                lengths = [len(sample[col_name]) for sample in batch]
+                arrays = [np.asarray(sample[col_name]) for sample in batch]
+                lengths = [len(array) for array in arrays]
                 max_length = max(lengths)
 
+                # Pad in the column's own dtype rather than float64. A string column (a
+                # photometric band, say) cannot be assigned into a float array at all, and
+                # an integer column would otherwise be silently widened to float.
+                dtype = np.result_type(*(array.dtype for array in arrays))
+
                 # Create a padded array and mask with shape (# arrays, max length)
-                padded_batch = np.zeros((len(batch), max_length))
-                mask = np.zeros_like(padded_batch, dtype=bool)
-                for i, sample in enumerate(batch):
-                    padded_batch[i, : lengths[i]] = sample[col_name]
+                padded_batch = np.zeros((len(batch), max_length), dtype=dtype)
+                mask = np.zeros((len(batch), max_length), dtype=bool)
+                for i, array in enumerate(arrays):
+                    padded_batch[i, : lengths[i]] = array
                     mask[i, : lengths[i]] = True
                 return {
                     col_name: padded_batch,
