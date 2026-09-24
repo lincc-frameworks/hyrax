@@ -124,9 +124,8 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
 
         if data_location is None or data_location is False:
             raise ValueError(
-                "LSDBStreamDataset requires a `data_location`: either a path/URL to a HATS "
-                "catalog, or 'lsdb://<name>' naming a catalog passed to "
-                "LSDBStreamDataset.register_catalog()."
+                "LSDBStreamDataset requires a `data_location` as a 'lsdb://<name>' "
+                "naming a catalog passed to LSDBStreamDataset.register_catalog()."
             )
 
         # Kept as the raw string (including any "lsdb://" prefix) because
@@ -353,6 +352,7 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
                     f"Connecting the lsdb stream to the dask scheduler at {self.dask_client_address}."
                 )
                 self._owned_client = Client(self.dask_client_address)
+                logger.info(f"Dask client dashboard: {self._owned_client.dashboard_link}")
             return self._owned_client
 
         try:
@@ -441,12 +441,13 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         a double close.
         """
         self._stop.set()
-        client, self._owned_client = self._owned_client, None
-        if client is None:
-            return
 
         try:
-            client.close()
+            if self._owned_client is None:
+                return
+            else:
+                self._owned_client.close()
+                self._owned_client = None
         except Exception as err:
             # Never let teardown replace the exception that triggered it.
             logger.warning(f"Error closing dask client: {err}")
@@ -543,6 +544,10 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
                     break
 
                 frame = chunk
+                logger.debug(f"Most recent chunk size: {len(chunk)}")
+                logger.debug(
+                    f"Will produce {np.floor(len(chunk) / self.batch_size)} batches of size {self.batch_size}"
+                )
                 taken, n_rows = 0, len(frame)
                 while taken < n_rows:
                     need = self.batch_size - len(batch)
