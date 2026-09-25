@@ -65,15 +65,10 @@ class ResultDatasetWriter:
         if isinstance(data, (np.ndarray, list)) or data.__class__.__name__ == "Tensor":
             data_dict = {"data": np.array(data)}
         else:
-            # data_dict = data
             data_dict = {key: np.array(val) for key, val in data.items()}
 
         if len(object_ids) == 0:
             return
-
-        # Convert data to numpy array for uniform handling
-        # data_array = np.array(data)
-        # first_tensor = data_array[0]
 
         # On first write, create the schema. Every batch is converted to Arrow and
         # written directly to the Lance dataset with that schema.
@@ -96,19 +91,12 @@ class ResultDatasetWriter:
                         )
 
         # Flatten tensors for storage
-        # flattened_data = [tensor.flatten() for tensor in data]
         batch_data = {
             "object_id": pa.array([str(oid) for oid in object_ids], type=pa.string()),
         }
         for key, arr in data_dict.items():
             flattened = [tensor.flatten() for tensor in arr]
             batch_data[key] = pa.array(flattened, type=self.schema.field(key).type)
-
-        # Create PyArrow record batch
-        # batch_data = {
-        #     "object_id": pa.array([str(oid) for oid in object_ids], type=pa.string()),
-        #     "data": pa.array(flattened_data, type=self.schema.field("data").type),
-        # }
 
         # Convert to PyArrow table and write through pylance.
         arrow_table = pa.table(batch_data, schema=self.schema)
@@ -145,9 +133,6 @@ class ResultDatasetWriter:
         self.tensor_shape = {}
         fields = [pa.field("object_id", pa.string())]
 
-        # Map numpy dtype to PyArrow type
-        # pa_type = pa.from_numpy_dtype(self.tensor_dtype)
-
         metadata_dict = {}
 
         # Create schema with metadata
@@ -175,17 +160,6 @@ class ResultDatasetWriter:
         metadata = {k: json.dumps(v).encode("utf-8") for k, v in metadata_dict.items()}
         self.schema = pa.schema(fields, metadata=metadata)
 
-        # self.schema = pa.schema(
-        #     [
-        #         pa.field("object_id", pa.string()),
-        #         pa.field("data", pa.list_(pa_type, flattened_size)),
-        #     ],
-        #     metadata=metadata,
-        # )
-
-        # logger.debug(
-        #     f"Created schema for tensors with shape {self.tensor_shape} and dtype {self.tensor_dtype}"
-        # )
         logger.debug(f"Created schema with fields: {list(data_dict.keys())}")
         for key in data_dict:
             logger.debug(f"  {key}: shape {self.tensor_shape[key]}, dtype {self.tensor_dtype[key]}")
@@ -242,6 +216,18 @@ class ResultDataset(HyraxDataset):
 
         self.tensor_shape = {key: loaded_metadata[key]["tensor_shape"] for key in loaded_metadata}
         self.tensor_dtype = {key: np.dtype(loaded_metadata[key]["tensor_dtype"]) for key in loaded_metadata}
+
+        def _make_getter(column):
+            def getter(self, idx, _col=column):
+                ret_val = self.__getitem__(idx)[_col]
+                return ret_val
+
+            return getter
+
+        for col in self.keys():
+            method_name = f"get_{col}"
+            if not hasattr(self, method_name):
+                setattr(self, method_name, _make_getter(col).__get__(self))
 
         logger.debug(f"Opened Lance table with shape {self.tensor_shape} and dtype {self.tensor_dtype}")
 
@@ -338,21 +324,6 @@ class ResultDataset(HyraxDataset):
             self.tensor_dtype["data"], copy=False
         )
         return tensors
-
-    def get_data(self, idx: int):
-        """Get data tensor at index (HyraxQL getter).
-
-        Parameters
-        ----------
-        idx : int
-            Index of the data item
-
-        Returns
-        -------
-        np.ndarray
-            Data tensor
-        """
-        return self.__getitem__(idx)["data"]
 
     def get_object_id(self, idx: int) -> str:
         """Get object ID at index (HyraxQL getter).
