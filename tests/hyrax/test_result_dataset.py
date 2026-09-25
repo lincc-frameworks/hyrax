@@ -86,8 +86,8 @@ def test_writer_multiple_batches_preserves_nan_and_inf(tmp_path):
     h = hyrax.Hyrax()
     dataset = ResultDataset(h.config, tmp_path)
 
-    np.testing.assert_array_equal(dataset[2], expected_second_batch[0])
-    np.testing.assert_array_equal(dataset[3], expected_second_batch[1])
+    np.testing.assert_array_equal(dataset[2]["data"], expected_second_batch[0])
+    np.testing.assert_array_equal(dataset[3]["data"], expected_second_batch[1])
 
 
 def test_schema_remains_fixed_size_list_after_append_and_commit(tmp_path):
@@ -126,9 +126,9 @@ def test_tensor_metadata_survives_append_and_reopen(tmp_path, multidim_data):
     h = hyrax.Hyrax()
     dataset = ResultDataset(h.config, tmp_path)
 
-    assert dataset.tensor_shape == [2, 2]
-    assert dataset.tensor_dtype == np.dtype(np.float32)
-    np.testing.assert_array_equal(dataset[2], data[2])
+    assert dataset.tensor_shape == {"data": [2, 2]}
+    assert dataset.tensor_dtype == {"data": np.dtype(np.float32)}
+    np.testing.assert_array_equal(dataset[2]["data"], data[2])
 
 
 def test___get_all___preserves_special_values_and_dtype(tmp_path):
@@ -173,7 +173,7 @@ def test_appended_batches_preserve_row_order_with_special_values(tmp_path):
 
     assert list(dataset.ids()) == expected_ids.tolist()
     for idx, expected in enumerate(expected_data):
-        np.testing.assert_array_equal(dataset[idx], expected)
+        np.testing.assert_array_equal(dataset[idx]["data"], expected)
 
 
 def test_writer_multidim_tensors(tmp_path, multidim_data):
@@ -191,7 +191,7 @@ def test_writer_multidim_tensors(tmp_path, multidim_data):
 
     # Check shape is preserved
     read_data = dataset[0]
-    assert read_data.shape == (2, 2)
+    assert read_data["data"].shape == (2, 2)
 
 
 def test_writer_different_dtypes(tmp_path):
@@ -213,7 +213,7 @@ def test_writer_different_dtypes(tmp_path):
         h = hyrax.Hyrax()
         dataset = ResultDataset(h.config, result_dir)
         read_data = dataset[0]
-        assert read_data.dtype == dtype
+        assert read_data["data"].dtype == dtype
 
 
 def test_reader_basic(tmp_path, sample_data):
@@ -232,9 +232,9 @@ def test_reader_basic(tmp_path, sample_data):
 
     # Test single index access
     item = dataset[0]
-    assert isinstance(item, np.ndarray)
-    assert item.shape == (2,)
-    np.testing.assert_array_equal(item, data[0])
+    assert isinstance(item, dict) and isinstance(item["data"], np.ndarray)
+    assert item["data"].shape == (2,)
+    np.testing.assert_array_equal(item["data"], data[0])
 
 
 def test_reader_getitem_single_index(tmp_path, sample_data):
@@ -251,7 +251,7 @@ def test_reader_getitem_single_index(tmp_path, sample_data):
     # Test each index
     for i in range(5):
         item = dataset[i]
-        np.testing.assert_array_equal(item, data[i])
+        np.testing.assert_array_equal(item["data"], data[i])
 
 
 def test_reader_getitem_array_index(tmp_path, sample_data):
@@ -268,9 +268,9 @@ def test_reader_getitem_array_index(tmp_path, sample_data):
     # Test array indexing
     indices = np.array([0, 2, 4])
     items = dataset[indices]
-    assert items.shape == (3, 2)
+    assert np.array([item["data"] for item in items]).shape == (3, 2)
     for i, idx in enumerate(indices):
-        np.testing.assert_array_equal(items[i], data[idx])
+        np.testing.assert_array_equal(items[i]["data"], data[idx])
 
 
 def test_reader_getitem_out_of_range(tmp_path, sample_data):
@@ -324,7 +324,7 @@ def test_reader_get_data(tmp_path, sample_data):
     for i in range(len(data)):
         get_data_result = dataset.get_data(i)
         getitem_result = dataset[i]
-        np.testing.assert_array_equal(get_data_result, getitem_result)
+        np.testing.assert_array_equal(get_data_result, getitem_result["data"])
 
 
 def test_reader_ids(tmp_path, sample_data):
@@ -367,7 +367,7 @@ def test_roundtrip_fidelity(tmp_path):
     for i, expected in enumerate(data):
         actual = dataset[i]
         # Use array_equal which handles NaN correctly
-        np.testing.assert_array_equal(actual, expected)
+        np.testing.assert_array_equal(actual["data"], expected)
 
 
 def test_empty_batch(tmp_path):
@@ -420,7 +420,7 @@ def test_iteration(tmp_path, sample_data):
     # Test iteration
     count = 0
     for i, item in enumerate(dataset):
-        np.testing.assert_array_equal(item, data[i])
+        np.testing.assert_array_equal(item["data"], data[i])
         count += 1
 
     assert count == len(data)
