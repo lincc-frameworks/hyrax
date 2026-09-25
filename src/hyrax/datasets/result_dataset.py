@@ -286,19 +286,6 @@ class ResultDataset(HyraxDataset):
         rows = [{key: array[i] for key, array in arrays.items()} for i in range(len(idx))]
         return rows[0] if is_single else rows
 
-    def get_combined_tensor(self, idx: int):
-        """Get a combined and flattened tensor if multiple fields are present,
-        by concatenating all the fields together.
-        """
-        row_data = self.__getitem__(idx)
-        if len(row_data) == 1:
-            return np.concatenate([row_data[key].flatten() for key in self.keys()], axis=-1)
-        else:
-            tensors = []
-            for row in row_data:
-                tensors.append(np.concatenate([row[key].flatten() for key in self.keys()], axis=-1))
-            return np.vstack(tensors)
-
     def __get_all__(self):
         """Get all data tensors in the dataset.
 
