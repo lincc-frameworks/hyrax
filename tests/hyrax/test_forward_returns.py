@@ -1,3 +1,5 @@
+import torch
+
 import hyrax
 from hyrax.models.hyrax_loopback import HyraxLoopback
 from hyrax.models.model_registry import hyrax_model
@@ -18,7 +20,7 @@ class DummyModelDictReturn(HyraxLoopback):
     def forward(self, x):
         """Forward pass that returns a dictionary."""
         output = super().forward(x)
-        return {"output": output}
+        return {"output": output, "square": torch.ones((output.shape[0], 2, 2))}
 
     @staticmethod
     def prepare_inputs(data_dict):
@@ -30,6 +32,10 @@ class DummyModelDictReturn(HyraxLoopback):
         label = np.asarray(data.get("label", []), dtype=np.int64)
 
         return (image, label)
+
+    def infer_batch(self, batch):
+        """Inference is just a forward pass."""
+        return self.forward(batch)
 
 
 # (the current operational implementation)
@@ -79,3 +85,7 @@ def test_return_dict():
     assert infda
     assert infda[0]["output"].shape == (10,)
     assert hasattr(infda, "get_output")
+
+    # makes sure we maintain shape
+    assert infda[0]["square"].shape == (2, 2)
+    assert hasattr(infda, "get_square")

@@ -122,7 +122,6 @@ class ResultDatasetWriter:
             Sample tensor or dict to determine dtype and shape
         """
         # Normalize to dict format
-        # TODO: double check if this is stricly necessary
         if isinstance(sample_data, dict):
             data_dict = {key: arr[0] for key, arr in sample_data.items()}
         else:
@@ -270,20 +269,22 @@ class ResultDataset(HyraxDataset):
 
         # Use take for O(k) random access, where k is the number of indices.
         result = self.lance_dataset.take(idx)
+        # print(result)
+        # print(list(zip(*result)))
+        # tensors = result.to_pydict()
+        # print(tensors)
 
         # Extract data column and reshape
-        tensors = []
-        for i in range(len(idx)):
-            row_data = {}
-            for key in self.keys():
-                flat_data = result[key][i].as_py()
-                tensor = np.array(flat_data, dtype=self.tensor_dtype[key])
-                tensor = tensor.reshape(self.tensor_shape[key])
-                row_data[key] = tensor
-            tensors.append(row_data)
+        arrays = {}
+        for key in self.keys():
+            column = result[key].combine_chunks()
+            flat = column.values.to_numpy(zero_copy_only=False)
+            arrays[key] = flat.reshape(len(idx), *self.tensor_shape[key]).astype(
+                self.tensor_dtype[key], copy=False
+            )
 
-        # Return single tensor or array of tensors
-        return tensors[0] if is_single else tensors
+        rows = [{key: array[i] for key, array in arrays.items()} for i in range(len(idx))]
+        return rows[0] if is_single else rows
 
     def get_combined_tensor(self, idx: int):
         """Get a combined and flattened tensor if multiple fields are present,
