@@ -12,6 +12,7 @@ import mocks
 import torch
 import torchvision  # noqa: F401  # Import before mock contexts to prevent kernel re-registration
 from mocks import lsst_config, mock_lsst_environment, sample_catalog, sample_catalog_saved  # noqa: F401
+from mocks.lsst_butler_mocks import MockButler
 
 
 def test_lsst_dataset_init(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
@@ -92,3 +93,16 @@ def test_lsst_dataset_band_failures(mock_lsst_environment, lsst_config, tmp_path
         # Test that we have filled some bands with NaN
         assert all_nans_band
         assert all_numbers_band
+
+
+def test_lsst_dataset_requests_exposure_storage_class(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
+    """Test LSSTDataset requests deep_coadd data as Exposure."""
+    with mock_lsst_environment():
+        from hyrax.datasets.lsst_dataset import LSSTDataset
+
+        dataset = LSSTDataset(lsst_config, data_location=str(tmp_path))
+        dataset.get_image(0)
+
+        deep_coadd_calls = [call for call in MockButler.get_calls if call["dataset_type"] == "deep_coadd"]
+        assert deep_coadd_calls
+        assert all(call["kwargs"].get("storageClass") == "Exposure" for call in deep_coadd_calls)
