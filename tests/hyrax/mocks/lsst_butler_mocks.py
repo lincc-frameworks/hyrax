@@ -572,6 +572,8 @@ class MockButler:
             Mock object depending on dataset_type
         """
         data_id = {} if data_id is None else data_id
+        if not hasattr(MockButler, "get_calls"):
+            MockButler.get_calls = []
         MockButler.get_calls.append({"dataset_type": dataset_type, "data_id": data_id, "kwargs": kwargs})
 
         if dataset_type == "skyMap":
