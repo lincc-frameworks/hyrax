@@ -417,6 +417,7 @@ class EncodingSettings:
             or not isinstance(max_sequence_length, int)
             or max_sequence_length < 1
         ):
+            raise ValueError(
                 "config['model']['HyraxTs2Vec']['max_sequence_length'] must be a positive "
                 f"integer, got {max_sequence_length!r}."
             )
