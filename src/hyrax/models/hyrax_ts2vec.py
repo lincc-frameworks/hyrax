@@ -798,6 +798,9 @@ class HyraxTs2Vec(nn.Module):
         ----------
         batch : torch.Tensor
             Shape ``(batch, time, channels)``, NaN at missing or padded timesteps.
+        forward : collections.abc.Callable, optional
+            Override for the encoder forward path, used by distributed wrappers so the
+            contrastive crops still run through the wrapper.
 
         Returns
         -------
@@ -824,6 +827,9 @@ class HyraxTs2Vec(nn.Module):
         ----------
         batch : torch.Tensor
             Shape ``(batch, time, channels)``, NaN at missing or padded timesteps.
+        forward : collections.abc.Callable, optional
+            Override for the encoder forward path, used by distributed wrappers so the
+            contrastive crops still run through the wrapper.
 
         Returns
         -------
@@ -844,6 +850,9 @@ class HyraxTs2Vec(nn.Module):
         ----------
         batch : torch.Tensor
             Shape ``(batch, time, channels)``, NaN at missing or padded timesteps.
+        forward : collections.abc.Callable, optional
+            Override for the encoder forward path, used by distributed wrappers so the
+            contrastive crops still run through the wrapper.
 
         Returns
         -------
