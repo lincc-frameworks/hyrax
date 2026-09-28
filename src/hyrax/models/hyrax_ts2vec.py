@@ -412,8 +412,11 @@ class EncodingSettings:
         max_sequence_length = model_config["max_sequence_length"]
         # `false` is the TOML "not set" sentinel and bool is a subclass of int, so
         # int(False) would silently become a zero-length sequence here.
-        if max_sequence_length is False or int(max_sequence_length) < 1:
-            raise ValueError(
+        if (
+            isinstance(max_sequence_length, bool)
+            or not isinstance(max_sequence_length, int)
+            or max_sequence_length < 1
+        ):
                 "config['model']['HyraxTs2Vec']['max_sequence_length'] must be a positive "
                 f"integer, got {max_sequence_length!r}."
             )
