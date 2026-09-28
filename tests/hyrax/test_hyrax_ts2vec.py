@@ -501,7 +501,10 @@ def test_ddp_train_process_uses_the_wrapper_forward(hyrax_config, _context, monk
     series = build_event_sequence(batch, hyrax_config)
     model = HyraxTs2Vec(hyrax_config, data_sample=series)
 
-    class FakeDDP(nn.Module):
+    class FakeDDPBase(nn.Module):
+        pass
+
+    class FakeDDP(FakeDDPBase):
         def __init__(self, module):
             super().__init__()
             self.module = module
@@ -520,7 +523,7 @@ def test_ddp_train_process_uses_the_wrapper_forward(hyrax_config, _context, monk
             return self.module(*args, **kwargs)
 
     wrapped_model = FakeDDP(model)
-    monkeypatch.setattr(pytorch_ignite, "DistributedDataParallel", FakeDDP)
+    monkeypatch.setattr(pytorch_ignite, "DistributedDataParallel", FakeDDPBase)
 
     process_func = pytorch_ignite.create_process_func(
         "train_batch", torch.device("cpu"), wrapped_model, hyrax_config

@@ -388,7 +388,11 @@ def create_process_func(funcname, device, model, config):
     Ignite engine (e.g. from :class:`~hyrax.verbs.infer_stream.InferStreamSession`).
     """
     inner_step = extract_model_method(model, funcname)
-    if type(model) is DistributedDataParallel and funcname in {"train_batch", "validate_batch", "test_batch"}:
+    if isinstance(model, DistributedDataParallel) and funcname in {
+        "train_batch",
+        "validate_batch",
+        "test_batch",
+    }:
         inner_step = functools.partial(inner_step, forward=model.forward)
     prepare_inputs = extract_model_method(model, "prepare_inputs")
     inner_loop = functools.partial(_inner_loop, inner_step, prepare_inputs, device, config)
@@ -439,7 +443,7 @@ def extract_model_method(model, method_name):
         The method extracted from the model
     """
 
-    wrapped = type(model) is DistributedDataParallel
+    wrapped = isinstance(model, DistributedDataParallel)
 
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
@@ -528,7 +532,7 @@ def create_validator(
     device = idist.device()
     wrapped_model = _auto_model(model)
 
-    wrapped = type(wrapped_model) is DistributedDataParallel
+    wrapped = isinstance(wrapped_model, DistributedDataParallel)
 
     if wrapped:
         # bind the validate_batch function to the DDP model
@@ -751,7 +755,7 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     model.train()
     wrapped_model = _auto_model(model)
 
-    wrapped = type(wrapped_model) is DistributedDataParallel
+    wrapped = isinstance(wrapped_model, DistributedDataParallel)
 
     if wrapped:
         # bind the train_batch function to the DDP model
