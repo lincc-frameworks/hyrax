@@ -756,8 +756,11 @@ class HyraxTs2Vec(nn.Module):
             x = x[~all_nan]
         return x
 
-    def _contrastive_loss(self, x):
+    def _contrastive_loss(self, x, *, forward=None):
         """Encode two overlapping random crops of ``x`` and return their contrastive loss."""
+        if forward is None:
+            forward = self.forward
+
         min_length = 2 ** (self.temporal_unit + 1)
         ts_l = x.size(1)
         if ts_l < min_length:
@@ -780,15 +783,15 @@ class HyraxTs2Vec(nn.Module):
 
         # self.forward rather than self.encoder so a DDP-wrapped self still routes through
         # the wrapper and synchronizes gradients.
-        out1 = self.forward(take_per_row(x, crop_offset + crop_eleft, crop_right - crop_eleft))
+        out1 = forward(take_per_row(x, crop_offset + crop_eleft, crop_right - crop_eleft))
         out1 = out1[:, -crop_l:]
 
-        out2 = self.forward(take_per_row(x, crop_offset + crop_left, crop_eright - crop_left))
+        out2 = forward(take_per_row(x, crop_offset + crop_left, crop_eright - crop_left))
         out2 = out2[:, :crop_l]
 
         return self.criterion(out1, out2)
 
-    def train_batch(self, batch):
+    def train_batch(self, batch, *, forward=None):
         """Run one self-supervised training step, the inner loop of the reference ``fit()``.
 
         Parameters
@@ -806,7 +809,7 @@ class HyraxTs2Vec(nn.Module):
             logger.warning("Every series in this batch was entirely missing; skipping the step.")
             return {"loss": 0.0}
 
-        loss = self._contrastive_loss(x)
+        loss = self._contrastive_loss(x, forward=forward)
 
         self.optimizer.zero_grad()
         loss.backward()
@@ -814,7 +817,7 @@ class HyraxTs2Vec(nn.Module):
 
         return {"loss": loss.item()}
 
-    def validate_batch(self, batch):
+    def validate_batch(self, batch, *, forward=None):
         """Compute the training loss without updating any weights.
 
         Parameters
@@ -832,9 +835,9 @@ class HyraxTs2Vec(nn.Module):
             logger.warning("Every series in this batch was entirely missing; reporting zero loss.")
             return {"loss": 0.0}
 
-        return {"loss": self._contrastive_loss(x).item()}
+        return {"loss": self._contrastive_loss(x, forward=forward).item()}
 
-    def test_batch(self, batch):
+    def test_batch(self, batch, *, forward=None):
         """Identical to :meth:`validate_batch`.
 
         Parameters
@@ -847,7 +850,7 @@ class HyraxTs2Vec(nn.Module):
         dict
             ``{"loss": float}`` for the current batch.
         """
-        return self.validate_batch(batch)
+        return self.validate_batch(batch, forward=forward)
 
     def infer_batch(self, batch):
         """Produce the latent representation of each series, the core of ``encode()``.

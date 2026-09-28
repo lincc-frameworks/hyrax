@@ -480,6 +480,58 @@ def test_train_batch_runs_on_an_encoded_batch(hyrax_config):
     assert np.isfinite(metrics["loss"])
 
 
+def test_ddp_train_process_uses_the_wrapper_forward(hyrax_config, _context, monkeypatch):
+    """Distributed train_batch must route contrastive crops through the wrapper forward."""
+    import torch
+    from torch import nn
+
+    from hyrax import pytorch_ignite
+
+    rng = np.random.default_rng(0)
+    batch = collate(
+        [
+            light_curve(
+                np.sort(rng.uniform(0.0, 100.0, 16)),
+                fluxes=rng.normal(500.0, 50.0, 16),
+                bands=rng.choice(BANDS, 16),
+            )
+            for _ in range(4)
+        ]
+    )
+    series = build_event_sequence(batch, hyrax_config)
+    model = HyraxTs2Vec(hyrax_config, data_sample=series)
+
+    class FakeDDP(nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+            self.forward_calls = 0
+
+        def __getattr__(self, name):
+            try:
+                return nn.Module.__getattr__(self, name)
+            except AttributeError:
+                if hasattr(self.module, name):
+                    return getattr(self.module, name)
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+        def forward(self, *args, **kwargs):
+            self.forward_calls += 1
+            return self.module(*args, **kwargs)
+
+    wrapped_model = FakeDDP(model)
+    monkeypatch.setattr(pytorch_ignite, "DistributedDataParallel", FakeDDP)
+
+    process_func = pytorch_ignite.create_process_func(
+        "train_batch", torch.device("cpu"), wrapped_model, hyrax_config
+    )
+
+    metrics = process_func(None, batch)
+
+    assert np.isfinite(metrics["loss"])
+    assert wrapped_model.forward_calls == 2
+
+
 def test_infer_batch_keeps_every_row(hyrax_config):
     """Inference output must stay aligned with object_id, empty light curves included."""
     import torch
