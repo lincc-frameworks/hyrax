@@ -107,7 +107,7 @@ def test_engine_run_produces_identity_inference_results(tmp_path):
 
     assert len(results) == len(expected)
     for i in range(len(expected)):
-        np.testing.assert_allclose(results[i], expected[i], atol=1e-5)
+        np.testing.assert_allclose(results[i]["data"], expected[i], atol=1e-5)
 
 
 def test_engine_run_writes_correct_object_ids(tmp_path):
@@ -170,7 +170,7 @@ def test_engine_run_respects_infer_split_fraction(tmp_path):
 
     assert len(results) == 10
     for i in range(10):
-        np.testing.assert_allclose(results[i], expected[i], atol=1e-5)
+        np.testing.assert_allclose(results[i]["data"], expected[i], atol=1e-5)
 
 
 def test_run_cli_uses_model_directory_from_args(tmp_path):

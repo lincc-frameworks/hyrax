@@ -108,7 +108,7 @@ def test_multidim_tensors_roundtrip(multidim_npy_dir, tmp_path):
 
     dataset = ResultDataset({}, output_dir)
     assert len(dataset) == 4
-    assert dataset[0].shape == (2, 3)
+    assert dataset[0]["data"].shape == (2, 3)
 
     verify(multidim_npy_dir, output_dir)
 
