@@ -1,5 +1,6 @@
 import logging
 
+import numpy as np
 import torch.nn as nn
 
 from .model_registry import hyrax_model
@@ -63,10 +64,9 @@ class HyraxLoopback(nn.Module):
     @staticmethod
     def prepare_inputs(data_dict):
         """Simple input prep for the loopback model"""
-        import numpy as np
 
         data = data_dict.get("data")
-        image = data.get("image", np.array([], dtype=np.float32))
-        label = data.get("label", np.array([], dtype=np.float32))
+        image = np.array(data.get("ra_obj", np.array([])), dtype=np.float32)
+        label = np.array(data.get("dec_obj", np.array([])), dtype=np.float32)
 
         return (image, label)

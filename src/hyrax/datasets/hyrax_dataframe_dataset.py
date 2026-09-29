@@ -27,17 +27,27 @@ class DataframeDataset(HyraxDataset):
     @data.setter
     def data(self, value):
         self._data = value
-        self._update_getters()
 
     def _update_getters(self):
         # Dynamic getter creation - assumes only one level of nesting.
-        all_columns = set(self._data.columns)
-        nested_columns = set(self._data.nested_columns)
+
+        # get all the top level columns
+        all_columns = set()
+        for k, v in self._data.items():
+            if not isinstance(v, dict):
+                all_columns.add(k)
+
+        # get all the top-level _nested_ columns
+        nested_columns = set()
+        for k, v in self._data.items():
+            if isinstance(v, dict):
+                nested_columns.add(k)
+
         self._register_getters(list(all_columns - nested_columns))
 
         # For each of the nested columns, get all the subcolumns
         for nested_column in nested_columns:
-            nested_subcols = list(self._data[nested_column].columns)
+            nested_subcols = list(self._data[nested_column].keys())
             self._register_nested_getters(nested_column, nested_subcols)
             self._register_nested_collators(nested_column, nested_subcols)
 
