@@ -1,8 +1,10 @@
 """Run-scoped context shared by verbs, models, vector databases, and exporters.
 
 A Hyrax verb run produces a results directory and a handful of other facts about
-the run (which verb, which distributed rank). Several pieces of Hyrax need those
-facts but are not handed them directly.
+the run (which verb, which runtime configuration, which distributed rank). Several
+pieces of Hyrax need those facts but are not handed them directly - a model's
+``prepare_inputs`` is a staticmethod called before any instance exists, so the
+context is the only way it can reach the config.
 
 Each verb run gets its own context object. The ``Verb`` base class installs one
 for the duration of ``run()`` and releases it when the run ends; everything else
@@ -64,6 +66,14 @@ class ContextKeys(TypedDict, total=False):
 
     verb: str
     """The name of the verb that started the run, e.g. ``"train"``, ``"infer"``"""
+
+    config: dict
+    """The runtime configuration the verb is running with.
+
+    The ``Verb`` base class puts this in alongside ``verb``. Verbs that run against
+    a configuration other than their own - ``to_onnx``, which uses the config saved
+    next to the trained weights - overwrite it with :func:`update_context`.
+    """
 
     ml_framework: str
     """The source framework for a model export. Only set by the ``to_onnx`` verb."""

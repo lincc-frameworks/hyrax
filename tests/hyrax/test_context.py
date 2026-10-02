@@ -11,6 +11,7 @@ from hyrax.context import (
     update_context,
     use_context,
 )
+from hyrax.verbs.verb_registry import Verb
 
 
 def test_context_is_a_dict():
@@ -49,6 +50,28 @@ def test_run_context_populates_expected_keys():
     with run_context("infer", results_dir="/some/results/dir") as context:
         assert context["results_dir"] == Path("/some/results/dir")
         assert context["verb"] == "infer"
+
+
+def test_verb_run_puts_its_config_in_the_context():
+    """A model's prepare_inputs is a staticmethod called before any instance exists,
+    so the run context is the only route it has to the runtime configuration."""
+    import hyrax
+
+    h = hyrax.Hyrax()
+    seen = {}
+
+    class _ConfigSpy(Verb):
+        cli_name = "config-spy"
+
+        def run(self):
+            seen["context"] = dict(get_context())
+
+    _ConfigSpy(h.config).run()
+
+    assert seen["context"]["config"] is h.config
+    assert seen["context"]["verb"] == "config-spy"
+    # And it is released with the rest of the context when the run ends.
+    assert get_context() == {}
 
 
 def test_run_context_coerces_results_dir_to_path():
