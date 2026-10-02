@@ -162,7 +162,13 @@ class SaveToDatabase(Verb):
             vectors = []
             ids = []
             for idx in indices:
-                vector = np.asarray(inference_data_set[idx]).flatten()
+                if hasattr(inference_data_set, "get_data"):
+                    vector = inference_data_set.get_data(idx).flatten()
+                else:
+                    raise NotImplementedError(
+                        "SaveToDatabase verb requires the inference dataset to implement a get_data method."
+                        "Support for custom result names via data_request is not yet implemented."
+                    )
                 vectors.append(vector)
                 ids.append(inference_data_set.get_object_id(idx))
 
