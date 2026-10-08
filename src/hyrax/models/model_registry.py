@@ -62,7 +62,11 @@ def _torch_load(self: nn.Module, load_path: Path):
     device = idist.device()
     state = torch.load(load_path, weights_only=True, map_location=device)
 
-    self.load_state_dict(state, assign=True)
+    # Move the model to the device, then copy the weights into its existing parameters.
+    # Don't use load_state_dict(assign=True): it replaces the Parameter objects, so the
+    # optimizer and scheduler created in __init__ would no longer update the model.
+    self.to(device)
+    self.load_state_dict(state)
 
     # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
     prepare_inputs_fn = load_prepare_inputs(load_path.parent)
