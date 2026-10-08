@@ -194,8 +194,9 @@ class InferStreamSession:
 
         Yields
         ------
-        tuple[dict, np.ndarray]
-            The collated input ``batch`` and the model ``results`` for it.
+        tuple[dict, np.ndarray | dict[str, np.ndarray]]
+            The collated input ``batch`` and the model ``results`` for it, in the form
+            returned by :meth:`process`.
 
         Raises
         ------
@@ -235,7 +236,7 @@ class InferStreamSession:
             # Teardown of the data source must not prevent the result commit below.
             logger.warning(f"Error closing the streaming data source: {err}")
 
-    def process(self, batch: dict) -> npt.NDArray:
+    def process(self, batch: dict) -> npt.NDArray | dict[str, npt.NDArray]:
         """Run inference on a single batch and save results.
 
         Parameters
@@ -245,8 +246,10 @@ class InferStreamSession:
 
         Returns
         -------
-        np.ndarray
-            Model output on CPU, detached from the computation graph.
+        np.ndarray | dict[str, np.ndarray]
+            Model output on CPU, detached from the computation graph. When the model's
+            ``infer_batch`` returns a dict of tensors, this is a dict with the same keys
+            whose values are numpy arrays; otherwise it is a single numpy array.
 
         Raises
         ------
@@ -265,6 +268,9 @@ class InferStreamSession:
 
             if self._config["infer_stream"]["save_model_output"]:
                 self._save_batch(batch, result)
+
+        if isinstance(result, dict):
+            return {key: value.detach().cpu().numpy() for key, value in result.items()}
         return result.detach().cpu().numpy()
 
     def close(self):
