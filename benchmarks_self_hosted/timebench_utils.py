@@ -9,7 +9,7 @@ import torch.nn.functional as F  # noqa N812
 import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
-from torch.utils.data import DataLoader, Subset
+from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from hyrax import Hyrax
 
@@ -44,6 +44,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     h.set_config("data_loader.batch_size", batch_size)
     h.set_config("train.epochs", epochs)
     h.set_config("data_loader.num_workers", num_workers)
+    h.set_config("data_set.use_cache", False)
 
     # Match the plain PyTorch optimizer settings so the comparison is more fair.
     # TODO: pull out momentum; as either arg or constant
@@ -158,9 +159,15 @@ def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
     n_train = int(len(train_dataset) * train_fraction)
     torch.manual_seed(0)
     indices = torch.randperm(len(train_dataset))[:n_train]
-    train_subset = Subset(train_dataset, indices)
 
-    train_loader = DataLoader(train_subset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    n = len(indices)
+    weights = np.ones(n, dtype=np.float32)
+
+    sampler = WeightedRandomSampler(weights=weights, num_samples=n, replacement=True)
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sampler=sampler
+    )
 
     test_dataset = torchvision.datasets.CIFAR10(
         root=os.environ.get("CIFAR_DIR", "./data"),

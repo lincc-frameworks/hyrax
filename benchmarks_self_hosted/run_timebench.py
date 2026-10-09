@@ -12,7 +12,7 @@ import hyrax
 
 CONFIG = {
     "train_fraction": 1.0,
-    "epochs": 10,
+    "epochs": 5,
     "batch_size": 512,
     "num_workers": 0,
     "lr": 0.01,

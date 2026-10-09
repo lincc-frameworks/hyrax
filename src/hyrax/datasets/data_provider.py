@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import pickle
-import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -1131,8 +1130,8 @@ class DataProvider(CollationMixin):
             If a primary dataset is configured, the top-level ``"object_id"`` key
             holds a string representation of the primary ID.
         """
-        start_time = time.monotonic_ns()
-        prefix = self.__class__.__name__
+        # start_time = time.monotonic_ns()
+        # prefix = self.__class__.__name__
 
         rng_seed = self._augment_rng_seed() if self._has_any_augmentation else None
 
@@ -1144,7 +1143,7 @@ class DataProvider(CollationMixin):
             object_id_str = None
 
         result: dict[str, dict[str, Any] | str | None] = {}
-        had_any_miss = False
+        # had_any_miss = False
 
         for friendly_name, fields in self.requested_fields.items():
             getters = self.dataset_getters[friendly_name]
@@ -1166,20 +1165,20 @@ class DataProvider(CollationMixin):
             if cached_data is not None and (already_augmented or effective_rng is None):
                 result[friendly_name] = cached_data
             elif cached_data is not None:
-                augment_start = time.monotonic_ns()
+                # augment_start = time.monotonic_ns()
                 augmented = self._apply_augmentation(friendly_name, cached_data, real_idx, rng_seed)
-                tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
+                # tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
                 self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                 result[friendly_name] = augmented
             else:
-                had_any_miss = True
+                # had_any_miss = True
                 base_data = {field: getters[field](real_idx) for field in fields}
                 self.data_cache.insert_base(friendly_name, real_idx, base_data)
 
                 if effective_rng is not None:
-                    augment_start = time.monotonic_ns()
+                    # augment_start = time.monotonic_ns()
                     augmented = self._apply_augmentation(friendly_name, base_data, real_idx, rng_seed)
-                    tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
+                    # tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
                     self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                     result[friendly_name] = augmented
                 else:
@@ -1198,10 +1197,10 @@ class DataProvider(CollationMixin):
             result["object_id"] = str(object_id)
 
         # Timing metrics.
-        if had_any_miss:
-            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
-        else:
-            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
+        # if had_any_miss:
+        #     tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
+        # else:
+        #     tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
 
         return result
 

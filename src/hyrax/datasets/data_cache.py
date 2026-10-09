@@ -1,5 +1,4 @@
 import logging
-import time
 from numbers import Number
 from sys import getsizeof
 from typing import TYPE_CHECKING, Any
@@ -164,8 +163,8 @@ class DataCache:
         self._do_insert(self._augment_cache[friendly_name], cache_key, data)
 
     def _do_insert(self, cache_map: dict, cache_key, data: dict[str, Any]):
-        start_time = time.monotonic_ns()
-        prefix = self.__class__.__name__
+        # start_time = time.monotonic_ns()
+        # prefix = self.__class__.__name__
 
         self._insert_count += 1
         old_value = cache_map.get(cache_key)
@@ -174,10 +173,10 @@ class DataCache:
 
         cache_map[cache_key] = data
         self._data_size_bytes += DataCache._data_size(data)
-        tensorboardx_logger.log_duration_ts(f"{prefix}/cache_insert_s", start_time)
-        if self._insert_count % self.logging_interval == 0 and self._insert_count != 0:
-            tensorboardx_logger.log_scalar_ts(f"{prefix}/cache_count", self._insert_count)
-            tensorboardx_logger.log_scalar_ts(f"{prefix}/cache_bytes", self._data_size_bytes)
+        # tensorboardx_logger.log_duration_ts(f"{prefix}/cache_insert_s", start_time)
+        # if self._insert_count % self.logging_interval == 0 and self._insert_count != 0:
+        #     tensorboardx_logger.log_scalar_ts(f"{prefix}/cache_count", self._insert_count)
+        #     tensorboardx_logger.log_scalar_ts(f"{prefix}/cache_bytes", self._data_size_bytes)
 
     @staticmethod
     def _data_size(data, seen: set[int] | None = None) -> int:
