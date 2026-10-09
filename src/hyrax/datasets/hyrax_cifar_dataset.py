@@ -2,6 +2,8 @@
 import logging
 from pathlib import Path
 
+from PIL import Image
+
 from .dataset_registry import HyraxDataset
 
 logger = logging.getLogger(__name__)
@@ -36,12 +38,23 @@ class HyraxCifarDataset(HyraxDataset):
 
     def get_image(self, idx):
         """Get the image at the given index as a NumPy array."""
-        image, _ = self.cifar[idx]
-        return image.numpy()
+        img = self.cifar.data[idx]
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.fromarray(img)
+
+        if self.cifar.transform is not None:
+            img = self.cifar.transform(img)
+
+        return img.numpy()
 
     def get_label(self, idx):
         """Get the label at the given index."""
-        _, label = self.cifar[idx]
+
+        label = self.cifar.targets[idx]
+        if self.cifar.target_transform is not None:
+            label = self.cifar.target_transform(label)
+
         return label
 
     def get_object_id(self, idx):
