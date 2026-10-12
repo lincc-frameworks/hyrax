@@ -45,6 +45,7 @@ class DatabaseConnection(Verb):
             database will be updated with the new vectors.
         """
         from hyrax.config_utils import find_most_recent_results_dir
+        from hyrax.context import update_context
         from hyrax.vector_dbs.vector_db_factory import vector_db_factory
 
         config = self.config
@@ -74,10 +75,15 @@ class DatabaseConnection(Verb):
         db_type = self._get_database_type_from_config(vector_db_path)
         config["vector_db"]["name"] = db_type
 
+        # Point the run context at the database directory so the database can find
+        # it. The database holds on to this context, so the connection we hand back
+        # keeps working after this run ends and later verbs start their own.
+        update_context(results_dir=vector_db_path)
+
         # Create an instance of the vector database class for the connection
-        self.vector_db = vector_db_factory(config, context={"results_dir": vector_db_path})
+        self.vector_db = vector_db_factory(config)
         if self.vector_db is None:
-            raise RuntimeError(f"Unable to conenct to the {db_type} database in directory {vector_db_path}")
+            raise RuntimeError(f"Unable to connect to the {db_type} database in directory {vector_db_path}")
 
         return self.vector_db
 

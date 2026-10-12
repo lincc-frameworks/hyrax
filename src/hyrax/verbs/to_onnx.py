@@ -39,6 +39,7 @@ class ToOnnx(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
+        from hyrax.context import update_context
         from hyrax.model_exporters import export_to_onnx
         from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
 
@@ -63,6 +64,7 @@ class ToOnnx(Verb):
                 return
 
         output_dir = create_results_dir(config, "onnx")
+        update_context(ml_framework="pytorch")
         log_runtime_config(config, output_dir)
 
         # grab the config file from the input directory, and render it.
@@ -100,14 +102,8 @@ class ToOnnx(Verb):
         # Create an instance of the dataloader so that we can request a sample batch.
         infer_data_loader = dist_data_loader(dataset["infer"], config_from_training)
 
-        # Generate the `context` dictionary that will be provided to the ONNX exporter.
-        context = {
-            "results_dir": output_dir,
-            "ml_framework": "pytorch",
-        }
-
         # Get a sample of input data.
         batch_sample = next(iter(infer_data_loader))
         batch_sample = model.prepare_inputs(batch_sample)
 
-        export_to_onnx(model, batch_sample, config, context)
+        export_to_onnx(model, batch_sample, config)

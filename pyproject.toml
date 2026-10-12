@@ -57,7 +57,7 @@ dependencies = [
     "psutil", # Used for memory monitoring
     "tqdm", # Used to show progress bars
     "datasets", # Used by MultimodalUniverseDataset
-    "nested-pandas", # Used by NestedPandasDataset
+    "nested-pandas<0.7", # Used by NestedPandasDataset - remove pin after lsdb supports pandas >= 3
     "qdrant-client", # Vector database for similarity search
     "colorama", # Used to color terminal output
     "lancedb", # Used for columnar storage of inference results
@@ -65,6 +65,7 @@ dependencies = [
     "pyarrow", # Used by lancedb for data interchange
     "pylance", # Used by lancedb for Lance dataset access
     "confluent-kafka", # Kafka consumer used by KafkaStreamDataset
+    "lsdb", # Used by LSDBStreamDataset
 ]
 
 [project.scripts]
@@ -97,12 +98,11 @@ dev = [
     "sphinx-copybutton",
     "sphinx-togglebutton",
     "sphinx-rtd-theme",
-    "lsdb", # Used to test lsst dataset classes
 ]
 
 [build-system]
 requires = [
-    "setuptools>=82.0.1", # Used to build and package the Python project
+    "setuptools>=84.0.0", # Used to build and package the Python project
     "setuptools_scm>=10.2.1", # Gets release version from git. Makes it available programmatically
 ]
 build-backend = "setuptools.build_meta"

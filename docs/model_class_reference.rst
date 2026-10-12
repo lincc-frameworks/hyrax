@@ -241,6 +241,63 @@ Example:
        return {"my_metric": 0.42}
 
 
+``train_post_epoch(self)``, ``validate_post_epoch(self)``, ``test_post_epoch(self)``
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Optional zero-argument hooks called once at the end of an epoch. Unlike
+``log_epoch_metrics``, they return nothing -- use them to do work, such as
+writing out data you accumulated across the epoch. They pair naturally with the
+run context described below.
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 20 50
+
+   * - Hook
+     - Verb
+     - Called
+   * - ``train_post_epoch``
+     - ``train``
+     - At the end of each training epoch.
+   * - ``validate_post_epoch``
+     - ``train``
+     - At the end of each validation epoch, if you use ``validate`` data.
+   * - ``test_post_epoch``
+     - ``test``
+     - At the end of the test pass, after every batch has been through
+       ``test_batch``.
+
+Define only the hooks you need. Hyrax checks for each one and skips it if your
+model does not define it.
+
+.. note::
+
+   These hooks are not supported for distributed runs. If a hook is present and
+   the world size is greater than one, Hyrax raises ``NotImplementedError``.
+
+Example -- accumulate predictions across the test pass, then write a confusion
+matrix once at the end:
+
+.. code-block:: python
+
+   def test_batch(self, batch):
+       features, labels = batch
+       logits = self.forward(features)
+       self.predictions.append(logits.argmax(dim=-1).cpu().numpy())
+       self.labels.append(labels.cpu().numpy())
+       return {"loss": self.criterion(logits, labels).item()}
+
+   def test_post_epoch(self):
+       context = get_context()
+       matrix = confusion_matrix(
+           np.concatenate(self.labels), np.concatenate(self.predictions)
+       )
+       np.save(context["results_dir"] / "confusion_matrix.npy", matrix)
+
+``context`` is the run context, which is where the hook learns the
+directory to write into. See "The run context" section for more details.
+
+
 Optimizer / criterion / scheduler setup
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -265,6 +322,80 @@ Example: manual optimizer + automatic criterion/scheduler
 
 This mixed mode is valid. Optimizer/criterion/scheduler do not all need to use
 exactly the same style.
+
+
+The run context
+---------------
+
+Scalar metrics returned from ``train_batch`` and friends go to TensorBoard and
+MLflow. When you want to save something that does not fit that shape -- attention
+maps, per-epoch embeddings, a JSON of diagnostics -- write it into the run's
+results directory. ``get_context()`` tells you where that is.
+
+.. code-block:: python
+
+   from hyrax import get_context
+
+   context = get_context()
+   context["results_dir"]   # Path to this run's results directory
+
+The context is a plain dictionary with these keys:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 20 15 65
+
+   * - Key
+     - Type
+     - Meaning
+   * - ``results_dir``
+     - ``Path``
+     - The results directory for the current run.
+   * - ``verb``
+     - ``str``
+     - Which verb is running: ``"train"``, ``"infer"``, ``"test"``, etc.
+
+Call ``get_context()`` at the point where you need a value, rather than saving
+the context in ``__init__``. Each verb run has its own context, and reading it
+when you use it always gives you the run that is actually underway.
+
+.. code-block:: python
+
+   from hyrax import get_context
+
+
+   @hyrax_model
+   class MyModel(nn.Module):
+       def __init__(self, config, data_sample=None):
+           super().__init__()
+           self.config = config
+           self.activations = []
+
+       def train_batch(self, batch):
+           features, labels = batch
+           ...
+           self.activations.append(hidden.detach().cpu().numpy())
+           return {"loss": loss.item()}
+
+       def train_post_epoch(self):
+           context = get_context()
+           outfile = context["results_dir"] / f"activations.npy"
+           np.save(outfile, np.concatenate(self.activations))
+           self.activations.clear()
+
+You may also put your own keys in the context. Each verb run starts with a fresh
+context and releases it at the end, so anything you add lasts for that run only.
+
+Outside a verb run - if you construct a model yourself, for instance - the
+context is empty, and reading a key from it raises a ``KeyError`` that says so.
+
+.. note::
+
+   The context describes the run that is happening *now*. If you hold a model
+   across two calls -- ``h.train()`` then ``h.infer()`` -- its context will point
+   at the inference results directory during the second call. A model built
+   outside of any verb run has an empty context, and reading a key from it raises
+   a ``KeyError`` explaining why.
 
 
 Complete minimal class

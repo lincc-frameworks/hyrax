@@ -11,8 +11,8 @@ from hyrax.vector_dbs.vector_db_interface import VectorDB
 class QdrantDB(VectorDB):
     """Implementation of the VectorDB interface using Qdrant as the backend."""
 
-    def __init__(self, config, context):
-        super().__init__(config, context)
+    def __init__(self, config):
+        super().__init__(config)
         self.client = None
         self.collection_size = 0
 
@@ -22,9 +22,8 @@ class QdrantDB(VectorDB):
 
     def connect(self):
         """Connect to the Qdrant database and return an instance of the client."""
-        # Results_dir is the directory where the Qdrant database is stored.
-        results_dir = self.context["results_dir"]
-        self.client = QdrantClient(path=results_dir)
+        # self.results_dir is the directory where the Qdrant database is stored.
+        self.client = QdrantClient(path=str(self.results_dir))
 
         collections = self.client.get_collections().collections
         if len(collections):
@@ -57,7 +56,7 @@ class QdrantDB(VectorDB):
                 vectors_config=models.VectorParams(
                     #! This stinks - we should just check the size of the data
                     #! when we call `save_to_database` and then set this automatically
-                    #! as a parameter in self.context["blah"] or something.
+                    #! as a run context key (see hyrax.context.ContextKeys).
                     size=self.config["vector_db"]["qdrant"]["vector_size"],
                     distance=models.Distance.EUCLID,
                     on_disk=True,

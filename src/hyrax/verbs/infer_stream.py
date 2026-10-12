@@ -3,6 +3,8 @@ import logging
 import torch
 from numpy import typing as npt
 
+from hyrax.context import get_context, use_context
+
 from .verb_registry import Verb, hyrax_verb
 
 logger = logging.getLogger(__name__)
@@ -86,6 +88,11 @@ class InferStream(Verb):
 
         config = self.config
 
+        # Create a timestamped results directory. This happens before the model is built
+        # so that the run context is populated by the time the model's __init__ runs,
+        # matching the ordering used by the train, infer and test verbs.
+        results_dir = create_results_dir(config, "infer_stream")
+
         # Build the model either from a configured streaming dataset (preferred, enables
         # session iteration) or from an explicitly supplied sample batch.
         provider = None
@@ -111,9 +118,6 @@ class InferStream(Verb):
 
         # set model in eval mode
         model.eval()
-
-        # Create a timestamped results directory
-        results_dir = create_results_dir(config, "infer_stream")
 
         # Start TensorBoard logger
         init_tensorboard_logger(log_dir=results_dir)
@@ -178,6 +182,12 @@ class InferStreamSession:
         self.data_loader = data_loader
         self._provider = provider
         self._closed = False
+
+        # A session keeps running model code after infer_stream's run() has
+        # returned and released its context. Hold that context so process() can
+        # re-install it, otherwise a model reading get_context() during streaming
+        # would find nothing.
+        self._context = get_context()
 
     def __iter__(self):
         """Iterate the configured data source, processing each batch as it arrives.
@@ -246,11 +256,15 @@ class InferStreamSession:
         if self._closed:
             raise RuntimeError("InferStreamSession is closed. Cannot call process() after close().")
 
-        with torch.no_grad():
+        # `use_context(...)` is here because we want model methods,
+        # i.e. the method assigned to self._process_func, to have access to the
+        # verb context that was established in `infer_stream.run`. `use_context`
+        # ensures that the correct context is active during inference.
+        with use_context(self._context), torch.no_grad():
             result = self._process_func(None, batch)
 
-        if self._config["infer_stream"]["save_model_output"]:
-            self._save_batch(batch, result)
+            if self._config["infer_stream"]["save_model_output"]:
+                self._save_batch(batch, result)
         return result.detach().cpu().numpy()
 
     def close(self):

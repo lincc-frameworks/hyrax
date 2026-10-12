@@ -572,6 +572,14 @@ def create_validator(
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
+    @trainer.on(Events.EXCEPTION_RAISED)
+    def handle_exception(trainer, exception):
+        logger.warning(f"Exception occurred during training: {exception}")
+
+        # calling trainer.terminate here will attempt to spin down the training
+        # engine so that it is able to save its state properly.
+        trainer.terminate()
+
     validator.hyrax_label = "validator"
     return validator
 
@@ -604,11 +612,6 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     def set_model_to_eval_mode():
         wrapped_model.eval()
 
-    # Track average loss
-    from ignite.metrics import RunningAverage
-
-    RunningAverage(output_transform=lambda x: x["loss"]).attach(tester, "avg_loss")
-
     @tester.on(Events.STARTED)
     def log_test_start(engine):
         logger.info(f"Starting model evaluation on test data (device: {device})")
@@ -631,19 +634,21 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
             raise NotImplementedError("test_post_epoch is not supported for distributed use yet.")
         hook()
 
-    @tester.on(Events.COMPLETED)
-    def log_test_metrics(engine):
+    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def log_test_metrics(tester):
         from colorama import Fore, Style
 
-        metrics = engine.state.metrics
+        # send metrics to pretty printing, tensorboard, and mlflow
+        metrics = tester.state.output
         logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
-        logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
+        for m in metrics:
+            logger.info(f"  {m}: {metrics[m]:.4f}")
+            tensorboardx_logger.add_scalar(f"training/test/{m}", metrics[m], 1)
+            mlflow.log_metrics({f"test/{m}": metrics[m]}, step=1)
 
-        # Log metrics to MLflow
-        mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
-
-        # Log to tensorboard
-        tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
+        # debug log the run times
+        logger.debug(f"Test run time: {tester.state.times['EPOCH_COMPLETED']:.2f}[s]")
+        logger.debug(f"Test metrics: {tester.state.output}")
 
     tester.hyrax_label = "tester"
     return tester
@@ -873,12 +878,20 @@ def create_save_batch_callback(results_dir):
 
     data_writer = create_results_writer(results_dir)
 
-    def _save_batch(batch: dict, batch_results: torch.Tensor):
+    def _save_batch(batch: dict, batch_results):
         """Receive and write batch results to results_dir immediately."""
         nonlocal data_writer
 
         # Ensure the batch results are on CPU and detached from the computation graph
-        batch_results = batch_results.detach().to("cpu")
+        if isinstance(batch_results, dict):
+            batch_results = {k: v.detach().to("cpu").numpy() for k, v in batch_results.items()}
+        elif isinstance(batch_results, torch.Tensor):
+            batch_results = batch_results.detach().to("cpu").numpy()
+        else:
+            btype = type(batch_results)
+            msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {btype}"
+            logger.error(msg)
+            raise RuntimeError(msg)
 
         # Verify that batch contains object_id
         if "object_id" not in batch:
@@ -890,7 +903,7 @@ def create_save_batch_callback(results_dir):
         batch_object_ids = batch["object_id"]
 
         # Ensure that everything to be written is in numpy format, and write it out
-        data_writer.write_batch(np.array(batch_object_ids), [t.numpy() for t in batch_results])
+        data_writer.write_batch(np.array(batch_object_ids), batch_results)
 
     # Attach the data_writer to the callback so it can be accessed later
     _save_batch.data_writer = data_writer  # type: ignore[attr-defined]
@@ -931,3 +944,13 @@ def fixup_engine(engine: Engine):
         # On the last iteration the peekable iterator evaluates as true
         if not engine._dataloader_iter:
             engine.fire_event(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+
+
+class EarlyStopping(Exception):  # noqa: N818
+    """Raised when validation metrics stop improving to prevent overfitting."""
+
+    def __init__(self, message: str = "Early stopping triggered."):
+        super().__init__(message)
+
+    def __str__(self):
+        return f"EarlyStopping: {self.args[0]}"

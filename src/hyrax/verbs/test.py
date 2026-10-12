@@ -49,7 +49,6 @@ class Test(Verb):
         """
 
         import mlflow
-        from tensorboardX import SummaryWriter
 
         from hyrax.config_utils import (
             create_results_dir,
@@ -66,6 +65,7 @@ class Test(Verb):
             setup_model,
         )
         from hyrax.splitting_utils import create_splits
+        from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
 
@@ -73,7 +73,7 @@ class Test(Verb):
         results_dir = create_results_dir(config, "test")
 
         # Create a tensorboardX logger
-        tensorboardx_logger = SummaryWriter(log_dir=results_dir)
+        init_tensorboard_logger(log_dir=results_dir)
 
         # Instantiate the model and dataset
         dataset = setup_dataset(
@@ -144,7 +144,7 @@ class Test(Verb):
         save_batch_callback.data_writer.commit()  # type: ignore[attr-defined]
 
         logger.info("Finished Testing")
-        tensorboardx_logger.close()
+        close_tensorboard_logger()
 
         # Return the ResultDataset for further analysis
         return load_results_dataset(config, results_dir)

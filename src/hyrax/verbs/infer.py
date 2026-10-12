@@ -59,7 +59,6 @@ class Infer(Verb):
         from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
-        context = {}
 
         # Create a results directory and dump our config there
         results_dir = create_results_dir(config, "infer")
@@ -89,7 +88,6 @@ class Infer(Verb):
 
         load_model_weights(config, model, "infer")
         log_runtime_config(config, results_dir)
-        context["results_dir"] = results_dir
 
         # Log Results directory
         logger.info(f"Saving inference results at: {results_dir}")
