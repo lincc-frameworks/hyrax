@@ -314,7 +314,7 @@ class LSSTDataset(HyraxDataset, HyraxImageDataset, Dataset):
                     "band": band,
                 }
                 try:
-                    image = butler.get("deep_coadd", butler_dict)
+                    image = butler.get("deep_coadd", butler_dict, storageClass="Exposure")
                     data.append(image.getImage())
                 except Exception as e:
                     logger.warning(f"Failed to fetch band {band} for patch {tract_index}-{patch_index}: {e}")

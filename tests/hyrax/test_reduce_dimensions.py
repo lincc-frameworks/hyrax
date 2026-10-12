@@ -67,10 +67,10 @@ def test_umap_order(loopback_inferred_hyrax):
             raise AssertionError("Failed to find a corresponding ID in original dataset")
 
         # Found the corresponding index in the original dataset, now check that the data matches
-        umap_result = umap_results[idx].reshape(data_shape)
+        umap_result = umap_results[idx]["data"].reshape(data_shape)
 
         print(f"orig idx: {dataset_idx}, umap idx: {idx}")
-        print(f"orig data: {dataset[dataset_idx]}, umap data: {umap_result}")
+        print(f"orig data: {dataset[dataset_idx]['data']}, umap data: {umap_result}")
         assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], umap_result))
 
 
@@ -226,10 +226,10 @@ def test_pca_order(loopback_inferred_hyrax):
             raise AssertionError("Failed to find a corresponding ID in original dataset")
 
         # Found the corresponding index in the original dataset, now check that the data matches
-        pca_result = pca_results[idx].reshape(data_shape)
+        pca_result = pca_results[idx]["data"].reshape(data_shape)
 
         print(f"orig idx: {dataset_idx}, pca idx: {idx}")
-        print(f"orig data: {dataset[dataset_idx]}, pca data: {pca_result}")
+        print(f"orig data: {dataset[dataset_idx]['data']}, pca data: {pca_result}")
         assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], pca_result))
 
 
@@ -345,8 +345,8 @@ def test_tsne_order(loopback_inferred_hyrax):
             raise AssertionError("Failed to find a corresponding ID in original dataset")
 
         # Found the corresponding index in the original dataset, now check that the data matches
-        tsne_result = tsne_results[idx].reshape(data_shape)
+        tsne_result = tsne_results[idx]["data"].reshape(data_shape)
 
         print(f"orig idx: {dataset_idx}, tsne idx: {idx}")
-        print(f"orig data: {dataset[dataset_idx]}, tsne data: {tsne_result}")
+        print(f"orig data: {dataset[dataset_idx]['data']}, tsne data: {tsne_result}")
         assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], tsne_result))
