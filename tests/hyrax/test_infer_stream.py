@@ -25,6 +25,14 @@ class DictReturnLoopback(HyraxLoopback):
     # @hyrax_model requires prepare_inputs to be declared on the class itself.
     prepare_inputs = staticmethod(HyraxLoopback.prepare_inputs)
 
+    def forward(self, x):
+        """Return the input, as HyraxLoopback does.
+
+        Declared here rather than inherited: a trace run elsewhere in the same process
+        leaves inherited model methods set to ``None`` on registered subclasses.
+        """
+        return super().forward(x)
+
     def infer_batch(self, batch):
         """Return the input under ``"a"`` and twice the input under ``"b"``."""
         x = self.forward(batch)
