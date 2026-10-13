@@ -4,6 +4,7 @@ import torch
 from numpy import typing as npt
 
 from hyrax.context import get_context, use_context
+from hyrax.pytorch_ignite import results_to_numpy
 
 from .verb_registry import Verb, hyrax_verb
 
@@ -254,7 +255,8 @@ class InferStreamSession:
         Raises
         ------
         RuntimeError
-            If the session has already been closed.
+            If the session has already been closed, or if the model returns something
+            other than a tensor or a dict of tensors.
         """
         if self._closed:
             raise RuntimeError("InferStreamSession is closed. Cannot call process() after close().")
@@ -269,9 +271,7 @@ class InferStreamSession:
             if self._config["infer_stream"]["save_model_output"]:
                 self._save_batch(batch, result)
 
-        if isinstance(result, dict):
-            return {key: value.detach().cpu().numpy() for key, value in result.items()}
-        return result.detach().cpu().numpy()
+        return results_to_numpy(result)
 
     def close(self):
         """Commit results and return the result dataset.

@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from hyrax.pytorch_ignite import _inner_loop, setup_dataset
+from hyrax.pytorch_ignite import _inner_loop, results_to_numpy, setup_dataset
 
 
 class TestSetupDataset:
@@ -243,3 +243,35 @@ class TestInnerLoop:
         assert mock_func.called
         called_batch = mock_func.call_args[0][0]
         assert isinstance(called_batch, torch.Tensor)
+
+
+class TestResultsToNumpy:
+    """Tests for the results_to_numpy function."""
+
+    def test_tensor_becomes_array(self):
+        """A single tensor with autograd history becomes a detached numpy array."""
+        tensor = torch.tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True) * 2
+
+        result = results_to_numpy(tensor)
+
+        assert isinstance(result, np.ndarray)
+        np.testing.assert_array_equal(result, [[2.0, 4.0], [6.0, 8.0]])
+
+    def test_dict_becomes_dict_of_arrays(self):
+        """A dict of tensors becomes a dict with the same keys and numpy array values."""
+        results = {
+            "a": torch.tensor([1.0, 2.0], requires_grad=True) * 2,
+            "b": torch.ones((2, 2, 2)),
+        }
+
+        converted = results_to_numpy(results)
+
+        assert set(converted) == {"a", "b"}
+        assert all(isinstance(value, np.ndarray) for value in converted.values())
+        np.testing.assert_array_equal(converted["a"], [2.0, 4.0])
+        assert converted["b"].shape == (2, 2, 2)
+
+    def test_other_type_raises(self):
+        """Anything other than a tensor or dict of tensors raises a RuntimeError."""
+        with pytest.raises(RuntimeError, match="Expected batch_results"):
+            results_to_numpy([torch.ones(2)])
