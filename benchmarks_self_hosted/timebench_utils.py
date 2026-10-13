@@ -179,6 +179,87 @@ def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
     return train_loader, test_loader
 
 
+def build_cifar_loader_train(train_fraction=1.0, batch_size=512, num_workers=0):
+    """
+    Build the CIFAR-10 data loader for PyTorch training.
+
+    Parameters
+    ----------
+    train_fraction : float
+        Fraction of the training dataset to use for training.
+    batch_size : int
+        Batch size for training and inference.
+    num_workers : int
+        Number of worker threads for data loading.
+
+    Returns
+    -------
+    train dataloader
+    """
+    # Match the hyrax implementation
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
+    )
+
+    train_dataset = torchvision.datasets.CIFAR10(
+        root=os.environ.get("CIFAR_DIR", "./data"),
+        train=True,
+        download=True,
+        transform=transform,
+    )
+
+    n_train = int(len(train_dataset) * train_fraction)
+    torch.manual_seed(0)
+    indices = torch.randperm(len(train_dataset))[:n_train]
+
+    n = len(indices)
+    weights = np.ones(n, dtype=np.float32)
+
+    sampler = WeightedRandomSampler(weights=weights, num_samples=n, replacement=True)
+
+    train_loader = DataLoader(
+        train_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sampler=sampler
+    )
+
+    return train_loader
+
+
+def build_cifar_loader_test(batch_size=512, num_workers=0):
+    """
+    Build the CIFAR-10 data loader for PyTorch testing.
+
+    Parameters
+    ----------
+    batch_size : int
+        Batch size for training and inference.
+    num_workers : int
+        Number of worker threads for data loading.
+
+    Returns
+    -------
+    test dataloader
+    """
+    # Match the hyrax implementation
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ]
+    )
+
+    test_dataset = torchvision.datasets.CIFAR10(
+        root=os.environ.get("CIFAR_DIR", "./data"),
+        train=False,
+        download=True,
+        transform=transform,
+    )
+    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
+    return test_loader
+
+
 class Net(nn.Module):
     """
     A simple PyTorch CNN model for CIFAR-10 classification.
@@ -209,6 +290,7 @@ class Net(nn.Module):
 def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0, lr=0.01):
     """
     Benchmark the PyTorch on the CIFAR-10 dataset with CNN model with the specified parameters.
+    Note that timing includes model, dataset and dataloader setup.
 
     Parameters
     ----------
@@ -228,9 +310,8 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
     dictionary
         A dictionary containing the benchmarking results
     """
-    train_loader, test_loader = build_cifar_loader(
-        train_fraction=train_fraction, batch_size=batch_size, num_workers=num_workers
-    )
+    # train
+    start_train = time.perf_counter()
     net = Net()
     device = next(net.parameters()).device
     device = torch.device(
@@ -244,8 +325,9 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
     # TODO: pull out momentum; as either arg or constant
     optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9)
 
-    # train
-    start_train = time.perf_counter()
+    train_loader = build_cifar_loader_train(
+        train_fraction=train_fraction, batch_size=batch_size, num_workers=num_workers
+    )
     for _ in range(epochs):
         for _, data in enumerate(train_loader, 0):
             # get the inputs; data is a list of [inputs, labels]
@@ -262,8 +344,23 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
 
     # infer
     start_infer = time.perf_counter()
+    net = Net()
+    device = next(net.parameters()).device
+    device = torch.device(
+        torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
+    )
+    net.to(device)
+
+    print("Model running on:", next(net.parameters()).device)
+
+    criterion = nn.CrossEntropyLoss()
+    # TODO: pull out momentum; as either arg or constant
+    optimizer = optim.SGD(net.parameters(), lr=lr, momentum=0.9)
+
     correct = 0
     total = 0
+    test_loader = build_cifar_loader_test(batch_size=batch_size, num_workers=num_workers)
+    net.eval()
     with torch.no_grad():
         for inputs, labels in test_loader:
             inputs = inputs.to(device)
