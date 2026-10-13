@@ -44,7 +44,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     h.set_config("data_loader.batch_size", batch_size)
     h.set_config("train.epochs", epochs)
     h.set_config("data_loader.num_workers", num_workers)
-    h.set_config("data_set.use_cache", False)
+    h.set_config("data_set.use_cache", True)
 
     # Match the plain PyTorch optimizer settings so the comparison is more fair.
     # TODO: pull out momentum; as either arg or constant

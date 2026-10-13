@@ -78,9 +78,20 @@ def main():
         result["pytorch_train_time"] + result["pytorch_infer_time"]
     )
 
+    short_result = {
+        "device": get_device(),
+        **CONFIG,
+        "hyrax_train_time": hyrax_res["train_time_mean"],
+        "pytorch_train_time": pytorch_res["train_time_mean"],
+        "train_slowdown": result["train_slowdown"],
+        "hyrax_infer_time": hyrax_res["infer_time_mean"],
+        "pytorch_infer_time": pytorch_res["infer_time_mean"],
+        "infer_slowdown": result["infer_slowdown"],
+    }
+
     print(
         json.dumps(
-            result,
+            short_result,
             indent=2,
         )
     )
