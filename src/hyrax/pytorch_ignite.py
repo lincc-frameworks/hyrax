@@ -489,6 +489,15 @@ def create_evaluator(
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(evaluator)
 
+    # Inference never needs gradients. Without this every batch builds an autograd graph.
+    original_run = evaluator.run
+
+    def run_with_no_grad(data, *args, **kwargs):
+        with torch.no_grad():
+            return original_run(data, *args, **kwargs)
+
+    evaluator.run = run_with_no_grad
+
     evaluator.hyrax_label = "evaluator"
     return evaluator
 
