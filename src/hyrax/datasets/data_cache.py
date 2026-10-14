@@ -65,6 +65,17 @@ class DataCache:
         self._base_cache: dict[str, dict[int, dict]] = {name: {} for name in datasets}
         self._augment_cache: dict[str, dict[np.int64, dict]] = {name: {} for name in datasets}
 
+    def disable(self):
+        """Turn caching off and drop anything already cached.
+
+        Used by single-pass verbs (e.g. infer, test) where every item is read
+        exactly once, so cached data would never be read again.
+        """
+        self._use_cache = False
+        self._base_cache = {name: {} for name in self._datasets}
+        self._augment_cache = {name: {} for name in self._datasets}
+        self._data_size_bytes = 0
+
     def try_fetch(
         self,
         friendly_name: str,
