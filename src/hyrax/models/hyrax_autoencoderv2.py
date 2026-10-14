@@ -214,7 +214,7 @@ class HyraxAutoencoderV2(nn.Module):
                                Current supported options are sum and mean (default)"
             )
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """This function contains the logic for a single testing step that will

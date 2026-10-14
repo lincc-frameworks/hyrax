@@ -543,7 +543,30 @@ def create_validator(
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
+
+    # Average each metric over the whole validation set. Models may return tensors here so the
+    # device is not synchronized on every batch; conversion to float happens once per epoch.
+    # Registered before fixup_engine so it runs before HYRAX_EPOCH_COMPLETED fires.
+    metric_sums: dict = {}
+    batch_count = [0]
+
+    @validator.on(Events.EPOCH_STARTED)
+    def reset_metric_sums():
+        metric_sums.clear()
+        batch_count[0] = 0
+
+    @validator.on(Events.ITERATION_COMPLETED)
+    def accumulate_metrics(validator):
+        for name, value in validator.state.output.items():
+            value = value.detach() if isinstance(value, torch.Tensor) else value
+            metric_sums[name] = metric_sums.get(name, 0) + value
+        batch_count[0] += 1
+
     fixup_engine(validator)
+
+    @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def average_metrics(validator):
+        validator.state.output = {name: float(total / batch_count[0]) for name, total in metric_sums.items()}
 
     @validator.on(Events.STARTED)
     def set_model_to_eval_mode():

@@ -93,7 +93,7 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         decoded = self.forward(data)
         loss = self.criterion(decoded, data)
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """

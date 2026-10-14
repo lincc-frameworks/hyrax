@@ -243,3 +243,40 @@ class TestInnerLoop:
         assert mock_func.called
         called_batch = mock_func.call_args[0][0]
         assert isinstance(called_batch, torch.Tensor)
+
+
+class _BatchSumModel(torch.nn.Module):
+    """Minimal model whose validation loss for a batch is the sum of its inputs."""
+
+    def __init__(self):
+        super().__init__()
+        self.weight = torch.nn.Parameter(torch.zeros(1))
+
+    @staticmethod
+    def prepare_inputs(batch):
+        return batch["data"].astype(np.float32)
+
+    def validate_batch(self, batch):
+        # Return a tensor, as built-in models do, so the validator owns the .item() call.
+        return {"loss": batch.sum()}
+
+
+def test_validator_reports_mean_loss_over_all_batches():
+    """The validator should report each metric averaged over the epoch as a float,
+    not the value from the last batch."""
+    from ignite.engine import Engine
+
+    from hyrax.pytorch_ignite import create_validator, fixup_engine
+
+    model = _BatchSumModel()
+    trainer = Engine(lambda engine, batch: None)
+    fixup_engine(trainer)
+
+    batches = [{"data": np.array([1.0])}, {"data": np.array([2.0])}, {"data": np.array([6.0])}]
+    validator = create_validator(model, {}, batches, trainer)
+
+    with patch("hyrax.pytorch_ignite.mlflow.log_metrics"):
+        validator.run(batches)
+
+    assert model.final_validation_metrics == {"loss": pytest.approx(3.0)}
+    assert isinstance(model.final_validation_metrics["loss"], float)
