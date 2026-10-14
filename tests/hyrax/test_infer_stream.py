@@ -1,4 +1,4 @@
-"""Tests for the infer_stream verb's data-source-driven session.
+"""Tests for the infer_stream verb's session, both manual and data-source-driven.
 
 Uses the FakeConsumer from ``test_kafka_stream_dataset.py`` (patched onto
 ``KafkaStreamDataset`` at the class level, since ``infer_stream`` builds the dataset
@@ -8,11 +8,35 @@ needed.
 
 import json
 
+import numpy as np
 import pytest
 from test_kafka_stream_dataset import FakeConsumer, FakeMessage  # noqa: I001
 
 import hyrax
 from hyrax.datasets.kafka_stream_dataset import KafkaStreamDataset
+from hyrax.models.hyrax_loopback import HyraxLoopback
+from hyrax.models.model_registry import hyrax_model
+
+
+@hyrax_model
+class DictReturnLoopback(HyraxLoopback):
+    """Loopback model whose ``infer_batch`` returns a dict of two tensors."""
+
+    # @hyrax_model requires prepare_inputs to be declared on the class itself.
+    prepare_inputs = staticmethod(HyraxLoopback.prepare_inputs)
+
+    def forward(self, x):
+        """Return the input, as HyraxLoopback does.
+
+        Declared here rather than inherited: a trace run elsewhere in the same process
+        leaves inherited model methods set to ``None`` on registered subclasses.
+        """
+        return super().forward(x)
+
+    def infer_batch(self, batch):
+        """Return the input under ``"a"`` and twice the input under ``"b"``."""
+        x = self.forward(batch)
+        return {"a": x, "b": 2 * x}
 
 
 class _ImageStream(KafkaStreamDataset):
@@ -35,11 +59,30 @@ def _msg(object_id, image):
     return FakeMessage(json.dumps({"object_id": object_id, "image": image}))
 
 
-def _build_stream_config(tmp_path, batch_size=2):
+def _build_manual_config(tmp_path, model_name):
+    """Configure a Hyrax instance to run infer_stream on hand-fed batches, saving results."""
+    h = hyrax.Hyrax()
+    h.config["model"]["name"] = model_name
+    h.config["general"]["results_dir"] = str(tmp_path)
+    h.config["infer_stream"]["save_model_output"] = True
+
+    weights = tmp_path / "weights.pth"
+    weights.write_text("")  # HyraxLoopback.load is a no-op; contents are irrelevant
+    h.config["infer_stream"]["model_weights_file"] = str(weights)
+    return h
+
+
+def _image_batch(object_ids, start):
+    """Build a collated batch of 3-element float images with distinct values per object."""
+    image = np.arange(start, start + 3 * len(object_ids), dtype=np.float32).reshape(len(object_ids), 3)
+    return {"object_id": list(object_ids), "data": {"image": image}}
+
+
+def _build_stream_config(tmp_path, batch_size=2, model_name="HyraxLoopback"):
     """Configure a Hyrax instance to run infer_stream over a Kafka-backed data request."""
     tmp_path.mkdir(parents=True, exist_ok=True)
     h = hyrax.Hyrax()
-    h.config["model"]["name"] = "HyraxLoopback"
+    h.config["model"]["name"] = model_name
     h.config["general"]["results_dir"] = str(tmp_path)
     h.config["data_loader"]["batch_size"] = batch_size
 
@@ -133,6 +176,73 @@ def test_infer_stream_iterates_streaming_dataset(tmp_path, monkeypatch):
 
     # The peeked sample (used for model pre-flighting) is not lost.
     assert sorted(seen_ids) == ["id0", "id1", "id2"]
+
+
+def test_process_returns_array_for_tensor_model(tmp_path):
+    """Manual process() returns a numpy array when infer_batch returns a single tensor."""
+    h = _build_manual_config(tmp_path, "HyraxLoopback")
+    batch = _image_batch(["id0", "id1"], start=0)
+
+    with h.infer_stream(sample_batch=batch) as session:
+        results = session.process(batch)
+
+    assert isinstance(results, np.ndarray)
+    np.testing.assert_array_equal(results, batch["data"]["image"])
+
+
+def test_process_returns_dict_for_dict_model(tmp_path):
+    """Manual process() returns a dict of numpy arrays, and saves one column per key."""
+    h = _build_manual_config(tmp_path, "DictReturnLoopback")
+    batches = [_image_batch(["id0", "id1"], start=0), _image_batch(["id2"], start=6)]
+
+    with h.infer_stream(sample_batch=batches[0]) as session:
+        for batch in batches:
+            results = session.process(batch)
+            assert isinstance(results, dict)
+            assert set(results) == {"a", "b"}
+            assert all(isinstance(value, np.ndarray) for value in results.values())
+            np.testing.assert_array_equal(results["a"], batch["data"]["image"])
+            np.testing.assert_array_equal(results["b"], 2 * batch["data"]["image"])
+
+    dataset = session.close()
+    assert set(dataset.keys()) == {"a", "b"}
+    assert sorted(dataset.ids()) == ["id0", "id1", "id2"]
+
+    expected = {
+        oid: image for batch in batches for oid, image in zip(batch["object_id"], batch["data"]["image"])
+    }
+    for i in range(len(dataset)):
+        row = dataset[i]
+        image = expected[dataset.get_object_id(i)]
+        np.testing.assert_array_equal(row["a"], image)
+        np.testing.assert_array_equal(row["b"], 2 * image)
+
+
+def test_infer_stream_iterates_dict_returning_model(tmp_path, monkeypatch):
+    """Iterating a session yields dict results for a dict-returning model and saves both keys."""
+    h = _build_stream_config(tmp_path, model_name="DictReturnLoopback")
+    h.config["infer_stream"]["save_model_output"] = True
+    _record_consumers(monkeypatch, [_msg(f"id{i}", [[float(i)]]) for i in range(3)])
+
+    seen_ids = []
+    with h.infer_stream() as session:
+        for batch, results in session:
+            ids = list(batch["object_id"])
+            seen_ids.extend(ids)
+            assert set(results) == {"a", "b"}
+            assert results["a"].shape[0] == len(ids)
+            np.testing.assert_array_equal(results["b"], 2 * results["a"])
+
+    assert sorted(seen_ids) == ["id0", "id1", "id2"]
+
+    dataset = session.close()
+    assert set(dataset.keys()) == {"a", "b"}
+    assert sorted(dataset.ids()) == ["id0", "id1", "id2"]
+    for i in range(len(dataset)):
+        row = dataset[i]
+        value = float(dataset.get_object_id(i).removeprefix("id"))
+        np.testing.assert_array_equal(row["a"], [[value]])
+        np.testing.assert_array_equal(row["b"], [[2 * value]])
 
 
 def test_close_releases_consumer_while_iteration_is_still_referenced(tmp_path, monkeypatch):

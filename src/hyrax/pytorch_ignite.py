@@ -889,6 +889,39 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     return trainer
 
 
+def results_to_numpy(
+    batch_results: torch.Tensor | dict[str, torch.Tensor],
+) -> np.ndarray | dict[str, np.ndarray]:
+    """Detach model results from the computation graph and convert them to numpy on the CPU.
+
+    Parameters
+    ----------
+    batch_results : torch.Tensor | dict[str, torch.Tensor]
+        The output of a model method such as ``infer_batch``: a single tensor, or a dict
+        of tensors.
+
+    Returns
+    -------
+    np.ndarray | dict[str, np.ndarray]
+        A numpy array for a single tensor, or a dict with the same keys whose values are
+        numpy arrays.
+
+    Raises
+    ------
+    RuntimeError
+        If ``batch_results`` is neither a tensor nor a dict.
+    """
+    if isinstance(batch_results, dict):
+        return {k: v.detach().to("cpu").numpy() for k, v in batch_results.items()}
+    if isinstance(batch_results, torch.Tensor):
+        return batch_results.detach().to("cpu").numpy()
+
+    btype = type(batch_results)
+    msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {btype}"
+    logger.error(msg)
+    raise RuntimeError(msg)
+
+
 def create_save_batch_callback(results_dir):
     """Create a callback function for saving batch results during inference or testing.
 
@@ -915,15 +948,7 @@ def create_save_batch_callback(results_dir):
         nonlocal data_writer
 
         # Ensure the batch results are on CPU and detached from the computation graph
-        if isinstance(batch_results, dict):
-            batch_results = {k: v.detach().to("cpu").numpy() for k, v in batch_results.items()}
-        elif isinstance(batch_results, torch.Tensor):
-            batch_results = batch_results.detach().to("cpu").numpy()
-        else:
-            btype = type(batch_results)
-            msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {btype}"
-            logger.error(msg)
-            raise RuntimeError(msg)
+        batch_results = results_to_numpy(batch_results)
 
         # Verify that batch contains object_id
         if "object_id" not in batch:

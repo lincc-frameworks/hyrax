@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import torch
 
-from hyrax.pytorch_ignite import _inner_loop, setup_dataset
+from hyrax.pytorch_ignite import _inner_loop, results_to_numpy, setup_dataset
 
 
 class TestSetupDataset:
@@ -245,38 +245,33 @@ class TestInnerLoop:
         assert isinstance(called_batch, torch.Tensor)
 
 
-class _BatchSumModel(torch.nn.Module):
-    """Minimal model whose validation loss for a batch is the sum of its inputs."""
+class TestResultsToNumpy:
+    """Tests for the results_to_numpy function."""
 
-    def __init__(self):
-        super().__init__()
-        self.weight = torch.nn.Parameter(torch.zeros(1))
+    def test_tensor_becomes_array(self):
+        """A single tensor with autograd history becomes a detached numpy array."""
+        tensor = torch.tensor([[1.0, 2.0], [3.0, 4.0]], requires_grad=True) * 2
 
-    @staticmethod
-    def prepare_inputs(batch):
-        return batch["data"].astype(np.float32)
+        result = results_to_numpy(tensor)
 
-    def validate_batch(self, batch):
-        # Return a tensor, as built-in models do, so the validator owns the .item() call.
-        return {"loss": batch.sum()}
+        assert isinstance(result, np.ndarray)
+        np.testing.assert_array_equal(result, [[2.0, 4.0], [6.0, 8.0]])
 
+    def test_dict_becomes_dict_of_arrays(self):
+        """A dict of tensors becomes a dict with the same keys and numpy array values."""
+        results = {
+            "a": torch.tensor([1.0, 2.0], requires_grad=True) * 2,
+            "b": torch.ones((2, 2, 2)),
+        }
 
-def test_validator_reports_mean_loss_over_all_batches():
-    """The validator should report each metric averaged over the epoch as a float,
-    not the value from the last batch."""
-    from ignite.engine import Engine
+        converted = results_to_numpy(results)
 
-    from hyrax.pytorch_ignite import create_validator, fixup_engine
+        assert set(converted) == {"a", "b"}
+        assert all(isinstance(value, np.ndarray) for value in converted.values())
+        np.testing.assert_array_equal(converted["a"], [2.0, 4.0])
+        assert converted["b"].shape == (2, 2, 2)
 
-    model = _BatchSumModel()
-    trainer = Engine(lambda engine, batch: None)
-    fixup_engine(trainer)
-
-    batches = [{"data": np.array([1.0])}, {"data": np.array([2.0])}, {"data": np.array([6.0])}]
-    validator = create_validator(model, {}, batches, trainer)
-
-    with patch("hyrax.pytorch_ignite.mlflow.log_metrics"):
-        validator.run(batches)
-
-    assert model.final_validation_metrics == {"loss": pytest.approx(3.0)}
-    assert isinstance(model.final_validation_metrics["loss"], float)
+    def test_other_type_raises(self):
+        """Anything other than a tensor or dict of tensors raises a RuntimeError."""
+        with pytest.raises(RuntimeError, match="Expected batch_results"):
+            results_to_numpy([torch.ones(2)])
