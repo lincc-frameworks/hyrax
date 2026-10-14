@@ -143,7 +143,7 @@ class HSCDCAE(nn.Module):
 
         loss = self.criterion(decoded, data)
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """This function contains the logic for a single testing step that will

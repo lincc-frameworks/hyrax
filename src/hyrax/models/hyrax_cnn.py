@@ -121,7 +121,7 @@ class HyraxCNN(nn.Module):
 
         outputs = self(batch)
         loss = self.criterion(outputs, labels)
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """This function contains the logic for a single testing step that will
