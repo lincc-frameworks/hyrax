@@ -1035,8 +1035,6 @@ class DataProvider(CollationMixin):
         """
         from hyrax.config_utils import ConfigManager
 
-        cm = ConfigManager()
-
         # NOTE: This assumes that the dictionary nesting under dataset_config will
         # either 1) match the built-in dataset class name (e.g. "MyDataset") or
         # 2) match the dictionary structure in the external dataset's default_config
@@ -1051,7 +1049,7 @@ class DataProvider(CollationMixin):
 
             # Note that `merge_configs` makes a copy of self.config, so the original
             # config will not be modified.
-            return cm.merge_configs(base_config, tmp_config)
+            return ConfigManager.merge_configs(base_config, tmp_config)
         else:
             return base_config
 
