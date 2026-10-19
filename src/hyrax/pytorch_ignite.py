@@ -489,6 +489,15 @@ def create_evaluator(
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(evaluator)
 
+    # Inference never needs gradients. Without this every batch builds an autograd graph.
+    original_run = evaluator.run
+
+    def run_with_no_grad(data, *args, **kwargs):
+        with torch.no_grad():
+            return original_run(data, *args, **kwargs)
+
+    evaluator.run = run_with_no_grad
+
     evaluator.hyrax_label = "evaluator"
     return evaluator
 
@@ -534,11 +543,43 @@ def create_validator(
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
+
+    # Average each metric over the whole validation set. Models may return tensors here so the
+    # device is not synchronized on every batch; conversion to float happens once per epoch.
+    # Registered before fixup_engine so it runs before HYRAX_EPOCH_COMPLETED fires.
+    metric_sums: dict = {}
+    batch_count = [0]
+
+    @validator.on(Events.EPOCH_STARTED)
+    def reset_metric_sums():
+        metric_sums.clear()
+        batch_count[0] = 0
+
+    @validator.on(Events.ITERATION_COMPLETED)
+    def accumulate_metrics(validator):
+        for name, value in validator.state.output.items():
+            value = value.detach() if isinstance(value, torch.Tensor) else value
+            metric_sums[name] = metric_sums.get(name, 0) + value
+        batch_count[0] += 1
+
     fixup_engine(validator)
+
+    @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def average_metrics(validator):
+        validator.state.output = {name: float(total / batch_count[0]) for name, total in metric_sums.items()}
 
     @validator.on(Events.STARTED)
     def set_model_to_eval_mode():
         wrapped_model.eval()
+
+    # Wrap iteration to disable gradients during validation
+    original_run = validator.run
+
+    def run_with_no_grad(data, *args, **kwargs):
+        with torch.no_grad():
+            return original_run(data, *args, **kwargs)
+
+    validator.run = run_with_no_grad
 
     @validator.on(Events.COMPLETED)
     def set_model_to_train_mode():
@@ -567,8 +608,8 @@ def create_validator(
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
         for m in validator.state.output:
-            tensorboardx_logger.add_scalar(f"training/validation/{m}", validator.state.output[m], step)
-            mlflow.log_metrics({f"validation/{m}": validator.state.output[m]}, step=step)
+            tensorboardx_logger.add_scalar(f"training/validation/avg_{m}", validator.state.output[m], step)
+            mlflow.log_metrics({f"validation/avg_{m}": validator.state.output[m]}, step=step)
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
 
@@ -608,6 +649,30 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     tester = create_engine("test_batch", device, wrapped_model, config)
     fixup_engine(tester)
 
+    # Average each metric over the whole test set. Models may return tensors here so the
+    # device is not synchronized on every batch; conversion to float happens once per epoch.
+    # Registered before fixup_engine so it runs before HYRAX_EPOCH_COMPLETED fires.
+    metric_sums: dict = {}
+    batch_count = [0]
+
+    @tester.on(Events.EPOCH_STARTED)
+    def reset_metric_sums():
+        metric_sums.clear()
+        batch_count[0] = 0
+
+    @tester.on(Events.ITERATION_COMPLETED)
+    def accumulate_metrics(tester):
+        for name, value in tester.state.output.items():
+            value = value.detach() if isinstance(value, torch.Tensor) else value
+            metric_sums[name] = metric_sums.get(name, 0) + value
+        batch_count[0] += 1
+
+    fixup_engine(tester)
+
+    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def average_metrics(tester):
+        tester.state.output = {name: float(total / batch_count[0]) for name, total in metric_sums.items()}
+
     @tester.on(Events.STARTED)
     def set_model_to_eval_mode():
         wrapped_model.eval()
@@ -643,8 +708,8 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
         logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
         for m in metrics:
             logger.info(f"  {m}: {metrics[m]:.4f}")
-            tensorboardx_logger.add_scalar(f"training/test/{m}", metrics[m], 1)
-            mlflow.log_metrics({f"test/{m}": metrics[m]}, step=1)
+            tensorboardx_logger.add_scalar(f"training/test/avg_{m}", metrics[m], 1)
+            mlflow.log_metrics({f"test/avg_{m}": metrics[m]}, step=1)
 
         # debug log the run times
         logger.debug(f"Test run time: {tester.state.times['EPOCH_COMPLETED']:.2f}[s]")
@@ -791,6 +856,37 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     def log_epoch_start(trainer):
         logger.debug(f"Starting epoch {trainer.state.epoch}")
 
+    # Average each metric over the whole training set. Models may return tensors here so the
+    # device is not synchronized on every batch; conversion to float happens once per epoch.
+    # Registered before fixup_engine so it runs before HYRAX_EPOCH_COMPLETED fires.
+    metric_sums: dict = {}
+    batch_count = [0]
+
+    @trainer.on(Events.EPOCH_STARTED)
+    def reset_metric_sums():
+        metric_sums.clear()
+        batch_count[0] = 0
+
+    @trainer.on(Events.ITERATION_COMPLETED)
+    def accumulate_metrics(trainer):
+        for name, value in trainer.state.output.items():
+            value = value.detach() if isinstance(value, torch.Tensor) else value
+            metric_sums[name] = metric_sums.get(name, 0) + value
+        batch_count[0] += 1
+
+    fixup_engine(trainer)
+
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def average_metrics(trainer):
+        trainer.state.output = {name: float(total / batch_count[0]) for name, total in metric_sums.items()}
+
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def log_epoch_average_metrics(trainer):
+        epoch_number = trainer.state.epoch
+        for m, v in trainer.state.output.items():
+            tensorboardx_logger.add_scalar(f"training/training/epoch/avg_{m}", v, global_step=epoch_number)
+            mlflow.log_metrics({f"training/epoch/avg_{m}": v}, step=epoch_number)
+
     @trainer.on(Events.ITERATION_COMPLETED(every=10))
     def log_training_loss_tensorboard(trainer):
         step = trainer.state.get_event_attrib_value(Events.ITERATION_COMPLETED)
@@ -857,6 +953,39 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     return trainer
 
 
+def results_to_numpy(
+    batch_results: torch.Tensor | dict[str, torch.Tensor],
+) -> np.ndarray | dict[str, np.ndarray]:
+    """Detach model results from the computation graph and convert them to numpy on the CPU.
+
+    Parameters
+    ----------
+    batch_results : torch.Tensor | dict[str, torch.Tensor]
+        The output of a model method such as ``infer_batch``: a single tensor, or a dict
+        of tensors.
+
+    Returns
+    -------
+    np.ndarray | dict[str, np.ndarray]
+        A numpy array for a single tensor, or a dict with the same keys whose values are
+        numpy arrays.
+
+    Raises
+    ------
+    RuntimeError
+        If ``batch_results`` is neither a tensor nor a dict.
+    """
+    if isinstance(batch_results, dict):
+        return {k: v.detach().to("cpu").numpy() for k, v in batch_results.items()}
+    if isinstance(batch_results, torch.Tensor):
+        return batch_results.detach().to("cpu").numpy()
+
+    btype = type(batch_results)
+    msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {btype}"
+    logger.error(msg)
+    raise RuntimeError(msg)
+
+
 def create_save_batch_callback(results_dir):
     """Create a callback function for saving batch results during inference or testing.
 
@@ -883,15 +1012,7 @@ def create_save_batch_callback(results_dir):
         nonlocal data_writer
 
         # Ensure the batch results are on CPU and detached from the computation graph
-        if isinstance(batch_results, dict):
-            batch_results = {k: v.detach().to("cpu").numpy() for k, v in batch_results.items()}
-        elif isinstance(batch_results, torch.Tensor):
-            batch_results = batch_results.detach().to("cpu").numpy()
-        else:
-            btype = type(batch_results)
-            msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {btype}"
-            logger.error(msg)
-            raise RuntimeError(msg)
+        batch_results = results_to_numpy(batch_results)
 
         # Verify that batch contains object_id
         if "object_id" not in batch:

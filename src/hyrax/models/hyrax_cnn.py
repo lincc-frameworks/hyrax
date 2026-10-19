@@ -100,7 +100,7 @@ class HyraxCNN(nn.Module):
         loss = self.criterion(outputs, labels)
         loss.backward()
         self.optimizer.step()
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def validate_batch(self, batch):
         """This function contains the logic for a single validation step that will
@@ -121,7 +121,7 @@ class HyraxCNN(nn.Module):
 
         outputs = self(batch)
         loss = self.criterion(outputs, labels)
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """This function contains the logic for a single testing step that will
@@ -142,7 +142,7 @@ class HyraxCNN(nn.Module):
 
         outputs = self(batch)
         loss = self.criterion(outputs, labels)
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def infer_batch(self, batch):
         """This function contains the logic for a single inference step that will

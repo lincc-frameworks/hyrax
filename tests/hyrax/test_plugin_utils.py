@@ -203,6 +203,59 @@ def test_torch_load_with_map_location(tmp_path):
         )
 
 
+def test_torch_load_keeps_optimizer_bound_to_parameters(tmp_path):
+    """Test that training still updates the model after _torch_load.
+
+    The optimizer is created in the model's __init__. Loading weights must copy them into
+    the existing parameters rather than replacing them, otherwise the optimizer steps
+    stale tensors and warm-started training silently does nothing.
+    """
+    import ignite.distributed as idist
+    import torch
+    import torch.nn as nn
+
+    from hyrax.models.model_registry import hyrax_model
+
+    @hyrax_model
+    class TinyNet(nn.Module):
+        def __init__(self, config, data_sample=None):
+            super().__init__()
+            self.config = config
+            self.linear = nn.Linear(4, 1)
+
+        def forward(self, x):
+            return self.linear(x)
+
+        def train_batch(self, batch):
+            x, y = batch
+            self.optimizer.zero_grad()
+            loss = self.criterion(self(x), y)
+            loss.backward()
+            self.optimizer.step()
+            return {"loss": loss.item()}
+
+    config = {
+        "criterion": {"name": "torch.nn.MSELoss"},
+        "optimizer": {"name": "torch.optim.SGD"},
+        "torch.optim.SGD": {"lr": 0.1},
+        "scheduler": {"name": None},
+    }
+
+    model = TinyNet(config)
+    weights_path = tmp_path / "test_weights.pth"
+    model.save(weights_path)
+    model.load(weights_path)
+
+    optimizer_params = {id(p) for group in model.optimizer.param_groups for p in group["params"]}
+    assert all(id(p) in optimizer_params for p in model.parameters())
+
+    device = idist.device()
+    weights_before = model.linear.weight.detach().clone()
+    model.train_batch((torch.ones(8, 4, device=device), torch.zeros(8, 1, device=device)))
+
+    assert not torch.equal(weights_before, model.linear.weight.detach())
+
+
 def test_torch_load_only_calls_to_tensor_if_prepare_inputs_missing(tmp_path, caplog):
     """Test that load_to_tensor is only called when load_prepare_inputs returns None.
 

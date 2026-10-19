@@ -107,7 +107,7 @@ class HSCDCAE(nn.Module):
         loss.backward()
         self.optimizer.step()
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def validate_batch(self, batch):
         """This function contains the logic for a single validation step that will
@@ -143,7 +143,7 @@ class HSCDCAE(nn.Module):
 
         loss = self.criterion(decoded, data)
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """This function contains the logic for a single testing step that will
@@ -179,7 +179,7 @@ class HSCDCAE(nn.Module):
 
         loss = self.criterion(decoded, data)
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def infer_batch(self, batch):
         """This function contains the logic for a single inference step that will

@@ -117,6 +117,7 @@ class Train(Verb):
         update_context(
             results_dir=results_dir,
             verb="train",
+            config=config,
         )
 
         logger.info(
