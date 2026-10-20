@@ -544,29 +544,8 @@ def create_validator(
     validator = create_engine("validate_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
 
-    # Average each metric over the whole validation set. Models may return tensors here so the
-    # device is not synchronized on every batch; conversion to float happens once per epoch.
-    # Registered before fixup_engine so it runs before HYRAX_EPOCH_COMPLETED fires.
-    metric_sums: dict = {}
-    batch_count = [0]
-
-    @validator.on(Events.EPOCH_STARTED)
-    def reset_metric_sums():
-        metric_sums.clear()
-        batch_count[0] = 0
-
-    @validator.on(Events.ITERATION_COMPLETED)
-    def accumulate_metrics(validator):
-        for name, value in validator.state.output.items():
-            value = value.detach() if isinstance(value, torch.Tensor) else value
-            metric_sums[name] = metric_sums.get(name, 0) + value
-        batch_count[0] += 1
-
-    fixup_engine(validator)
-
-    @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
-    def average_metrics(validator):
-        validator.state.output = {name: float(total / batch_count[0]) for name, total in metric_sums.items()}
+    # Average each metric over the whole validation set, weighted by batch sample count.
+    _attach_epoch_metric_averaging(validator)
 
     @validator.on(Events.STARTED)
     def set_model_to_eval_mode():
@@ -648,29 +627,8 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
 
     tester = create_engine("test_batch", device, wrapped_model, config)
 
-    # Average each metric over the whole test set. Models may return tensors here so the
-    # device is not synchronized on every batch; conversion to float happens once per epoch.
-    # Registered before fixup_engine so it runs before HYRAX_EPOCH_COMPLETED fires.
-    metric_sums: dict = {}
-    batch_count = [0]
-
-    @tester.on(Events.EPOCH_STARTED)
-    def reset_metric_sums():
-        metric_sums.clear()
-        batch_count[0] = 0
-
-    @tester.on(Events.ITERATION_COMPLETED)
-    def accumulate_metrics(tester):
-        for name, value in tester.state.output.items():
-            value = value.detach() if isinstance(value, torch.Tensor) else value
-            metric_sums[name] = metric_sums.get(name, 0) + value
-        batch_count[0] += 1
-
-    fixup_engine(tester)
-
-    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
-    def average_metrics(tester):
-        tester.state.output = {name: float(total / batch_count[0]) for name, total in metric_sums.items()}
+    # Average each metric over the whole test set, weighted by batch sample count.
+    _attach_epoch_metric_averaging(tester)
 
     @tester.on(Events.STARTED)
     def set_model_to_eval_mode():
@@ -854,29 +812,8 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     def log_epoch_start(trainer):
         logger.debug(f"Starting epoch {trainer.state.epoch}")
 
-    # Average each metric over the whole training set. Models may return tensors here so the
-    # device is not synchronized on every batch; conversion to float happens once per epoch.
-    # Registered before fixup_engine so it runs before HYRAX_EPOCH_COMPLETED fires.
-    metric_sums: dict = {}
-    batch_count = [0]
-
-    @trainer.on(Events.EPOCH_STARTED)
-    def reset_metric_sums():
-        metric_sums.clear()
-        batch_count[0] = 0
-
-    @trainer.on(Events.ITERATION_COMPLETED)
-    def accumulate_metrics(trainer):
-        for name, value in trainer.state.output.items():
-            value = value.detach() if isinstance(value, torch.Tensor) else value
-            metric_sums[name] = metric_sums.get(name, 0) + value
-        batch_count[0] += 1
-
-    fixup_engine(trainer)
-
-    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
-    def average_metrics(trainer):
-        trainer.state.output = {name: float(total / batch_count[0]) for name, total in metric_sums.items()}
+    # Average each metric over the whole training set, weighted by batch sample count.
+    _attach_epoch_metric_averaging(trainer)
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_epoch_average_metrics(trainer):
@@ -1063,6 +1000,59 @@ def fixup_engine(engine: Engine):
         # On the last iteration the peekable iterator evaluates as true
         if not engine._dataloader_iter:
             engine.fire_event(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+
+
+def _batch_sample_count(batch) -> int:
+    """Return the number of samples in a collated batch, used to weight per-batch mean metrics.
+
+    Collated Hyrax batches carry an ``object_id`` list with one entry per sample. Batches of
+    any other shape fall back to a count of 1, i.e. equal weighting per batch.
+    """
+    if isinstance(batch, dict) and "object_id" in batch:
+        return len(batch["object_id"])
+    return 1
+
+
+def _attach_epoch_metric_averaging(engine: Engine) -> None:
+    """Replace ``engine.state.output`` with sample-weighted epoch averages at HYRAX_EPOCH_COMPLETED.
+
+    Every metric returned by ``train_batch``/``validate_batch``/``test_batch`` is treated as a
+    per-sample mean over its batch, so each batch's value is weighted by its sample count and the
+    total is divided by the number of samples seen in the epoch. Models may return tensors; they
+    are accumulated on device and converted to float once per epoch to avoid a sync every batch.
+
+    This also calls :func:`fixup_engine`, so the averaging handler is registered as the first
+    HYRAX_EPOCH_COMPLETED handler and runs before checkpointing and logging read the output.
+    Call it before attaching any other HYRAX_EPOCH_COMPLETED handlers.
+
+    Parameters
+    ----------
+    engine : pytorch-ignite.Engine
+        The engine whose per-batch metric dicts should be averaged over each epoch.
+    """
+    metric_sums: dict = {}
+    sample_count = 0
+
+    @engine.on(Events.EPOCH_STARTED)
+    def reset_metric_sums():
+        nonlocal sample_count
+        metric_sums.clear()
+        sample_count = 0
+
+    @engine.on(Events.ITERATION_COMPLETED)
+    def accumulate_metrics(engine):
+        nonlocal sample_count
+        n = _batch_sample_count(engine.state.batch)
+        for name, value in engine.state.output.items():
+            value = value.detach() if isinstance(value, torch.Tensor) else value
+            metric_sums[name] = metric_sums.get(name, 0) + value * n
+        sample_count += n
+
+    fixup_engine(engine)
+
+    @engine.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def average_metrics(engine):
+        engine.state.output = {name: float(total / sample_count) for name, total in metric_sums.items()}
 
 
 class EarlyStopping(Exception):  # noqa: N818

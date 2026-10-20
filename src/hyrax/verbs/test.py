@@ -81,10 +81,6 @@ class Test(Verb):
             splits=Test.REQUIRED_DATA_GROUPS + Test.OPTIONAL_DATA_GROUPS,
             shuffle=False,
         )
-        # Testing reads each item once, so the in-memory data cache would never be hit.
-        for provider in dataset.values():
-            if hasattr(provider, "data_cache"):
-                provider.data_cache.disable()
         create_splits(config, dataset, persist=False)
 
         # Verify that test dataset exists
