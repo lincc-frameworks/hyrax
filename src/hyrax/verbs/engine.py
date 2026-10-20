@@ -129,7 +129,6 @@ class Engine(Verb):
 
         # Work through the dataset in steps of `batch_size`
         for start_idx in range(0, len(indices_to_process), batch_size):
-            self.first_batch = (start_idx == 0)
             end_idx = min(start_idx + batch_size, len(indices_to_process))
             batch_indices = indices_to_process[start_idx:end_idx]
             batch = [infer_dataset[i] for i in batch_indices]
