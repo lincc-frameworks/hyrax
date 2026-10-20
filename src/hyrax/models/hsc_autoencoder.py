@@ -68,7 +68,7 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         loss.backward()
         self.optimizer.step()
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def validate_batch(self, batch):
         """
@@ -93,7 +93,7 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         decoded = self.forward(data)
         loss = self.criterion(decoded, data)
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """
@@ -118,7 +118,7 @@ class HSCAutoencoder(nn.Module):  # These shapes work with [3,258,258] inputs
         decoded = self.forward(data)
         loss = self.criterion(decoded, data)
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def infer_batch(self, batch):
         """

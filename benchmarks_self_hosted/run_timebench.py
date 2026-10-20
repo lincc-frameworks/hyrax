@@ -12,7 +12,7 @@ import hyrax
 
 CONFIG = {
     "train_fraction": 1.0,
-    "epochs": 10,
+    "epochs": 5,
     "batch_size": 512,
     "num_workers": 0,
     "lr": 0.01,
@@ -78,9 +78,20 @@ def main():
         result["pytorch_train_time"] + result["pytorch_infer_time"]
     )
 
+    short_result = {
+        "device": get_device(),
+        **CONFIG,
+        "hyrax_train_time": hyrax_res["train_time_mean"],
+        "pytorch_train_time": pytorch_res["train_time_mean"],
+        "train_slowdown": result["train_slowdown"],
+        "hyrax_infer_time": hyrax_res["infer_time_mean"],
+        "pytorch_infer_time": pytorch_res["infer_time_mean"],
+        "infer_slowdown": result["infer_slowdown"],
+    }
+
     print(
         json.dumps(
-            result,
+            short_result,
             indent=2,
         )
     )
