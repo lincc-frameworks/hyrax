@@ -647,7 +647,6 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     tensorboardx_logger = get_tensorboard_logger()
 
     tester = create_engine("test_batch", device, wrapped_model, config)
-    fixup_engine(tester)
 
     # Average each metric over the whole test set. Models may return tensors here so the
     # device is not synchronized on every batch; conversion to float happens once per epoch.
@@ -822,7 +821,6 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
 
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
-    fixup_engine(trainer)
 
     to_save = {
         "model": wrapped_model,
