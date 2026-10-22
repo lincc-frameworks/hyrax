@@ -350,6 +350,9 @@ def dist_data_loader(
     # a ValueError from the underlying DataLoader.
     if data_loader_kwargs.get("num_workers", 0) > 0:
         data_loader_kwargs["multiprocessing_context"] = mp.get_context("fork")
+        # Each worker holds its own copy of the DataProvider's cache. Non-persistent workers
+        # are re-forked every epoch, which throws those caches away.
+        data_loader_kwargs.setdefault("persistent_workers", True)
 
     return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
