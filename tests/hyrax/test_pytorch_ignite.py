@@ -3,8 +3,26 @@ from unittest.mock import MagicMock, patch
 import numpy as np
 import pytest
 import torch
+from ignite.engine import Engine
 
-from hyrax.pytorch_ignite import _inner_loop, results_to_numpy, setup_dataset
+from hyrax.pytorch_ignite import (
+    HyraxEvents,
+    _attach_epoch_metric_averaging,
+    _batch_sample_count,
+    _inner_loop,
+    create_tester,
+    create_trainer,
+    create_validator,
+    results_to_numpy,
+    setup_dataset,
+)
+
+# Two batches of unequal size: 2 samples with mean loss 0, then 1 sample with mean loss 4.
+# Sample-weighted epoch mean is (0 * 2 + 4 * 1) / 3 = 4/3; an unweighted batch mean would give 2.
+UNEQUAL_BATCHES = [
+    {"object_id": ["a", "b"], "loss": 0.0},
+    {"object_id": ["c"], "loss": 4.0},
+]
 
 
 class TestSetupDataset:
@@ -328,3 +346,105 @@ class TestResultsToNumpy:
         """Anything other than a tensor or dict of tensors raises a RuntimeError."""
         with pytest.raises(RuntimeError, match="Expected batch_results"):
             results_to_numpy([torch.ones(2)])
+
+
+def _record_epoch_outputs(engine):
+    """Collect engine.state.output at every HYRAX_EPOCH_COMPLETED, after averaging has run."""
+    outputs = []
+    engine.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, lambda e: outputs.append(e.state.output))
+    return outputs
+
+
+class _UnequalBatchModel(torch.nn.Module):
+    """Stub model whose per-batch loss is read straight from the batch."""
+
+    def __init__(self):
+        super().__init__()
+        self.layer = torch.nn.Linear(1, 1)
+        self.optimizer = torch.optim.SGD(self.parameters(), lr=0.1)
+        self.scheduler = None
+
+    @staticmethod
+    def prepare_inputs(batch):
+        return np.array(batch["loss"], dtype=np.float32)
+
+    def train_batch(self, loss):
+        return {"loss": loss}
+
+    def validate_batch(self, loss):
+        return {"loss": loss}
+
+    def test_batch(self, loss):
+        return {"loss": loss}
+
+
+class TestEpochMetricAveraging:
+    """Epoch metrics must be averaged over samples, not over batches."""
+
+    def test_batch_sample_count_uses_object_id(self):
+        """The sample count comes from the object_id list of a collated batch."""
+        assert _batch_sample_count({"object_id": ["a", "b", "c"]}) == 3
+
+    def test_batch_sample_count_falls_back_to_one(self):
+        """Batches without object_id are weighted equally."""
+        assert _batch_sample_count({"data": [1, 2]}) == 1
+        assert _batch_sample_count(torch.ones(4)) == 1
+
+    def test_unequal_batches_are_sample_weighted(self):
+        """Batches of 2 and 1 samples with mean losses 0 and 4 average to 4/3."""
+        engine = Engine(lambda e, batch: {"loss": torch.tensor(batch["loss"])})
+        _attach_epoch_metric_averaging(engine)
+        outputs = _record_epoch_outputs(engine)
+
+        engine.run(UNEQUAL_BATCHES, max_epochs=1)
+
+        assert outputs[0]["loss"] == pytest.approx(4 / 3)
+        assert isinstance(outputs[0]["loss"], float)
+
+    def test_sums_reset_each_epoch(self):
+        """Each epoch is averaged independently of the previous one."""
+        engine = Engine(lambda e, batch: {"loss": batch["loss"] * e.state.epoch})
+        _attach_epoch_metric_averaging(engine)
+        outputs = _record_epoch_outputs(engine)
+
+        engine.run(UNEQUAL_BATCHES, max_epochs=2)
+
+        assert outputs[0]["loss"] == pytest.approx(4 / 3)
+        # Without a reset this would be (0 + 4 + 0 + 8) / 6 = 2.
+        assert outputs[1]["loss"] == pytest.approx(8 / 3)
+
+    @patch("hyrax.pytorch_ignite.mlflow")
+    def test_validator_unequal_batches(self, _mlflow):
+        """create_validator reports the sample-weighted validation loss."""
+        model = _UnequalBatchModel()
+        # create_validator hooks the trainer's HYRAX_EPOCH_COMPLETED, so the stub trainer needs it.
+        trainer = Engine(lambda e, b: None)
+        trainer.register_events(*HyraxEvents)
+        validator = create_validator(model, {}, UNEQUAL_BATCHES, trainer)
+        outputs = _record_epoch_outputs(validator)
+
+        validator.run(UNEQUAL_BATCHES)
+
+        assert outputs[0]["loss"] == pytest.approx(4 / 3)
+        assert model.final_validation_metrics["loss"] == pytest.approx(4 / 3)
+
+    @patch("hyrax.pytorch_ignite.mlflow")
+    def test_tester_unequal_batches(self, _mlflow):
+        """create_tester reports the sample-weighted test loss."""
+        tester = create_tester(_UnequalBatchModel(), {})
+        outputs = _record_epoch_outputs(tester)
+
+        tester.run(UNEQUAL_BATCHES)
+
+        assert outputs[0]["loss"] == pytest.approx(4 / 3)
+
+    @patch("hyrax.pytorch_ignite.mlflow")
+    def test_trainer_unequal_batches(self, _mlflow, tmp_path):
+        """create_trainer reports the sample-weighted training loss every epoch."""
+        model = _UnequalBatchModel()
+        trainer = create_trainer(model, {"train": {"resume": False}}, tmp_path)
+        outputs = _record_epoch_outputs(trainer)
+
+        trainer.run(UNEQUAL_BATCHES, max_epochs=2)
+
+        assert [o["loss"] for o in outputs] == pytest.approx([4 / 3, 4 / 3])

@@ -163,6 +163,9 @@ Hyrax discovers components through three registries:
 - Models must inherit from `torch.nn.Module` and implement `__init__`, `forward`,
   `train_batch`, and `prepare_inputs`.
 - The decorator wires up save/load, optimizer, and criterion handling.
+- Every value in the metric dict returned by `train_batch`, `validate_batch`, or `test_batch`
+  must be a per-sample mean over the batch (not a sum or count); epoch metrics weight each
+  batch's value by its sample count (`len(batch["object_id"])`) before averaging.
 - Models reach run-scoped state (results dir, verb) via
   `from hyrax import get_context`. See "Run context" below.
 - Built-in: `HyraxAutoencoder`, `HyraxAutoencoderV2`, `HyraxCNN`, `SimCLR`, `ImageDCAE`, `HSCAutoencoder`, `HSCDCAE`, `HyraxLoopback`

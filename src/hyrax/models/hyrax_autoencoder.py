@@ -137,7 +137,7 @@ class HyraxAutoencoder(nn.Module):
 
         self.optimizer.step()
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def validate_batch(self, batch):
         """This function contains the logic for a single validation step that will
@@ -160,7 +160,7 @@ class HyraxAutoencoder(nn.Module):
         loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """This function contains the logic for a single testing step that will
@@ -183,7 +183,7 @@ class HyraxAutoencoder(nn.Module):
         loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def infer_batch(self, batch):
         """This function contains the logic for a single inference step. i.e. the

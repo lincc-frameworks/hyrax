@@ -816,7 +816,7 @@ class HyraxTs2Vec(nn.Module):
         loss.backward()
         self.optimizer.step()
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def validate_batch(self, batch):
         """Compute the training loss without updating any weights.
@@ -836,7 +836,7 @@ class HyraxTs2Vec(nn.Module):
             logger.warning("Every series in this batch was entirely missing; reporting zero loss.")
             return {"loss": 0.0}
 
-        return {"loss": self._contrastive_loss(x).item()}
+        return {"loss": self._contrastive_loss(x).detach()}
 
     def test_batch(self, batch):
         """Identical to :meth:`validate_batch`.

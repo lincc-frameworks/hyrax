@@ -116,7 +116,7 @@ def test_train_batch_runs_and_updates_weights(model):
     result = model.train_batch(batch)
 
     assert "loss" in result
-    assert isinstance(result["loss"], float)
+    assert isinstance(result["loss"].item(), float)
     assert not torch.equal(weights_before, model.encoder[-1].weight)
 
 
