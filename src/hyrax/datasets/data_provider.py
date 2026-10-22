@@ -2,6 +2,7 @@ import copy
 import functools
 import hashlib
 import logging
+import multiprocessing as mp
 import os
 import pickle
 from concurrent.futures import ThreadPoolExecutor
@@ -594,6 +595,9 @@ class DataProvider(CollationMixin):
         augment_active = {fn: bool(self.augment_getters.get(fn)) for fn in self.prepped_datasets}
         self.data_cache = DataCache(config, self.prepped_datasets, augment_active)
 
+        self._shared_epoch = mp.get_context("fork").Value("q", 0, lock=False)
+        self._epoch_verb = None
+
     def pull_up_primary_dataset_methods(self):
         """If a primary dataset is defined, we will pull up some of its methods
         to the DataProvider level so that they can be called directly on the
@@ -620,6 +624,12 @@ class DataProvider(CollationMixin):
         return self._epoch_rng.integers(np.iinfo(np.int64).min, np.iinfo(np.int64).max, dtype=np.int64)
 
     def on_epoch_start(self, verb: str):
+        """Handles epoch rng and shared epoch counting for multi-processing."""
+        self._epoch_verb = verb
+        self._apply_epoch_start(verb)  # existing body: reseed + dataset hooks
+        self._shared_epoch.value = self._current_epoch
+
+    def _apply_epoch_start(self, verb):
         """Reset the epoch RNG and dispatch on_epoch_start to all dataset instances."""
         self._epoch_rng = np.random.default_rng(int(self._augment_rng.integers(2**62)))
         self._current_epoch += 1
@@ -1126,6 +1136,9 @@ class DataProvider(CollationMixin):
             If a primary dataset is configured, the top-level ``"object_id"`` key
             holds a string representation of the primary ID.
         """
+        while self._current_epoch < self._shared_epoch.value:  # only ever true inside a worker
+            self._apply_epoch_start(self._epoch_verb)
+
         rng_seed = self._augment_rng_seed() if self._has_any_augmentation else None
 
         # Pre-fetch primary object ID when any joins are configured.
