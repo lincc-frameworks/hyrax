@@ -374,7 +374,7 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     if isinstance(batch, tuple):
         batch = tuple(torch.from_numpy(i).to(device) if i is not None else None for i in batch)
     elif isinstance(batch, dict):
-        batch = {k: torch.from_numpy(i).to(device) if i is not None else None for k,i in batch.items()}
+        batch = {k: torch.from_numpy(i).to(device) if i is not None else None for k, i in batch.items()}
     elif batch is not None:
         batch = torch.from_numpy(batch).to(device)
 
