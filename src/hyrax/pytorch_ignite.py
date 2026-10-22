@@ -242,6 +242,7 @@ def dist_data_loader(
     dataset: Dataset,
     config: dict,
     shuffle: bool = False,
+    persistent_workers: bool = False,
 ) -> DataLoader:
     """Create Pytorch Ignite distributed data loaders.
 
@@ -266,6 +267,12 @@ def dist_data_loader(
         deterministic order.  Ignored when ``split_weights`` is set (weighted
         sampling always draws with replacement).  Defaults to ``False`` so
         non-training verbs preserve deterministic order.
+    persistent_workers : bool, optional
+        If ``True``, worker processes are not shut down after each epoch.  This
+        can improve performance when the dataset is large and expensive to
+        initialize, but may cause issues with some datasets that do not support
+        persistent workers.  Defaults to ``False`` to avoid issues with
+        datasets that do not support persistent workers.
 
     Returns
     -------
@@ -352,7 +359,7 @@ def dist_data_loader(
         data_loader_kwargs["multiprocessing_context"] = mp.get_context("fork")
         # Each worker holds its own copy of the DataProvider's cache. Non-persistent workers
         # are re-forked every epoch, which throws those caches away.
-        data_loader_kwargs.setdefault("persistent_workers", True)
+        data_loader_kwargs["persistent_workers"] = persistent_workers
 
     return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 

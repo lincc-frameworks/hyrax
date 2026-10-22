@@ -148,10 +148,14 @@ class Train(Verb):
 
         data_loaders = {}
         for split_name in dataset_splits:
+            to_shuffle = split_name == "train" and train_shuffle
+            # don't persist workers when shuffling
+            to_persist = (not to_shuffle) and (config["data_loader"].get("num_workers", 0) > 0)
             data_loaders[split_name] = dist_data_loader(
                 dataset[split_name],
                 config,
-                shuffle=split_name == "train" and train_shuffle,
+                shuffle=to_shuffle,
+                persistent_workers=to_persist,
             )
 
         train_data_loader = data_loaders["train"]
