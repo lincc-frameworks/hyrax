@@ -240,6 +240,59 @@ class TestInnerLoop:
         assert isinstance(called_batch[0], torch.Tensor)
         assert isinstance(called_batch[1], torch.Tensor)
 
+    def test_inner_loop_with_normal_dict(self):
+        """Test that _inner_loop still works correctly with normal dicts (no None)."""
+        # Create test data
+        test_array1 = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        test_array2 = np.array([0, 1], dtype=np.int64)
+        test_batch = {"a": test_array1, "b": test_array2}
+
+        # Mock functions
+        def mock_prepare_inputs(batch):
+            return batch
+
+        mock_func = MagicMock(return_value={"loss": 1.0})
+        device = torch.device("cpu")
+        config = {}
+        engine = MagicMock()
+
+        # Call _inner_loop
+        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+
+        # Verify the function was called with tensors
+        assert mock_func.called
+        called_batch = mock_func.call_args[0][0]
+        assert isinstance(called_batch, dict)
+        assert len(called_batch) == 2
+        assert isinstance(called_batch["a"], torch.Tensor)
+        assert isinstance(called_batch["b"], torch.Tensor)
+
+    def test_inner_loop_with_dict_containing_none(self):
+        """Test that _inner_loop handles dicts with None values correctly"""
+        # Create test data
+        test_array1 = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
+        test_batch = {"a": test_array1, "b": None}
+
+        # Mock functions
+        def mock_prepare_inputs(batch):
+            return batch
+
+        mock_func = MagicMock(return_value={"loss": 1.0})
+        device = torch.device("cpu")
+        config = {}
+        engine = MagicMock()
+
+        # Call _inner_loop
+        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+
+        # Verify the function was called with tensors
+        assert mock_func.called
+        called_batch = mock_func.call_args[0][0]
+        assert isinstance(called_batch, dict)
+        assert len(called_batch) == 2
+        assert isinstance(called_batch["a"], torch.Tensor)
+        assert called_batch["b"] is None
+
     def test_inner_loop_with_single_array(self):
         """Test that _inner_loop works with a single array (not a tuple)."""
         # Create test data
