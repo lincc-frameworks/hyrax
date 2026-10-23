@@ -17,6 +17,7 @@ from hyrax.pytorch_ignite import (
     dist_data_loader,
     setup_dataset,
     setup_model,
+    shutdown_workers,
 )
 from hyrax.splitting_utils import create_splits
 from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
@@ -205,6 +206,7 @@ class Train(Verb):
             model.save(results_dir / config["train"]["weights_filename"])
         finally:
             monitor.stop()
+            shutdown_workers([train_data_loader, validation_data_loader])
 
         logger.info("Finished Training")
         close_tensorboard_logger()

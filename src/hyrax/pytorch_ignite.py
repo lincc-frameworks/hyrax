@@ -1075,3 +1075,21 @@ class EarlyStopping(Exception):  # noqa: N818
 
     def __str__(self):
         return f"EarlyStopping: {self.args[0]}"
+
+
+def shutdown_workers(data_loaders):
+    """Shut down the worker processes of a DataLoader.
+
+    This is useful for cleaning up resources when using persistent workers, especially in
+    distributed training scenarios where each process may have its own DataLoader.
+
+    Parameters
+    ----------
+    data_loaders : list of DataLoader
+        The DataLoader whose workers should be shut down.
+    """
+    for data_loader in data_loaders:
+        iterator = getattr(data_loader, "_iterator", None)
+        if iterator is not None:
+            iterator._shutdown_workers()
+            data_loader._iterator = None
