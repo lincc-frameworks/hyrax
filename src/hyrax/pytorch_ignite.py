@@ -360,6 +360,9 @@ def dist_data_loader(
         # Each worker holds its own copy of the DataProvider's cache. Non-persistent workers
         # are re-forked every epoch, which throws those caches away.
         data_loader_kwargs["persistent_workers"] = persistent_workers
+        # Runs inside each worker right after fork. Disarms DataLoader iterators the
+        # worker inherited from the parent so it can never shut down the parent's workers.
+        data_loader_kwargs["worker_init_fn"] = _hyrax_worker_init
 
     return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
@@ -1093,3 +1096,14 @@ def shutdown_workers(data_loaders):
         if iterator is not None:
             iterator._shutdown_workers()
             data_loader._iterator = None
+
+
+def _hyrax_worker_init(worker_id):
+    import gc
+
+    from torch.utils.data.dataloader import _MultiProcessingDataLoaderIter
+
+    # Iterators inherited by fork belong to the parent; never let this process shut them down.
+    for obj in gc.get_objects():
+        if isinstance(obj, _MultiProcessingDataLoaderIter):
+            obj._shutdown = True

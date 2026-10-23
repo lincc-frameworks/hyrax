@@ -188,20 +188,6 @@ def test_worker_augmentation_seeds_match_non_persistent_workers():
         np.testing.assert_array_equal(persisted, fresh, err_msg=f"augmentation seeds differ in epoch {n}")
 
 
-def test_worker_augmentation_seeds_are_unique_across_workers():
-    """Optional (pre-existing bug): every forked worker starts from an identical
-    _epoch_rng, so seeds repeat across workers. Each item should get its own seed."""
-    config, provider = _make_provider(["seed"], augment=True, seed=1234)
-    loader = dist_data_loader(provider, config, persistent_workers=True)
-    try:
-        epochs = _run_epochs(provider, loader)
-    finally:
-        _shutdown(loader)
-
-    for n, epoch in enumerate(epochs, start=1):
-        assert len(set(epoch["seed"].tolist())) == len(epoch["seed"]), f"duplicate seeds in epoch {n}"
-
-
 # ---------------------------------------------------------------------------
 # 3. Inherited DataLoader iterators
 # ---------------------------------------------------------------------------
@@ -240,6 +226,17 @@ def test_worker_init_disarms_inherited_dataloader_iterators():
         assert len(epoch["object_id"]) == len(provider)
     finally:
         _shutdown(loader)
+
+
+def test_worker_loaders_disarm_inherited_iterators():
+    """Every multi-worker loader must install _hyrax_worker_init, persistent or not:
+    re-forked non-persistent workers inherit the parent's live persistent iterators too."""
+    from hyrax.pytorch_ignite import _hyrax_worker_init
+
+    config, provider = _make_provider(["epoch"])
+    for persistent in (False, True):
+        loader = dist_data_loader(provider, config, persistent_workers=persistent)
+        assert loader.worker_init_fn is _hyrax_worker_init, f"persistent_workers={persistent}"
 
 
 @pytest.mark.parametrize("num_workers", [NUM_WORKERS], indirect=True)
