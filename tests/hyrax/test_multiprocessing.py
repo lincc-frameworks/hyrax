@@ -239,6 +239,23 @@ def test_worker_loaders_disarm_inherited_iterators():
         assert loader.worker_init_fn is _hyrax_worker_init, f"persistent_workers={persistent}"
 
 
+def test_live_iterators_are_registered_for_disarming():
+    """_hyrax_worker_init only disarms iterators in _live_worker_iterators, so every
+    multi-worker iterator must be registered, persistent or not: validation workers are
+    forked while the non-persistent train iterator is still alive."""
+    from hyrax.pytorch_ignite import _live_worker_iterators
+
+    config, provider = _make_provider(["epoch"])
+    for persistent in (False, True):
+        loader = dist_data_loader(provider, config, persistent_workers=persistent)
+        iterator = iter(loader)
+        try:
+            assert iterator in _live_worker_iterators, f"persistent_workers={persistent}"
+        finally:
+            iterator._shutdown_workers()
+            loader._iterator = None
+
+
 @pytest.mark.parametrize("num_workers", [NUM_WORKERS], indirect=True)
 def test_train_with_workers_raises_no_unraisable_exceptions(loopback_hyrax, tmp_path, monkeypatch):
     """End to end: training with a validation split and workers should not produce
