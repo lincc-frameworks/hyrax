@@ -19,6 +19,7 @@ CIFAR_CONFIG = {
     "num_workers": 0,
     "lr": 0.01,
     "repeats": 3,
+    "warmup": 1,
 }
 
 HSC_CONFIG = {
@@ -28,6 +29,7 @@ HSC_CONFIG = {
     "num_workers": 0,
     "lr": 0.01,
     "repeats": 3,
+    "warmup": 1,
 }
 
 # name -> (repeated benchmark function, config, name of the quality metric in the summary dict)

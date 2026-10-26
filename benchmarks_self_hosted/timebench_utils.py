@@ -1,5 +1,6 @@
 import os
 import pickle
+import tempfile
 import time
 
 import numpy as np
@@ -124,61 +125,6 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
     }
 
 
-def build_cifar_loader(train_fraction=1.0, batch_size=512, num_workers=0):
-    """
-    Build the CIFAR-10 data loaders for PyTorch training and testing.
-
-    Parameters
-    ----------
-    train_fraction : float
-        Fraction of the training dataset to use for training.
-    batch_size : int
-        Batch size for training and inference.
-    num_workers : int
-        Number of worker threads for data loading.
-
-    Returns
-    -------
-        tuple
-        A tuple containing the training and testing data loaders."""
-    # Match the hyrax implementation
-    transform = transforms.Compose(
-        [
-            transforms.ToTensor(),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ]
-    )
-
-    train_dataset = torchvision.datasets.CIFAR10(
-        root=os.environ.get("CIFAR_DIR", "./data"),
-        train=True,
-        download=True,
-        transform=transform,
-    )
-
-    n_train = int(len(train_dataset) * train_fraction)
-    torch.manual_seed(0)
-    indices = torch.randperm(len(train_dataset))[:n_train]
-
-    n = len(indices)
-    weights = np.ones(n, dtype=np.float32)
-
-    sampler = WeightedRandomSampler(weights=weights, num_samples=n, replacement=True)
-
-    train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sampler=sampler
-    )
-
-    test_dataset = torchvision.datasets.CIFAR10(
-        root=os.environ.get("CIFAR_DIR", "./data"),
-        train=False,
-        download=True,
-        transform=transform,
-    )
-    test_loader = DataLoader(test_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers)
-    return train_loader, test_loader
-
-
 def build_cifar_loader_train(train_fraction=1.0, batch_size=512, num_workers=0):
     """
     Build the CIFAR-10 data loader for PyTorch training.
@@ -221,7 +167,11 @@ def build_cifar_loader_train(train_fraction=1.0, batch_size=512, num_workers=0):
     sampler = WeightedRandomSampler(weights=weights, num_samples=n, replacement=True)
 
     train_loader = DataLoader(
-        train_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sampler=sampler
+        torch.utils.data.Subset(train_dataset, indices),
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        sampler=sampler,
     )
 
     return train_loader
@@ -340,18 +290,23 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
             loss = criterion(outputs, labels)
             loss.backward()
             optimizer.step()
+
+    # save the model weights to a temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".pt") as tmp:
+        torch.save(net.state_dict(), tmp.name)
+        tmp_path = tmp.name
     end_train = time.perf_counter()
 
     # infer
     start_infer = time.perf_counter()
     net = Net()
+    # load the saved model weights
+    net.load_state_dict(torch.load(tmp_path))
     device = next(net.parameters()).device
     device = torch.device(
         torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
     )
     net.to(device)
-
-    print("Model running on:", next(net.parameters()).device)
 
     criterion = nn.CrossEntropyLoss()
     # TODO: pull out momentum; as either arg or constant
@@ -379,6 +334,9 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
         f"accuracy={accuracy:.3f}"
     )
 
+    if os.path.exists(tmp_path):
+        os.remove(tmp_path)
+
     return {
         "framework": "pytorch",
         "train_fraction": train_fraction,
@@ -394,7 +352,7 @@ def benchmark_pytorch(train_fraction=1.0, epochs=10, batch_size=512, num_workers
 
 
 def benchmark_repeated(
-    framework, train_fraction=1.0, epochs=10, batch_size=512, num_workers=0, lr=0.01, repeats=3
+    framework, train_fraction=1.0, epochs=10, batch_size=512, num_workers=0, lr=0.01, repeats=3, warmup=0
 ):
     """
     Run the benchmarking for the specified framework (Hyrax or PyTorch) multiple times
@@ -415,7 +373,9 @@ def benchmark_repeated(
     lr : float
         Learning rate for the optimizer.
     repeats : int
-        Number of times to repeat the benchmarking.
+        Number of measured runs that are averaged.
+    warmup : int
+        Number of additional initial runs that are executed but excluded from the averages.
 
     Returns
     -------
@@ -430,17 +390,20 @@ def benchmark_repeated(
         raise ValueError("framework must be 'hyrax' or 'pytorch'")
 
     results = []
-    for i in range(repeats):
-        print(f"{framework} repeat {i + 1}/{repeats}")
-        results.append(
-            runner(
-                train_fraction=train_fraction,
-                epochs=epochs,
-                num_workers=num_workers,
-                batch_size=batch_size,
-                lr=lr,
-            )
+    for i in range(warmup + repeats):
+        if i < warmup:
+            print(f"{framework} warmup {i + 1}/{warmup}")
+        else:
+            print(f"{framework} repeat {i - warmup + 1}/{repeats}")
+        result = runner(
+            train_fraction=train_fraction,
+            epochs=epochs,
+            num_workers=num_workers,
+            batch_size=batch_size,
+            lr=lr,
         )
+        if i >= warmup:
+            results.append(result)
 
     train_times = [r["train_time"] for r in results]
     infer_times = [r["infer_time"] for r in results]
@@ -453,6 +416,7 @@ def benchmark_repeated(
         "batch_size": batch_size,
         "lr": lr,
         "repeats": repeats,
+        "warmup": warmup,
         "train_time_mean": float(np.mean(train_times)),
         "train_time_std": float(np.std(train_times)),
         "infer_time_mean": float(np.mean(infer_times)),

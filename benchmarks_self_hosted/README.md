@@ -25,7 +25,7 @@ Training uses the full dataset and inference encodes every object.
 ## Running
 
 ```bash
-python benchmarks_self_hosted/run_timebench.py                   # CIFAR only (default)
+python benchmarks_self_hosted/run_timebench.py --benchmark cifar # CIFAR only (default)
 python benchmarks_self_hosted/run_timebench.py --benchmark hsc   # HSC only
 python benchmarks_self_hosted/run_timebench.py --benchmark all   # both
 ```

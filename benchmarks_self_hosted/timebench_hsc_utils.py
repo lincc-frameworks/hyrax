@@ -22,7 +22,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from astropy.io import fits
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader, Dataset, WeightedRandomSampler
 from torchvision.transforms.v2 import CenterCrop
 
 HSC1K_EXTRACTED_DIRNAME = "hsc_8asec_1000"
@@ -143,14 +143,20 @@ def build_hsc_loader(data_dir, batch_size=128, num_workers=0, shuffle=True):
     num_workers : int
         Number of worker processes for data loading.
     shuffle : bool
-        Whether to shuffle each epoch.
+        If True, sample with replacement (``WeightedRandomSampler`` with uniform weights), matching
+        Hyrax's ``dist_data_loader``. If False, iterate sequentially.
 
     Returns
     -------
     DataLoader
     """
     dataset = HSCTorchDataset(data_dir)
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    sampler = None
+    if shuffle:
+        n = len(dataset)
+        weights = np.ones(n, dtype=np.float32)
+        sampler = WeightedRandomSampler(weights=weights, num_samples=n, replacement=True)
+    return DataLoader(dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, sampler=sampler)
 
 
 def conv2d_output_size(input_size, kernel_size, padding=0, stride=1, dilation=1) -> int:
@@ -481,7 +487,7 @@ def benchmark_hyrax_hsc(epochs=10, batch_size=128, num_workers=0, lr=0.01, train
 
 
 def benchmark_repeated_hsc(
-    framework, train_fraction=1.0, epochs=10, batch_size=128, num_workers=0, lr=0.01, repeats=3
+    framework, train_fraction=1.0, epochs=10, batch_size=128, num_workers=0, lr=0.01, repeats=3, warmup=0
 ):
     """Run the HSC benchmark for one framework several times and summarize the results.
 
@@ -500,7 +506,9 @@ def benchmark_repeated_hsc(
     lr : float
         Learning rate.
     repeats : int
-        Number of repetitions.
+        Number of measured runs that are averaged.
+    warmup : int
+        Number of additional initial runs that are executed but excluded from the averages.
 
     Returns
     -------
@@ -520,17 +528,20 @@ def benchmark_repeated_hsc(
     check_architecture_parity((len(probe.filters), *probe.cutout_shape))
 
     results = []
-    for i in range(repeats):
-        print(f"{framework} repeat {i + 1}/{repeats}")
-        results.append(
-            runner(
-                epochs=epochs,
-                batch_size=batch_size,
-                num_workers=num_workers,
-                lr=lr,
-                train_fraction=train_fraction,
-            )
+    for i in range(warmup + repeats):
+        if i < warmup:
+            print(f"{framework} warmup {i + 1}/{warmup}")
+        else:
+            print(f"{framework} repeat {i - warmup + 1}/{repeats}")
+        result = runner(
+            epochs=epochs,
+            batch_size=batch_size,
+            num_workers=num_workers,
+            lr=lr,
+            train_fraction=train_fraction,
         )
+        if i >= warmup:
+            results.append(result)
 
     train_times = [r["train_time"] for r in results]
     infer_times = [r["infer_time"] for r in results]
@@ -544,6 +555,7 @@ def benchmark_repeated_hsc(
         "num_workers": num_workers,
         "lr": lr,
         "repeats": repeats,
+        "warmup": warmup,
         "use_cache": results[0]["use_cache"],
         "num_samples": results[0]["num_infer_samples"],
         "train_time_mean": float(np.mean(train_times)),
