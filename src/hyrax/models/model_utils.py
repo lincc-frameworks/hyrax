@@ -83,7 +83,7 @@ def read_input_shape(config: dict, model_name: str) -> tuple[int, int, int]:
         If the key is missing or is not a list of three positive integers.
     """
     key = f"config['model']['{model_name}']['input_shape']"
-    shape = config["model"][model_name].get("input_shape")
+    shape = config["model"][model_name]["input_shape"]
 
     # `false` is the TOML "not set" sentinel, and bool is a subclass of int, so booleans
     # must be rejected explicitly or `[3, true, 32]` would pass as `[3, 1, 32]`.
