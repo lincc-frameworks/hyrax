@@ -279,7 +279,7 @@ def context_writing_loopback(loopback_hyrax):
         and the model registry perform.
         """
 
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             from functools import partial
 
             super().__init__()

@@ -149,7 +149,7 @@ def test_train_stream_iterates_streaming_dataset(tmp_path, monkeypatch):
             assert "loss" in metrics
         results_dir = session._results_dir
 
-    # The peeked sample (used for model pre-flighting) is not lost.
+    # Every streamed sample reaches the model; none is consumed during setup.
     assert sorted(seen_ids) == ["id0", "id1", "id2"]
     # Final weights were persisted on close.
     assert (results_dir / "example_model.pth").exists()

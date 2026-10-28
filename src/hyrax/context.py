@@ -16,7 +16,7 @@ Typical usage in a model::
 
     @hyrax_model
     class MyModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
 

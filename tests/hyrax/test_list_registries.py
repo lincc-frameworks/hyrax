@@ -19,7 +19,7 @@ def test_list_models_includes_registered_model():
 
     @hyrax_model
     class ZZZTestListModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
 

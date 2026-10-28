@@ -9,7 +9,7 @@ BATCH_SIZE = 4
 # stages, which requires at least an 18x18 input to avoid collapsing to a 0x0
 # tensor before the final layers. 20x20 is the smallest round size above that
 # floor, so we use it here instead of a truly minimal test image.
-IMAGE_SHAPE = (1, 20, 20)  # (channels, width, height)
+IMAGE_SHAPE = (1, 20, 20)  # (channels, height, width)
 OUTPUT_CLASSES = 2
 
 
@@ -18,18 +18,12 @@ def make_model_config(output_classes=OUTPUT_CLASSES):
     `hyrax_model` to build its optimizer/criterion/scheduler directly,
     without going through a full `hyrax.Hyrax()` instance."""
     return {
-        "model": {"HyraxCNN": {"output_classes": output_classes}},
+        "model": {"HyraxCNN": {"input_shape": list(IMAGE_SHAPE), "output_classes": output_classes}},
         "criterion": {"name": "torch.nn.CrossEntropyLoss"},
         "optimizer": {"name": "torch.optim.SGD"},
         "torch.optim.SGD": {"lr": 0.01, "momentum": 0.9},
         "scheduler": {"name": None},
     }
-
-
-def make_data_sample():
-    """A stand-in for the `data_sample` HyraxCNN uses at init time to size its
-    layers dynamically. Only the image tensor's shape is inspected."""
-    return (torch.zeros(BATCH_SIZE, *IMAGE_SHAPE), torch.zeros(BATCH_SIZE, dtype=torch.long))
 
 
 def make_hyrax_batch(batch_size=BATCH_SIZE, seed=0):
@@ -65,7 +59,7 @@ def to_tensor_batch(prepared_inputs):
 def model():
     """A freshly constructed HyraxCNN sized for 1x20x20 images and a binary
     (0/1) label, matching the dataset format described for this model."""
-    return HyraxCNN(config=make_model_config(), data_sample=make_data_sample())
+    return HyraxCNN(config=make_model_config())
 
 
 def test_prepare_inputs_extracts_image_and_label():
@@ -155,11 +149,11 @@ def test_train_batch_is_reproducible_with_fixed_seed():
     batch = to_tensor_batch(HyraxCNN.prepare_inputs(hyrax_batch))
 
     torch.manual_seed(1234)
-    model_a = HyraxCNN(config=make_model_config(), data_sample=make_data_sample())
+    model_a = HyraxCNN(config=make_model_config())
     loss_a = model_a.train_batch(batch)["loss"]
 
     torch.manual_seed(1234)
-    model_b = HyraxCNN(config=make_model_config(), data_sample=make_data_sample())
+    model_b = HyraxCNN(config=make_model_config())
     loss_b = model_b.train_batch(batch)["loss"]
 
     np.testing.assert_almost_equal(loss_a, loss_b)
@@ -179,6 +173,7 @@ def hyrax_cnn_pipeline(tmp_path_factory):
     h = hyrax.Hyrax()
     h.config["model"]["name"] = "HyraxCNN"
     h.config["model"]["HyraxCNN"]["output_classes"] = OUTPUT_CLASSES
+    h.config["model"]["HyraxCNN"]["input_shape"] = list(IMAGE_SHAPE)
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = BATCH_SIZE
     h.config["general"]["results_dir"] = str(results_dir)

@@ -96,10 +96,10 @@ class ToOnnx(Verb):
         if not weights_file_path.exists():
             raise RuntimeError(f"Could not find trained model weights: {weights_file_path}")
 
-        # Use the config in the model directory to load the dataset(s) and create
-        # The data loader instance to provide a data sample to the ONNX exporter.
+        # Use the config in the model directory to build the model and load the dataset(s);
+        # the dataset provides the sample batch the ONNX exporter traces with.
         dataset = setup_dataset(config_from_training, splits=("infer",), shuffle=False)
-        model = setup_model(config_from_training, dataset["infer"])
+        model = setup_model(config_from_training)
         # Load the trained weights and send the model to the CPU for ONNX export.
         model.load(weights_file_path)
         model.train(False)

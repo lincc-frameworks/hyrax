@@ -162,6 +162,8 @@ Hyrax discovers components through three registries:
 - Decorator: `@hyrax_model`
 - Models must inherit from `torch.nn.Module` and implement `__init__`, `forward`,
   `train_batch`, and `prepare_inputs`.
+- Hyrax constructs a model as `Model(config)` and passes nothing else. Models size
+  themselves from config; the built-in image models read `[model.<Name>].input_shape`.
 - The decorator wires up save/load, optimizer, and criterion handling.
 - Every value in the metric dict returned by `train_batch`, `validate_batch`, or `test_batch`
   must be a per-sample mean over the batch (not a sum or count); epoch metrics weight each

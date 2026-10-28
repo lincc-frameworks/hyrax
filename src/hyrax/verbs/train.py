@@ -86,7 +86,7 @@ class Train(Verb):
             splits=Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS,
         )
         create_splits(config, dataset, results_dir=results_dir, persist=True)
-        model = setup_model(config, dataset["train"])
+        model = setup_model(config)
 
         # we separate out the cases here for two reasons:
         # 1. GitHub merge checks don't pass with idist.Parallel

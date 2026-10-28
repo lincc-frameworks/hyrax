@@ -90,24 +90,39 @@ name = ""
 
 
 [model.HyraxAutoencoder]
+# The shape of one input image as [channels, height, width]. The layers are sized from
+# this when the model is built, so it must match what the dataset produces (see
+# [data_set].crop_to). The default matches HyraxCifarDataset.
+input_shape = [3, 32, 32]
+
 # The number of output channels from the first layer.
 base_channel_size = 32
 
-# The length of the latent space vector. 
+# The length of the latent space vector.
 latent_dim = 64
 
 
 [model.HyraxAutoencoderV2]
+# The shape of one input image as [channels, height, width]. The layers are sized from
+# this when the model is built, so it must match what the dataset produces (see
+# [data_set].crop_to). The default matches HyraxCifarDataset.
+input_shape = [3, 32, 32]
+
 # The number of output channels from the first layer.
 base_channel_size = 32
 
-# The length of the latent space vector. 
+# The length of the latent space vector.
 latent_dim = 64
 
 # The activation function of the final layer.
 final_layer = "tanh"
 
 [model.ImageDCAE]
+# The shape of one input image as [channels, height, width]. The layers are sized from
+# this when the model is built, so it must match what the dataset produces (see
+# [data_set].crop_to). The default matches HyraxCifarDataset.
+input_shape = [3, 32, 32]
+
 # The number of output channels from the first layer.
 base_channel_size = 32
 
@@ -146,6 +161,11 @@ gaussian_blur_sigma_range = [0.1, 2.0]
 
 
 [model.HyraxCNN]
+# The shape of one input image as [channels, height, width]. The layers are sized from
+# this when the model is built, so it must match what the dataset produces (see
+# [data_set].crop_to). The default matches HyraxCifarDataset.
+input_shape = [3, 32, 32]
+
 # The number of classes to predict as the output of the model. i.e. 2 would be a
 # binary classifer, 10 would predict the 10 classes in the CiFAR dataset.
 output_classes = 10
@@ -466,11 +486,6 @@ poll_timeout = 1.0
 
 # Maximum seconds to wait before flushing a partial (smaller than batch_size) batch.
 batch_flush_timeout = 5.0
-
-# Maximum seconds peek_sample() waits for a first message before raising TimeoutError.
-# This bounds model pre-flighting, which would otherwise block forever against an empty
-# topic or an assignment held by another consumer. Set to false to wait indefinitely.
-peek_timeout = 120.0
 
 # Provided path credentials file for a `confluent_kafka` consumer instance
 # e.g.

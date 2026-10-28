@@ -87,7 +87,7 @@ class Test(Verb):
         if not isinstance(dataset, dict) or "test" not in dataset:
             raise RuntimeError("No test dataset available. Please configure a test dataset or split.")
 
-        model = setup_model(config, dataset["test"])
+        model = setup_model(config)
 
         # Load model weights
         load_model_weights(config, model, "test")

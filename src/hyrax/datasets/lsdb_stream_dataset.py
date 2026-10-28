@@ -175,12 +175,11 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         # Set from another thread (or session teardown) to end iteration; see stop().
         self._stop = threading.Event()
 
-        # Single shared iterator, created lazily. Shared between peek_sample() and
-        # __iter__ so peeked rows can be replayed into the first batch.
+        # Single shared iterator, created lazily, so successive passes of __iter__ resume
+        # the same traversal. Rows fetched but not yet delivered wait in _buffered.
         self._iterator = None
         self._exhausted = False
         self._buffered: list[dict] = []
-        self._peek_index = 0
 
         # A dask Client this dataset created (and therefore owns) via
         # A client attached via get_client() is owned by the caller and is never
@@ -408,8 +407,8 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         """Return the shared stream iterator, creating it on first use.
 
         ``CatalogStream.__iter__`` hands back a *new* iterator with a freshly spawned RNG
-        on every call, so peek_sample() and __iter__() must share a single one or peeked
-        rows would be drawn from a different traversal than the batches.
+        on every call, so successive passes of __iter__() must share a single one or the
+        rows one pass pushed back would come from a different traversal than the next.
         """
         if self._iterator is None:
             self._exhausted = False
@@ -465,42 +464,6 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
     # Row production
     #
 
-    def peek_sample(self) -> dict:
-        """Return one row without removing it from the batch stream.
-
-        Pulls chunks until a row is available, buffers them so :meth:`__iter__` replays
-        them as part of the first batch, and advances a cursor so repeated calls return
-        distinct rows. Used to pre-flight the model architecture without losing data.
-
-        Returns
-        -------
-        dict
-            The flat row, mapping column name to value.
-
-        Raises
-        ------
-        RuntimeError
-            If the stream is stopped, or produces no rows, before one is available.
-        """
-        iterator = self._ensure_iterator()
-
-        # A `while`, not an `if`: a partition can legitimately compute to zero rows.
-        while self._peek_index >= len(self._buffered):
-            if self._stop.is_set():
-                raise RuntimeError("LSDBStreamDataset.peek_sample() was stopped before a row arrived.")
-            try:
-                chunk = next(iterator)
-            except StopIteration as err:
-                raise RuntimeError(
-                    f"LSDBStreamDataset.peek_sample(): the catalog at '{self.data_location}' "
-                    "produced no rows."
-                ) from err
-            self._buffered.extend(chunk.to_dict(orient="records"))
-
-        sample = self._buffered[self._peek_index]
-        self._peek_index += 1
-        return sample
-
     def __iter__(self):
         """Yield ``list[dict]`` batches of exactly ``batch_size`` rows.
 
@@ -514,10 +477,9 @@ class LSDBStreamDataset(HyraxDataset, IterableDataset):
         """
         iterator = self._ensure_iterator()
 
-        # Replay any peeked-but-not-yet-delivered rows ahead of the first batch.
+        # Resume with the rows an earlier pass fetched but never delivered.
         batch: list[dict] = list(self._buffered)
         self._buffered = []
-        self._peek_index = 0
 
         # The chunk currently being drained, and how far into it we have read. Tracked out
         # here so the `finally` can push back the rows of a half-drained chunk.
