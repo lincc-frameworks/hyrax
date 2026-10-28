@@ -14,7 +14,7 @@ def test_model_with_only_to_tensor():
 
     @hyrax_model
     class TestModelWithToTensor(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -52,7 +52,7 @@ def test_model_without_prepare_inputs_or_to_tensor():
 
     @hyrax_model
     class TestModelNoInputMethod(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -87,7 +87,7 @@ def test_model_without_prepare_inputs_or_to_tensor_raises_error():
 
     @hyrax_model
     class TestModelNoInputMethod(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -127,7 +127,7 @@ def test_save_and_load_model_with_to_tensor_warns(tmp_path, caplog):
 
     @hyrax_model
     class TestModelWithToTensor(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -191,7 +191,7 @@ def test_load_model_with_old_to_tensor_file(tmp_path, caplog):
 
     @hyrax_model
     class TestModelForLoading(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -247,7 +247,7 @@ def test_load_model_with_no_serialized_input_functions(tmp_path, caplog):
 
     @hyrax_model
     class TestModelForLoading(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)

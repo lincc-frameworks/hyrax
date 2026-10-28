@@ -157,7 +157,7 @@ def test_torch_load_with_map_location(tmp_path):
     # Create a simple model
     @hyrax_model
     class SimpleModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.linear = nn.Linear(10, 5)
@@ -218,7 +218,7 @@ def test_torch_load_keeps_optimizer_bound_to_parameters(tmp_path):
 
     @hyrax_model
     class TinyNet(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.linear = nn.Linear(4, 1)
@@ -271,7 +271,7 @@ def test_torch_load_only_calls_to_tensor_if_prepare_inputs_missing(tmp_path, cap
     # Create a simple model with prepare_inputs
     @hyrax_model
     class SimpleModelWithPrepareInputs(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.linear = nn.Linear(10, 5)
@@ -337,7 +337,7 @@ def test_torch_load_calls_to_tensor_when_prepare_inputs_missing(tmp_path, caplog
     # Create a simple model
     @hyrax_model
     class SimpleModelNoInputs(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.linear = nn.Linear(10, 5)

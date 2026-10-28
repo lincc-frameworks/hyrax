@@ -1,4 +1,4 @@
-"""Tests for StreamingDataProvider — structuring, collation, sample_data, and routing.
+"""Tests for StreamingDataProvider — structuring, collation, and routing.
 
 Reuses the FakeConsumer pattern from ``test_kafka_stream_dataset.py``: the provider builds
 a KafkaStreamDataset internally, so tests patch ``provider._stream._make_consumer``.
@@ -156,21 +156,6 @@ def test_collate_matches_infer_contract():
     assert list(collated["object_id"]) == ["id0", "id1", "id2", "id3"]
     assert collated["object_id"].dtype.kind in ("U", "S")
     assert collated["data"]["image"].shape == (4, 1, 2)
-
-
-def test_sample_data_returns_structured_and_is_not_lost(monkeypatch):
-    """sample_data peeks one structured sample that still appears in the first batch."""
-    provider = _build_provider(batch_size=5, flush=0.0, fields=("image",))
-    messages = [_make_message("first", [[1.0]]), _make_message("second", [[2.0]])]
-    _patch_stream(monkeypatch, provider, messages)
-
-    sample = provider.sample_data()
-    assert sample["object_id"] == "first"
-    assert sample["data"]["image"].shape == (1, 1)
-
-    batches = list(provider)
-    assert len(batches) == 1
-    assert [s["object_id"] for s in batches[0]] == ["first", "second"]
 
 
 def test_dist_data_loader_end_to_end(monkeypatch):

@@ -11,7 +11,7 @@ def test_use_model_optimizer():
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -32,7 +32,7 @@ def test_use_config_optimizer():
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -51,7 +51,7 @@ def test_no_optimizer_defined_logs_warning(caplog):
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -71,7 +71,7 @@ def test_use_model_criterion():
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -91,7 +91,7 @@ def test_use_config_criterion():
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -110,7 +110,7 @@ def test_no_criterion_defined_logs_warning(caplog):
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -129,7 +129,7 @@ def test_criterion_defined_in_model_and_config(caplog):
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -151,7 +151,7 @@ def test_optimizer_defined_in_model_and_config(caplog):
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -174,7 +174,7 @@ def test_use_model_scheduler():
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -194,7 +194,7 @@ def test_use_config_scheduler(caplog):
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -213,7 +213,7 @@ def test_no_scheduler_defined_logs_warning(caplog):
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)
@@ -232,7 +232,7 @@ def test_scheduler_defined_in_model_and_config(caplog):
 
     @hyrax_model
     class TestModel(nn.Module):
-        def __init__(self, config, data_sample=None):
+        def __init__(self, config):
             super().__init__()
             self.config = config
             self.unused_module = nn.Linear(1, 1)

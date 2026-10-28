@@ -450,13 +450,14 @@ def test_prepare_inputs_outside_a_verb_run_explains_itself():
         HyraxTs2Vec.prepare_inputs(batch)
 
 
-def test_model_sizes_its_input_layer_from_the_prepared_sample(hyrax_config):
-    """setup_model runs prepare_inputs before construction, so data_sample is the series."""
+def test_model_sizes_its_input_layer_from_the_configured_bands(hyrax_config):
+    """The input width comes from the encoding settings, and build_event_sequence agrees with it."""
     samples = [light_curve(np.arange(8.0), bands=["g"] * 8)]
-    data_sample = build_event_sequence(collate(samples), hyrax_config)
-    model = HyraxTs2Vec(hyrax_config, data_sample=data_sample)
+    series = build_event_sequence(collate(samples), hyrax_config)
+    model = HyraxTs2Vec(hyrax_config)
 
     assert model.input_dims == N_LEADING_CHANNELS + len(hyrax_config["model"]["HyraxTs2Vec"]["bands"])
+    assert model.input_dims == series.shape[-1]
 
 
 def test_train_batch_runs_on_an_encoded_batch(hyrax_config):
@@ -473,7 +474,7 @@ def test_train_batch_runs_on_an_encoded_batch(hyrax_config):
         for _ in range(4)
     ]
     series = build_event_sequence(collate(samples), hyrax_config)
-    model = HyraxTs2Vec(hyrax_config, data_sample=series)
+    model = HyraxTs2Vec(hyrax_config)
 
     metrics = model.train_batch(torch.from_numpy(series))
 
@@ -486,7 +487,7 @@ def test_infer_batch_keeps_every_row(hyrax_config):
 
     samples = [light_curve(np.arange(8.0), bands=["g"] * 8), light_curve([], bands=[])]
     series = build_event_sequence(collate(samples), hyrax_config)
-    model = HyraxTs2Vec(hyrax_config, data_sample=series)
+    model = HyraxTs2Vec(hyrax_config)
     model.eval()
 
     with torch.no_grad():

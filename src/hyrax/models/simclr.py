@@ -66,10 +66,9 @@ class PositiveRescale:
 class SimCLR(nn.Module):
     """SimCLR model. Implementation based on Chen, 2020"""
 
-    def __init__(self, config, shape):
+    def __init__(self, config):
         super().__init__()
         self.config = config
-        self.shape = shape
         proj_dim = config["model"]["SimCLR"]["projection_dimension"]
         temperature = config["model"]["SimCLR"]["temperature"]
 

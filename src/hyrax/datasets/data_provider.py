@@ -1053,17 +1053,6 @@ class DataProvider(CollationMixin):
         else:
             return base_config
 
-    def sample_data(self) -> dict:
-        """Returns a data sample. Primarily this will be used for instantiating a
-        model so that any runtime resizing can be handled properly.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the data for index 0.
-        """
-        return self[0]
-
     def get_object_id(self, idx: int) -> str:
         """Returns the ID at a particular index.
 

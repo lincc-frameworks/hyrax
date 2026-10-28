@@ -10,7 +10,7 @@ BATCH_SIZE = 4
 # trims the reconstruction back down to the original size. 20x20 comfortably survives
 # the three encoder downsamples to a nonzero spatial size, matching the image size used
 # in the HyraxCNN tests.
-IMAGE_SHAPE = (1, 20, 20)  # (channels, width, height)
+IMAGE_SHAPE = (1, 20, 20)  # (channels, height, width)
 BASE_CHANNEL_SIZE = 4
 LATENT_DIM = 8
 
@@ -22,6 +22,7 @@ def make_model_config(base_channel_size=BASE_CHANNEL_SIZE, latent_dim=LATENT_DIM
     return {
         "model": {
             "HyraxAutoencoderV2": {
+                "input_shape": list(IMAGE_SHAPE),
                 "base_channel_size": base_channel_size,
                 "latent_dim": latent_dim,
                 "final_layer": "tanh",
@@ -32,12 +33,6 @@ def make_model_config(base_channel_size=BASE_CHANNEL_SIZE, latent_dim=LATENT_DIM
         "torch.optim.SGD": {"lr": 0.01, "momentum": 0.9},
         "scheduler": {"name": None},
     }
-
-
-def make_data_sample():
-    """A stand-in for the `data_sample` HyraxAutoencoderV2 uses at init time to size its
-    layers dynamically. Only the image tensor's shape is inspected."""
-    return torch.zeros(BATCH_SIZE, *IMAGE_SHAPE)
 
 
 def make_hyrax_batch(batch_size=BATCH_SIZE, seed=0):
@@ -69,7 +64,7 @@ def to_tensor_batch(image_array):
 @pytest.fixture
 def model():
     """A freshly constructed HyraxAutoencoderV2 sized for 1x20x20 images."""
-    return HyraxAutoencoderV2(config=make_model_config(), data_sample=make_data_sample())
+    return HyraxAutoencoderV2(config=make_model_config())
 
 
 def test_prepare_inputs_extracts_image():
@@ -162,11 +157,11 @@ def test_train_batch_is_reproducible_with_fixed_seed():
     batch = to_tensor_batch(HyraxAutoencoderV2.prepare_inputs(hyrax_batch))
 
     torch.manual_seed(1234)
-    model_a = HyraxAutoencoderV2(config=make_model_config(), data_sample=make_data_sample())
+    model_a = HyraxAutoencoderV2(config=make_model_config())
     loss_a = model_a.train_batch(batch)["loss"]
 
     torch.manual_seed(1234)
-    model_b = HyraxAutoencoderV2(config=make_model_config(), data_sample=make_data_sample())
+    model_b = HyraxAutoencoderV2(config=make_model_config())
     loss_b = model_b.train_batch(batch)["loss"]
 
     np.testing.assert_almost_equal(loss_a, loss_b)
@@ -187,6 +182,7 @@ def hyrax_autoencoderv2_pipeline(tmp_path_factory):
     h.config["model"]["name"] = "HyraxAutoencoderV2"
     h.config["model"]["HyraxAutoencoderV2"]["base_channel_size"] = BASE_CHANNEL_SIZE
     h.config["model"]["HyraxAutoencoderV2"]["latent_dim"] = LATENT_DIM
+    h.config["model"]["HyraxAutoencoderV2"]["input_shape"] = list(IMAGE_SHAPE)
     h.config["criterion"]["name"] = "torch.nn.MSELoss"
     h.config["train"]["epochs"] = 1
     h.config["data_loader"]["batch_size"] = BATCH_SIZE

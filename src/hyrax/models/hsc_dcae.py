@@ -24,7 +24,7 @@ class HSCDCAE(nn.Module):
     This autoencoder is designed to work with datasets that are prepared with Hyrax's HSC Data Set class.
     """
 
-    def __init__(self, config, data_sample=None):
+    def __init__(self, config):
         super().__init__()
 
         # The current network works with images of size [3,150,150]

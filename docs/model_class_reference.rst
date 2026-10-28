@@ -12,10 +12,8 @@ How Hyrax uses your model class
 
 Hyrax does this sequence:
 
-1. Builds one sample batch from your dataset.
-2. Calls ``YourModel.prepare_inputs(sample_batch)``.
-3. Creates your model with ``YourModel(config, data_sample=prepared_sample)``.
-4. During runs, calls:
+1. Creates your model with ``YourModel(config)``.
+2. During runs, calls:
 
    * ``train_batch`` for training
    * ``infer_batch`` for inference
@@ -33,7 +31,7 @@ Your class must have these:
    find it by name in the :doc:`configuration </configuration>`).
 3. Implement:
 
-   * ``__init__(self, config, data_sample=None)``
+   * ``__init__(self, config)``
    * ``forward(self, ...)`` (required by PyTorch modules)
    * ``infer_batch(self, batch)``
    * ``train_batch(self, batch)``
@@ -44,15 +42,15 @@ Your class must have these:
 Method-by-method guide
 ----------------------
 
-``__init__(self, config, data_sample=None)``
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+``__init__(self, config)``
+^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 What to do in this method:
 
 1. Save ``config`` to ``self.config``.
-2. Read model-specific settings from config.
+2. Read model-specific settings from config, including any input sizes your
+   layers need. Hyrax passes nothing but ``config``, so shapes come from it.
 3. Build your layers.
-4. Optionally use ``data_sample`` to infer shapes.
 
 The model-specific config values are typically defined in your external library
 config layout. See :doc:`/external_library_package` for packaging/config setup.
@@ -61,17 +59,13 @@ Example (read settings from config):
 
 .. code-block:: python
 
-   def __init__(self, config, data_sample=None):
+   def __init__(self, config):
        super().__init__()
        self.config = config
 
+       in_dim = config["my_package"]["MyModel"]["input_size"]
        hidden = config["my_package"]["MyModel"]["hidden_size"]
        out_dim = config["my_package"]["MyModel"]["num_classes"]
-
-       in_dim = 128
-       if data_sample is not None:
-           x, _ = data_sample
-           in_dim = x.shape[-1]
 
        self.fc1 = nn.Linear(in_dim, hidden)
        self.fc2 = nn.Linear(hidden, out_dim)
@@ -80,7 +74,8 @@ To set those config values in a notebook, one simple pattern is:
 
 .. code-block:: python
 
-   h.config.setdefault("my_package", {}).setdefault("MyModel", {})["hidden_size"] = 64
+   h.config["my_package"]["MyModel"]["input_size"] = 128
+   h.config["my_package"]["MyModel"]["hidden_size"] = 64
    h.config["my_package"]["MyModel"]["num_classes"] = 10
 
 PyTorch reference for building ``nn.Module`` layers:
@@ -366,7 +361,7 @@ when you use it always gives you the run that is actually underway.
 
    @hyrax_model
    class MyModel(nn.Module):
-       def __init__(self, config, data_sample=None):
+       def __init__(self, config):
            super().__init__()
            self.config = config
            self.activations = []
@@ -409,7 +404,7 @@ Complete minimal class
 
    @hyrax_model
    class MyModel(nn.Module):
-       def __init__(self, config, data_sample=None):
+       def __init__(self, config):
            super().__init__()
            self.config = config
            self.fc = nn.Linear(128, 10)

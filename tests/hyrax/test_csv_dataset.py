@@ -53,26 +53,3 @@ def test_csv_dataset_column_getters(test_hyrax_csv_dataset):
     assert csv_dataset.get_object_id(0) == 1001
     assert csv_dataset.get_ra(0) == 30.5
     assert csv_dataset.get_classification(0) == "star"
-
-
-def test_csv_dataset_sample_data(test_hyrax_csv_dataset):
-    """Check that sample_data returns the first row correctly"""
-    dataset = test_hyrax_csv_dataset.prepare()
-
-    # Get the underlying HyraxCSVDataset instance
-    csv_dataset = dataset["train"]._primary_or_first_dataset()
-    sample = csv_dataset.sample_data()
-
-    # Check that sample has the expected structure
-    assert "data" in sample
-    assert "object_id" in sample["data"]
-    assert "ra" in sample["data"]
-    assert "dec" in sample["data"]
-    assert "magnitude" in sample["data"]
-    assert "flux" in sample["data"]
-    assert "classification" in sample["data"]
-
-    # Check that sample values match the first row
-    assert sample["data"]["object_id"] == 1001
-    assert sample["data"]["ra"] == 30.5
-    assert sample["data"]["classification"] == "star"
