@@ -71,12 +71,3 @@ class HyraxCSVDataset(HyraxDataset):
     def __len__(self) -> int:
         """Return the number of records in the CSV."""
         return len(self.mem_mapped_csv)
-
-    def sample_data(self):
-        """Return the first record, in dictionary form, as the sample."""
-        sample = {"data": {}}
-
-        for col in self.column_names:
-            sample["data"][col] = self.mem_mapped_csv.iloc[0][col]
-
-        return sample

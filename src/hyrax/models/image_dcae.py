@@ -10,6 +10,7 @@ import torch.nn.functional as f
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
+from hyrax.models.model_utils import read_input_shape
 
 
 class ArcsinhActivation(nn.Module):
@@ -24,24 +25,17 @@ class ImageDCAE(nn.Module):
     """
     This is an autoencoder with skipconnections that should work with
     arbitarily sized images with arbitrary number of channels.
+
+    The bottleneck is sized from ``[model.ImageDCAE].input_shape``, the
+    ``[channels, height, width]`` of one input image.
     """
 
-    def __init__(self, config, data_sample=None):
+    def __init__(self, config):
         super().__init__()
-
-        if data_sample is None:
-            raise ValueError("data_sample must be provided to ImageDCAE for dynamic sizing.")
-        # Store input shape for dynamic sizing
-        self.input_shape = data_sample.shape
         self.config = config
 
-        # Extract dimensions from input shape
-        if len(self.input_shape) == 4:  # Batch dimension included
-            self.num_input_channels = self.input_shape[1]
-            self.image_height, self.image_width = self.input_shape[2], self.input_shape[3]
-        else:  # No batch dimension
-            self.num_input_channels = self.input_shape[0]
-            self.image_height, self.image_width = self.input_shape[1], self.input_shape[2]
+        self.input_shape = read_input_shape(config, "ImageDCAE")
+        self.num_input_channels, self.image_height, self.image_width = self.input_shape
 
         # Get latent dimension from config (similar to HyraxAutoencoder)
         self.latent_dim = config["model"]["ImageDCAE"]["latent_dim"]

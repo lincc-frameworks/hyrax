@@ -167,75 +167,21 @@ def _build_data_provider(config: dict, request: dict):
     return DataProvider(config, request)
 
 
-def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
+def setup_model(config: dict) -> torch.nn.Module:
     """Create a model object based on the configuration.
 
     Parameters
     ----------
     config : dict
         The runtime configuration
-    dataset : DataProvider
-        The dataset object that will provide data to the model for training or
-        inference. Here it is only used to provide a data sample to the model so
-        that it can resize itself at runtime if necessary.
 
     Returns
     -------
     torch.nn.Module
         An instance of the model class specified in the configuration
     """
-    from hyrax.trace import reset_trace
-
-    # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-
-    # Grab a single data sample
-    data_sample = dataset.sample_data()
-
-    # Collate the data sample
-    collated_sample = dataset.collate([data_sample])
-
-    # Prepare the data sample with the model's prepare_inputs function
-    prepared_sample = model_cls.prepare_inputs(collated_sample)
-
-    # Provide the sample for runtime modifications to the model architecture
-    retval = model_cls(config=config, data_sample=prepared_sample)  # type: ignore[attr-defined]
-
-    # After model pre-flighting succeeds (presumably) reset the trace so it represents
-    # just what the verb does afterward.
-    reset_trace()
-
-    return retval
-
-
-def setup_model_from_sample(config: dict, sample_batch: dict) -> torch.nn.Module:
-    """Create a model from a pre-formatted batch dict instead of a DataProvider.
-
-    Like :func:`setup_model` but accepts a batch dict directly, bypassing the
-    DataLoader/DataProvider pipeline.  Used by
-    :class:`~hyrax.verbs.infer_stream.InferStream` to pre-flight model
-    architecture without a dataset.
-
-    Parameters
-    ----------
-    config : dict
-        The runtime configuration.
-    sample_batch : dict
-        A representative batch with the same structure as batches that will be
-        processed later (e.g. ``{"object_id": [...], "data": {...}}``).
-
-    Returns
-    -------
-    torch.nn.Module
-        An instance of the model class specified in the configuration.
-    """
-    from hyrax.trace import reset_trace
-
-    model_cls = fetch_model_class(config)
-    prepared_sample = model_cls.prepare_inputs(sample_batch)
-    model_instance = model_cls(config=config, data_sample=prepared_sample)
-    reset_trace()
-    return model_instance
+    return model_cls(config=config)  # type: ignore[attr-defined]
 
 
 def dist_data_loader(
