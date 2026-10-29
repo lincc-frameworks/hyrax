@@ -54,7 +54,7 @@ class TrainStream(Verb):
         Raises
         ------
         ValueError
-            If ``sample_batch`` is None and no ``[data_request.train_stream]`` is configured.
+            If no ``[data_request.train_stream]`` is configured.
         """
         from pathlib import Path
 
@@ -86,11 +86,11 @@ class TrainStream(Verb):
         # Create a timestamped results directory and start logging.
         results_dir = create_results_dir(config, "train_stream")
 
-        # From this point on, the provider/data stream is live (setup_model peeks a sample).
-        # If any subsequent setup step raises, no caller will get a session to call close()
-        # on, so we must tear down the provider ourselves to avoid leaking the connection.
+        # The provider may already hold resources (e.g. an LSDB dataset's dask client). If
+        # any subsequent setup step raises, no caller will get a session to call close()
+        # on, so we must tear down the provider ourselves to avoid leaking them.
         try:
-            model = setup_model(config, provider)
+            model = setup_model(config)
             data_loader = dist_data_loader(provider, config)
 
             # Put the model in training mode, and place it on the correct device

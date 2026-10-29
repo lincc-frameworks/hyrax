@@ -307,38 +307,6 @@ def test_empty_chunk_is_tolerated(monkeypatch, tiny_catalog):
     assert [len(batch) for batch in batches] == [4, 2]
 
 
-def test_peek_sample_does_not_lose_a_row(monkeypatch, tiny_catalog):
-    """The peeked row is replayed at the head of the first batch."""
-    dataset = _build_dataset(tiny_catalog, batch_size=4)
-    _with_chunks(monkeypatch, dataset, [_chunk(0, 3), _chunk(3, 3)])
-
-    sample = dataset.peek_sample()
-    assert sample["object_id"] == "id00"
-
-    batches = list(dataset)
-    assert _ids(batches) == [f"id{i:02d}" for i in range(6)]
-
-
-def test_peek_sample_twice_returns_distinct_rows_and_both_replay(monkeypatch, tiny_catalog):
-    """Repeated peeks advance a cursor rather than re-reading the same row."""
-    dataset = _build_dataset(tiny_catalog, batch_size=4)
-    _with_chunks(monkeypatch, dataset, [_chunk(0, 3), _chunk(3, 3)])
-
-    assert dataset.peek_sample()["object_id"] == "id00"
-    assert dataset.peek_sample()["object_id"] == "id01"
-
-    assert _ids(list(dataset)) == [f"id{i:02d}" for i in range(6)]
-
-
-def test_peek_sample_on_empty_stream_raises(monkeypatch, tiny_catalog):
-    """A catalog with no rows fails with an actionable error, not StopIteration."""
-    dataset = _build_dataset(tiny_catalog)
-    _with_chunks(monkeypatch, dataset, [])
-
-    with pytest.raises(RuntimeError, match="produced no rows"):
-        dataset.peek_sample()
-
-
 def test_stop_ends_iteration_and_flushes_partial(monkeypatch, tiny_catalog):
     """stop() lets the current chunk finish, then flushes what is buffered."""
     dataset = _build_dataset(tiny_catalog, batch_size=4)

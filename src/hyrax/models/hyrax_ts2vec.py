@@ -364,8 +364,8 @@ class EncodingSettings:
     """The ``[model.HyraxTs2Vec]`` keys that describe the input rather than the architecture.
 
     Resolved and validated in one place so that :func:`build_event_sequence` and
-    :class:`HyraxTs2Vec` agree on the channel count, and so a bad setting is caught during
-    model pre-flight rather than midway through a run.
+    :class:`HyraxTs2Vec` agree on the channel count, and so a bad setting is caught when
+    the model is constructed rather than midway through a run.
 
     ``time_field``, ``flux_field`` and ``flux_err_field`` are flattened column names, as
     ``LSDBStreamDataset`` exposes nested columns. ``band_field`` is ``None`` for a
@@ -684,7 +684,7 @@ class HyraxTs2Vec(nn.Module):
       dataset's ``max_sequence_length``.
     """
 
-    def __init__(self, config, data_sample=None):
+    def __init__(self, config):
         super().__init__()
         # Must be set before __init__ returns: the @hyrax_model decorator reads self.config
         # immediately afterwards to build the criterion, optimizer, and scheduler.
@@ -692,25 +692,10 @@ class HyraxTs2Vec(nn.Module):
 
         model_config = config["model"]["HyraxTs2Vec"]
 
-        if data_sample is None:
-            raise RuntimeError(
-                "HyraxTs2Vec needs a data_sample to size its input layer. Hyrax normally "
-                "supplies one from your dataset; when constructing the model by hand, pass "
-                "a (batch, time, channels) array."
-            )
-        if getattr(data_sample, "ndim", None) != 3:
-            raise RuntimeError(
-                "HyraxTs2Vec expects a 3-dimensional (batch, time, channels) data sample, but "
-                f"got shape {getattr(data_sample, 'shape', type(data_sample))}. Hyrax builds "
-                "it with build_event_sequence(); pass an array of that shape when "
-                "constructing the model by hand."
-            )
-
-        self.input_dims = int(data_sample.shape[-1])
-        logger.debug(
-            f"Found shape: {tuple(data_sample.shape)} in data sample, "
-            f"using input_dims={self.input_dims} to initialize model."
-        )
+        # The input width is fixed by the encoding settings: flux, flux error and time gap,
+        # plus one one-hot channel per configured band. build_event_sequence() reads the
+        # same settings, so the data and the model agree by construction.
+        self.input_dims = EncodingSettings(config).n_channels
 
         self.output_dims = model_config["output_dims"]
         self.hidden_dims = model_config["hidden_dims"]

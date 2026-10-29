@@ -33,43 +33,30 @@ class InferStream(Verb):
             "infer_stream is a programmatic API; use hyrax.infer_stream() in Python/notebook."
         )
 
-    def run(self, sample_batch: dict | None = None) -> "InferStreamSession":
+    def run(self) -> "InferStreamSession":
         """Set up the model and return a session for streaming inference.
 
         There are two ways to drive the session:
 
-        1. **Data-source driven** (``sample_batch=None``) — configure a streaming
-           dataset under ``[data_request.infer_stream]`` (e.g. ``KafkaStreamDataset``).
-           The model is pre-flighted from the stream itself and a DataLoader is built,
-           so the returned session can be iterated directly::
+        1. **Data-source driven** — configure a streaming dataset under
+           ``[data_request.infer_stream]`` (e.g. ``KafkaStreamDataset``). A DataLoader is
+           built over it, so the returned session can be iterated directly::
 
                with hy.infer_stream() as session:
                    for batch, results in session:
                        ...
 
-        2. **Manual** — pass a representative ``sample_batch`` and feed batches yourself::
+        2. **Manual** — leave ``[data_request.infer_stream]`` unset and feed batches
+           yourself::
 
-               with hy.infer_stream(sample_batch=batch) as session:
+               with hy.infer_stream() as session:
                    results = session.process(batch)
-
-        Parameters
-        ----------
-        sample_batch : dict | None
-            A representative batch dict with ``"object_id"`` and model-specific data
-            fields, used to pre-flight the model architecture. When ``None``, the model
-            is pre-flighted from a ``[data_request.infer_stream]`` streaming dataset
-            instead.
 
         Returns
         -------
         InferStreamSession
             A context manager / session object. Iterate it (data-source driven) or call
             ``session.process(batch)`` (manual); call ``session.close()`` when done.
-
-        Raises
-        ------
-        ValueError
-            If ``sample_batch`` is None and no ``[data_request.infer_stream]`` is configured.
         """
         from ignite.distributed import auto_model
         from ignite.distributed import device as idist_device
@@ -83,7 +70,6 @@ class InferStream(Verb):
             dist_data_loader,
             setup_dataset,
             setup_model,
-            setup_model_from_sample,
         )
         from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
@@ -94,28 +80,16 @@ class InferStream(Verb):
         # matching the ordering used by the train, infer and test verbs.
         results_dir = create_results_dir(config, "infer_stream")
 
-        # Build the model either from a configured streaming dataset (preferred, enables
-        # session iteration) or from an explicitly supplied sample batch.
+        model = setup_model(config)
+
+        # A configured [data_request.infer_stream] group makes the session iterable over
+        # that stream. Without one the session is manual: the caller feeds process().
         provider = None
         data_loader = None
-        if sample_batch is None:
-            if not config.get("data_request"):
-                raise ValueError(
-                    "infer_stream requires either a `sample_batch` argument or a "
-                    "[data_request.infer_stream] configuration to build the data source."
-                )
-            datasets = setup_dataset(config, splits=InferStream.REQUIRED_DATA_GROUPS)
-            provider = datasets.get("infer_stream")
-            if provider is None:
-                raise ValueError(
-                    "No [data_request.infer_stream] group found. Configure it with a "
-                    "streaming dataset_class, or pass an explicit `sample_batch`."
-                )
-            # Pre-flight the model from the stream (peeks one sample without losing it).
-            model = setup_model(config, provider)
+        if config.get("data_request"):
+            provider = setup_dataset(config, splits=InferStream.REQUIRED_DATA_GROUPS).get("infer_stream")
+        if provider is not None:
             data_loader = dist_data_loader(provider, config)
-        else:
-            model = setup_model_from_sample(config, sample_batch)
 
         # set model in eval mode
         model.eval()

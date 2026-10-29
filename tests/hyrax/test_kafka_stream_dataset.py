@@ -299,67 +299,6 @@ def test_close_does_not_commit(monkeypatch):
     assert consumer.commits == []
 
 
-def test_peek_sample_closes_consumer_on_interrupt(monkeypatch):
-    """An interrupted peek must not leave a subscribed consumer behind.
-
-    This is the notebook case: a KeyboardInterrupt out of peek_sample used to leave a live
-    consumer holding the topic's partitions, so the next run joined the same group and was
-    assigned nothing.
-    """
-    dataset = _build_dataset()
-    consumer = _patch_consumer(monkeypatch, dataset, [], poll_error=KeyboardInterrupt())
-
-    with pytest.raises(KeyboardInterrupt):
-        dataset.peek_sample()
-
-    assert consumer.closed
-    assert dataset._consumer is None
-
-
-def test_peek_sample_closes_consumer_on_error(monkeypatch):
-    """Any exception out of peek_sample releases the consumer."""
-    dataset = _build_dataset()
-    consumer = _patch_consumer(monkeypatch, dataset, [], poll_error=RuntimeError("broker exploded"))
-
-    with pytest.raises(RuntimeError, match="broker exploded"):
-        dataset.peek_sample()
-
-    assert consumer.closed
-    assert dataset._consumer is None
-
-
-def test_peek_timeout_raises_with_diagnostic(monkeypatch):
-    """peek_sample gives up instead of blocking forever, and says what it was waiting on."""
-    h = hyrax.Hyrax()
-    ds_config = h.config["data_set"]["KafkaStreamDataset"]
-    ds_config["topics"] = "test-topic"
-    ds_config["peek_timeout"] = 0.05
-    dataset = KafkaStreamDataset(h.config)
-    consumer = _patch_consumer(monkeypatch, dataset, [])
-
-    with pytest.raises(TimeoutError) as excinfo:
-        dataset.peek_sample()
-
-    message = str(excinfo.value)
-    assert "peek_timeout" in message
-    assert "test-topic" in message
-    # An empty assignment is the signature of a consumer left over from an earlier run,
-    # so the error has to point at the command that reveals it.
-    assert "kafka-consumer-groups" in message
-    assert consumer.closed
-
-
-def test_peek_timeout_disabled_by_false(monkeypatch):
-    """The TOML `false` sentinel restores the unbounded wait."""
-    h = hyrax.Hyrax()
-    ds_config = h.config["data_set"]["KafkaStreamDataset"]
-    ds_config["topics"] = "test-topic"
-    ds_config["peek_timeout"] = False
-    dataset = KafkaStreamDataset(h.config)
-
-    assert dataset.peek_timeout is None
-
-
 def test_offsets_committed_only_after_batch_is_consumed(monkeypatch):
     """Offsets advance when the caller comes back for more, not when a batch is handed out."""
     dataset = _build_dataset(batch_size=2, batch_flush_timeout=0.0)
@@ -400,22 +339,6 @@ def test_auto_commit_disabled():
     assert dataset.consumer_config["enable.auto.commit"] is False
     # __iter__'s explicit commit relies on librdkafka having stored delivered offsets.
     assert dataset.consumer_config["enable.auto.offset.store"] is True
-
-
-def test_peek_sample_buffers_and_replays(monkeypatch):
-    """peek_sample returns a flat sample that is not lost; it leads the first batch."""
-    dataset = _build_dataset(batch_size=5, batch_flush_timeout=0.0)
-    messages = [_make_message("first", [[1.0]]), _make_message("second", [[2.0]])]
-    _patch_consumer(monkeypatch, dataset, messages, stop_when_exhausted=True)
-
-    peeked = dataset.peek_sample()
-    assert peeked["object_id"] == "first"
-
-    batches = list(dataset)
-
-    assert len(batches) == 1
-    # The peeked message is replayed as the first sample of the first batch.
-    assert [s["object_id"] for s in batches[0]] == ["first", "second"]
 
 
 def test_extra_credentials(tmp_path):

@@ -76,7 +76,6 @@ import logging
 import os
 import socket
 import threading
-import time
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -86,9 +85,6 @@ import torch
 from .dataset_registry import HyraxDataset
 
 logger = logging.getLogger(__name__)
-
-# How often to log a "still waiting" warning while peek_sample() blocks on an empty topic.
-PEEK_WARN_INTERVAL = 15.0
 
 
 def _format_partitions(partitions) -> list[str]:
@@ -140,21 +136,14 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         self.batch_flush_timeout = float(ds_config["batch_flush_timeout"])
         self.commit_after_batch = bool(ds_config["commit_after_batch"])
 
-        # Bound on how long peek_sample() waits for its first message. The TOML `false`
-        # sentinel (or 0) means "wait indefinitely".
-        peek_timeout = ds_config["peek_timeout"]
-        self.peek_timeout = float(peek_timeout) if peek_timeout else None
-
         # The flush threshold is the configured DataLoader batch size.
         self.batch_size = config["data_loader"]["batch_size"]
 
         # Set from another thread (or session teardown) to end iteration; see stop().
         self._stop = threading.Event()
 
-        # Single shared consumer, created lazily. Shared between peek_sample() and
-        # __iter__ so a peeked message can be replayed into the first batch.
+        # Single consumer, created lazily on first iteration and released by close().
         self._consumer = None
-        self._buffered: list[dict] = []
 
         credentials_file = ds_config.get("credentials_file")
         credentials_file_path = Path(credentials_file) if credentials_file else None
@@ -357,73 +346,6 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         """
         return json.loads(msg.value())
 
-    def peek_sample(self) -> dict:
-        """Return one decoded sample without removing it from the batch stream.
-
-        Polls until a message arrives (or :meth:`stop` is set), decodes it, and buffers
-        it so :meth:`__iter__` replays it as part of the first batch. Used to pre-flight
-        the model architecture without losing a live message.
-
-        Waiting is bounded by ``peek_timeout`` and reports what the consumer is connected
-        to when it gives up. An unbounded silent wait here is indistinguishable from an
-        unreachable broker, an empty topic, or a partition assignment lost to a consumer
-        left over from an earlier run.
-
-        Returns
-        -------
-        dict
-            The flat decoded sample.
-
-        Raises
-        ------
-        TimeoutError
-            If ``peek_timeout`` elapses before a message arrives.
-        RuntimeError
-            If the stream is stopped before any message arrives.
-        """
-        consumer = self._ensure_consumer()
-        started = time.monotonic()
-        deadline = started + self.peek_timeout if self.peek_timeout else None
-        next_warning = started + PEEK_WARN_INTERVAL
-
-        try:
-            while not self._stop.is_set():
-                now = time.monotonic()
-                if deadline is not None and now >= deadline:
-                    raise TimeoutError(
-                        self._connection_diagnostic(
-                            f"No Kafka message arrived within peek_timeout ({self.peek_timeout}s)"
-                        )
-                    )
-                if now >= next_warning:
-                    next_warning = now + PEEK_WARN_INTERVAL
-                    logger.warning(
-                        self._connection_diagnostic(
-                            f"Still waiting for a Kafka message after {now - started:.0f}s"
-                        )
-                    )
-
-                msg = consumer.poll(self.poll_timeout)
-                if msg is None:
-                    continue
-                if msg.error() is not None:
-                    self._log_message_error(msg)
-                    continue
-
-                sample = self._decode(msg)
-                self._buffered.append(sample)
-                return sample
-
-            raise RuntimeError("KafkaStreamDataset.peek_sample() stopped before a message arrived.")
-        except BaseException:
-            # There is no `finally` here on purpose: on success the consumer must stay
-            # open for __iter__. On failure it must not -- and BaseException rather than
-            # Exception because interrupting a hung notebook cell is the common case, and
-            # a KeyboardInterrupt that leaked the consumer is exactly how a zombie group
-            # member is created.
-            self.close()
-            raise
-
     def __iter__(self):
         """Poll Kafka and yield ``list[dict]`` batches with latency-bounded flushing.
 
@@ -440,10 +362,6 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
 
         consumer = self._ensure_consumer()
 
-        # Replay any peeked-but-not-yet-delivered messages ahead of the next batch.
-        pending: list[dict] = list(self._buffered)
-        self._buffered = []
-
         try:
             while not self._stop.is_set():
                 # consume() blocks up to batch_flush_timeout and returns up to batch_size
@@ -452,7 +370,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
                 # until the batch fills.
                 messages = consumer.consume(num_messages=self.batch_size, timeout=self.batch_flush_timeout)
 
-                batch, pending = pending, []
+                batch: list[dict] = []
                 for msg in messages:
                     if msg.error() is None:
                         batch.append(self._decode(msg))

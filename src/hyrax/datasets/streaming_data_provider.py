@@ -4,10 +4,10 @@
 random access (``resolve_data(idx)``, joins, caching, augmentation, splits), none of
 which a live stream supports. :class:`StreamingDataProvider` is its **iterable** sibling:
 it wraps a single streaming dataset (e.g.
-:class:`~hyrax.datasets.kafka_stream_dataset.KafkaStreamDataset`) and presents the same
-surface the rest of Hyrax expects — ``collate`` (shared via
-:class:`~hyrax.datasets.data_provider.CollationMixin`) and ``sample_data`` for model
-pre-flighting — while delegating iteration to the wrapped stream.
+:class:`~hyrax.datasets.kafka_stream_dataset.KafkaStreamDataset`) and presents the
+``collate`` surface the rest of Hyrax expects (shared via
+:class:`~hyrax.datasets.data_provider.CollationMixin`) while delegating iteration to the
+wrapped stream.
 
 The wrapped stream is a *dumb decoder* that yields ``list[dict]`` batches of flat sample
 dicts. This provider owns the structuring: it extracts the object id (via
@@ -150,14 +150,6 @@ class StreamingDataProvider(CollationMixin, torch.utils.data.IterableDataset):
         """Yield ``list[dict]`` batches of structured samples for ``collate_fn``."""
         for batch in self._stream:
             yield [self._structure(sample) for sample in batch]
-
-    def sample_data(self) -> dict:
-        """Return one structured sample for model pre-flighting (``setup_model``).
-
-        Peeks a single message from the stream without losing it (it is replayed in the
-        first batch) and structures it like any other sample.
-        """
-        return self._structure(self._stream.peek_sample())
 
     def stop(self):
         """Stop the underlying stream's iteration."""

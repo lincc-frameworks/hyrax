@@ -76,7 +76,7 @@ class Infer(Verb):
             if hasattr(provider, "data_cache"):
                 provider.data_cache.disable()
         create_splits(config, dataset, persist=False)
-        model = setup_model(config, dataset["infer"])
+        model = setup_model(config)
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"

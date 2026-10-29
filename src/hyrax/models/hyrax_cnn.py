@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F  # noqa N812
 
 from .model_registry import hyrax_model
+from .model_utils import read_input_shape
 
 logger = logging.getLogger(__name__)
 
@@ -17,20 +18,17 @@ logger = logging.getLogger(__name__)
 class HyraxCNN(nn.Module):
     """
     This CNN is designed to work with datasets that are prepared with Hyrax's HSC Data Set class.
+
+    The layers are sized from ``[model.HyraxCNN].input_shape``, the ``[channels, height, width]``
+    of one input image.
     """
 
-    def __init__(self, config, data_sample=None):
+    def __init__(self, config):
         super().__init__()
         self.config = config
 
-        if data_sample is None:
-            raise ValueError("A `data_sample` must be provided to HyraxCNN for dynamic sizing.")
-
-        image_sample = data_sample[0]
-
-        # Unpack the shape of the image (batch_size, num_channels, width, height)
-        # we'll ignore the batch_size during initialization.
-        _, self.num_input_channels, self.image_width, self.image_height = image_sample.shape
+        self.input_shape = read_input_shape(config, "HyraxCNN")
+        self.num_input_channels, self.image_height, self.image_width = self.input_shape
         hidden_channels_1 = 6
         hidden_channels_2 = 16
 

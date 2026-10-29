@@ -8,7 +8,7 @@ from hyrax.models.model_registry import hyrax_model
 class DummyModelOne(nn.Module):
     """A dummy model used to test patching of static methods like prepare_inputs"""
 
-    def __init__(self, config, data_sample=None):
+    def __init__(self, config):
         super().__init__()
         # The optimizer needs at least one weight, so we add a dummy module here
         self.unused_module = nn.Linear(1, 1)
@@ -25,7 +25,7 @@ class DummyModelTwo(nn.Module):
     """A dummy model used to test patching, that uses the default prepare_inputs method
     by default."""
 
-    def __init__(self, config, data_sample=None):
+    def __init__(self, config):
         super().__init__()
         # The optimizer needs at least one weight, so we add a dummy module here
         self.unused_module = nn.Linear(1, 1)
@@ -51,7 +51,7 @@ def test_patch_prepare_inputs(tmp_path):
     }
 
     # create an instance of the dummy model
-    model = DummyModelOne(config=config, data_sample=None)
+    model = DummyModelOne(config=config)
 
     # manually update the prepare_inputs static method to be something simple
     # don't wrap this with staticmethod(...) because that would be a double wrapping.
@@ -64,7 +64,7 @@ def test_patch_prepare_inputs(tmp_path):
     assert (tmp_path / "prepare_inputs.py").exists()
 
     # create a new instance of the dummy model and call .load() with the correct path
-    new_model = DummyModelOne(config=config, data_sample=None)
+    new_model = DummyModelOne(config=config)
 
     # verify that the new model's prepare_inputs method is the default one
     input_data = 3.0
@@ -92,7 +92,7 @@ def test_patch_prepare_inputs_over_default(tmp_path):
     }
 
     # create an instance of the dummy model
-    model = DummyModelTwo(config=config, data_sample=None)
+    model = DummyModelTwo(config=config)
 
     # manually update the prepare_inputs static method to be something simple
     # don't wrap this with staticmethod(...) because that would be a double wrapping.
@@ -105,7 +105,7 @@ def test_patch_prepare_inputs_over_default(tmp_path):
     assert (tmp_path / "prepare_inputs.py").exists()
 
     # create a new instance of the dummy model and call .load() with the correct path
-    new_model = DummyModelTwo(config=config, data_sample=None)
+    new_model = DummyModelTwo(config=config)
 
     # verify that the new model's prepare_inputs method is the default one
     input_data = {"data": {"image": 3}}

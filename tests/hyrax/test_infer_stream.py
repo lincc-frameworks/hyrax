@@ -124,11 +124,18 @@ def _record_consumers(monkeypatch, messages):
     return created
 
 
-def test_infer_stream_requires_sample_or_request():
-    """With no sample_batch and no data_request, run() raises a clear error."""
-    h = hyrax.Hyrax()
-    with pytest.raises(ValueError, match="sample_batch"):
-        h.infer_stream()
+def test_infer_stream_without_data_request_is_manual(tmp_path):
+    """With no [data_request.infer_stream], run() returns a manual session: fed by process(), not iterable."""
+    h = _build_manual_config(tmp_path, "HyraxLoopback")
+    batch = _image_batch(["id0", "id1"], start=0)
+
+    with h.infer_stream() as session:
+        assert session.data_loader is None
+        with pytest.raises(RuntimeError, match="no data source"):
+            list(session)
+        results = session.process(batch)
+
+    np.testing.assert_array_equal(results, batch["data"]["image"])
 
 
 def test_infer_stream_iterates_streaming_dataset(tmp_path, monkeypatch):
@@ -174,7 +181,7 @@ def test_infer_stream_iterates_streaming_dataset(tmp_path, monkeypatch):
             # Loopback returns its image input; one result row per object.
             assert results.shape[0] == len(ids)
 
-    # The peeked sample (used for model pre-flighting) is not lost.
+    # Every streamed sample reaches the model; none is consumed during setup.
     assert sorted(seen_ids) == ["id0", "id1", "id2"]
 
 
@@ -183,7 +190,7 @@ def test_process_returns_array_for_tensor_model(tmp_path):
     h = _build_manual_config(tmp_path, "HyraxLoopback")
     batch = _image_batch(["id0", "id1"], start=0)
 
-    with h.infer_stream(sample_batch=batch) as session:
+    with h.infer_stream() as session:
         results = session.process(batch)
 
     assert isinstance(results, np.ndarray)
@@ -195,7 +202,7 @@ def test_process_returns_dict_for_dict_model(tmp_path):
     h = _build_manual_config(tmp_path, "DictReturnLoopback")
     batches = [_image_batch(["id0", "id1"], start=0), _image_batch(["id2"], start=6)]
 
-    with h.infer_stream(sample_batch=batches[0]) as session:
+    with h.infer_stream() as session:
         for batch in batches:
             results = session.process(batch)
             assert isinstance(results, dict)
