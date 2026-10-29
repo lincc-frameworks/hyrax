@@ -147,6 +147,33 @@ def test_data_location_without_topic_uses_config_topics():
     assert dataset.topics == ["config-topic-a", "config-topic-b"]
 
 
+def test_data_location_group_id_overrides_config():
+    """A trailing /group_id segment in the URI overrides the configured group_id."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["group_id"] = "config-group"
+
+    dataset = KafkaStreamDataset(
+        h.config, data_location="kafka://inline-broker:19092/inline-topic/inline-group"
+    )
+
+    assert dataset.topics == ["inline-topic"]
+    assert dataset.group_id == "inline-group"
+    assert dataset.consumer_config["group.id"] == "inline-group"
+
+
+def test_data_location_without_group_id_uses_config_group_id():
+    """A URI that names only a topic keeps the configured group_id."""
+    h = hyrax.Hyrax()
+    ds_config = h.config["data_set"]["KafkaStreamDataset"]
+    ds_config["group_id"] = "config-group"
+
+    dataset = KafkaStreamDataset(h.config, data_location="kafka://inline-broker:19092/inline-topic")
+
+    assert dataset.topics == ["inline-topic"]
+    assert dataset.group_id == "config-group"
+
+
 def test_topics_accepts_single_string_from_config():
     """A single configured topic string is normalized to a one-item list."""
     h = hyrax.Hyrax()
