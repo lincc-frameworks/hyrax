@@ -109,16 +109,19 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
         ds_config = config["data_set"]["KafkaStreamDataset"]
 
         # ``data_location``, when given, is a Kafka URI of the form
-        # ``kafka://<host>:<port>[/<topic>]`` supplied inline by the data_request. It takes
+        # ``kafka://<host>:<port>[/<topic>][/group_id]`` supplied inline by the data_request. It takes
         # precedence over the [data_set.KafkaStreamDataset] config; anything the URI omits
         # falls back to that config block.
         host_port = ""
         topic = ""
+        group_id = ""
         if data_location:
             parsed = urlparse(data_location)
             if parsed.scheme == "kafka":
                 host_port = parsed.netloc  # "broker.example.org:9092"
                 topic = parsed.path.lstrip("/")  # "my-topic"
+                if "/" in topic:
+                    topic, group_id = topic.split("/", 1)  # "my-topic", "my-group"
 
         self.bootstrap_servers = host_port or ds_config["bootstrap_servers"]
         self.topics = topic or ds_config["topics"]
@@ -131,7 +134,7 @@ class KafkaStreamDataset(HyraxDataset, torch.utils.data.IterableDataset):
                 "config['data_set']['KafkaStreamDataset']['topics'] must be set to a list of Kafka topics."
             )
 
-        self.group_id = ds_config["group_id"]
+        self.group_id = group_id or ds_config["group_id"]
         self.auto_offset_reset = ds_config["auto_offset_reset"]
         self.poll_timeout = float(ds_config["poll_timeout"])
         self.batch_flush_timeout = float(ds_config["batch_flush_timeout"])
