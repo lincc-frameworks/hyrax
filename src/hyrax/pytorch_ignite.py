@@ -1,6 +1,7 @@
 import functools
 import logging
 import warnings
+import weakref
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -188,6 +189,7 @@ def dist_data_loader(
     dataset: Dataset,
     config: dict,
     shuffle: bool = False,
+    persistent_workers: bool = False,
 ) -> DataLoader:
     """Create Pytorch Ignite distributed data loaders.
 
@@ -212,6 +214,12 @@ def dist_data_loader(
         deterministic order.  Ignored when ``split_weights`` is set (weighted
         sampling always draws with replacement).  Defaults to ``False`` so
         non-training verbs preserve deterministic order.
+    persistent_workers : bool, optional
+        If ``True``, worker processes are not shut down after each epoch.  This
+        can improve performance when the dataset is large and expensive to
+        initialize, but may cause issues with some datasets that do not support
+        persistent workers.  Defaults to ``False`` to avoid issues with
+        datasets that do not support persistent workers.
 
     Returns
     -------
@@ -296,8 +304,17 @@ def dist_data_loader(
     # a ValueError from the underlying DataLoader.
     if data_loader_kwargs.get("num_workers", 0) > 0:
         data_loader_kwargs["multiprocessing_context"] = mp.get_context("fork")
+        # Each worker holds its own copy of the DataProvider's cache. Non-persistent workers
+        # are re-forked every epoch, which throws those caches away.
+        data_loader_kwargs["persistent_workers"] = persistent_workers
+        # Runs inside each worker right after fork. Disarms DataLoader iterators the
+        # worker inherited from the parent so it can never shut down the parent's workers.
+        data_loader_kwargs["worker_init_fn"] = _hyrax_worker_init
 
-    return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
+    data_loader = idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
+    if data_loader_kwargs.get("num_workers", 0) > 0 and isinstance(data_loader, DataLoader):
+        _track_worker_iterators(data_loader)
+    return data_loader
 
 
 # TODO: Clean up the input variables here.
@@ -1011,3 +1028,55 @@ class EarlyStopping(Exception):  # noqa: N818
 
     def __str__(self):
         return f"EarlyStopping: {self.args[0]}"
+
+
+def shutdown_workers(data_loaders):
+    """Shut down the worker processes of a DataLoader.
+
+    This is useful for cleaning up resources when using persistent workers, especially in
+    distributed training scenarios where each process may have its own DataLoader.
+
+    Parameters
+    ----------
+    data_loaders : list of DataLoader
+        The DataLoader whose workers should be shut down.
+    """
+    for data_loader in data_loaders:
+        iterator = getattr(data_loader, "_iterator", None)
+        if iterator is not None:
+            iterator._shutdown_workers()
+            data_loader._iterator = None
+
+
+# Multi-process DataLoader iterators created by dist_data_loader that are alive in this process.
+# Forked workers inherit a copy of this set, which tells _hyrax_worker_init exactly which
+# iterators to disarm without scanning every object the worker inherited.
+_live_worker_iterators: weakref.WeakSet = weakref.WeakSet()
+
+
+def _track_worker_iterators(data_loader: DataLoader) -> DataLoader:
+    """Record every iterator ``data_loader`` creates in ``_live_worker_iterators``.
+
+    ``DataLoader.__iter__`` creates iterators through ``self._get_iterator()`` for both
+    persistent and non-persistent workers, so wrapping it on the instance sees all of them.
+    """
+    create_iterator = data_loader._get_iterator
+
+    def get_iterator():
+        iterator = create_iterator()
+        _live_worker_iterators.add(iterator)
+        return iterator
+
+    data_loader._get_iterator = get_iterator
+    return data_loader
+
+
+def _hyrax_worker_init(worker_id):
+    """Disarm the DataLoader iterators this worker inherited from its parent by fork.
+
+    If an inherited copy were shut down in this process (e.g. when garbage collected),
+    torch would signal the *parent's* workers to exit. Marking the copies as already
+    shut down makes their ``__del__`` a no-op.
+    """
+    for iterator in list(_live_worker_iterators):
+        iterator._shutdown = True
