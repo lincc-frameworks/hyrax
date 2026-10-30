@@ -16,7 +16,7 @@ class UMAP(ReductionAlgorithm):
 
     def __init__(self, config: dict, reduction_results=None):
         super().__init__(config, reduction_results)
-        self.reducer = umap.UMAP(**self.config["reduce"]["umap"]["kwargs"])
+        self.reducer = umap.UMAP(**self.config["reduce_dimensions"]["umap"]["kwargs"])
 
     def save_model(self, results_dir: Path):
         """
@@ -44,7 +44,7 @@ class UMAP(ReductionAlgorithm):
             If not specified, method will look in the config for a default model path.
         """
         if model_path is None:
-            model_path = self.config["reduce"]["umap"]["model_path"]
+            model_path = self.config["reduce_dimensions"]["umap"]["model_path"]
 
         if not model_path:
             logger.info("No pre-existing UMAP model found. A new model will be fitted.")
@@ -128,7 +128,7 @@ class UMAP(ReductionAlgorithm):
 
         from tqdm.auto import tqdm
 
-        if self.config["reduce"]["parallel"]:
+        if self.config["reduce_dimensions"]["parallel"]:
             import multiprocessing as mp
 
             # Process pool loop

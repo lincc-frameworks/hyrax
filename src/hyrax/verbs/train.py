@@ -1,8 +1,25 @@
 import logging
 from pathlib import Path
 
+import ignite.distributed as idist
+import mlflow
+import torch
 from colorama import Back, Fore, Style
 
+from hyrax.config_utils import create_results_dir, log_runtime_config
+from hyrax.context import update_context
+from hyrax.gpu_monitor import GpuMonitor
+from hyrax.pytorch_ignite import (
+    Events,
+    attach_best_checkpoint,
+    create_trainer,
+    create_validator,
+    dist_data_loader,
+    setup_dataset,
+    setup_model,
+)
+from hyrax.splitting_utils import create_splits
+from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 from hyrax.trace import trace_verb_data
 
 from .verb_registry import Verb, hyrax_verb
@@ -22,7 +39,7 @@ class Train(Verb):
     # REQUIRED_DATA_GROUPS must be present in the dataset dict returned by setup_dataset.
     # OPTIONAL_DATA_GROUPS are used when present but do not cause an error if absent.
     REQUIRED_DATA_GROUPS = ("train",)
-    OPTIONAL_DATA_GROUPS = ("validate", "test")
+    OPTIONAL_DATA_GROUPS = ("validate",)
 
     @staticmethod
     def setup_parser(parser):
@@ -42,22 +59,6 @@ class Train(Verb):
         Returns the trained model.
 
         """
-
-        import mlflow
-
-        from hyrax.config_utils import create_results_dir, log_runtime_config
-        from hyrax.gpu_monitor import GpuMonitor
-        from hyrax.pytorch_ignite import (
-            Events,
-            attach_best_checkpoint,
-            create_trainer,
-            create_validator,
-            dist_data_loader,
-            setup_dataset,
-            setup_model,
-        )
-        from hyrax.splitting_utils import create_splits
-        from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
 
@@ -85,7 +86,40 @@ class Train(Verb):
             splits=Train.REQUIRED_DATA_GROUPS + Train.OPTIONAL_DATA_GROUPS,
         )
         create_splits(config, dataset, results_dir=results_dir, persist=True)
-        model = setup_model(config, dataset["train"])
+        model = setup_model(config)
+
+        # we separate out the cases here for two reasons:
+        # 1. GitHub merge checks don't pass with idist.Parallel
+        # 2. idist.Parallel doesn't play nice with mps;
+        #    there are lots of pickling errors including possibly from user code.
+        #    Case separation here guarantees that we will only ever use
+        #    idist.Parallel when there are multiple GPUs.
+        nproc_per_node = torch.cuda.device_count()
+        if config["general"]["distributed"] and nproc_per_node > 1:
+            logger.info(f"Using {nproc_per_node} processes for distributed training.")
+            with idist.Parallel(backend="nccl", nproc_per_node=nproc_per_node) as parallel:
+                parallel.run(Train._training, model, dataset, config, results_dir)
+        else:
+            logger.info("Using a single process for training.")
+            Train._training(0, model, dataset, config, results_dir)
+
+        return model
+
+    # this used to be a nested method inside run() without any args except rank (needed for idist.Parallel)
+    @staticmethod
+    def _training(rank, model, dataset, config, results_dir):
+        # idist.Parallel spawns fresh processes, so the run context established in run()
+        # is absent in the child ranks. Repopulate it here, where every rank passes.
+        # On the single-process path this writes into the context run() installed, so
+        # anything a model stashed there during setup_model survives. In a spawned rank
+        # it fills that process's empty context, which needs no release because the
+        # process exits when training finishes.
+        update_context(
+            results_dir=results_dir,
+            verb="train",
+            config=config,
+        )
+
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Training model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"
@@ -141,35 +175,35 @@ class Train(Verb):
 
         monitor = GpuMonitor()
 
-        # Go up to the parent of the results dir so all mlflow results show up in the same directory.
-        results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
-        (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
-        mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
+        try:
+            # Go up to the parent of the results dir so all mlflow results show up in the same directory.
+            results_root_dir = Path(config["general"]["results_dir"]).expanduser().resolve()
+            (results_root_dir / "mlflow").mkdir(parents=True, exist_ok=True)
+            mlflow.set_tracking_uri("sqlite:///" + str(results_root_dir / "mlflow" / "mlflow.db"))
 
-        # Get experiment_name and cast to string (it's a tomlkit.string by default)
-        experiment_name = str(config["train"]["experiment_name"])
+            # Get experiment_name and cast to string (it's a tomlkit.string by default)
+            experiment_name = str(config["train"]["experiment_name"])
 
-        # This will create the experiment if it doesn't exist
-        mlflow.set_experiment(experiment_name)
+            # This will create the experiment if it doesn't exist
+            mlflow.set_experiment(experiment_name)
 
-        # If run_name is not `false` in the config, use it as the MLFlow run name in
-        # this experiment. Otherwise use the name of the results directory
-        run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
+            # If run_name is not `false` in the config, use it as the MLFlow run name in
+            # this experiment. Otherwise use the name of the results directory
+            run_name = str(config["train"]["run_name"]) if config["train"]["run_name"] else results_dir.name
 
-        with mlflow.start_run(log_system_metrics=True, run_name=run_name):
-            Train._log_params(config, results_dir)
+            with mlflow.start_run(log_system_metrics=True, run_name=run_name):
+                Train._log_params(config, results_dir)
 
-            # Run the training process
-            trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
+                # Run the training process
+                trainer.run(train_data_loader, max_epochs=config["train"]["epochs"])
 
-        # Save the trained model
-        model.save(results_dir / config["train"]["weights_filename"])
-        monitor.stop()
+            # Save the trained model
+            model.save(results_dir / config["train"]["weights_filename"])
+        finally:
+            monitor.stop()
 
         logger.info("Finished Training")
         close_tensorboard_logger()
-
-        return model
 
     @staticmethod
     def _log_params(config, results_dir):

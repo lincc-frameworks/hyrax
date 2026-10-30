@@ -8,6 +8,7 @@ from torchvision.transforms.v2 import CenterCrop
 
 # extra long import here to address a circular import issue
 from hyrax.models.model_registry import hyrax_model
+from hyrax.models.model_utils import read_input_shape
 
 logger = logging.getLogger(__name__)
 
@@ -21,18 +22,17 @@ class HyraxAutoencoder(nn.Module):
     `autoenocoder tutorial <https://uvadlc-notebooks.readthedocs.io/en/latest/tutorial_notebooks/tutorial9/AE_CIFAR10.html>`_
 
     The train function has been converted into train_batch for use with pytorch-ignite.
+
+    The layers are sized from ``[model.HyraxAutoencoder].input_shape``, the
+    ``[channels, height, width]`` of one input image.
     """
 
-    def __init__(self, config, data_sample=None):
+    def __init__(self, config):
         super().__init__()
         self.config = config
 
-        shape = data_sample.shape
-        logger.debug(f"Found shape: {shape} in data sample, using this to initialize model.")
-
-        # Unpack the shape of the image (batch_size, num_channels, width, height)
-        # we'll ignore the batch_size during initialization.
-        _, self.num_input_channels, self.image_width, self.image_height = shape
+        self.input_shape = read_input_shape(config, "HyraxAutoencoder")
+        self.num_input_channels, self.image_height, self.image_width = self.input_shape
 
         self.c_hid = self.config["model"]["HyraxAutoencoder"]["base_channel_size"]
         self.latent_dim = self.config["model"]["HyraxAutoencoder"]["latent_dim"]
@@ -41,8 +41,8 @@ class HyraxAutoencoder(nn.Module):
         # Formula evaluated from: https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html
         #
         # If the number of layers are changed this will need to be rewritten.
-        self.conv_end_w = self.conv2d_multi_layer(self.image_width, 3, kernel_size=3, padding=1, stride=2)
         self.conv_end_h = self.conv2d_multi_layer(self.image_height, 3, kernel_size=3, padding=1, stride=2)
+        self.conv_end_w = self.conv2d_multi_layer(self.image_width, 3, kernel_size=3, padding=1, stride=2)
 
         self._init_encoder()
         self._init_decoder()
@@ -105,7 +105,7 @@ class HyraxAutoencoder(nn.Module):
         x = self.dec_linear(x)
         x = x.reshape(x.shape[0], -1, self.conv_end_h, self.conv_end_w)
         x = self.decoder(x)
-        x = CenterCrop(size=(self.image_width, self.image_height))(x)
+        x = CenterCrop(size=(self.image_height, self.image_width))(x)
         return x
 
     def forward(self, batch):
@@ -126,7 +126,7 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        z = self._eval_encoder(batch)
+        z = self.forward(batch)
         x_hat = self._eval_decoder(z)
         loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
@@ -137,7 +137,7 @@ class HyraxAutoencoder(nn.Module):
 
         self.optimizer.step()
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def validate_batch(self, batch):
         """This function contains the logic for a single validation step that will
@@ -155,12 +155,12 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        z = self._eval_encoder(batch)
+        z = self.forward(batch)
         x_hat = self._eval_decoder(z)
         loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """This function contains the logic for a single testing step that will
@@ -178,12 +178,12 @@ class HyraxAutoencoder(nn.Module):
         Current loss value : dict
             Dictionary containing the loss value for the current batch.
         """
-        z = self._eval_encoder(batch)
+        z = self.forward(batch)
         x_hat = self._eval_decoder(z)
         loss = F.mse_loss(batch, x_hat, reduction="none")
         loss = loss.sum(dim=[1, 2, 3]).mean(dim=[0])
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def infer_batch(self, batch):
         """This function contains the logic for a single inference step. i.e. the

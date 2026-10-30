@@ -59,7 +59,6 @@ class Infer(Verb):
         from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
 
         config = self.config
-        context = {}
 
         # Create a results directory and dump our config there
         results_dir = create_results_dir(config, "infer")
@@ -72,8 +71,12 @@ class Infer(Verb):
             splits=Infer.REQUIRED_DATA_GROUPS + Infer.OPTIONAL_DATA_GROUPS,
             shuffle=False,
         )
+        # Inference reads each item once, so the in-memory data cache would never be hit.
+        for provider in dataset.values():
+            if hasattr(provider, "data_cache"):
+                provider.data_cache.disable()
         create_splits(config, dataset, persist=False)
-        model = setup_model(config, dataset["infer"])
+        model = setup_model(config)
         logger.info(
             f"{Style.BRIGHT}{Fore.BLACK}{Back.GREEN}Inference model:{Style.RESET_ALL} "
             f"{model.__class__.__name__}"
@@ -89,7 +92,6 @@ class Infer(Verb):
 
         load_model_weights(config, model, "infer")
         log_runtime_config(config, results_dir)
-        context["results_dir"] = results_dir
 
         # Log Results directory
         logger.info(f"Saving inference results at: {results_dir}")

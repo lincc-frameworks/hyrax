@@ -24,7 +24,7 @@ class HSCDCAE(nn.Module):
     This autoencoder is designed to work with datasets that are prepared with Hyrax's HSC Data Set class.
     """
 
-    def __init__(self, config, data_sample=None):
+    def __init__(self, config):
         super().__init__()
 
         # The current network works with images of size [3,150,150]
@@ -95,7 +95,7 @@ class HSCDCAE(nn.Module):
         x1 = self.activation(self.encoder1(data))
         x2 = self.activation(self.encoder2(self.pool(x1)))
         x3 = self.activation(self.encoder3(self.pool(x2)))
-        x4 = self.activation(self.encoder4(self.pool(x3)))
+        x4 = self.forward(data)
 
         # Decoder with skip connections
         x = self.activation(self.decoder4(x4) + x3)
@@ -107,7 +107,7 @@ class HSCDCAE(nn.Module):
         loss.backward()
         self.optimizer.step()
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def validate_batch(self, batch):
         """This function contains the logic for a single validation step that will
@@ -133,7 +133,7 @@ class HSCDCAE(nn.Module):
         x1 = self.activation(self.encoder1(data))
         x2 = self.activation(self.encoder2(self.pool(x1)))
         x3 = self.activation(self.encoder3(self.pool(x2)))
-        x4 = self.activation(self.encoder4(self.pool(x3)))
+        x4 = self.forward(data)
 
         # Decoder with skip connections
         x = self.activation(self.decoder4(x4) + x3)
@@ -143,7 +143,7 @@ class HSCDCAE(nn.Module):
 
         loss = self.criterion(decoded, data)
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, batch):
         """This function contains the logic for a single testing step that will
@@ -169,7 +169,7 @@ class HSCDCAE(nn.Module):
         x1 = self.activation(self.encoder1(data))
         x2 = self.activation(self.encoder2(self.pool(x1)))
         x3 = self.activation(self.encoder3(self.pool(x2)))
-        x4 = self.activation(self.encoder4(self.pool(x3)))
+        x4 = self.forward(data)
 
         # Decoder with skip connections
         x = self.activation(self.decoder4(x4) + x3)
@@ -179,7 +179,7 @@ class HSCDCAE(nn.Module):
 
         loss = self.criterion(decoded, data)
 
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def infer_batch(self, batch):
         """This function contains the logic for a single inference step that will

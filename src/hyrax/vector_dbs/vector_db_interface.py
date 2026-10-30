@@ -1,27 +1,39 @@
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Union
 
 import numpy as np
+
+from hyrax.context import get_context
 
 
 class VectorDB(ABC):
     """Interface for a vector database"""
 
-    def __init__(self, config: dict | None = None, context: dict | None = None):
+    def __init__(self, config: dict | None = None):
         """
         .. py:method:: __init__
 
         Create a new instance of a `VectorDB` object.
 
+        The directory the database lives in is read from the Hyrax run context,
+        so callers do not need to pass it. Whoever creates a database is
+        responsible for pointing the run context at the right directory first
+        (see :func:`hyrax.context.update_context`).
+
         Parameters
         ----------
         config : dict, optional
             An instance of the runtime configuration, by default None
-        context : dict, optional
-            An instance of the context object, by default None
         """
         self.config = config if config else {}
-        self.context = context if context else {}
+
+        self.context = get_context()
+
+    @property
+    def results_dir(self) -> Path:
+        """The directory this database lives in."""
+        return self.context["results_dir"]
 
     @abstractmethod
     def connect(self):

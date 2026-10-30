@@ -13,7 +13,7 @@ class TSNE(ReductionAlgorithm):
 
     def __init__(self, config: dict, reduction_results=None):
         super().__init__(config, reduction_results)
-        self.reducer = sklearn_manifold.TSNE(**self.config["reduce"]["tsne"]["kwargs"])
+        self.reducer = sklearn_manifold.TSNE(**self.config["reduce_dimensions"]["tsne"]["kwargs"])
 
     def save_model(self, _):
         """
@@ -47,7 +47,7 @@ class TSNE(ReductionAlgorithm):
         """
         from tqdm.auto import tqdm
 
-        if self.config["reduce"]["parallel"]:
+        if self.config["reduce_dimensions"]["parallel"]:
             import multiprocessing as mp
 
             # Process pool loop

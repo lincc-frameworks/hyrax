@@ -22,9 +22,10 @@ def test_migrate_config_004_moves_umap_to_reduce():
         "n_neighbors = 15\n"
     )
 
-    migrated = migrate_config(cfg)
+    # Migrate to version 5, which is the first version that introduces [reduce]
+    migrated = migrate_config(cfg, _target_version=5)
 
-    assert migrated["config_version"] == CURRENT_CONFIG_VERSION
+    assert migrated["config_version"] == 5
     assert "umap" not in migrated
     assert "umap.UMAP" not in migrated
 

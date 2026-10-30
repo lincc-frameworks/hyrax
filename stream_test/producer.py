@@ -80,6 +80,7 @@ def make_message(index: int) -> dict:
         "value": round(random.uniform(0, 100), 4),
         "image": np.random.rand(4, 4).tolist(),
         "label": np.random.randint(0, 9),
+        "time_series": [round(random.uniform(0, 1), 4) for _ in range(random.randint(2, 10))],
         "timestamp": datetime.now(UTC).isoformat(),
     }
 

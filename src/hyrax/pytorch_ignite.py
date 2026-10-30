@@ -15,9 +15,11 @@ with warnings.catch_warnings():
 from collections.abc import Iterator, Sequence
 
 import torch
+import torch.multiprocessing as mp
 from ignite.engine import Engine, EventEnum, Events
 from ignite.handlers import Checkpoint, DiskSaver, global_step_from_engine
 from ignite.handlers.tqdm_logger import ProgressBar
+from torch.nn import Module
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 from torch.utils.data import DataLoader, Dataset, IterableDataset, Sampler, Subset, WeightedRandomSampler
 
@@ -29,6 +31,45 @@ from hyrax.trace import get_trace
 logger = logging.getLogger(__name__)
 
 _LEGACY_SPLIT_KEYS = ("train_size", "validate_size", "test_size")
+
+
+# We define a custom __getattr__ method on DistributedDataParallel so that
+# functions like train_batch can access required attributes without
+# explicitly copying them from the original module to the DDP instance.
+# DDP simply uses the torch.nn.Module.__getattr__ method, so we define a new
+# one that returns an attribute from DistributedDataParallel.module should
+# the existing __getattr__ fail.
+_old__getattr__ = Module.__getattr__
+
+
+# There is an identical version of this function used in
+# test_train.py::test_training_info_returned_on_model.
+# If this method is ever updated, make sure to update the version
+# there too.
+def _new__getattr__(self, name: str):
+    try:
+        return _old__getattr__(self, name)
+    except AttributeError:
+        if hasattr(self.module, name):
+            return getattr(self.module, name)
+    raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+
+DistributedDataParallel.__getattr__ = _new__getattr__
+
+
+# Helper method to wrap a model in DistributedDataParallel if needed.
+# Uses idist.auto_model to do the wrapping, then ignore the result if it is a DataParallel instance.
+# For more info, see https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_model.html.
+# Arguments are identical to idist.auto_model.
+def _auto_model(model: torch.nn.Module, sync_bn: bool = False, **kwargs: Any) -> torch.nn.Module:
+    wrapped_model = idist.auto_model(model, sync_bn=sync_bn, **kwargs)
+    if type(wrapped_model) is DataParallel:
+        logger.info(
+            'Ignore previous message "Apply torch DataParallel on model". Hyrax does not use DataParallel'
+        )
+        return model
+    return wrapped_model
 
 
 class SubsetSequentialSampler(Sampler[int]):
@@ -126,75 +167,21 @@ def _build_data_provider(config: dict, request: dict):
     return DataProvider(config, request)
 
 
-def setup_model(config: dict, dataset: DataProvider) -> torch.nn.Module:
+def setup_model(config: dict) -> torch.nn.Module:
     """Create a model object based on the configuration.
 
     Parameters
     ----------
     config : dict
         The runtime configuration
-    dataset : DataProvider
-        The dataset object that will provide data to the model for training or
-        inference. Here it is only used to provide a data sample to the model so
-        that it can resize itself at runtime if necessary.
 
     Returns
     -------
     torch.nn.Module
         An instance of the model class specified in the configuration
     """
-    from hyrax.trace import reset_trace
-
-    # Fetch model class specified in config and create an instance of it
     model_cls = fetch_model_class(config)
-
-    # Grab a single data sample
-    data_sample = dataset.sample_data()
-
-    # Collate the data sample
-    collated_sample = dataset.collate([data_sample])
-
-    # Prepare the data sample with the model's prepare_inputs function
-    prepared_sample = model_cls.prepare_inputs(collated_sample)
-
-    # Provide the sample for runtime modifications to the model architecture
-    retval = model_cls(config=config, data_sample=prepared_sample)  # type: ignore[attr-defined]
-
-    # After model pre-flighting succeeds (presumably) reset the trace so it represents
-    # just what the verb does afterward.
-    reset_trace()
-
-    return retval
-
-
-def setup_model_from_sample(config: dict, sample_batch: dict) -> torch.nn.Module:
-    """Create a model from a pre-formatted batch dict instead of a DataProvider.
-
-    Like :func:`setup_model` but accepts a batch dict directly, bypassing the
-    DataLoader/DataProvider pipeline.  Used by
-    :class:`~hyrax.verbs.infer_stream.InferStream` to pre-flight model
-    architecture without a dataset.
-
-    Parameters
-    ----------
-    config : dict
-        The runtime configuration.
-    sample_batch : dict
-        A representative batch with the same structure as batches that will be
-        processed later (e.g. ``{"object_id": [...], "data": {...}}``).
-
-    Returns
-    -------
-    torch.nn.Module
-        An instance of the model class specified in the configuration.
-    """
-    from hyrax.trace import reset_trace
-
-    model_cls = fetch_model_class(config)
-    prepared_sample = model_cls.prepare_inputs(sample_batch)
-    model_instance = model_cls(config=config, data_sample=prepared_sample)
-    reset_trace()
-    return model_instance
+    return model_cls(config=config)  # type: ignore[attr-defined]
 
 
 def dist_data_loader(
@@ -209,7 +196,7 @@ def dist_data_loader(
     Parameters
     ----------
     dataset : hyrax.datasets.dataset_registry.HyraxDataset
-        A Hyrax dataset instance.  When *dataset* is a :class:`DataProvider`
+        A Hyrax dataset instance.  When *dataset* is a :class:`hyrax.datasets.data_provider.DataProvider`
         with ``split_indices`` set (by :func:`~hyrax.splitting_utils.create_splits`),
         the loader is restricted to those indices via a :class:`~torch.utils.data.Subset`.
         When ``split_weights`` is also set, a
@@ -303,6 +290,13 @@ def dist_data_loader(
         else None
     )
 
+    # Enforce the fork start method for worker processes to avoid issues with CUDA in
+    # child processes. ``multiprocessing_context`` is only valid when multi-process
+    # loading is actually requested (num_workers > 0) - passing it otherwise raises
+    # a ValueError from the underlying DataLoader.
+    if data_loader_kwargs.get("num_workers", 0) > 0:
+        data_loader_kwargs["multiprocessing_context"] = mp.get_context("fork")
+
     return idist.auto_dataloader(sub_dataset, sampler=sampler, **data_loader_kwargs)
 
 
@@ -325,6 +319,8 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
 
     if isinstance(batch, tuple):
         batch = tuple(torch.from_numpy(i).to(device) if i is not None else None for i in batch)
+    elif isinstance(batch, dict):
+        batch = {k: torch.from_numpy(i).to(device) if i is not None else None for k, i in batch.items()}
     elif batch is not None:
         batch = torch.from_numpy(batch).to(device)
 
@@ -373,13 +369,12 @@ def create_engine(funcname: str, device: torch.device, model: torch.nn.Module, c
 
 
 def extract_model_method(model, method_name):
-    """Extract a method from a model, which may be wrapped in a DistributedDataParallel
-    or DataParallel object. For instance, method_name could be `train_batch` or
-    `infer_batch`.
+    """Extract a method from a model, which may be wrapped in DistributedDataParallel.
+    For instance, method_name could be `train_batch` or `infer_batch`.
 
     Parameters
     ----------
-    model : nn.Module, DistributedDataParallel, or DataParallel
+    model : nn.Module
         The model to extract the method from
     method_name : str
         Name of the method to extract
@@ -389,13 +384,13 @@ def extract_model_method(model, method_name):
     Callable
         The method extracted from the model
     """
-    wrapped = type(model) is DistributedDataParallel or type(model) is DataParallel
 
-    # Check to see if the model has the requested method
+    wrapped = type(model) is DistributedDataParallel
+
     if not hasattr(model.module if wrapped else model, method_name):
         raise RuntimeError(f"Model does not have required method: {method_name}")
 
-    return getattr(model.module if wrapped else model, method_name)
+    return getattr(model if hasattr(model, method_name) else model.module, method_name)
 
 
 def create_evaluator(
@@ -423,7 +418,7 @@ def create_evaluator(
     """
     device = idist.device()
     model.eval()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     evaluator = create_engine("infer_batch", device, wrapped_model, config)
 
     @evaluator.on(Events.STARTED)
@@ -441,6 +436,15 @@ def create_evaluator(
 
     pbar = ProgressBar(persist=False, bar_format="")
     pbar.attach(evaluator)
+
+    # Inference never needs gradients. Without this every batch builds an autograd graph.
+    original_run = evaluator.run
+
+    def run_with_no_grad(data, *args, **kwargs):
+        with torch.no_grad():
+            return original_run(data, *args, **kwargs)
+
+    evaluator.run = run_with_no_grad
 
     evaluator.hyrax_label = "evaluator"
     return evaluator
@@ -477,15 +481,32 @@ def create_validator(
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
-    tensorboardx_logger = get_tensorboard_logger()
+    wrapped_model = _auto_model(model)
+
+    wrapped = type(wrapped_model) is DistributedDataParallel
+
+    if wrapped:
+        # bind the validate_batch function to the DDP model
+        wrapped_model.validate_batch = model.validate_batch.__get__(wrapped_model)
 
     validator = create_engine("validate_batch", device, wrapped_model, config)
-    fixup_engine(validator)
+    tensorboardx_logger = get_tensorboard_logger()
+
+    # Average each metric over the whole validation set, weighted by batch sample count.
+    _attach_epoch_metric_averaging(validator)
 
     @validator.on(Events.STARTED)
     def set_model_to_eval_mode():
         wrapped_model.eval()
+
+    # Wrap iteration to disable gradients during validation
+    original_run = validator.run
+
+    def run_with_no_grad(data, *args, **kwargs):
+        with torch.no_grad():
+            return original_run(data, *args, **kwargs)
+
+    validator.run = run_with_no_grad
 
     @validator.on(Events.COMPLETED)
     def set_model_to_train_mode():
@@ -497,6 +518,15 @@ def create_validator(
         logger.debug(f"Validation metrics: {validator.state.output}")
         model.final_validation_metrics = validator.state.output
 
+    @validator.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_validate_post_epoch_hooks(validator):
+        hook = getattr(model, "validate_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("validate_post_epoch is not supported for distributed training yet.")
+        hook()
+
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def run_validation():
         with torch.no_grad():
@@ -504,11 +534,19 @@ def create_validator(
 
     def log_validation_loss(validator, trainer):
         step = trainer.state.get_event_attrib_value(Events.EPOCH_COMPLETED)
-        for m in trainer.state.output:
-            tensorboardx_logger.add_scalar(f"training/validation/{m}", validator.state.output[m], step)
-            mlflow.log_metrics({f"validation/{m}": validator.state.output[m]}, step=step)
+        for m in validator.state.output:
+            tensorboardx_logger.add_scalar(f"training/validation/avg_{m}", validator.state.output[m], step)
+            mlflow.log_metrics({f"validation/avg_{m}": validator.state.output[m]}, step=step)
 
     validator.add_event_handler(HyraxEvents.HYRAX_EPOCH_COMPLETED, log_validation_loss, trainer)
+
+    @trainer.on(Events.EXCEPTION_RAISED)
+    def handle_exception(trainer, exception):
+        logger.warning(f"Exception occurred during training: {exception}")
+
+        # calling trainer.terminate here will attempt to spin down the training
+        # engine so that it is able to save its state properly.
+        trainer.terminate()
 
     validator.hyrax_label = "validator"
     return validator
@@ -532,20 +570,17 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
     """
 
     device = idist.device()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
     tensorboardx_logger = get_tensorboard_logger()
 
     tester = create_engine("test_batch", device, wrapped_model, config)
-    fixup_engine(tester)
+
+    # Average each metric over the whole test set, weighted by batch sample count.
+    _attach_epoch_metric_averaging(tester)
 
     @tester.on(Events.STARTED)
     def set_model_to_eval_mode():
         wrapped_model.eval()
-
-    # Track average loss
-    from ignite.metrics import RunningAverage
-
-    RunningAverage(output_transform=lambda x: x["loss"]).attach(tester, "avg_loss")
 
     @tester.on(Events.STARTED)
     def log_test_start(engine):
@@ -560,19 +595,30 @@ def create_tester(model: torch.nn.Module, config: dict) -> Engine:
 
     tester.run = run_with_no_grad
 
-    @tester.on(Events.COMPLETED)
-    def log_test_metrics(engine):
+    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_test_post_epoch_hooks(tester):
+        hook = getattr(model, "test_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("test_post_epoch is not supported for distributed use yet.")
+        hook()
+
+    @tester.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def log_test_metrics(tester):
         from colorama import Fore, Style
 
-        metrics = engine.state.metrics
+        # send metrics to pretty printing, tensorboard, and mlflow
+        metrics = tester.state.output
         logger.info(f"{Style.BRIGHT}{Fore.GREEN}Test Results:{Style.RESET_ALL}")
-        logger.info(f"  Average Loss: {metrics.get('avg_loss', 'N/A'):.4f}")
+        for m in metrics:
+            logger.info(f"  {m}: {metrics[m]:.4f}")
+            tensorboardx_logger.add_scalar(f"training/test/avg_{m}", metrics[m], 1)
+            mlflow.log_metrics({f"test/avg_{m}": metrics[m]}, step=1)
 
-        # Log metrics to MLflow
-        mlflow.log_metric("avg_loss", metrics.get("avg_loss", 0.0))
-
-        # Log to tensorboard
-        tensorboardx_logger.add_scalar("test/avg_loss", metrics.get("avg_loss", 0.0), 0)
+        # debug log the run times
+        logger.debug(f"Test run time: {tester.state.times['EPOCH_COMPLETED']:.2f}[s]")
+        logger.debug(f"Test metrics: {tester.state.output}")
 
     tester.hyrax_label = "tester"
     return tester
@@ -610,7 +656,7 @@ def attach_best_checkpoint(
     results_directory : Path
         Directory where checkpoint files are written.
     """
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
 
     to_save = {
         "model": wrapped_model,
@@ -664,12 +710,23 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     pytorch-ignite.Engine
         Engine object that will be used to train the model.
     """
+
+    # remove in future when adding support for multi-node configurations
+    if idist.get_nnodes() > 1:
+        raise RuntimeError("Multi-node configurations not supported")
+
     device = idist.device()
     model.train()
-    wrapped_model = idist.auto_model(model)
+    wrapped_model = _auto_model(model)
+
+    wrapped = type(wrapped_model) is DistributedDataParallel
+
+    if wrapped:
+        # bind the train_batch function to the DDP model
+        wrapped_model.train_batch = model.train_batch.__get__(wrapped_model)
+
     trainer = create_engine("train_batch", device, wrapped_model, config)
     tensorboardx_logger = get_tensorboard_logger()
-    fixup_engine(trainer)
 
     to_save = {
         "model": wrapped_model,
@@ -703,12 +760,31 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     def log_epoch_start(trainer):
         logger.debug(f"Starting epoch {trainer.state.epoch}")
 
+    # Average each metric over the whole training set, weighted by batch sample count.
+    _attach_epoch_metric_averaging(trainer)
+
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def log_epoch_average_metrics(trainer):
+        epoch_number = trainer.state.epoch
+        for m, v in trainer.state.output.items():
+            tensorboardx_logger.add_scalar(f"training/training/epoch/avg_{m}", v, global_step=epoch_number)
+            mlflow.log_metrics({f"training/epoch/avg_{m}": v}, step=epoch_number)
+
     @trainer.on(Events.ITERATION_COMPLETED(every=10))
     def log_training_loss_tensorboard(trainer):
         step = trainer.state.get_event_attrib_value(Events.ITERATION_COMPLETED)
         for m in trainer.state.output:
             tensorboardx_logger.add_scalar(f"training/training/{m}", trainer.state.output[m], step)
             mlflow.log_metrics({f"training/{m}": trainer.state.output[m]}, step=step)
+
+    @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def run_training_post_epoch_hooks(trainer):
+        hook = getattr(model, "train_post_epoch", None)
+        if not callable(hook):
+            return
+        if idist.get_world_size() > 1:
+            raise NotImplementedError("train_post_epoch is not supported for distributed training yet.")
+        hook()
 
     @trainer.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
     def log_training_loss(trainer):
@@ -760,6 +836,39 @@ def create_trainer(model: torch.nn.Module, config: dict, results_directory: Path
     return trainer
 
 
+def results_to_numpy(
+    batch_results: torch.Tensor | dict[str, torch.Tensor],
+) -> np.ndarray | dict[str, np.ndarray]:
+    """Detach model results from the computation graph and convert them to numpy on the CPU.
+
+    Parameters
+    ----------
+    batch_results : torch.Tensor | dict[str, torch.Tensor]
+        The output of a model method such as ``infer_batch``: a single tensor, or a dict
+        of tensors.
+
+    Returns
+    -------
+    np.ndarray | dict[str, np.ndarray]
+        A numpy array for a single tensor, or a dict with the same keys whose values are
+        numpy arrays.
+
+    Raises
+    ------
+    RuntimeError
+        If ``batch_results`` is neither a tensor nor a dict.
+    """
+    if isinstance(batch_results, dict):
+        return {k: v.detach().to("cpu").numpy() for k, v in batch_results.items()}
+    if isinstance(batch_results, torch.Tensor):
+        return batch_results.detach().to("cpu").numpy()
+
+    btype = type(batch_results)
+    msg = f"Expected batch_results to be a torch.Tensor or dict of torch.Tensors, but got {btype}"
+    logger.error(msg)
+    raise RuntimeError(msg)
+
+
 def create_save_batch_callback(results_dir):
     """Create a callback function for saving batch results during inference or testing.
 
@@ -781,12 +890,12 @@ def create_save_batch_callback(results_dir):
 
     data_writer = create_results_writer(results_dir)
 
-    def _save_batch(batch: dict, batch_results: torch.Tensor):
+    def _save_batch(batch: dict, batch_results):
         """Receive and write batch results to results_dir immediately."""
         nonlocal data_writer
 
         # Ensure the batch results are on CPU and detached from the computation graph
-        batch_results = batch_results.detach().to("cpu")
+        batch_results = results_to_numpy(batch_results)
 
         # Verify that batch contains object_id
         if "object_id" not in batch:
@@ -798,7 +907,7 @@ def create_save_batch_callback(results_dir):
         batch_object_ids = batch["object_id"]
 
         # Ensure that everything to be written is in numpy format, and write it out
-        data_writer.write_batch(np.array(batch_object_ids), [t.numpy() for t in batch_results])
+        data_writer.write_batch(np.array(batch_object_ids), batch_results)
 
     # Attach the data_writer to the callback so it can be accessed later
     _save_batch.data_writer = data_writer  # type: ignore[attr-defined]
@@ -839,3 +948,66 @@ def fixup_engine(engine: Engine):
         # On the last iteration the peekable iterator evaluates as true
         if not engine._dataloader_iter:
             engine.fire_event(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+
+
+def _batch_sample_count(batch) -> int:
+    """Return the number of samples in a collated batch, used to weight per-batch mean metrics.
+
+    Collated Hyrax batches carry an ``object_id`` list with one entry per sample. Batches of
+    any other shape fall back to a count of 1, i.e. equal weighting per batch.
+    """
+    if isinstance(batch, dict) and "object_id" in batch:
+        return len(batch["object_id"])
+    return 1
+
+
+def _attach_epoch_metric_averaging(engine: Engine) -> None:
+    """Replace ``engine.state.output`` with sample-weighted epoch averages at HYRAX_EPOCH_COMPLETED.
+
+    Every metric returned by ``train_batch``/``validate_batch``/``test_batch`` is treated as a
+    per-sample mean over its batch, so each batch's value is weighted by its sample count and the
+    total is divided by the number of samples seen in the epoch. Models may return tensors; they
+    are accumulated on device and converted to float once per epoch to avoid a sync every batch.
+
+    This also calls :func:`fixup_engine`, so the averaging handler is registered as the first
+    HYRAX_EPOCH_COMPLETED handler and runs before checkpointing and logging read the output.
+    Call it before attaching any other HYRAX_EPOCH_COMPLETED handlers.
+
+    Parameters
+    ----------
+    engine : pytorch-ignite.Engine
+        The engine whose per-batch metric dicts should be averaged over each epoch.
+    """
+    metric_sums: dict = {}
+    sample_count = 0
+
+    @engine.on(Events.EPOCH_STARTED)
+    def reset_metric_sums():
+        nonlocal sample_count
+        metric_sums.clear()
+        sample_count = 0
+
+    @engine.on(Events.ITERATION_COMPLETED)
+    def accumulate_metrics(engine):
+        nonlocal sample_count
+        n = _batch_sample_count(engine.state.batch)
+        for name, value in engine.state.output.items():
+            value = value.detach() if isinstance(value, torch.Tensor) else value
+            metric_sums[name] = metric_sums.get(name, 0) + value * n
+        sample_count += n
+
+    fixup_engine(engine)
+
+    @engine.on(HyraxEvents.HYRAX_EPOCH_COMPLETED)
+    def average_metrics(engine):
+        engine.state.output = {name: float(total / sample_count) for name, total in metric_sums.items()}
+
+
+class EarlyStopping(Exception):  # noqa: N818
+    """Raised when validation metrics stop improving to prevent overfitting."""
+
+    def __init__(self, message: str = "Early stopping triggered."):
+        super().__init__(message)
+
+    def __str__(self):
+        return f"EarlyStopping: {self.args[0]}"

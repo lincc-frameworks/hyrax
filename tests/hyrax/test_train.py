@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from hyrax.config_utils import find_most_recent_results_dir
@@ -51,6 +53,22 @@ def test_train(loopback_hyrax):
     """
     h, _ = loopback_hyrax
     h.train()
+
+
+@pytest.mark.parametrize("num_workers", [2], indirect=True)
+def test_train_with_multiple_workers(loopback_hyrax):
+    """
+    Training should succeed when the data loader uses multiple worker
+    processes (num_workers=2), not just the default single-process loading.
+    """
+    h, _ = loopback_hyrax
+    model = h.train()
+
+    # Verify we got the trained model back
+    import torch
+
+    assert model is not None
+    assert isinstance(model, torch.nn.Module)
 
 
 def test_best_checkpoint_uses_validation_loss(loopback_hyrax, tmp_path):
@@ -389,12 +407,14 @@ def test_constant_scheduler_checkpointing(loopback_hyrax, tmp_path):
 
 def test_training_info_returned_on_model(loopback_hyrax):
     """
-    Test that scheduler works correctly when model is wrapped in DataParallel.
+    Test that scheduler works correctly when model is wrapped in DistributedDataParallel.
     This test validates the fix for PR #652 AttributeError bug.
+    This test was updated as part of PR #996. It validates the overwriting
+    of __getattr__ for DistributedDataParallel which was done in PR #974.
     """
     from unittest.mock import patch
 
-    from torch.nn.parallel import DataParallel
+    from torch import nn
 
     h, _ = loopback_hyrax
     gamma = 0.5
@@ -404,16 +424,36 @@ def test_training_info_returned_on_model(loopback_hyrax):
     initial_lr = 64
     h.config[h.config["optimizer"]["name"]]["lr"] = initial_lr
 
-    # Mock idist.auto_model to wrap the model in DataParallel
+    _old__getattr__ = nn.Module.__getattr__
+
+    class FakeDDP(nn.Module):
+        def __init__(self, module):
+            super().__init__()
+            self.module = module
+
+        # This is an identical version of the _new__getattr__ function
+        # in pytorch_ignite. It should always match that version.
+        def __getattr__(self, name):
+            try:
+                return _old__getattr__(self, name)
+            except AttributeError:
+                if hasattr(self.module, name):
+                    return getattr(self.module, name)
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    # Mock idist.auto_model to wrap the model in DistributedDataParallel
     # This simulates what happens in distributed training environments
+    # Using the real DDP class leads to issues with running the test on
+    # non-CUDA environments and ForkingPickling errors with HyraxLoopback
+    # even on CUDA environments
 
     def mock_auto_model(model):
-        # Wrap the model in DataParallel to test the fix
-        return DataParallel(model)
+        # Wrap the model in DistributedDataParallel to test the fix
+        return FakeDDP(model)
 
-    # Patch idist.auto_model in the pytorch_ignite module
-    with patch("hyrax.pytorch_ignite.idist.auto_model", side_effect=mock_auto_model):
-        # This should not raise AttributeError: 'DataParallel' object has no attribute 'scheduler'
+    # Patch _auto_model in the pytorch_ignite module
+    with patch("hyrax.pytorch_ignite._auto_model", side_effect=mock_auto_model):
+        # This should not raise AttributeError: 'DistributedDataParallel' object has no attribute 'scheduler'
         model = h.train()
 
     # Verify the scheduler worked correctly
@@ -474,3 +514,19 @@ def test_train_default_model_weights_file_is_false(loopback_hyrax):
     # Training should succeed without any weights file
     model = h.train()
     assert model is not None
+
+
+def test_model_writes_to_results_dir_during_train(context_writing_loopback):
+    """End-to-end: a model uses the run context to save its own artifact into the
+    train results directory."""
+    h = context_writing_loopback
+
+    h.train()
+
+    results_dir = find_most_recent_results_dir(h.config, "train")
+    notes_file = results_dir / "my_notes.json"
+    assert notes_file.exists()
+
+    notes = json.loads(notes_file.read_text())
+    assert notes["verb"] == "train"
+    assert notes["batches_seen"] > 0

@@ -66,10 +66,9 @@ class PositiveRescale:
 class SimCLR(nn.Module):
     """SimCLR model. Implementation based on Chen, 2020"""
 
-    def __init__(self, config, shape):
+    def __init__(self, config):
         super().__init__()
         self.config = config
-        self.shape = shape
         proj_dim = config["model"]["SimCLR"]["projection_dimension"]
         temperature = config["model"]["SimCLR"]["temperature"]
 
@@ -115,7 +114,7 @@ class SimCLR(nn.Module):
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def validate_batch(self, x):
         aug = T.Compose(
@@ -141,7 +140,7 @@ class SimCLR(nn.Module):
         z2 = self.forward(x2)
 
         loss = self.criterion(z1, z2)
-        return {"loss": loss.item()}
+        return {"loss": loss.detach()}
 
     def test_batch(self, x):
         return self.validate_batch(x)

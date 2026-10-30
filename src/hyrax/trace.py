@@ -120,9 +120,8 @@ class TraceContext:
             self.config["train"]["epochs"] = 1
             self.config["data_loader"]["batch_size"] = trace_batch_size
 
-            # Having cache running means some calls to getters aren't captured in a typical capture,
-            # because those same data were fetched during pre-flight, so we turn caching off on a
-            # trace to prevent this effect
+            # With the cache on, a getter asked for the same datum twice is only captured once, so
+            # caching is turned off on a trace to keep every call visible
             #
             # TODO: Rolling tracing. We will need a different solution here if we are ever running
             #       the trace as a ring buffer, holding essentially the "last batch" up to a crash.
@@ -144,17 +143,6 @@ def get_trace():
     """Get the current global trace results object. Returns None if no trace is active"""
     global trace_result
     return trace_result
-
-
-def reset_trace():
-    """
-    Reset the current global trace results object, removing all captured data
-    Valid to call whether trace is active.
-    """
-    global trace_result
-    if trace_result:
-        logger.debug("Resetting Trace Results")
-        trace_result.reset()
 
 
 @dataclass
@@ -743,6 +731,17 @@ class TraceCall(TracePrintable):
         # careful with names given to TraceDef() calls.
         return list(self.params.keys()) + list(self.retval.keys())
 
+    @staticmethod
+    def _hash_tensor(tensor):
+        if hasattr(tensor, "hash_tensor"):
+            return tensor.hash_tensor()
+        import hashlib
+
+        arr = tensor.detach().numpy(force=False)
+        h = hashlib.sha256()
+        h.update(arr)
+        return hash(h.digest())
+
     def _repr_value(self, param_value):
         import numpy as np
         import torch
@@ -789,7 +788,7 @@ class TraceCall(TracePrintable):
                 # Have to pull to CPU to perform hash calc
                 as_torch = param_value.to("cpu")
 
-            hash_val = as_torch.hash_tensor()
+            hash_val = self._hash_tensor(as_torch)
 
             shape = tuple(param_value.shape)
             # type_name = type(param_value).__name__

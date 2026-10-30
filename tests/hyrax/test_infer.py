@@ -73,7 +73,23 @@ def test_infer_order(loopback_hyrax, train_shuffle):
 
         print(f"orig idx: {dataset_idx}, infer idx: {idx}")
         print(f"orig data: {dataset[dataset_idx]}, infer data: {inference_results[idx]}")
-        assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]))
+        assert np.all(np.isclose(dataset[dataset_idx]["data"]["image"], inference_results[idx]["data"]))
+
+
+@pytest.mark.parametrize("num_workers", [2], indirect=True)
+def test_infer_with_multiple_workers(loopback_hyrax):
+    """
+    Inference should succeed when the data loader uses multiple worker
+    processes (num_workers=2), not just the default single-process loading.
+    """
+    h, _ = loopback_hyrax
+    result = h.infer()
+
+    # Verify we got a ResultDataset back
+    from hyrax.datasets.result_dataset import ResultDataset
+
+    assert result is not None
+    assert isinstance(result, ResultDataset)
 
 
 def test_infer_split_definition_preserves_underlying_dataset_order(loopback_hyrax):

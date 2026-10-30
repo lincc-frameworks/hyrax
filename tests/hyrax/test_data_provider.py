@@ -332,86 +332,6 @@ def test_primary_dataset(multimodal_config):
     assert primary_dataset.data_location == "./in_memory_1"
 
 
-def test_sample_data():
-    """Test that sample_data returns a dictionary with the expected
-    structure.
-
-    We don't use the test fixture here so that this can be a little more
-    flexible and self-contained.
-
-
-    The expected result structure is:
-    {
-        'random_0': {
-            'object_id': <int>,
-            'image': array(...),
-            'label': 'cat'
-        },
-        'random_1': {
-            'image': array(...)
-        },
-        'object_id': <int>
-    }
-    """
-    from hyrax import Hyrax
-
-    h = Hyrax()
-
-    multimodal_config = {
-        "random_0": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_directory": "./in_memory_0",
-            "fields": ["object_id", "image", "label"],
-            "dataset_config": {
-                "HyraxRandomDataset": {
-                    "shape": [2, 16, 16],
-                },
-            },
-            "primary_id_field": "object_id",
-        },
-        "random_1": {
-            "dataset_class": "HyraxRandomDataset",
-            "data_directory": "./in_memory_1",
-            "fields": ["image"],
-            "dataset_config": {
-                "HyraxRandomDataset": {
-                    "shape": [5, 16, 16],
-                    "seed": 4200,
-                },
-            },
-        },
-    }
-
-    h.config["data_request"] = multimodal_config
-    dp = DataProvider(h.config, multimodal_config)
-    dp.prepare_datasets()
-
-    sample = dp.sample_data()
-
-    assert isinstance(sample, dict)
-    assert "random_0" in sample
-    assert "random_1" in sample
-    assert "object_id" in sample
-    assert len(sample) == 3
-    assert isinstance(sample["random_0"], dict)
-    assert isinstance(sample["random_1"], dict)
-    assert len(sample["random_0"]) == 3
-    assert len(sample["random_1"]) == 1
-
-    for friendly_name in ["random_0", "random_1"]:
-        dataset_sample = sample[friendly_name]
-        assert "image" in dataset_sample
-
-        if friendly_name == "random_0":
-            assert "object_id" in dataset_sample
-            assert "label" in dataset_sample
-
-    # Verify the dataset_config overrides actually took effect
-    # (default shape is [2, 5, 5] — these should differ)
-    assert sample["random_0"]["image"].shape == (2, 16, 16)
-    assert sample["random_1"]["image"].shape == (5, 16, 16)
-
-
 def test_data_provider_get_item(data_provider):
     """Basic test to ensure that different index values return different data."""
     dp = data_provider
@@ -750,6 +670,33 @@ def test_custom_collate_field_function_applied(custom_field_collate_data_provide
 
     # assert that the object_id key is a numpy array
     assert isinstance(collated_batch["object_id"], np.ndarray)
+
+
+def test_custom_collate_function_fails_gracefully(custom_collate_data_provider):
+    """Test that DataProvider correctly raises an error when a custom collate function
+    fails during the DataProvider.collate method.
+    """
+
+    dp = custom_collate_data_provider
+
+    # Create a batch of samples
+    batch_size = len(dp)
+    batch = [dp[i] for i in range(batch_size)]
+
+    # Patch the custom collate function to raise an exception
+    def failing_collate(batch):
+        raise RuntimeError("Custom collate function failed.")
+
+    dp.custom_collate_functions["random_0"] = failing_collate
+
+    # Collate the batch and expect a RuntimeError
+    with pytest.raises(RuntimeError) as excinfo:
+        dp.collate(batch)
+
+    # test that the error message contains the dataset name
+    assert "random_0" in str(excinfo.value)
+    # test that the error message contains the collation function name
+    assert "failing_collate" in str(excinfo.value)
 
 
 def test_object_id_is_string():

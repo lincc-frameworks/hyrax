@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 from typing import Any, cast
 
+import ignite.distributed as idist
 import numpy as np
 import torch.nn as nn
 import torch.optim as optim
@@ -55,14 +56,17 @@ def _torch_save(self: nn.Module, save_path: Path):
 
 
 def _torch_load(self: nn.Module, load_path: Path):
-    import ignite.distributed as idist
     import torch
 
     # Use ignite's device detection which handles distributed training and device availability
     device = idist.device()
     state = torch.load(load_path, weights_only=True, map_location=device)
 
-    self.load_state_dict(state, assign=True)
+    # Move the model to the device, then copy the weights into its existing parameters.
+    # Don't use load_state_dict(assign=True): it replaces the Parameter objects, so the
+    # optimizer and scheduler created in __init__ would no longer update the model.
+    self.to(device)
+    self.load_state_dict(state)
 
     # Try loading prepare_inputs first (new name), fall back to to_tensor for backward compatibility
     prepare_inputs_fn = load_prepare_inputs(load_path.parent)
@@ -205,7 +209,9 @@ def hyrax_model(cls):
         original_init(self, config, *args, **kwargs)
 
         if not hasattr(self, "optimizer"):
-            self.optimizer = _torch_optimizer(self)
+            # auto_optim is no-op for non-distributed and torch native distributed configuration.
+            # more info at https://docs.pytorch.org/ignite/generated/ignite.distributed.auto.auto_optim.html
+            self.optimizer = idist.auto_optim(_torch_optimizer(self))
         else:
             if config["optimizer"]["name"]:
                 logger.warning(

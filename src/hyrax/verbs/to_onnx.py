@@ -39,6 +39,7 @@ class ToOnnx(Verb):
             find_most_recent_results_dir,
             log_runtime_config,
         )
+        from hyrax.context import update_context
         from hyrax.model_exporters import export_to_onnx
         from hyrax.pytorch_ignite import dist_data_loader, setup_dataset, setup_model
 
@@ -63,12 +64,18 @@ class ToOnnx(Verb):
                 return
 
         output_dir = create_results_dir(config, "onnx")
+        update_context(ml_framework="pytorch")
         log_runtime_config(config, output_dir)
 
         # grab the config file from the input directory, and render it.
         config_file = input_directory / "runtime_config.toml"
         config_manager = ConfigManager(runtime_config_filepath=config_file)
         config_from_training = config_manager.config
+
+        # Everything below runs against the training config rather than this verb's own,
+        # so put that in the context too - a model's prepare_inputs reads it from there
+        # and must see the settings the weights were trained with.
+        update_context(config=config_from_training)
 
         # copy the prepare_inputs.py file (or to_tensor.py for backward compatibility)
         # from the input directory to the output directory
@@ -89,10 +96,10 @@ class ToOnnx(Verb):
         if not weights_file_path.exists():
             raise RuntimeError(f"Could not find trained model weights: {weights_file_path}")
 
-        # Use the config in the model directory to load the dataset(s) and create
-        # The data loader instance to provide a data sample to the ONNX exporter.
+        # Use the config in the model directory to build the model and load the dataset(s);
+        # the dataset provides the sample batch the ONNX exporter traces with.
         dataset = setup_dataset(config_from_training, splits=("infer",), shuffle=False)
-        model = setup_model(config_from_training, dataset["infer"])
+        model = setup_model(config_from_training)
         # Load the trained weights and send the model to the CPU for ONNX export.
         model.load(weights_file_path)
         model.train(False)
@@ -100,14 +107,8 @@ class ToOnnx(Verb):
         # Create an instance of the dataloader so that we can request a sample batch.
         infer_data_loader = dist_data_loader(dataset["infer"], config_from_training)
 
-        # Generate the `context` dictionary that will be provided to the ONNX exporter.
-        context = {
-            "results_dir": output_dir,
-            "ml_framework": "pytorch",
-        }
-
         # Get a sample of input data.
         batch_sample = next(iter(infer_data_loader))
         batch_sample = model.prepare_inputs(batch_sample)
 
-        export_to_onnx(model, batch_sample, config, context)
+        export_to_onnx(model, batch_sample, config)

@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import pickle
-import time
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 from pathlib import Path
@@ -13,10 +12,11 @@ from typing import Any
 import numpy as np
 
 from hyrax.datasets.dataset_registry import DATASET_REGISTRY, fetch_dataset_class
-from hyrax.tensorboardx_logger import get_tensorboard_logger
 
 logger = logging.getLogger(__name__)
-tensorboardx_logger = get_tensorboard_logger()
+
+_NAN_WARNING_MAX = 3
+_nan_warning_count = 0
 
 
 @functools.singledispatch
@@ -63,12 +63,18 @@ def _handle_nans_logic_numpy(batch, config):
         return batch
 
     if config["data_set"]["nan_mode"] is False:
+        global _nan_warning_count
         if np.any(np.isnan(batch)):
-            msg = "Input data contains NaN values. This may mean your model output is all NaNs."
-            msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
-            msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
-            msg += "to get started."
-            logger.warning(msg)
+            if _nan_warning_count < _NAN_WARNING_MAX:
+                msg = "Input data contains NaN values. This may mean your model output is all NaNs. "
+                msg += "Consider setting config['data_set']['nan_mode'] = 'quantile' or 'zero' or writing a "
+                msg += "to_tensor() function for your model. Search hyrax readthedocs for 'to_tensor' "
+                msg += "to get started."
+                logger.warning(msg)
+                _nan_warning_count += 1
+            elif _nan_warning_count == _NAN_WARNING_MAX:
+                logger.warning("Silencing additional NaN warnings.")
+                _nan_warning_count += 1
         return batch
 
     if config["data_set"]["nan_mode"] == "quantile":
@@ -438,17 +444,22 @@ class CollationMixin:
         # calling the custom function.
         for friendly_name, samples in custom_collate.items():
             custom_collate_fn = self.custom_collate_functions[friendly_name]
-
             try:
                 custom_collated_data = custom_collate_fn(samples)
             except Exception as err:
+                func_name = (
+                    custom_collate_fn.func.__name__
+                    if hasattr(custom_collate_fn, "func")
+                    else str(custom_collate_fn)
+                )
                 logger.error(
                     f"Error occurred while collating batch for dataset '{friendly_name}' "
-                    "using its custom collate function."
+                    f"using its '{func_name}' collate function."
                 )
+                # TODO: make this better when we're using the default collate function
                 raise RuntimeError(
                     f"Error occurred while collating batch for dataset '{friendly_name}' "
-                    "using its custom collate function."
+                    f"using its '{func_name}' collate function."
                 ) from err
 
             batch_dict[friendly_name] = custom_collated_data
@@ -1014,8 +1025,6 @@ class DataProvider(CollationMixin):
         """
         from hyrax.config_utils import ConfigManager
 
-        cm = ConfigManager()
-
         # NOTE: This assumes that the dictionary nesting under dataset_config will
         # either 1) match the built-in dataset class name (e.g. "MyDataset") or
         # 2) match the dictionary structure in the external dataset's default_config
@@ -1030,20 +1039,9 @@ class DataProvider(CollationMixin):
 
             # Note that `merge_configs` makes a copy of self.config, so the original
             # config will not be modified.
-            return cm.merge_configs(base_config, tmp_config)
+            return ConfigManager.merge_configs(base_config, tmp_config)
         else:
             return base_config
-
-    def sample_data(self) -> dict:
-        """Returns a data sample. Primarily this will be used for instantiating a
-        model so that any runtime resizing can be handled properly.
-
-        Returns
-        -------
-        dict
-            A dictionary containing the data for index 0.
-        """
-        return self[0]
 
     def get_object_id(self, idx: int) -> str:
         """Returns the ID at a particular index.
@@ -1107,9 +1105,6 @@ class DataProvider(CollationMixin):
             If a primary dataset is configured, the top-level ``"object_id"`` key
             holds a string representation of the primary ID.
         """
-        start_time = time.monotonic_ns()
-        prefix = self.__class__.__name__
-
         rng_seed = self._augment_rng_seed() if self._has_any_augmentation else None
 
         # Pre-fetch primary object ID when any joins are configured.
@@ -1120,7 +1115,6 @@ class DataProvider(CollationMixin):
             object_id_str = None
 
         result: dict[str, dict[str, Any] | str | None] = {}
-        had_any_miss = False
 
         for friendly_name, fields in self.requested_fields.items():
             getters = self.dataset_getters[friendly_name]
@@ -1142,20 +1136,15 @@ class DataProvider(CollationMixin):
             if cached_data is not None and (already_augmented or effective_rng is None):
                 result[friendly_name] = cached_data
             elif cached_data is not None:
-                augment_start = time.monotonic_ns()
                 augmented = self._apply_augmentation(friendly_name, cached_data, real_idx, rng_seed)
-                tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
                 self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                 result[friendly_name] = augmented
             else:
-                had_any_miss = True
                 base_data = {field: getters[field](real_idx) for field in fields}
                 self.data_cache.insert_base(friendly_name, real_idx, base_data)
 
                 if effective_rng is not None:
-                    augment_start = time.monotonic_ns()
                     augmented = self._apply_augmentation(friendly_name, base_data, real_idx, rng_seed)
-                    tensorboardx_logger.log_duration_ts(f"{prefix}/augmentation_s", augment_start)
                     self.data_cache.insert_augmented(friendly_name, real_idx, rng_seed, augmented)
                     result[friendly_name] = augmented
                 else:
@@ -1172,12 +1161,6 @@ class DataProvider(CollationMixin):
             else:
                 object_id = result[self.primary_dataset][self.primary_dataset_id_field_name]
             result["object_id"] = str(object_id)
-
-        # Timing metrics.
-        if had_any_miss:
-            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_miss_s", start_time)
-        else:
-            tensorboardx_logger.log_duration_ts(f"{prefix}/cache_hit_s", start_time)
 
         return result
 

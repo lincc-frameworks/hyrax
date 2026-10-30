@@ -2,6 +2,7 @@ import numpy as np
 import pytest
 
 import hyrax
+import hyrax.datasets.data_provider as dp
 from hyrax.datasets.data_provider import _handle_nans
 
 
@@ -68,7 +69,7 @@ def test_nan_handling(loopback_hyrax_nan):
     assert np.any(original_nans)
 
     for result in inference_results:
-        assert not np.any(np.isnan(result))
+        assert not np.any(np.isnan(result["data"]))
 
 
 def test_nan_handling_zero_values(loopback_hyrax_nan):
@@ -87,7 +88,7 @@ def test_nan_handling_zero_values(loopback_hyrax_nan):
     assert np.any(original_nans)
 
     for result in inference_results:
-        assert not np.any(np.isnan(result))
+        assert not np.any(np.isnan(result["data"]))
 
 
 def test_nan_handling_off(loopback_hyrax_nan):
@@ -105,7 +106,7 @@ def test_nan_handling_off(loopback_hyrax_nan):
         original_nans = np.array([np.any(np.isnan(np.array(item))) for item in dataset])
     assert np.any(original_nans)
 
-    result_nans = np.array([np.any(np.isnan(item)) for item in inference_results])
+    result_nans = np.array([np.any(np.isnan(item["data"])) for item in inference_results])
     assert np.any(result_nans)
 
 
@@ -225,3 +226,28 @@ def test_nan_handling_tuple_preserves_order(loopback_hyrax_nan):
     assert isinstance(output[3], np.ndarray)
     assert not np.any(np.isnan(output[3]))
     assert output[4] == elem5
+
+
+def test_nan_warning_limit(loopback_hyrax_nan, caplog, monkeypatch):
+    """Test that the NaN warning is only emitted up to _NAN_WARNING_MAX times,
+    then a silencing message is emitted once, and no further warnings appear."""
+    # Reset the global counter so this test is independent of execution order
+    monkeypatch.setattr(dp, "_nan_warning_count", 0)
+
+    h, _ = loopback_hyrax_nan
+    h.config["data_set"]["nan_mode"] = False
+
+    batch_with_nan = np.array([1.0, float("nan"), 3.0])
+    config = h.config
+
+    import logging
+
+    with caplog.at_level(logging.WARNING, logger="hyrax.datasets.data_provider"):
+        for _ in range(dp._NAN_WARNING_MAX + 5):
+            _handle_nans(batch_with_nan, config)
+
+    nan_warnings = [r for r in caplog.records if "NaN values" in r.message]
+    silencing_warnings = [r for r in caplog.records if "Silencing additional" in r.message]
+
+    assert len(nan_warnings) == dp._NAN_WARNING_MAX
+    assert len(silencing_warnings) == 1
