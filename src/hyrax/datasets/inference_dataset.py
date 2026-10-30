@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Union
 
 import numpy as np
-import numpy.typing as npt
 from torch.utils.data import Dataset
 
 from .dataset_registry import HyraxDataset
@@ -223,55 +222,6 @@ class InferenceDataset(HyraxDataset, Dataset):
             as input for whatever inference process created this dataset.
         """
         return self._original_dataset_config
-
-    def metadata_fields(self) -> list[str]:
-        """Get the metadata fields associted with the original dataset used to generate this one
-
-        Returns
-        -------
-        list[str]
-            List of valid field names for metadata queries
-        """
-        # We must override this and pass to the original dataset.
-        return self.original_dataset.metadata_fields()  # type: ignore[no-any-return,attr-defined]
-
-    def metadata(self, idxs: npt.ArrayLike, fields: list[str]) -> npt.ArrayLike:
-        """Get metadata associated with the data in the InferenceDataset. This metadata comes from
-        the original dataset, but is indexed according to the InferenceDataset.
-
-        Parameters
-        ----------
-        idxs : npt.ArrayLike
-            Indexes in the InferenceDataset for which metadata is desired
-        fields : list[str]
-            Metadata fields requested
-
-        Returns
-        -------
-        npt.ArrayLike
-            An array where the rows correspond to the passed list of indexes and the columns
-            correspond to the fields passed. Order is preserved- metadata[i] corresponds to idxs[i].
-        """
-
-        idxs = np.asarray(idxs)
-
-        # Get the requested IDs in the order they were requested
-        ids_requested = np.array([self.get_object_id(idx) for idx in idxs])  # type: ignore[index]
-
-        # Get all original dataset IDs
-        original_ids = np.array(list(self.original_dataset.ids()))  # type: ignore[attr-defined]
-
-        # Create mapping from original ID to original index
-        id_to_original_idx = {str(oid): i for i, oid in enumerate(original_ids)}
-
-        # Map requested IDs to original indices, preserving order
-        original_idxs = [id_to_original_idx[str(req_id)] for req_id in ids_requested]
-
-        # Get metadata from original dataset
-        original_metadata = self.original_dataset.metadata(original_idxs, fields)  # type: ignore[attr-defined,no-any-return]
-
-        # Return metadata in the same order as requested
-        return original_metadata
 
     def _load_from_batch_file(self, batch_num: int, ids=Union[int, np.ndarray]) -> np.ndarray:
         """Hands back an array of tensors given a set of IDs in a particular batch and the given

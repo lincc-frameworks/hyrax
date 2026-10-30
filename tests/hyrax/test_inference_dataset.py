@@ -79,73 +79,28 @@ def get_data_by_dataset_type(dataset, idxs):
 
 
 def test_order(inference_dataset):
-    """Test ID and metadata ordering consistency between original and inference datasets.
+    """Test ID ordering consistency between original and inference datasets.
 
     Test cases:
     1) ids() should not be in the same order between original and result
     2) ids() should contain all the IDs in the original dataset
-    3) the ids() from ids, and the ids delivered via metadata from the inference dataset should match exactly
-    4) The value from inference_dataset[idx] should match a value from data_set
-    4a) The matching values should have the same ID in both inference_dataset and data_set according to .ids()
-    4b) The matching values should have the same ID in both inference_dataset and data_set according to
-        respective metadata
-    5) metadata() must preserve the exact order of requested indices (critical for visualization correctness)
+    3) The value from inference_dataset[idx] should match a value from data_set
+    3a) The matching values should have the same ID in both inference_dataset and data_set according to .ids()
     """
     orig, result = inference_dataset
 
     orig_ids = orig.ids()
     result_ids = result.ids()
 
-    all_idx = list(range(20))
-    orig_meta_ids = list(orig.metadata(all_idx, ["object_id_data"])["object_id_data"])
-    result_meta_ids = list(result.metadata(all_idx, ["object_id_data"])["object_id_data"])
-
     # Check no IDs are dropped
     for id in orig_ids:
         assert id in result_ids
-        assert id in orig_meta_ids
-        assert id in result_meta_ids
 
     # Check all data is the correct data for that ID
     for result_i in range(20):
         for orig_i in range(20):
             if np.all(orig[orig_i]["data"]["image"] == result[result_i].numpy()):
-                try:
-                    assert orig_ids[orig_i] == result_ids[result_i]
-                    assert orig_meta_ids[orig_i] == result_meta_ids[result_i]
-                    assert orig_ids[orig_i] == result_meta_ids[result_i]
-                    assert orig_meta_ids[orig_i] == result_ids[result_i]
-                except Exception as e:
-                    print(f"Original ID: {orig_ids[orig_i]} (Correct b/c data matches)")
-                    print(f"Original metaID: {orig_meta_ids[orig_i]}")
-                    print(f"Result ID: {result_ids[result_i]}")
-                    print(f"Result metaID: {result_meta_ids[result_i]}")
-                    raise e
+                assert orig_ids[orig_i] == result_ids[result_i]
                 break
         else:
             assert False, "Could not find matching value for ID."  # noqa: B011
-
-    # Test explicit metadata ordering preservation with non-sequential patterns
-    test_patterns = [
-        [3, 1, 4, 0, 2],
-        [19, 5, 10, 15, 2],
-        [0, 19, 1, 18],
-    ]
-
-    for idx_pattern in test_patterns:
-        # Skip patterns that exceed dataset size
-        if max(idx_pattern) >= len(result):
-            continue
-
-        metadata_result = result.metadata(idx_pattern, ["object_id_data"])
-
-        # Get expected IDs in the exact order requested
-        expected_ids = [result.get_object_id(i) for i in idx_pattern]
-        actual_ids = [str(id) for id in metadata_result["object_id_data"]]
-
-        assert actual_ids == expected_ids, (
-            f"CRITICAL: Metadata ordering broken! For indices {idx_pattern}:\n"
-            f"Expected IDs: {expected_ids}\n"
-            f"Actual IDs:   {actual_ids}\n"
-            f"This will cause visualization labels and data to be scrambled."
-        )

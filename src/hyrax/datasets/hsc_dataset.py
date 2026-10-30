@@ -45,7 +45,7 @@ class HSCDataset(FitsImageDataset):
 
         self.filters_config = config["data_set"]["filters"] if config["data_set"]["filters"] else None
 
-        super().__init__(config, data_location)
+        super().__init__(config, data_location=data_location)
 
     def _read_filter_catalog(self, filter_catalog_path: Path | None):
         from astropy.table import Table
