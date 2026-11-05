@@ -344,6 +344,66 @@ def take_per_row(tensor: torch.Tensor, indices, num_elem: int) -> torch.Tensor:
     return tensor[rows, all_indices]
 
 
+def valid_span(x: torch.Tensor) -> tuple[np.ndarray, np.ndarray]:
+    """Find each row's first and last observed timestep.
+
+    A timestep is observed when none of its channels is NaN. Gaps between the two ends do not
+    shrink the span; the encoder masks those on its own. A row with no observation at all
+    reports the whole axis, ``(0, time - 1)``.
+
+    Parameters
+    ----------
+    x : torch.Tensor
+        Shape ``(batch, time, channels)``, NaN at missing or padded timesteps.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray]
+        ``(first, last)``, each of shape ``(batch,)``, as inclusive timestep indices.
+    """
+    observed = ~torch.isnan(x).any(dim=-1)
+    length = observed.size(1)
+    # argmax returns the first maximal index, so on a 0/1 array it is the first True.
+    first = observed.int().argmax(dim=1)
+    last = length - 1 - observed.flip(1).int().argmax(dim=1)
+    return first.cpu().numpy(), last.cpu().numpy()
+
+
+def crop_start_bounds(first, last, crop_length: int, ts_l: int) -> tuple[np.ndarray, np.ndarray]:
+    """Bound where a crop of ``crop_length`` may start so that it lands on each row's observations.
+
+    When the crop fits inside a row's observed span, any start that keeps it there is allowed,
+    so the crop sees no padding at all. When the span is shorter than the crop, the allowed
+    starts are those that keep the whole span inside the crop, so every observation the row has
+    is contrasted and padding appears only at the crop's edges. Either way the crop stays on the
+    axis, ``[0, ts_l)``. For a fully observed row the bounds are ``(0, ts_l - crop_length)``, the
+    range the reference implementation draws from.
+
+    Parameters
+    ----------
+    first, last : array-like
+        Per-row inclusive indices of the first and last observed timestep, as returned by
+        :func:`valid_span`.
+    crop_length : int
+        Length of the crop, at most ``ts_l``.
+    ts_l : int
+        Length of the time axis.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray]
+        ``(lo, hi)``, the inclusive range of allowed start positions per row. ``lo <= hi``
+        always holds.
+    """
+    first = np.asarray(first, dtype=np.int64)
+    last = np.asarray(last, dtype=np.int64)
+    # The latest start whose crop still covers the last observation.
+    latest = last - crop_length + 1
+    lo = np.maximum(0, np.minimum(first, latest))
+    hi = np.minimum(ts_l - crop_length, np.maximum(first, latest))
+    return lo, hi
+
+
 #
 # Light-curve input encoding
 #
@@ -372,8 +432,9 @@ class EncodingSettings:
     single-band survey, where the one-hot block is dropped entirely and ``bands`` is empty;
     otherwise ``bands`` gives the one-hot channel order. ``max_sequence_length`` is how many
     observations are kept per object, which fixes the width of the time axis, and
-    ``normalize`` is one of :data:`NORMALIZE_MODES` or ``False``. ``n_channels`` is
-    ``3 + len(bands)``, the model's input width.
+    ``normalize`` is one of :data:`NORMALIZE_MODES` or ``False``, and ``clip_sigma`` is the
+    cap applied to the normalized flux and flux-error channels, or ``None`` when clipping is
+    disabled. ``n_channels`` is ``3 + len(bands)``, the model's input width.
 
     Parameters
     ----------
@@ -429,6 +490,24 @@ class EncodingSettings:
                 "config['model']['HyraxTs2Vec']['normalize'] must be one of "
                 f"{NORMALIZE_MODES}, or false to disable it. Got {self.normalize!r}."
             )
+
+        # `false` disables clipping. bool is a subclass of int, so `true` is rejected
+        # explicitly rather than being read as a cap of 1.
+        clip_sigma = model_config["clip_sigma"]
+        if clip_sigma is False:
+            self.clip_sigma = None
+        else:
+            if (
+                isinstance(clip_sigma, bool)
+                or not isinstance(clip_sigma, int | float)
+                or not np.isfinite(clip_sigma)
+                or clip_sigma <= 0
+            ):
+                raise ValueError(
+                    "config['model']['HyraxTs2Vec']['clip_sigma'] must be a positive number, or "
+                    f"false to disable clipping. Got {clip_sigma!r}."
+                )
+            self.clip_sigma = float(clip_sigma)
 
         self.n_channels = N_LEADING_CHANNELS + len(self.bands)
 
@@ -508,23 +587,31 @@ def _sort_and_trim(columns, valid, length):
     return columns, valid
 
 
-def _normalize_flux(flux, flux_err, valid, mode):
+def _normalize_flux(flux, flux_err, valid, settings: EncodingSettings):
     """Center and rescale each object's flux, applying the same scale to its error.
 
     Per-object rather than per-batch: raw fluxes span orders of magnitude across bands and
     objects, and TS2Vec applies no normalization of its own. The shared scale is what keeps
     the error interpretable next to the flux.
+
+    Two guards keep one bad measurement from dominating a batch. The scale is floored at the
+    object's median flux error: scatter below the noise is not resolvable, and a bright, quiet
+    star would otherwise be divided by a scale close to zero. The result is then clipped to
+    ``+-settings.clip_sigma``. A genuine 1e5-sigma point is still an outlier at the clip, but
+    the contrastive loss, which is built on dot products, no longer sees its square - one such
+    point is enough to spike the loss and stall AdamW for thousands of batches.
     """
-    if mode is False:
+    if settings.normalize is False:
         return flux, flux_err
 
     observed = np.where(valid, flux, np.nan)
+    observed_err = np.where(valid, flux_err, np.nan)
 
     # An object with no valid observations makes every reduction below an all-NaN slice.
     # Those rows are masked off entirely at the end, so warning about them is just noise.
     with warnings.catch_warnings():
         warnings.simplefilter("ignore", RuntimeWarning)
-        if mode == "median_mad":
+        if settings.normalize == "median_mad":
             center = np.nanmedian(observed, axis=1, keepdims=True)
             scale = MAD_TO_SIGMA * np.nanmedian(np.abs(observed - center), axis=1, keepdims=True)
             # A MAD of zero means over half the points are identical; fall back to std.
@@ -532,13 +619,25 @@ def _normalize_flux(flux, flux_err, valid, mode):
         else:  # "zscore", validated by EncodingSettings
             center = np.nanmean(observed, axis=1, keepdims=True)
             scale = np.nanstd(observed, axis=1, keepdims=True)
+        noise_floor = np.nanmedian(observed_err, axis=1, keepdims=True)
 
-    # A constant light curve: centering still means something, rescaling does not. This
-    # also catches the NaN scale of an all-invalid row.
+    # fmax ignores NaN, so a finite floor still applies to a degenerate scale, and only an
+    # all-invalid row (NaN on both sides) falls through to the fallback below.
+    scale = np.fmax(scale, noise_floor)
+
+    # A constant light curve with no error estimate: centering still means something,
+    # rescaling does not. This also catches the NaN scale of an all-invalid row.
     scale = np.where(scale > 0.0, scale, 1.0)
     center = np.where(np.isfinite(center), center, 0.0)
 
-    return (flux - center) / scale, flux_err / scale
+    flux = (flux - center) / scale
+    flux_err = flux_err / scale
+
+    if settings.clip_sigma is not None:
+        flux = np.clip(flux, -settings.clip_sigma, settings.clip_sigma)
+        flux_err = np.clip(flux_err, -settings.clip_sigma, settings.clip_sigma)
+
+    return flux, flux_err
 
 
 def _band_indices(band, valid, settings: EncodingSettings):
@@ -578,6 +677,10 @@ def build_event_sequence(data_dict: dict, config: dict) -> np.ndarray:
         2                      log1p of the gap since the previous observation (0 for the first)
         3 .. 3 + len(bands)    one-hot band indicator
 
+    The normalization scale is never smaller than the object's median flux error, and
+    channels 0 and 1 are clipped to ``+-clip_sigma``, so a single bad measurement cannot
+    dominate a batch; see :func:`_normalize_flux`.
+
     Uneven sampling is therefore carried as a *feature* (channel 2) rather than being
     resampled away, and a light curve that spans several filters stays a single sequence.
     Cross-matching more surveys to add bands only widens the one-hot block; the encoder
@@ -616,7 +719,7 @@ def build_event_sequence(data_dict: dict, config: dict) -> np.ndarray:
     time, flux, flux_err = columns[0], columns[1], columns[2]
     band = columns[3] if band is not None else None
 
-    flux, flux_err = _normalize_flux(flux, flux_err, valid, settings.normalize)
+    flux, flux_err = _normalize_flux(flux, flux_err, valid, settings)
 
     # Log-compressed because season-length gaps otherwise dwarf intra-night cadence. The
     # first observation of each object has no predecessor, and neither does one whose
@@ -673,7 +776,7 @@ class HyraxTs2Vec(nn.Module):
     but it does mean Hyrax logs one benign "Both model and config define an optimizer"
     warning per run.
 
-    Differences from the reference implementation, both deliberate:
+    Differences from the reference implementation, all deliberate:
 
     - No SWA. The reference wraps the encoder in ``torch.optim.swa_utils.AveragedModel`` and
       encodes from the averaged weights. Skipped here: it puts non-gradient parameters into
@@ -682,6 +785,12 @@ class HyraxTs2Vec(nn.Module):
     - No ``max_train_length`` splitting. The reference chops over-long series into segments
       stacked along the batch axis before training. Sequence length is instead bounded by the
       dataset's ``max_sequence_length``.
+    - Crops land on observations. The reference slides its random crop anywhere on the time
+      axis, which is fine for dense series but on right-padded light curves contrasts mostly
+      padding against padding. Here each batch is trimmed to its longest observed span and
+      each row's crop is placed on that row's own observations; see :meth:`_contrastive_loss`.
+      Dense input is cropped as in the reference, except that a view's context may run past
+      the ends of the axis.
     """
 
     def __init__(self, config):
@@ -746,16 +855,39 @@ class HyraxTs2Vec(nn.Module):
         return x
 
     def _contrastive_loss(self, x):
-        """Encode two overlapping random crops of ``x`` and return their contrastive loss."""
+        """Encode two overlapping random crops of ``x`` and return their contrastive loss.
+
+        The crop geometry is the reference's: a shared window of ``crop_l`` timesteps that
+        both views contain, each with a different amount of context on one side. What differs
+        is where that window lands. The reference slides it anywhere on the time axis, which
+        on right-padded light curves puts most of the contrasted positions on padding. Here
+        the batch is first trimmed to its longest observed span, and each row's window is then
+        placed on that row's own observations (see :func:`crop_start_bounds`). A view's context
+        may run past the ends of a curve into NaN, which the encoder masks exactly as it masks
+        the zero padding at the edge of any window.
+        """
         min_length = 2 ** (self.temporal_unit + 1)
-        ts_l = x.size(1)
-        if ts_l < min_length:
+        if x.size(1) < min_length:
             raise RuntimeError(
                 f"HyraxTs2Vec needs sequences of at least {min_length} timesteps for "
-                f"temporal_unit={self.temporal_unit}, but got {ts_l}. Either raise "
+                f"temporal_unit={self.temporal_unit}, but got {x.size(1)}. Either raise "
                 "config['model']['HyraxTs2Vec']['max_sequence_length'] or lower "
                 "config['model']['HyraxTs2Vec']['temporal_unit']."
             )
+
+        first, last = valid_span(x)
+
+        # Drop the columns that are padding for every row, so the crop length drawn below is
+        # relative to the data in this batch rather than to max_sequence_length. Keep at least
+        # min_length columns so the shortest allowed crop still fits.
+        start = int(first.min())
+        stop = min(x.size(1), max(int(last.max()) + 1, start + min_length))
+        start = min(start, stop - min_length)
+        if (start, stop) != (0, x.size(1)):
+            x = x[:, start:stop]
+            first = first - start
+            last = last - start
+        ts_l = x.size(1)
 
         # Two crops that overlap on a shared window of crop_l timesteps, each seeing a
         # different amount of surrounding context. The shared window is what the loss
@@ -765,14 +897,24 @@ class HyraxTs2Vec(nn.Module):
         crop_right = crop_left + crop_l
         crop_eleft = np.random.randint(crop_left + 1)
         crop_eright = np.random.randint(low=crop_right, high=ts_l + 1)
-        crop_offset = np.random.randint(low=-crop_eleft, high=ts_l - crop_eright + 1, size=x.size(0))
+        left_context = crop_left - crop_eleft
+        right_context = crop_eright - crop_right
+
+        # Pad the axis by the two context lengths so a window placed at either end of a curve
+        # still has room for its context, then draw each row's window start on that row's own
+        # observations. In the padded tensor the first view starts where the window starts
+        # and the second view starts left_context later; their shared crop_l timesteps are
+        # the window.
+        padded = F.pad(x, (0, 0, left_context, right_context), value=float("nan"))
+        lo, hi = crop_start_bounds(first, last, crop_l, ts_l)
+        window_start = np.random.randint(lo, hi + 1)
 
         # self.forward rather than self.encoder so a DDP-wrapped self still routes through
         # the wrapper and synchronizes gradients.
-        out1 = self.forward(take_per_row(x, crop_offset + crop_eleft, crop_right - crop_eleft))
+        out1 = self.forward(take_per_row(padded, window_start, left_context + crop_l))
         out1 = out1[:, -crop_l:]
 
-        out2 = self.forward(take_per_row(x, crop_offset + crop_left, crop_eright - crop_left))
+        out2 = self.forward(take_per_row(padded, window_start + left_context, crop_l + right_context))
         out2 = out2[:, :crop_l]
 
         return self.criterion(out1, out2)
