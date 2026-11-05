@@ -20,6 +20,8 @@ from hyrax.models.hyrax_ts2vec import (
     EncodingSettings,
     HyraxTs2Vec,
     build_event_sequence,
+    crop_start_bounds,
+    valid_span,
 )
 
 TIME_FIELD = "lc_time"
@@ -34,6 +36,7 @@ def make_config(
     bands=None,
     max_sequence_length=8,
     normalize="median_mad",
+    clip_sigma=20.0,
     **model_overrides,
 ):
     """A config carrying only the keys the encoding reads, plus any model overrides."""
@@ -47,6 +50,7 @@ def make_config(
                 "bands": BANDS if bands is None else bands,
                 "max_sequence_length": max_sequence_length,
                 "normalize": normalize,
+                "clip_sigma": clip_sigma,
                 **model_overrides,
             }
         }
@@ -196,10 +200,13 @@ def test_first_observation_has_no_gap():
 
 
 def test_median_mad_normalization_centers_and_rescales():
-    """Robust to an outburst: the median and MAD ignore the one extreme point."""
+    """Robust to an outburst: the median and MAD ignore the one extreme point.
+
+    Clipping is off so the outburst's full 164-sigma value can be checked against the math.
+    """
     fluxes = [10.0, 12.0, 14.0, 16.0, 500.0]
     samples = [light_curve(np.arange(5.0), fluxes=fluxes, errors=np.full(5, 2.0), bands=["g"] * 5)]
-    series = build_event_sequence(collate(samples), make_config(normalize="median_mad"))
+    series = build_event_sequence(collate(samples), make_config(normalize="median_mad", clip_sigma=False))
 
     center = np.median(fluxes)
     scale = MAD_TO_SIGMA * np.median(np.abs(np.asarray(fluxes) - center))
@@ -228,11 +235,63 @@ def test_normalization_can_be_disabled():
 
 
 def test_constant_light_curve_is_centered_but_not_rescaled():
-    """A MAD of zero falls back to std, and a std of zero to a scale of one."""
-    samples = [light_curve(np.arange(4.0), fluxes=np.full(4, 7.5), bands=["g"] * 4)]
+    """With no scatter and no error estimate, the scale falls all the way back to one."""
+    samples = [light_curve(np.arange(4.0), fluxes=np.full(4, 7.5), errors=np.zeros(4), bands=["g"] * 4)]
     series = build_event_sequence(collate(samples), make_config(normalize="median_mad"))
 
     np.testing.assert_allclose(series[0, :4, FLUX_CHANNEL], 0.0, atol=1e-6)
+    np.testing.assert_allclose(series[0, :4, FLUX_ERR_CHANNEL], 0.0, atol=1e-6)
+
+
+@pytest.mark.parametrize("normalize", ["median_mad", "zscore"])
+def test_normalization_scale_is_floored_at_the_median_flux_error(normalize):
+    """A curve quieter than its own noise is scaled by the noise, not by its tiny scatter.
+
+    The fluxes here are exactly representable in float32, so the expected values are exact.
+    """
+    fluxes = [1000.0, 1000.5, 999.5, 1000.25, 999.75]  # scatter ~0.3, far below the error
+    errors = np.full(5, 10.0)
+    samples = [light_curve(np.arange(5.0), fluxes=fluxes, errors=errors, bands=["g"] * 5)]
+    series = build_event_sequence(collate(samples), make_config(normalize=normalize))
+
+    expected = (np.asarray(fluxes) - 1000.0) / 10.0
+    np.testing.assert_allclose(series[0, :5, FLUX_CHANNEL], expected, rtol=1e-6)
+    np.testing.assert_allclose(series[0, :5, FLUX_ERR_CHANNEL], 1.0, rtol=1e-6)
+
+
+def test_normalized_flux_and_error_are_clipped_to_clip_sigma():
+    """One bad photometric point saturates at clip_sigma instead of becoming a 1e7-sigma input."""
+    fluxes = [1000.0, 1000.5, 999.5, 1000.25, 999.75, 1e8, -1e8]
+    errors = [10.0, 10.0, 10.0, 10.0, 10.0, 1e9, 10.0]
+    samples = [light_curve(np.arange(7.0), fluxes=fluxes, errors=errors, bands=["g"] * 7)]
+    series = build_event_sequence(collate(samples), make_config(clip_sigma=20.0))
+
+    assert series[0, 5, FLUX_CHANNEL] == 20.0
+    assert series[0, 6, FLUX_CHANNEL] == -20.0
+    assert series[0, 5, FLUX_ERR_CHANNEL] == 20.0
+    assert np.all(np.abs(series[0, :7, : N_LEADING_CHANNELS - 1]) <= 20.0)
+    # The quiet points are untouched by the clip.
+    quiet = (np.asarray(fluxes[:5]) - 1000.0) / 10.0
+    np.testing.assert_allclose(series[0, :5, FLUX_CHANNEL], quiet, rtol=1e-6)
+
+
+def test_clipping_can_be_disabled():
+    """clip_sigma = false hands the full normalized value through."""
+    fluxes = [1000.0, 1000.5, 999.5, 1000.25, 999.75, 1e8]
+    errors = np.full(6, 10.0)
+    samples = [light_curve(np.arange(6.0), fluxes=fluxes, errors=errors, bands=["g"] * 6)]
+    series = build_event_sequence(collate(samples), make_config(clip_sigma=False))
+
+    np.testing.assert_allclose(series[0, 5, FLUX_CHANNEL], (1e8 - 1000.0) / 10.0, rtol=1e-6)
+
+
+def test_clipping_does_not_touch_raw_fluxes():
+    """Without normalization the fluxes are in physical units, where a cap of 20 means nothing."""
+    fluxes = [100.0, 200.0, 300.0]
+    samples = [light_curve(np.arange(3.0), fluxes=fluxes, bands=["g"] * 3)]
+    series = build_event_sequence(collate(samples), make_config(normalize=False, clip_sigma=20.0))
+
+    np.testing.assert_allclose(series[0, :3, FLUX_CHANNEL], fluxes)
 
 
 def test_normalization_is_per_object_not_per_batch():
@@ -387,6 +446,10 @@ def test_mismatched_column_shapes_are_rejected():
         ({"max_sequence_length": False}, "positive integer"),
         ({"max_sequence_length": 0}, "positive integer"),
         ({"normalize": "robust"}, "must be one of"),
+        ({"clip_sigma": 0}, "positive number"),
+        ({"clip_sigma": -5.0}, "positive number"),
+        ({"clip_sigma": True}, "positive number"),
+        ({"clip_sigma": "20"}, "positive number"),
     ],
 )
 def test_encoding_settings_reject_bad_values(overrides, match):
@@ -431,6 +494,8 @@ def test_default_config_ships_every_encoding_key():
 
     assert settings.n_channels == N_LEADING_CHANNELS + len(settings.bands)
     assert settings.max_sequence_length > 0
+    # Clipping ships enabled: one bad measurement must not be able to stall training.
+    assert settings.clip_sigma is not None and settings.clip_sigma > 0
 
 
 def test_prepare_inputs_reads_the_config_from_the_run_context(hyrax_config, _context):
@@ -494,3 +559,184 @@ def test_infer_batch_keeps_every_row(hyrax_config):
         output = model.infer_batch(torch.from_numpy(series))
 
     assert output.shape[0] == 2
+
+
+#
+# Crop placement
+#
+
+
+def test_valid_span_ignores_interior_gaps_and_reports_the_whole_axis_for_an_empty_row():
+    """The span runs from the first observation to the last, whatever lies between them."""
+    import torch
+
+    x = torch.full((3, 6, 2), float("nan"))
+    x[0, 1:5] = 0.0
+    x[0, 3, 0] = float("nan")  # a gap inside the span does not shrink it
+    x[1, 5] = 0.0
+
+    first, last = valid_span(x)
+
+    np.testing.assert_array_equal(first, [1, 5, 0])
+    np.testing.assert_array_equal(last, [4, 5, 5])
+
+
+def test_crop_start_bounds_for_a_fully_observed_row_match_the_reference():
+    """Dense input is cropped as the reference crops it: any start on the axis."""
+    lo, hi = crop_start_bounds(first=[0], last=[15], crop_length=6, ts_l=16)
+
+    assert (lo[0], hi[0]) == (0, 10)
+
+
+def test_crop_start_bounds_keep_a_fitting_crop_on_the_observations():
+    """Observed on [3, 10] with a crop of 4: starts 3..7 keep every timestep observed."""
+    lo, hi = crop_start_bounds(first=[3], last=[10], crop_length=4, ts_l=16)
+
+    assert (lo[0], hi[0]) == (3, 7)
+
+
+@pytest.mark.parametrize(
+    ("first", "last", "expected"),
+    [
+        (5, 7, (2, 5)),  # mid-axis: starts 2..5 all contain 5..7
+        (0, 1, (0, 0)),  # at the left edge: only a crop starting at 0 contains it and stays on the axis
+        (14, 15, (10, 10)),  # at the right edge: only the last possible start reaches it
+    ],
+)
+def test_crop_start_bounds_cover_a_span_shorter_than_the_crop(first, last, expected):
+    """When the crop is longer than the span, every start keeps the whole span inside the crop."""
+    lo, hi = crop_start_bounds(first=[first], last=[last], crop_length=6, ts_l=16)
+
+    assert (lo[0], hi[0]) == expected
+
+
+def test_crop_start_bounds_are_never_empty():
+    """Every (span, crop) combination leaves at least one start on the axis."""
+    rng = np.random.default_rng(0)
+    for _ in range(500):
+        ts_l = int(rng.integers(1, 40))
+        crop_length = int(rng.integers(1, ts_l + 1))
+        first = rng.integers(0, ts_l, size=8)
+        last = np.array([rng.integers(f, ts_l) for f in first])
+
+        lo, hi = crop_start_bounds(first, last, crop_length, ts_l)
+
+        assert np.all(lo <= hi)
+        assert np.all(lo >= 0)
+        assert np.all(hi <= ts_l - crop_length)
+
+
+def _record_crops(monkeypatch, model, x, draws):
+    """Run ``_contrastive_loss`` ``draws`` times and report what each row was contrasted on.
+
+    Returns, per draw, the list of per-row shared windows (as slices of the padded input the
+    encoder saw) and the lengths of the two views.
+    """
+    from hyrax.models import hyrax_ts2vec as module
+
+    calls = []
+    real_take_per_row = module.take_per_row
+
+    def spy(tensor, indices, num_elem):
+        calls.append((tensor, np.asarray(indices), num_elem))
+        return real_take_per_row(tensor, indices, num_elem)
+
+    monkeypatch.setattr(module, "take_per_row", spy)
+
+    recorded = []
+    for _ in range(draws):
+        calls.clear()
+        model._contrastive_loss(x)
+        (padded, start1, len1), (_, start2, len2) = calls
+        # The second view starts left_context after the first; the window is what remains of
+        # the first view after that context.
+        crop_l = len1 - int((start2 - start1)[0])
+        windows = [padded[row, s : s + crop_l] for row, s in enumerate(start2)]
+        recorded.append((windows, (len1, len2)))
+    return recorded
+
+
+def test_crops_are_contrasted_on_each_objects_observations(hyrax_config, monkeypatch):
+    """Rows of very different lengths: the shared window never sits on padding alone."""
+    import torch
+
+    lengths = (2, 5, 16)
+    samples = [light_curve(np.arange(n, dtype=float), bands=["g"] * n) for n in lengths]
+    x = torch.from_numpy(build_event_sequence(collate(samples), hyrax_config))
+    model = HyraxTs2Vec(hyrax_config)
+
+    np.random.seed(0)
+    for windows, _ in _record_crops(monkeypatch, model, x, draws=40):
+        for n, window in zip(lengths, windows, strict=True):
+            observed = ~torch.isnan(window).any(dim=-1)
+            if observed.size(0) <= n:
+                # The window fits inside the curve, so it must be fully observed.
+                assert observed.all()
+            else:
+                # The window is longer than the curve, so it must hold every observation.
+                assert int(observed.sum()) == n
+
+
+def test_batches_are_trimmed_to_their_longest_observed_span(hyrax_config, monkeypatch):
+    """Crop lengths are drawn relative to the data in the batch, not max_sequence_length."""
+    import torch
+
+    lengths = (3, 6)
+    samples = [light_curve(np.arange(n, dtype=float), bands=["g"] * n) for n in lengths]
+    x = torch.from_numpy(build_event_sequence(collate(samples), hyrax_config))
+    assert x.shape[1] == hyrax_config["model"]["HyraxTs2Vec"]["max_sequence_length"] == 16
+    model = HyraxTs2Vec(hyrax_config)
+
+    np.random.seed(0)
+    for _, (len1, len2) in _record_crops(monkeypatch, model, x, draws=40):
+        assert max(len1, len2) <= max(lengths)
+
+
+def test_a_batch_of_single_observation_curves_still_trains(hyrax_config):
+    """Trimming never goes below the shortest allowed crop, so a tiny batch is not an error."""
+    import torch
+
+    hyrax_config["model"]["HyraxTs2Vec"]["temporal_unit"] = 1  # shortest crop: 4 timesteps
+    samples = [light_curve([1.0], bands=["g"]), light_curve([2.0], bands=["r"])]
+    x = torch.from_numpy(build_event_sequence(collate(samples), hyrax_config))
+    model = HyraxTs2Vec(hyrax_config)
+
+    metrics = model.train_batch(x)
+
+    assert np.isfinite(float(metrics["loss"]))
+
+
+def test_sequences_shorter_than_the_minimum_crop_are_rejected(hyrax_config):
+    """A time axis that cannot hold one crop is a configuration error, reported as such."""
+    import torch
+
+    hyrax_config["model"]["HyraxTs2Vec"]["max_sequence_length"] = 2
+    hyrax_config["model"]["HyraxTs2Vec"]["temporal_unit"] = 1
+    samples = [light_curve([1.0, 2.0], bands=["g", "g"])]
+    x = torch.from_numpy(build_event_sequence(collate(samples), hyrax_config))
+    model = HyraxTs2Vec(hyrax_config)
+
+    with pytest.raises(RuntimeError, match="at least 4 timesteps"):
+        model.train_batch(x)
+
+
+def test_ragged_training_batch_gives_a_finite_loss(hyrax_config):
+    """End to end on a batch shaped like real light curves: short, long and in between."""
+    import torch
+
+    rng = np.random.default_rng(1)
+    samples = [
+        light_curve(
+            np.sort(rng.uniform(0.0, 100.0, n)),
+            fluxes=rng.normal(500.0, 50.0, n),
+            errors=np.full(n, 40.0),
+            bands=rng.choice(BANDS, n),
+        )
+        for n in (1, 3, 9, 16)
+    ]
+    x = torch.from_numpy(build_event_sequence(collate(samples), hyrax_config))
+    model = HyraxTs2Vec(hyrax_config)
+
+    for _ in range(3):
+        metrics = model.train_batch(x)
+        assert np.isfinite(float(metrics["loss"]))
