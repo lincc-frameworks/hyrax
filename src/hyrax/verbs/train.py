@@ -17,6 +17,7 @@ from hyrax.pytorch_ignite import (
     dist_data_loader,
     setup_dataset,
     setup_model,
+    shutdown_workers,
 )
 from hyrax.splitting_utils import create_splits
 from hyrax.tensorboardx_logger import close_tensorboard_logger, init_tensorboard_logger
@@ -148,10 +149,14 @@ class Train(Verb):
 
         data_loaders = {}
         for split_name in dataset_splits:
+            to_shuffle = split_name == "train" and train_shuffle
+            # don't persist workers when shuffling
+            to_persist = (not to_shuffle) and (config["data_loader"].get("num_workers", 0) > 0)
             data_loaders[split_name] = dist_data_loader(
                 dataset[split_name],
                 config,
-                shuffle=split_name == "train" and train_shuffle,
+                shuffle=to_shuffle,
+                persistent_workers=to_persist,
             )
 
         train_data_loader = data_loaders["train"]
@@ -201,6 +206,7 @@ class Train(Verb):
             model.save(results_dir / config["train"]["weights_filename"])
         finally:
             monitor.stop()
+            shutdown_workers([train_data_loader, validation_data_loader])
 
         logger.info("Finished Training")
         close_tensorboard_logger()
