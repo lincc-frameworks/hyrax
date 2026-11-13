@@ -239,7 +239,16 @@ max_sequence_length = 256
 #   false        -> leave raw fluxes alone
 # Raw fluxes span orders of magnitude across bands and objects, and TS2Vec applies no
 # normalization of its own, so disabling this will usually stall training.
+# The scale is floored at the object's median flux error, so a bright, quiet star is not
+# divided by a scale close to zero.
 normalize = "median_mad"
+
+# After normalization, the flux and flux-error channels are clipped to +-clip_sigma (in units
+# of the per-object scale). One bad measurement on a high signal-to-noise star can otherwise
+# come out at 1e5 sigma; the contrastive loss squares that, and the single resulting gradient
+# stalls AdamW for thousands of batches. Set to false to disable. No effect when
+# normalize = false.
+clip_sigma = 20.0
 
 
 [criterion]
