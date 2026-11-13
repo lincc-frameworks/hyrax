@@ -43,14 +43,22 @@ jobs:
           # path to downloaded cifar dataset
           # currently gondor-specific path, should be changed for other environments
           export CIFAR_DIR="/astro/store/shiren/wqy37/datasets"
+          # path to the HSC1k cutouts (downloaded on first use)
+          export HSC_DIR="/astro/store/shiren/wqy37/datasets"
 
           # path for saving the result
           # currently gondor-specific path, should be changed for other environments
           export RESULT_PATH="/astro/store/shiren/wqy37/results"
 
-          OUTPUT=$(python benchmarks_self_hosted/run_timebench.py)
-          RESULT_FILE=$(echo "$OUTPUT" | grep '^RESULT_FILE=' | cut -d= -f2-)
-          echo "result_file=$RESULT_FILE" >> "$GITHUB_OUTPUT"
+          # run_timebench.py prints one RESULT_FILE=<path> line per benchmark it runs
+          # (CIFAR-10 CNN and HSC1k autoencoder; see benchmarks_self_hosted/README.md)
+          OUTPUT=$(python benchmarks_self_hosted/run_timebench.py --benchmark all)
+          RESULT_FILES=$(echo "$OUTPUT" | grep '^RESULT_FILE=' | cut -d= -f2-)
+          {
+            echo "result_files<<EOF"
+            echo "$RESULT_FILES"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Configure git
         run: |
@@ -67,7 +75,9 @@ jobs:
       - name: Publish benchmark results to benchmarks branch
         run: |
           mkdir -p gondor_results
-          cp "${{ steps.benchmark.outputs.result_file }}" gondor_results/
+          echo "${{ steps.benchmark.outputs.result_files }}" | while read -r RESULT_FILE; do
+            [ -n "$RESULT_FILE" ] && cp "$RESULT_FILE" gondor_results/
+          done
 
           # check if copied any files
           if [ -z "$(find gondor_results -maxdepth 1 -type f -name '*.json' 2>/dev/null)" ]; then
