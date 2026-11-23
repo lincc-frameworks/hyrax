@@ -74,6 +74,7 @@ def benchmark_hyrax(train_fraction=1.0, epochs=10, batch_size=512, num_workers=0
         },
     }
     h.set_config("data_request", data_request_definition)
+    h.set_config("model.parallel_prepare_inputs", True)
 
     split = {"train": train_fraction}
     h.set_config("split", split)

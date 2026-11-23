@@ -2,8 +2,9 @@ import functools
 import logging
 import warnings
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Union
 
 import ignite.distributed as idist
 import numpy as np
@@ -184,6 +185,32 @@ def setup_model(config: dict) -> torch.nn.Module:
     return model_cls(config=config)  # type: ignore[attr-defined]
 
 
+@dataclass
+class HyraxBatchContainer:
+    """
+    HyraxBatchContainer is a hyrax internal container that holds IDs next to a batch of input data to a model.
+
+    When we are operating with prepare_inputs parallelized in the dataloader, the dataloader's output is
+    entirely model dependent so we cannot ensure that IDs are present (which we need for inference and
+    test verbs).
+
+    This container allows us to pair a set of IDs with the output of prepare_inputs as the last step in the
+    dataloader (See wrapped_collate in dist_data_loader below). This object becomes our "batch" for the
+    purpose of pytorch Ignite's main loop.
+
+    Later on when our process function is called (see create_process_func and _inner_loop) we unwrap this
+    container so that the <verb>_batch functions on the model only see the output of the Models own
+    prepare_inputs. When we save results from testing (see create_save_batch and _save_batch) we rely on the
+    batch to be again this object in order to extract and save ids separate from model output.
+
+    Field names are designed to be obviously hyrax_internel in case this object is ever inspected
+    outside of hyrax.
+    """
+
+    _hyrax_ids: Any
+    _hyrax_batch: Any
+
+
 def dist_data_loader(
     dataset: Dataset,
     config: dict,
@@ -238,7 +265,9 @@ def dist_data_loader(
 
         def wrapped_collate(*args, **kwargs):
             collated_batch = dataset.collate(*args, **kwargs)
-            return prepare_inputs(collated_batch)
+            batch = prepare_inputs(collated_batch)
+            ids = collated_batch["object_id"]
+            return HyraxBatchContainer(_hyrax_ids=ids, _hyrax_batch=batch)
 
     # Iterable (streaming) datasets have no length and cannot be indexed, so the
     # map-style machinery below (len/Subset/samplers) does not apply. Such a dataset
@@ -326,7 +355,12 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
     # Pass the collated batch through the model's prepare_inputs function
     # if needed
-    if not config["model"]["parallel_prepare_inputs"]:
+    if config["model"]["parallel_prepare_inputs"]:
+        if not isinstance(batch, HyraxBatchContainer):
+            raise RuntimeError(f"_inner_loop given a batch of type {type(batch)}")
+        hyrax_batch = batch
+        batch = hyrax_batch._hyrax_batch
+    else:
         batch = prepare_inputs(batch)
 
     # Convert the data to numpy and place it on the device explicitly.
@@ -913,7 +947,7 @@ def create_save_batch_callback(results_dir):
 
     data_writer = create_results_writer(results_dir)
 
-    def _save_batch(batch: dict, batch_results):
+    def _save_batch(batch: Union[dict, HyraxBatchContainer], batch_results):
         """Receive and write batch results to results_dir immediately."""
         nonlocal data_writer
 
@@ -921,13 +955,16 @@ def create_save_batch_callback(results_dir):
         batch_results = results_to_numpy(batch_results)
 
         # Verify that batch contains object_id
-        if "object_id" not in batch:
-            msg = "The data batch is missing the key: 'object_id'. "
-            msg += "Cannot save the model output."
-            logger.error(msg)
-            raise RuntimeError(msg)
+        if isinstance(batch, dict):
+            if "object_id" not in batch:
+                msg = "The data batch is missing the key: 'object_id'. "
+                msg += "Cannot save the model output."
+                logger.error(msg)
+                raise RuntimeError(msg)
 
-        batch_object_ids = batch["object_id"]
+            batch_object_ids = batch["object_id"]
+        elif isinstance(batch, HyraxBatchContainer):
+            batch_object_ids = batch._hyrax_ids
 
         # Ensure that everything to be written is in numpy format, and write it out
         data_writer.write_batch(np.array(batch_object_ids), batch_results)
