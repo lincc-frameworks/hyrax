@@ -358,10 +358,7 @@ def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     # config["model"]["parallelize_prepare_inputs"] is enabled
     # so prepare_inputs was already run by the collate function 
     # (see wrapped_collate in dist_data_loader)
-    if isinstance(batch, HyraxBatchContainer):
-        batch = batch._hyrax_batch
-    else:
-        batch = prepare_inputs(batch)
+    batch = batch._hyrax_batch if isinstance(batch, HyraxBatchContainer) else prepare_inputs(batch)
 
     # Convert the data to numpy and place it on the device explicitly.
     # This allows us to control when the tensor makes it on to the device without setting
