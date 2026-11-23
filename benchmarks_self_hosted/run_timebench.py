@@ -42,10 +42,10 @@ def main():
     JSON file will be saved to ./<commit>.json. If the environment variable RESULT_PATH is set,
     the file will be saved to that directory instead of default `benchmarks/results`.
     """
-    # pytorch_res = benchmark_repeated(
-    #     "pytorch",
-    #     **CONFIG,
-    # )
+    pytorch_res = benchmark_repeated(
+        "pytorch",
+        **CONFIG,
+    )
 
     hyrax_res = benchmark_repeated(
         "hyrax",
@@ -65,28 +65,28 @@ def main():
         "hyrax_infer_time": hyrax_res["infer_time_mean"],
         "hyrax_infer_std": hyrax_res["infer_time_std"],
         "hyrax_accuracy": hyrax_res["accuracy_mean"],
-        # "pytorch_train_time": pytorch_res["train_time_mean"],
-        # "pytorch_train_std": pytorch_res["train_time_std"],
-        # "pytorch_infer_time": pytorch_res["infer_time_mean"],
-        # "pytorch_infer_std": pytorch_res["infer_time_std"],
-        # "pytorch_accuracy": pytorch_res["accuracy_mean"],
+        "pytorch_train_time": pytorch_res["train_time_mean"],
+        "pytorch_train_std": pytorch_res["train_time_std"],
+        "pytorch_infer_time": pytorch_res["infer_time_mean"],
+        "pytorch_infer_std": pytorch_res["infer_time_std"],
+        "pytorch_accuracy": pytorch_res["accuracy_mean"],
     }
 
-    # result["train_slowdown"] = result["hyrax_train_time"] / result["pytorch_train_time"]
-    # result["infer_slowdown"] = result["hyrax_infer_time"] / result["pytorch_infer_time"]
-    # result["total_slowdown"] = (result["hyrax_train_time"] + result["hyrax_infer_time"]) / (
-    #     result["pytorch_train_time"] + result["pytorch_infer_time"]
-    # )
+    result["train_slowdown"] = result["hyrax_train_time"] / result["pytorch_train_time"]
+    result["infer_slowdown"] = result["hyrax_infer_time"] / result["pytorch_infer_time"]
+    result["total_slowdown"] = (result["hyrax_train_time"] + result["hyrax_infer_time"]) / (
+        result["pytorch_train_time"] + result["pytorch_infer_time"]
+    )
 
     short_result = {
         "device": get_device(),
         **CONFIG,
         "hyrax_train_time": hyrax_res["train_time_mean"],
-        # "pytorch_train_time": pytorch_res["train_time_mean"],
-        # "train_slowdown": result["train_slowdown"],
+        "pytorch_train_time": pytorch_res["train_time_mean"],
+        "train_slowdown": result["train_slowdown"],
         "hyrax_infer_time": hyrax_res["infer_time_mean"],
-        # "pytorch_infer_time": pytorch_res["infer_time_mean"],
-        # "infer_slowdown": result["infer_slowdown"],
+        "pytorch_infer_time": pytorch_res["infer_time_mean"],
+        "infer_slowdown": result["infer_slowdown"],
     }
 
     print(
