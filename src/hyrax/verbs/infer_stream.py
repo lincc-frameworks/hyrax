@@ -89,7 +89,7 @@ class InferStream(Verb):
         if config.get("data_request"):
             provider = setup_dataset(config, splits=InferStream.REQUIRED_DATA_GROUPS).get("infer_stream")
         if provider is not None:
-            data_loader = dist_data_loader(provider, config)
+            data_loader = dist_data_loader(provider, config, model=model)
 
         # set model in eval mode
         model.eval()

@@ -188,6 +188,7 @@ def dist_data_loader(
     dataset: Dataset,
     config: dict,
     shuffle: bool = False,
+    model: Module = None,
 ) -> DataLoader:
     """Create Pytorch Ignite distributed data loaders.
 
@@ -212,12 +213,32 @@ def dist_data_loader(
         deterministic order.  Ignored when ``split_weights`` is set (weighted
         sampling always draws with replacement).  Defaults to ``False`` so
         non-training verbs preserve deterministic order.
+    model : Module, optional
+        If provided, will be used to extract prepare_inputs to parallelize in the
+        created dataloader. This functionality is enabled by setting
+        config["model"]["parallel_prepare_inputs"] = True. Otherwise this parameter
+        is ignored.
 
     Returns
     -------
     DataLoader
         The distributed dataloader.
     """
+
+    # If we're parallelizing prepare_inputs, we need to insert it into the
+    # Dataset as a coda on the collate function. A similar stanza disables
+    # calling prepare_inputs in _inner_loop when this config is set.
+    wrap_collate = config["model"]["parallel_prepare_inputs"]
+    if wrap_collate:
+        if model is None:
+            msg = "parallel_prepare_inputs not supported for this verb."
+            logger.error(msg)
+
+        prepare_inputs = extract_model_method(model, "prepare_inputs")
+
+        def wrapped_collate(*args, **kwargs):
+            collated_batch = dataset.collate(*args, **kwargs)
+            return prepare_inputs(collated_batch)
 
     # Iterable (streaming) datasets have no length and cannot be indexed, so the
     # map-style machinery below (len/Subset/samplers) does not apply. Such a dataset
@@ -228,7 +249,7 @@ def dist_data_loader(
         stream_kwargs = dict(config["data_loader"])
         stream_kwargs.pop("shuffle", None)
         stream_kwargs["batch_size"] = None
-        stream_kwargs["collate_fn"] = dataset.collate
+        stream_kwargs["collate_fn"] = wrapped_collate if wrap_collate else dataset.collate
         # TODO: Revisit this to determine if we can support num_workers > 0.
         if stream_kwargs.get("num_workers", 0) != 0:
             logger.warning(
@@ -252,7 +273,7 @@ def dist_data_loader(
         data_loader_kwargs.pop("shuffle")
 
     # TODO: Actually DataProvider.collate. Callsites and parameter signature above have not been updated.
-    data_loader_kwargs["collate_fn"] = dataset.collate
+    data_loader_kwargs["collate_fn"] = wrapped_collate if wrap_collate else dataset.collate
 
     torch_rng = torch.Generator()
 
@@ -304,7 +325,9 @@ def dist_data_loader(
 def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
     # Pass the collated batch through the model's prepare_inputs function
-    batch = prepare_inputs(batch)
+    # if needed
+    if not config["model"]["parallel_prepare_inputs"]:
+        batch = prepare_inputs(batch)
 
     # Convert the data to numpy and place it on the device explicitly.
     # This allows us to control when the tensor makes it on to the device without setting

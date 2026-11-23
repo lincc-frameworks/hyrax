@@ -107,7 +107,7 @@ class Test(Verb):
             provider.on_epoch_start("test")
 
         # Determine which dataset to use for testing
-        test_data_loader = dist_data_loader(dataset["test"], config)
+        test_data_loader = dist_data_loader(dataset["test"], config, model=model)
 
         # Save the loaded model weights to the test results directory
         model.save(results_dir / "test_weights.pth")

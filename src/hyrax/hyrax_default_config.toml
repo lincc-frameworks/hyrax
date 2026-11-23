@@ -88,6 +88,10 @@ mask = false
 # to an external model. e.g. "HyraxAutoencoder", "user_pkg.model.ExternalModel"
 name = ""
 
+# Moves evaluation of prepare_inputs into the dataloader so parallelization occurs 
+# to the extent config["data_loader"]["num_workers"] permits
+parallel_prepare_inputs = false
+
 
 [model.HyraxAutoencoder]
 # The shape of one input image as [channels, height, width]. The layers are sized from
