@@ -354,12 +354,12 @@ def dist_data_loader(
 def _inner_loop(func, prepare_inputs, device, config, engine, batch):
     """This wraps a model-specific function (func) to move data to the appropriate device."""
     # Pass the collated batch through the model's prepare_inputs function
-    # if needed
-    if config["model"]["parallel_prepare_inputs"]:
-        if not isinstance(batch, HyraxBatchContainer):
-            raise RuntimeError(f"_inner_loop given a batch of type {type(batch)}")
-        hyrax_batch = batch
-        batch = hyrax_batch._hyrax_batch
+    # if needed. A batch of type HyraxBatchContainer indicates 
+    # config["model"]["parallelize_prepare_inputs"] is enabled
+    # so prepare_inputs was already run by the collate function 
+    # (see wrapped_collate in dist_data_loader)
+    if isinstance(batch, HyraxBatchContainer):
+        batch = batch._hyrax_batch
     else:
         batch = prepare_inputs(batch)
 
