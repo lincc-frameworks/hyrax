@@ -152,6 +152,7 @@ class Train(Verb):
                 dataset[split_name],
                 config,
                 shuffle=split_name == "train" and train_shuffle,
+                model=model,
             )
 
         train_data_loader = data_loaders["train"]

@@ -6,6 +6,7 @@ import torch
 from ignite.engine import Engine
 
 from hyrax.pytorch_ignite import (
+    HyraxBatchContainer,
     HyraxEvents,
     _attach_epoch_metric_averaging,
     _batch_sample_count,
@@ -162,26 +163,43 @@ class TestSetupDataset:
             assert result["infer"] is sentinel
 
 
-class TestInnerLoop:
-    """Tests for the _inner_loop function, specifically focused on None handling."""
+def _call_inner_loop(func, device, config, engine, batch, wrap):
+    """Call _inner_loop with ``batch`` either bare or packaged in a HyraxBatchContainer.
 
-    def test_inner_loop_with_tuple_containing_none(self):
+    Bare batches go through an identity prepare_inputs. Packaged batches simulate
+    parallel_prepare_inputs, where prepare_inputs already ran in the dataloader, so
+    _inner_loop must not call it again.
+    """
+    if wrap:
+        mock_prepare_inputs = MagicMock()
+        container = HyraxBatchContainer(_hyrax_ids=np.array(["a", "b"]), _hyrax_batch=batch)
+        _inner_loop(func, mock_prepare_inputs, device, config, engine, container)
+        assert not mock_prepare_inputs.called
+    else:
+        _inner_loop(func, lambda batch: batch, device, config, engine, batch)
+
+
+class TestInnerLoop:
+    """Tests for the _inner_loop function, specifically focused on None handling.
+
+    Each test runs with the batch bare and packaged in a HyraxBatchContainer.
+    """
+
+    @pytest.mark.parametrize("wrap", [False, True])
+    def test_inner_loop_with_tuple_containing_none(self, wrap):
         """Test that _inner_loop handles tuples with None values correctly."""
         # Create test data
         test_array = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
         test_batch = (test_array, None)  # Simulate missing labels
 
         # Mock functions
-        def mock_prepare_inputs(batch):
-            return batch
-
         mock_func = MagicMock(return_value={"loss": 1.0})
         device = torch.device("cpu")
         config = {}
         engine = MagicMock()
 
         # Call _inner_loop
-        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+        _call_inner_loop(mock_func, device, config, engine, test_batch, wrap)
 
         # Verify the function was called with a tuple where the second element is None
         assert mock_func.called
@@ -191,29 +209,28 @@ class TestInnerLoop:
         assert isinstance(called_batch[0], torch.Tensor)
         assert called_batch[1] is None
 
-    def test_inner_loop_with_none_batch(self):
+    @pytest.mark.parametrize("wrap", [False, True])
+    def test_inner_loop_with_none_batch(self, wrap):
         """Test that _inner_loop handles None batch correctly."""
         # Create test data
         test_batch = None
 
         # Mock functions
-        def mock_prepare_inputs(batch):
-            return batch
-
         mock_func = MagicMock(return_value={"loss": 1.0})
         device = torch.device("cpu")
         config = {}
         engine = MagicMock()
 
         # Call _inner_loop - should not raise an error
-        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+        _call_inner_loop(mock_func, device, config, engine, test_batch, wrap)
 
         # Verify the function was called with None
         assert mock_func.called
         called_batch = mock_func.call_args[0][0]
         assert called_batch is None
 
-    def test_inner_loop_with_normal_tuple(self):
+    @pytest.mark.parametrize("wrap", [False, True])
+    def test_inner_loop_with_normal_tuple(self, wrap):
         """Test that _inner_loop still works correctly with normal tuples (no None)."""
         # Create test data
         test_array1 = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
@@ -221,16 +238,13 @@ class TestInnerLoop:
         test_batch = (test_array1, test_array2)
 
         # Mock functions
-        def mock_prepare_inputs(batch):
-            return batch
-
         mock_func = MagicMock(return_value={"loss": 1.0})
         device = torch.device("cpu")
         config = {}
         engine = MagicMock()
 
         # Call _inner_loop
-        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+        _call_inner_loop(mock_func, device, config, engine, test_batch, wrap)
 
         # Verify the function was called with tensors
         assert mock_func.called
@@ -240,7 +254,8 @@ class TestInnerLoop:
         assert isinstance(called_batch[0], torch.Tensor)
         assert isinstance(called_batch[1], torch.Tensor)
 
-    def test_inner_loop_with_normal_dict(self):
+    @pytest.mark.parametrize("wrap", [False, True])
+    def test_inner_loop_with_normal_dict(self, wrap):
         """Test that _inner_loop still works correctly with normal dicts (no None)."""
         # Create test data
         test_array1 = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
@@ -248,16 +263,13 @@ class TestInnerLoop:
         test_batch = {"a": test_array1, "b": test_array2}
 
         # Mock functions
-        def mock_prepare_inputs(batch):
-            return batch
-
         mock_func = MagicMock(return_value={"loss": 1.0})
         device = torch.device("cpu")
         config = {}
         engine = MagicMock()
 
         # Call _inner_loop
-        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+        _call_inner_loop(mock_func, device, config, engine, test_batch, wrap)
 
         # Verify the function was called with tensors
         assert mock_func.called
@@ -267,23 +279,21 @@ class TestInnerLoop:
         assert isinstance(called_batch["a"], torch.Tensor)
         assert isinstance(called_batch["b"], torch.Tensor)
 
-    def test_inner_loop_with_dict_containing_none(self):
+    @pytest.mark.parametrize("wrap", [False, True])
+    def test_inner_loop_with_dict_containing_none(self, wrap):
         """Test that _inner_loop handles dicts with None values correctly"""
         # Create test data
         test_array1 = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
         test_batch = {"a": test_array1, "b": None}
 
         # Mock functions
-        def mock_prepare_inputs(batch):
-            return batch
-
         mock_func = MagicMock(return_value={"loss": 1.0})
         device = torch.device("cpu")
         config = {}
         engine = MagicMock()
 
         # Call _inner_loop
-        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_batch)
+        _call_inner_loop(mock_func, device, config, engine, test_batch, wrap)
 
         # Verify the function was called with tensors
         assert mock_func.called
@@ -293,22 +303,20 @@ class TestInnerLoop:
         assert isinstance(called_batch["a"], torch.Tensor)
         assert called_batch["b"] is None
 
-    def test_inner_loop_with_single_array(self):
+    @pytest.mark.parametrize("wrap", [False, True])
+    def test_inner_loop_with_single_array(self, wrap):
         """Test that _inner_loop works with a single array (not a tuple)."""
         # Create test data
         test_array = np.array([[1.0, 2.0], [3.0, 4.0]], dtype=np.float32)
 
         # Mock functions
-        def mock_prepare_inputs(batch):
-            return batch
-
         mock_func = MagicMock(return_value={"loss": 1.0})
         device = torch.device("cpu")
         config = {}
         engine = MagicMock()
 
         # Call _inner_loop
-        _inner_loop(mock_func, mock_prepare_inputs, device, config, engine, test_array)
+        _call_inner_loop(mock_func, device, config, engine, test_array, wrap)
 
         # Verify the function was called with a tensor
         assert mock_func.called

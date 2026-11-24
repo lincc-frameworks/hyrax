@@ -88,7 +88,7 @@ class Infer(Verb):
         for provider in dataset.values():
             provider.on_epoch_start("infer")
 
-        data_loader = dist_data_loader(dataset["infer"], config)
+        data_loader = dist_data_loader(dataset["infer"], config, model=model)
 
         load_model_weights(config, model, "infer")
         log_runtime_config(config, results_dir)
