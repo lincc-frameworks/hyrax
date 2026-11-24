@@ -255,8 +255,8 @@ def dist_data_loader(
     # If we're parallelizing prepare_inputs, we need to insert it into the
     # Dataset as a coda on the collate function. A similar stanza disables
     # calling prepare_inputs in _inner_loop when this config is set.
-    wrap_collate = config["model"]["parallel_prepare_inputs"]
-    if wrap_collate and model is not None:
+    wrap_collate = config["model"]["parallel_prepare_inputs"] and model is not None
+    if wrap_collate:
         prepare_inputs = extract_model_method(model, "prepare_inputs")
 
         def wrapped_collate(*args, **kwargs):
