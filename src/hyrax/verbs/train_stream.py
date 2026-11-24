@@ -91,7 +91,7 @@ class TrainStream(Verb):
         # on, so we must tear down the provider ourselves to avoid leaking them.
         try:
             model = setup_model(config)
-            data_loader = dist_data_loader(provider, config, model=model)
+            data_loader = dist_data_loader(provider, config)
 
             # Put the model in training mode, and place it on the correct device
             model.train()

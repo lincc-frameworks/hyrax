@@ -256,11 +256,7 @@ def dist_data_loader(
     # Dataset as a coda on the collate function. A similar stanza disables
     # calling prepare_inputs in _inner_loop when this config is set.
     wrap_collate = config["model"]["parallel_prepare_inputs"]
-    if wrap_collate:
-        if model is None:
-            msg = "parallel_prepare_inputs not supported for this verb."
-            logger.error(msg)
-
+    if wrap_collate and model is not None:
         prepare_inputs = extract_model_method(model, "prepare_inputs")
 
         def wrapped_collate(*args, **kwargs):
