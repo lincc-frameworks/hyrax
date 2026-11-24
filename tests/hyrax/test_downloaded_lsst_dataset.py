@@ -81,8 +81,8 @@ def test_init(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
         # Verify it has the right number of bands (channels)
         assert cutout.shape[0] == 3  # g, r, i bands
 
-        # Verify it is the first thing in the sample catalog
-        assert dataset.metadata([0], ["object_id"])[0][0] == 1001
+        # Verify the first object has the expected ID
+        assert dataset.get_object_id(0) == "1001"
 
 
 def test_download(mock_lsst_environment, lsst_config, tmp_path):  # noqa: F811
@@ -487,7 +487,7 @@ def test_catalog_ordering(mock_lsst_environment, lsst_config, tmp_path, sample_c
 
     # Get data for the first object
     first_object_id = catalog_data["object_id"][0]
-    assert first_object_id == dataset.metadata([0], ["object_id"])[0][0]
+    assert str(first_object_id) == dataset.get_object_id(0)
 
     # Truncate the sample catalog
     catalog_truncation_index = int(mocks.SAMPLE_CATALOG_LENGTH / 2.0)
@@ -526,7 +526,4 @@ def test_catalog_ordering(mock_lsst_environment, lsst_config, tmp_path, sample_c
         # index indexes the filtered dataset
         # value is the index in the original dataset
         assert (filtered_dataset[index]["data"]["image"] == dataset[value]["data"]["image"]).all()
-        assert (
-            filtered_dataset.metadata([index], ["object_id"])[0][0]
-            == dataset.metadata([value], ["object_id"])[0][0]
-        )
+        assert filtered_dataset.get_object_id(index) == dataset.get_object_id(value)

@@ -1,5 +1,4 @@
 import numpy as np
-from astropy.table import Table
 from torch.utils.data import Dataset
 
 from hyrax.datasets.dataset_registry import HyraxDataset
@@ -121,17 +120,7 @@ class HyraxRandomDatasetBase:
         if self.provided_labels:
             self.labels = rng.choice(self.provided_labels, size=data_size)
 
-        meta_fields = config["data_set"]["HyraxRandomDataset"]["metadata_fields"]
-
-        meta = {"object_id": [str(id) for id in self.id_list]}
-
-        for i, field in enumerate(meta_fields):
-            meta[field] = np.array(list(range(data_size, 0, -1))) / (i + 2)
-
-        # Create a metadata_table that is used when visualizing data
-        metadata_table = Table(meta)
-
-        super().__init__(config, metadata_table, "object_id")
+        super().__init__(config)
 
         self.data_location = data_location
 
