@@ -218,8 +218,10 @@ class ResultDataset(HyraxDataset):
 
         def _make_getter(column):
             def getter(self, idx, _col=column):
-                ret_val = self.__getitem__(idx)[_col]
-                return ret_val
+                # Only read and decode the requested column, not the whole row.
+                if isinstance(idx, (int, np.integer)):
+                    return self.fetch_columns([int(idx)], [_col])[_col][0]
+                return self.fetch_columns(idx, [_col])[_col]
 
             return getter
 
@@ -228,11 +230,13 @@ class ResultDataset(HyraxDataset):
             if not hasattr(self, method_name):
                 setattr(self, method_name, _make_getter(col).__get__(self))
 
+        self.table_len = self.table.count_rows()
+
         logger.debug(f"Opened Lance table with shape {self.tensor_shape} and dtype {self.tensor_dtype}")
 
     def __len__(self) -> int:
         """Return the number of records in the dataset."""
-        return self.table.count_rows()
+        return self.table_len
 
     def __getitem__(self, idx: Union[int, np.ndarray]):
         """Get data by index.
@@ -261,11 +265,10 @@ class ResultDataset(HyraxDataset):
             idx = np.array([idx]) if len(idx.shape) == 0 else idx  # scalar array
 
         # Validate indices
-        table_len = len(self)
         # Using vectorized check for out-of-range indices instead of loop for better performance
-        if np.any((idx < 0) | (idx >= table_len)):
-            bad = idx[(idx < 0) | (idx >= table_len)]
-            raise IndexError(f"Indices {bad} are out of range for dataset of length {table_len}")
+        if np.any((idx < 0) | (idx >= self.table_len)):
+            bad = idx[(idx < 0) | (idx >= self.table_len)]
+            raise IndexError(f"Indices {bad} are out of range for dataset of length {self.table_len}")
 
         # Use take for O(k) random access, where k is the number of indices.
         result = self.lance_dataset.take(idx)
@@ -285,6 +288,47 @@ class ResultDataset(HyraxDataset):
 
         rows = [{key: array[i] for key, array in arrays.items()} for i in range(len(idx))]
         return rows[0] if is_single else rows
+
+    def fetch_columns(self, indices, columns: list[str]) -> dict[str, Union[np.ndarray, list[str]]]:
+        """Fetch several columns for many rows with a single Lance take.
+
+        Parameters
+        ----------
+        indices : array-like of int
+            Row positions. Results are returned in the order given.
+        columns : list[str]
+            Columns to fetch. Either tensor columns (see ``keys()``) or ``"object_id"``.
+
+        Returns
+        -------
+        dict[str, np.ndarray | list[str]]
+            Maps each column to an array of shape ``(len(indices), *tensor_shape[column])``,
+            or to a list of strings for ``"object_id"``.
+
+        Raises
+        ------
+        IndexError
+            If any index is out of range.
+        """
+        idx = np.atleast_1d(np.asarray(indices, dtype=np.int64))
+        out_of_range = (idx < 0) | (idx >= self.table_len)
+        if np.any(out_of_range):
+            raise IndexError(
+                f"Indices {idx[out_of_range]} are out of range for dataset of length {self.table_len}"
+            )
+
+        table = self.lance_dataset.take(idx, columns=list(columns))
+        out = {}
+        for col in columns:
+            chunked = table[col]
+            if col == "object_id":
+                out[col] = chunked.to_pylist()
+                continue
+            flat = chunked.combine_chunks().values.to_numpy(zero_copy_only=False)
+            out[col] = flat.reshape(len(idx), *self.tensor_shape[col]).astype(
+                self.tensor_dtype[col], copy=False
+            )
+        return out
 
     def __get_all__(self):
         """Get all data tensors in the dataset.
@@ -326,12 +370,7 @@ class ResultDataset(HyraxDataset):
         str
             Object ID
         """
-        if idx < 0 or idx >= len(self):
-            raise IndexError(f"Index {idx} is out of range for dataset of length {len(self)}")
-
-        result = self.lance_dataset.take([idx])
-        # Extract first row's object_id since we're taking a single index
-        return result["object_id"][0].as_py()
+        return self.fetch_columns([idx], ["object_id"])["object_id"][0]
 
     def ids(self) -> list[str]:
         """Generate all object IDs.
