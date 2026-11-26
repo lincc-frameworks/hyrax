@@ -203,9 +203,7 @@ class VisualizeV2(Verb):
             self._keep_alive_cb = None
 
         import math
-        import os
         import threading
-        from concurrent.futures import ThreadPoolExecutor, as_completed
 
         import datashader as ds
         import holoviews as hv
@@ -405,11 +403,6 @@ class VisualizeV2(Verb):
         self.selected_box = pd.DataFrame()
         self.selected_lasso = pd.DataFrame()
         _table_df: list[pd.DataFrame] = [pd.DataFrame()]  # authoritative copy unaffected by user edits
-        _existing_pool = getattr(self, "_selection_table_pool", None)
-        if _existing_pool is not None:
-            _existing_pool.shutdown(wait=False, cancel_futures=True)
-        self._selection_table_pool = ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1))
-        _pool = self._selection_table_pool
 
         def _safe_execute(fn):
             """Schedule a UI-mutating callable on the Panel IOLoop (thread-safe).
@@ -423,20 +416,43 @@ class VisualizeV2(Verb):
             else:
                 fn()
 
-        def _make_fetcher(active_cols: list[str]):
-            """Return a row-fetching callable for the given active columns."""
-            top_level = [c for c in active_cols if c == "object_id"]
-            nested = [(c.split(".", 1)[0], c.split(".", 1)[1]) for c in active_cols if "." in c]
+        def _fetch_rows(indices: list[int], active_cols: list[str]) -> list[dict]:
+            """Fetch the active columns for many rows.
 
-            def _fetch_row(idx):
-                row: dict = {"row_index": idx}
-                if top_level:
-                    row["object_id"] = self.datasets["visualize"][idx].get("object_id")
-                for fn, field in nested:
-                    row[f"{fn}.{field}"] = _dataset_getters[fn][field](idx)
-                return row
+            Datasets exposing a batched ``fetch_columns`` accessor (e.g. ``ResultDataset``) are read with
+            a single call per dataset; others fall back to their per-row ``get_<field>`` getters.
+            """
+            rows: list[dict] = [{"row_index": i} for i in indices]
+            provider = self.datasets["visualize"]
 
-            return _fetch_row
+            # (output key, friendly dataset name, dataset field)
+            requests: list[tuple[str, str, str]] = []
+            if "object_id" in active_cols:
+                requests.append(
+                    ("object_id", provider.primary_dataset, provider.primary_dataset_id_field_name)
+                )
+            for c in active_cols:
+                if "." in c:
+                    fn, field = c.split(".", 1)
+                    requests.append((c, fn, field))
+
+            by_dataset: dict[str, list[tuple[str, str]]] = {}
+            for key, fn, field in requests:
+                by_dataset.setdefault(fn, []).append((key, field))
+
+            for fn, key_fields in by_dataset.items():
+                ds = provider.prepped_datasets[fn]
+                if hasattr(ds, "fetch_columns"):
+                    fetched = ds.fetch_columns(indices, sorted({field for _, field in key_fields}))
+                    for key, field in key_fields:
+                        for row, val in zip(rows, fetched[field], strict=True):
+                            row[key] = val
+                else:
+                    for key, field in key_fields:
+                        getter = _dataset_getters[fn][field]
+                        for row, i in zip(rows, indices, strict=True):
+                            row[key] = getter(i)
+            return rows
 
         def _update_table(
             sel: pd.DataFrame,
@@ -474,26 +490,13 @@ class VisualizeV2(Verb):
                 _safe_execute(_apply_no_cols)
                 return
 
-            _fetch_row = _make_fetcher(active_cols)
-
-            total = len(capped_indices)
-            _progress_step = max(1, total // 100)
-
-            # Bail out before submitting any futures if already stale
+            # Bail out before fetching if already stale
             if should_abort and should_abort():
                 return
 
-            futures = {_pool.submit(_fetch_row, idx): i for i, idx in enumerate(capped_indices)}
-            rows: list = [None] * total
-            for done, future in enumerate(as_completed(futures)):
-                if should_abort and should_abort():
-                    # Cancel all queued-but-not-started futures to drain the pool backlog
-                    for f in futures:
-                        f.cancel()
-                    return
-                rows[futures[future]] = future.result()
-                if progress_callback and (done % _progress_step == 0 or done == total - 1):
-                    progress_callback(int((done + 1) / total * 100))
+            rows = _fetch_rows(capped_indices, active_cols)
+            if progress_callback:
+                progress_callback(100)
 
             display_df = pd.DataFrame(rows).reset_index(drop=True)
             _table_df[0] = display_df.copy()
@@ -923,22 +926,14 @@ class VisualizeV2(Verb):
                 _safe_execute(_done_early)
                 return
 
-            _fetch_row = _make_fetcher(active_cols)
-
             all_indices = list(sel.index)
             total = len(all_indices)
-            # Submit futures in chunks to avoid allocating millions of Future objects at once,
-            # which would exhaust RAM for large selections.
+            # Fetch in chunks to bound memory per Lance take and to report progress.
             _chunk_size = 1000
-            rows: list = [None] * total
+            rows: list = []
             for chunk_start in range(0, total, _chunk_size):
                 chunk_end = min(chunk_start + _chunk_size, total)
-                chunk_indices = all_indices[chunk_start:chunk_end]
-                chunk_futures = {
-                    _pool.submit(_fetch_row, idx): chunk_start + i for i, idx in enumerate(chunk_indices)
-                }
-                for future in as_completed(chunk_futures):
-                    rows[chunk_futures[future]] = future.result()
+                rows.extend(_fetch_rows(all_indices[chunk_start:chunk_end], active_cols))
                 pct = int(chunk_end / total * 100)
                 _safe_execute(lambda p=pct: setattr(_progress_bar, "value", p))
 
